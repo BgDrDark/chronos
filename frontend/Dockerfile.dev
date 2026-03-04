@@ -1,0 +1,80 @@
+# Development Dockerfile for Frontend with Hot Reload
+FROM node:20-alpine as development
+
+WORKDIR /app
+
+# Install serve globally (for production build fallback)
+RUN npm install -g serve
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies (including dev dependencies)
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Build arguments for environment variables
+ARG VITE_API_URL
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_ENABLE_RBC
+ARG VITE_ENABLE_GOOGLE_CALENDAR
+ARG VITE_DEBUG
+
+# Set environment variables
+ENV VITE_API_URL=${VITE_API_URL:-http://localhost:14240}
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+ENV VITE_ENABLE_RBC=${VITE_ENABLE_RBC:-true}
+ENV VITE_ENABLE_GOOGLE_CALENDAR=${VITE_ENABLE_GOOGLE_CALENDAR:-true}
+ENV VITE_DEBUG=${VITE_DEBUG:-false}
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodejs -u 1001
+
+# Change ownership of the app directory
+RUN chown -R nodejs:nodejs /app
+USER nodejs
+
+# Expose port for development server
+EXPOSE 3000
+
+# Default development command
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+
+# Production target for backward compatibility
+FROM node:20-alpine as production
+
+WORKDIR /app
+
+RUN npm install -g serve
+
+COPY package*.json ./
+RUN npm install --only=production
+
+ARG VITE_API_URL
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_ENABLE_RBC
+ARG VITE_ENABLE_GOOGLE_CALENDAR
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_ENABLE_RBC=$VITE_ENABLE_RBC
+ENV VITE_ENABLE_GOOGLE_CALENDAR=$VITE_ENABLE_GOOGLE_CALENDAR
+
+COPY . .
+RUN npm run build
+
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodejs -u 1001
+
+RUN chown -R nodejs:nodejs /app
+USER nodejs
+
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
+
+CMD ["serve", "-s", "dist", "-l", "3000"]

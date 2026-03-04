@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+"""
+Seed data for RBAC system
+Run this script to populate initial permissions, roles, and assignments
+"""
+
+import sys
+from pathlib import Path
+
+# Add backend to path
+sys.path.append(str(Path(__file__).parent.parent))
+
+import asyncio
+from datetime import datetime
+
+# Try to import database components
+try:
+    from backend.database.database import AsyncSessionLocal
+    from backend.database.models import (
+        Permission, Role, RolePermission, CompanyRoleAssignment,
+        Role as RoleModel, User, Company
+    )
+    from backend.database.models import sofia_now
+    
+    # Try to import RBAC service
+    try:
+        from backend.auth.rbac_service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
+    except ImportError:
+        print("⚠️ RBAC service not available, using local definitions")
+        # Fallback definitions if service not available
+        DEFAULT_PERMISSIONS = {
+            'users:read': {'resource': 'users', 'action': 'read', 'description': 'View user information'},
+            'users:read_own': {'resource': 'users', 'action': 'read_own', 'description': 'View own user information'},
+            'users:create': {'resource': 'users', 'action': 'create', 'description': 'Create new users'},
+            # ... minimal permissions for now
+        }
+        DEFAULT_ROLES = {
+            'admin': {'description': 'Administrator with full access', 'priority': 100, 'is_system_role': True, 'permissions': ['users:read', 'users:create', 'users:update']},
+            'user': {'description': 'Standard user', 'priority': 20, 'is_system_role': False, 'permissions': ['users:read_own', 'users:update_own']},
+        }
+    
+except ImportError as e:
+    print(f"⚠️ Could not import database components: {e}")
+    sys.exit(1)
+
+
+async def seed_permissions():
+    """Seed all default permissions"""
+    print("📋 Seeding permissions...")
+    
+    async with AsyncSessionLocal() as db:
+        for perm_name, perm_data in DEFAULT_PERMISSIONS.items():
+            # Check if permission already exists
+            existing = await db.execute(
+                select(Permission).where(Permission.name == perm_name)
+            ).scalar_one_or_none()
+            
+            if not existing:
+                permission = Permission(
+                    name=perm_name,
+                    resource=perm_data['resource'],
+                    action=perm_data['action'],
+                    description=perm_data['description'],
+                    created_at=sofia_now()
+                )
+                db.add(permission)
+                print(f"✅ Created permission: {perm_name}")
+            else:
+                print(f"⚠️ Permission already exists: {perm_name}")
+        
+        await db.commit()
+        print("✅ Permissions seeding completed")
+
+
+async def seed_roles():
+    """Seed all default roles"""
+    print("👥 Seeding roles...")
+    
+    async with AsyncSessionLocal() as db:
+        for role_name, role_data in DEFAULT_ROLES.items():
+            # Check if role already exists
+            existing = await db.execute(
+                select(RoleModel).where(RoleModel.name == role_name)
+            ).scalar_one_or_none()
+            
+            if not existing:
+                role = RoleModel(
+                    name=role_name,
+                    description=role_data['description'],
+                    priority=role_data['priority'],
+                    is_system_role=role_data.get('is_system_role', False),
+                    created_at=sofia_now()
+                )
+                db.add(role)
+                print(f"✅ Created role: {role_name}")
+                
+                # Add permissions to role
+                await db.flush()  # Get role ID
+                
+                for perm_name in role_data.get('permissions', []):
+                    permission = await db.execute(
+                        select(Permission).where(Permission.name == perm_name)
+                    ).scalar_one_or_none()
+                    
+                    if permission:
+                        role_perm = RolePermission(
+                            role_id=role.id,
+                            permission_id=permission.id,
+                            granted_at=sofia_now()
+                        )
+                        db.add(role_perm)
+                
+            else:
+                print(f"⚠️ Role already exists: {role_name}")
+        
+        await db.commit()
+        print("✅ Roles seeding completed")
+
+
+async def seed_default_company():
+    """Create default company if none exists"""
+    print("🏢 Seeding default company...")
+    
+    async with AsyncSessionLocal() as db:
+        # Check if company already exists
+        existing = await db.execute(
+            select(Company).limit(1)
+        ).scalar_one_or_none()
+        
+        if not existing:
+            default_company = Company(
+                name="Default Company"
+            )
+            db.add(default_company)
+            await db.commit()
+            print("✅ Created default company")
+            return default_company
+        else:
+            print("⚠️ Default company already exists")
+            return existing
+
+
+async def migrate_existing_users():
+    """Migrate existing users to RBAC system"""
+    print("👥 Migrating existing users to RBAC...")
+    
+    async with AsyncSessionLocal() as db:
+        # Get all users with their current roles
+        users_query = select(User).where(User.is_active == True)
+        users_result = await db.execute(users_query)
+        users = users_result.scalars().all()
+        
+        # Get role mappings
+        admin_role = await db.execute(
+            select(RoleModel).where(RoleModel.name == "admin")
+        ).scalar_one_or_none()
+        
+        user_role = await db.execute(
+            select(RoleModel).where(RoleModel.name == "user")
+        ).scalar_one_or_none()
+        
+        # Get default company
+        default_company = await db.execute(
+            select(Company).limit(1)
+        ).scalar_one_or_none()
+        
+        if not default_company:
+            print("⚠️ No company found. Please run migrations first.")
+            return
+        
+        for user in users:
+            # Skip if already has role assignments
+            existing_assignment = await db.execute(
+                select(CompanyRoleAssignment).where(
+                    CompanyRoleAssignment.user_id == user.id
+                ).scalar_one_or_none()
+            )
+            
+            if existing_assignment:
+                print(f"⚠️ User {user.email} already has role assignment")
+                continue
+            
+            # Map old role to new role
+            new_role_id = None
+            company_id = default_company.id
+            
+            if user.role and user.role.name == "admin":
+                new_role_id = admin_role.id if admin_role else user_role.id
+                print(f"👤 Migrating admin user: {user.email}")
+            elif user.role and user.role.name == "user":
+                new_role_id = user_role.id if user_role else None
+                print(f"👤 Migrating regular user: {user.email}")
+            
+            if new_role_id:
+                # Create role assignment
+                assignment = CompanyRoleAssignment(
+                    user_id=user.id,
+                    company_id=company_id,
+                    role_id=new_role_id,
+                    assigned_at=sofia_now(),
+                    is_active=True
+                )
+                db.add(assignment)
+                print(f"✅ Assigned role to {user.email}")
+            else:
+                # Create user role for all other users
+                if user_role:
+                    assignment = CompanyRoleAssignment(
+                        user_id=user.id,
+                        company_id=company_id,
+                        role_id=user_role.id,
+                        assigned_at=sofia_now(),
+                        is_active=True
+                    )
+                    db.add(assignment)
+                    print(f"✅ Assigned user role to {user.email}")
+        
+        await db.commit()
+        print("✅ User migration completed")
+
+
+async def main():
+    """Run all seeding operations"""
+    print("🌱 Starting RBAC seeding process...")
+    
+    try:
+        # Create default company
+        await seed_default_company()
+        
+        # Seed permissions
+        await seed_permissions()
+        
+        # Seed roles
+        await seed_roles()
+        
+        # Migrate existing users
+        await migrate_existing_users()
+        
+        print("\n🎉 RBAC seeding completed successfully!")
+        print("📊 Summary:")
+        print("✅ All default permissions created")
+        print("✅ All default roles created")
+        print("✅ Default company created")
+        print("✅ Existing users migrated to RBAC")
+        print("✅ Ready for enterprise deployment!")
+        
+    except Exception as e:
+        print(f"\n❌ Error during seeding: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

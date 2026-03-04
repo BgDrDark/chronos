@@ -1,0 +1,43 @@
+access_control:
+  anti_passback:
+    default_type: soft
+    enabled: false
+    timeout_minutes: 5
+  auto_reset_enabled: true
+  auto_reset_time: '23:00'
+  doors: []
+  enabled: true
+  hardware:
+    devices: []
+  one_time_codes:
+    enabled: true
+    prefix: G
+  zones: []
+activity:
+  heartbeat_interval: 30
+  timeout: 120
+backend:
+  api_key: gw_772c4dbaf9596148c32d3e8e1d5db5ec29e923c65bb66eb2
+  url: http://localhost:14240
+  verify_ssl: false
+gateway:
+  alias: "\u041B\u043E\u043A\u0430\u043B\u0435\u043D \u0422\u0435\u0441\u0442"
+  hardware_uuid: 07b28cd7f3c9ec3ba3f6d1bfd921f39be9d29c2c6badba98f365cad93358d8c4
+  id: '1'
+  mode: production
+  system_mode: normal
+logging:
+  backup_count: 5
+  file: /tmp/pytest-of-root/pytest-1/test_sqlite_persistence0/test.log
+  level: INFO
+  max_size: 10MB
+mtls:
+  ca_file: certs/ca-chain.pem
+  cert_file: certs/gateway.pem
+  enabled: false
+  key_file: certs/gateway-key.pem
+network:
+  ip: 0.0.0.0
+  terminal_port: 1424
+  web_port: 8889
+printers: []

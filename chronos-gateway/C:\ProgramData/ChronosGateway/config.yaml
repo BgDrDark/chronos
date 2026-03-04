@@ -1,0 +1,41 @@
+access_control:
+  anti_passback:
+    default_type: soft
+    enabled: false
+    timeout_minutes: 5
+  auto_reset_enabled: true
+  auto_reset_time: '23:00'
+  doors: []
+  enabled: false
+  hardware:
+    devices: []
+  one_time_codes:
+    enabled: true
+    prefix: G
+  zones: []
+activity:
+  heartbeat_interval: 30
+  timeout: 120
+backend:
+  api_key: ''
+  url: https://chronos.example.com
+  verify_ssl: true
+gateway:
+  alias: ''
+  hardware_uuid: 67a1539e2b686fb84675dd31c24231bcf767aee2d0a4fdb32d85939c3880e568
+  id: auto
+logging:
+  backup_count: 5
+  file: logs/gateway.log
+  level: INFO
+  max_size: 10MB
+mtls:
+  ca_file: ''
+  cert_file: ''
+  enabled: false
+  key_file: ''
+network:
+  ip: 0.0.0.0
+  terminal_port: 8080
+  web_port: 8888
+printers: []

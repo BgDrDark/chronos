@@ -1,0 +1,1 @@
+Fixed syntax error in backend/crud.py by removing corrupted code block and duplicate function definition.

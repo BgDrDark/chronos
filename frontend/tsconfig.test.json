@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.dotcache/tsconfig.test.tsbuildinfo",
+    "verbatimModuleSyntax": false, // Disable for tests
+    "jsx": "react-jsx", // Ensure JSX is configured
+    "esModuleInterop": true, // Ensure interop is configured
+    "types": ["jest", "node", "vite/client"] // Add jest types
+  },
+  "include": ["src", "src/**/*.test.ts", "src/**/*.test.tsx"],
+  "exclude": ["node_modules"]
+}

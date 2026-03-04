@@ -1,0 +1,81 @@
+# Development Dockerfile for Hot Reload
+FROM python:3.13-slim as development
+
+# Set working directory
+WORKDIR /app
+
+# Set environment variables for development
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+ENV DEBUG=true
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    tesseract-ocr \
+    tesseract-ocr-bul \
+    poppler-utils \
+    fonts-dejavu-core \
+    curl \
+    vim \
+    git \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Copy application code (for volume mounting)
+COPY . .
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash app
+RUN chown -R app:app /app
+USER app
+
+# Expose port
+EXPOSE 14240
+
+# Default command for development
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "14240", "--reload", "--reload-dir", "/app", "--log-level", "debug"]
+
+# Production target for backward compatibility
+FROM python:3.13-slim as production
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    tesseract-ocr \
+    tesseract-ocr-bul \
+    poppler-utils \
+    fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN mkdir -p /app/logs
+RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
+USER app
+
+EXPOSE 14240
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:14240/health || exit 1
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "14240"]

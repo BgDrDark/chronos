@@ -1,0 +1,54 @@
+# Docker Compose за работа с имиджи от Docker Hub
+# Употреба: docker compose -f docker-compose.hub.yml up -d
+
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: workingtime-db-1
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-chronosdb}
+    volumes:
+      - ./postgres_DB:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-chronosdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  backend:
+    # Заменете 'oblak24' с вашето потребителско име в Docker Hub
+    image: ${DOCKER_HUB_USER:-oblak24}/chronos-backend:latest
+    container_name: workingtime-backend-1
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    volumes:
+      - ./backend:/app/backend
+    ports:
+      - "14240:14240"
+    command: >
+      bash -c "cd backend &&
+               alembic upgrade head &&
+               python init_db.py &&
+               uvicorn main:app --host 0.0.0.0 --port 14240"
+
+  frontend:
+    # Заменете 'oblak24' с вашето потребителско име в Docker Hub
+    image: ${DOCKER_HUB_USER:-oblak24}/chronos-frontend:latest
+    container_name: workingtime-frontend-1
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    # Фронтендът в Docker Hub обикновено е Nginx, затова нямаме нужда от volume с код

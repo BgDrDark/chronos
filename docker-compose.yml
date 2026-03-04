@@ -1,0 +1,271 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: chronos-DB
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-workingtimedb}
+      - POSTGRES_HOST_AUTH_METHOD=scram-sha-256
+      - POSTGRES_INITDB_ARGS=--auth-local=scram-sha-256 --auth-host=scram-sha-256
+      - TZ=Europe/Sofia
+      - PGTZ=Europe/Sofia
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_DB7:/var/lib/postgresql/data/
+      # Add performance optimization volumes
+      - ./scripts/init-extensions.sql:/docker-entrypoint-initdb.d/init-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-workingtimedb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    image: ${BACKEND_NAME}:${VERSION}
+    container_name: ${BACKEND_NAME}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-workingtimedb}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CSRF_SECRET_KEY=${CSRF_SECRET_KEY}
+      # Allow dynamic CORS configuration via env file if needed
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      # Enhanced configuration
+      - DEBUG=${DEBUG:-false}
+      - TIMEZONE=${TIMEZONE:-Europe/Sofia}
+      # Google Calendar Integration
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:3000/auth/google/callback}
+      - GOOGLE_SYNC_ENABLED=${GOOGLE_SYNC_ENABLED:-true}
+      - GOOGLE_CALENDAR_WEBHOOK_SECRET=${GOOGLE_CALENDAR_WEBHOOK_SECRET}
+      # Performance Settings
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-20}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-30}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-60}
+      # RBAC Settings
+      - PERMISSION_CACHE_TTL=${PERMISSION_CACHE_TTL:-300}
+    ports:
+      - "14240:14240"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Mount logs for debugging
+      - ./logs/backend:/app/logs
+      # Mount performance scripts
+      - ./scripts:/app/scripts:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Development Backend Service (for testing only)
+  backend-dev:
+    image: ${BACKEND_NAME}:${VERSION}
+    container_name: ${BACKEND_NAME}-dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      target: development
+    restart: "no"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-workingtimedb}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - DEBUG=true
+      - TIMEZONE=${TIMEZONE:-Europe/Sofia}
+      - BACKEND_CORS_ORIGINS=http://localhost:3001,http://localhost:3000,http://192.168.1.92:3000
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_SYNC_ENABLED=true
+      - GOOGLE_REDIRECT_URI=http://localhost:3001/auth/google/callback
+    ports:
+      - "14241:14240"  # Different port for dev
+    volumes:
+      - ./backend:/app  # Mount source for hot reload
+      - ./logs/backend-dev:/app/logs
+      - /app/__pycache__  # Exclude Python cache
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "14240", "--reload", "--reload-dir", "/app"]
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - dev
+
+  frontend:
+    image: ${FRONTEND_NAME}:${VERSION}
+    container_name: ${FRONTEND_NAME}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:14240}
+        - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+        - VITE_ENABLE_RBC=${VITE_ENABLE_RBC:-true}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:14240}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Development Frontend Service (for testing only)
+  frontend-dev:
+    image: ${FRONTEND_NAME}:${VERSION}
+    container_name: ${FRONTEND_NAME}-dev
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+      target: development
+    restart: "no"
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:14241}
+      - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - VITE_ENABLE_RBC=true
+      - VITE_ENABLE_GOOGLE_CALENDAR=true
+      - VITE_DEBUG=true
+    ports:
+      - "3001:3000"  # Different port for dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Exclude node_modules
+      - /app/dist
+    command: ["npm", "run", "dev"]
+    depends_on:
+      - backend-dev
+    profiles:
+      - dev
+
+  gateway:
+    image: chronos-gateway:${VERSION}
+    container_name: chronos-gateway
+    build:
+      context: ./chronos-gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./chronos-gateway/config.yaml:/app/config.yaml
+      - ./chronos-gateway/logs:/app/logs
+    depends_on:
+      - backend
+
+  nginx-proxy-manager:
+    image: 'jc21/nginx-proxy-manager:latest'
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - ./npm/data:/data
+      - ./npm/letsencrypt:/etc/letsencrypt
+    depends_on:
+      - frontend
+      - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: chronos-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - cache
+      - dev
+
+  # Performance monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: chronos-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    profiles:
+      - monitoring
+      - dev
+
+  # Grafana for dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: chronos-grafana
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - ./monitoring/grafana:/var/lib/grafana
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+      - dev
+
+  # PostgreSQL Exporter for monitoring
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: chronos-postgres-exporter
+    restart: unless-stopped
+    environment:
+      - DATA_SOURCE_NAME=chronos-db
+      - DATA_SOURCE_URI=postgresql://postgres:postgres@db:5432/workingtimedb?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      - db
+    profiles:
+      - monitoring
+      - dev
