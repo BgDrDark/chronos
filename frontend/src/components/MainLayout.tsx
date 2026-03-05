@@ -25,7 +25,8 @@ import {
   Assignment as TaskIcon,
   Notifications as NotificationsIcon,
   Receipt as ReceiptIcon,
-  ExpandMore as ExpandMoreIcon
+  ExpandMore as ExpandMoreIcon,
+  MeetingRoom as DoorIcon
 } from '@mui/icons-material';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useApolloClient } from '@apollo/client';
@@ -160,7 +161,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   };
 
   const showSmtpWarning = isAdmin && user?.isSmtpConfigured === false && smtpAlertOpen;
-  const publicPages = ['/login', '/forgot-password', '/reset-password', '/kiosk', '/production-kiosk', '/my-card'];
+  const publicPages = ['/login', '/forgot-password', '/reset-password', '/kiosk', '/kiosk/terminal', '/my-card'];
   const isPublicPage = publicPages.includes(location.pathname);
   const displayName = user ? (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.email) : '';
 
@@ -248,7 +249,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
         { text: 'SMTP Настройки', path: '/admin/notifications/smtp', visible: true },
       ]
     },
-    { text: 'Настройки', icon: <SettingsIcon />, path: '/settings', visible: !!user },
+    { text: 'Настройки', icon: <SettingsIcon />, path: '/admin/kiosk', visible: isAdmin && isEnabled('kiosk') },
     { text: 'Документация', icon: <HelpOutlineIcon />, path: '/documentation', visible: isAdmin && isEnabled('integrations') },
     { 
       text: 'отдел КД', 
@@ -256,6 +257,8 @@ const MainLayout: React.FC<Props> = ({ children }) => {
       visible: isAdmin && isEnabled('kiosk'),
       children: [
         { text: 'Kiosk Терминал', path: '/admin/kiosk', visible: true },
+        { text: 'Kiosk Достъп', path: '/admin/kiosk/terminal', visible: true },
+        { text: 'Терминали', path: '/admin/kiosk/terminals', visible: true },
         { text: 'Gateways', path: '/admin/kiosk/gateways', visible: true },
         { text: 'Зони за достъп', path: '/admin/kiosk/zones', visible: true },
         { text: 'Врати', path: '/admin/kiosk/doors', visible: true },
@@ -268,7 +271,8 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Рецепти', icon: <RecipeIcon />, path: '/admin/recipes', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Поръчки', icon: <OrderIcon />, path: '/admin/orders', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Контрол', icon: <TaskIcon />, path: '/admin/production/control', visible: isAdmin && isEnabled('confectionery') },
-    { text: 'Терминал Цех', icon: <TaskIcon />, path: '/production-kiosk', visible: isAdmin && isEnabled('confectionery') },
+    { text: 'Clock In/Out', icon: <QrCodeScannerIcon />, path: '/kiosk', visible: true },
+    { text: 'Kiosk Terminal', icon: <DoorIcon />, path: '/kiosk/terminal', visible: true },
   ];
 
   const drawer = (

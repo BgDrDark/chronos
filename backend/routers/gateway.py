@@ -242,7 +242,7 @@ async def get_gateway_config(gateway_id: int, db: AsyncSession = Depends(get_db)
         "access_control": {
             "enabled": True,
             "zones": [{"id": z.zone_id, "name": z.name, "level": z.level, "depends_on": z.depends_on, "authorized_users": [u.id for u in z.authorized_users], "required_hours": {"start": z.required_hours_start, "end": z.required_hours_end}, "anti_passback": {"enabled": z.anti_passback_enabled, "type": z.anti_passback_type, "timeout_minutes": z.anti_passback_timeout}} for z in zones],
-            "doors": [{"id": d.door_id, "name": d.name, "zone_id": next((z.zone_id for z in zones if z.id == d.zone_db_id), ""), "device_id": d.device_id, "relay_number": d.relay_number, "terminal_id": d.terminal_id} for d in doors]
+            "doors": [{"id": d.door_id, "name": d.name, "zone_id": next((z.zone_id for z in zones if z.id == d.zone_db_id), ""), "device_id": d.device_id, "relay_number": d.relay_number, "terminal_id": d.terminal_id, "terminal_mode": d.terminal_mode} for d in doors]
         }
     }
 

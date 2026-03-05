@@ -963,7 +963,297 @@ class BackendSync:
 | Версия | Дата | Описание |
 |--------|------|----------|
 | 1.0 | 2026-03-01 | Първоначална версия |
+| 1.1 | 2026-03-04 | Добавен Kiosk терминал за достъп |
 
 ---
 
-*Този документ е създаден като част от проекта Chronos Gateway*
+# НОВ ПЛАН: KIOSK ТЕРМИНАЛ ЗА ДОСТЪП
+
+## 1. ОБЩ ПРЕГЛЕД
+
+### 1.1 Типове терминали
+
+| Тип | Описание | Поведение |
+|-----|----------|-----------|
+| `clock` | Само за работно време | Само отчита часове (clock in/out) |
+| `access` | Само за достъп | Отваря врата, не отчита часове |
+| `both` | И двете | При сканиране избор меню |
+
+### 1.2 Логика за определяне на типа
+
+```
+Инсталаторът/Админът конфигурира:
+    │
+    ├── Терминалът има свързана врата + mode="access" → само достъп
+    ├── Терминалът има свързана врата + mode="both" → достъп + часове
+    └── Терминалът НЯМА свързана врата → само часове
+```
+
+---
+
+## 2. КОНФИГУРАЦИЯ
+
+### 2.1 База данни - AccessDoor
+
+```python
+class AccessDoor(Base):
+    # ... съществуващи полета ...
+    
+    terminal_id = Column(String(100), nullable=True)  # Hardware UUID на терминала
+    terminal_mode = Column(String(20), default="access")  # "clock", "access", "both"
+```
+
+### 2.2 Две места за конфигурация
+
+| Място | Кой | Описание |
+|-------|-----|----------|
+| Frontend "Терминали" | Админ | Избира врата + режим |
+| Gateway Web UI | Инсталатор | При първоначална инсталация |
+
+### 2.3 Gateway ↔ Backend Sync
+
+```
+Backend (база данни)
+     │
+     │ Sync на всеки 60 секунди
+     │ (периодичен - heartbeat интервал)
+     ▼
+Gateway (локална памет)
+```
+
+---
+
+## 3. BACKEND ПРОМЕНИ
+
+### 3.1 Нови полета в модела
+
+**Файл:** `backend/database/models.py`
+
+```python
+# В AccessDoor класа:
+terminal_mode = Column(String(20), default="access")  # "clock", "access", "both"
+```
+
+### 3.2 GraphQL Mutations
+
+| Mutation | Параметри | Описание |
+|----------|-----------|----------|
+| `updateDoorTerminal` | doorId, terminalId, terminalMode | Свързва врата с терминал |
+
+### 3.3 API Endpoints
+
+| Endpoint | Метод | Описание |
+|----------|-------|----------|
+| `/kiosk/terminal/scan` | POST | QR сканиране + достъп + trigger |
+| `/kiosk/terminal/validate-code` | POST | Валидация на код от клавиатура |
+| `/gateways/{id}/sync-doors` | GET | Sync врати от Backend |
+
+---
+
+## 4. FRONTEND ПРОМЕНИ
+
+### 4.1 Route
+
+**Файл:** `frontend/src/App.tsx`
+
+```tsx
+<Route path="/admin/kiosk/terminals" element={<KioskAdminPage tab="terminals" />} />
+<Route path="/admin/kiosk/terminal" element={<KioskTerminalPage />} />
+```
+
+### 4.2 Меню - "отдел КД"
+
+**Файл:** `frontend/src/components/MainLayout.tsx`
+
+```tsx
+{ text: 'Терминали', path: '/admin/kiosk/terminals', visible: true },
+{ text: 'Kiosk Терминал', path: '/admin/kiosk/terminal', visible: true },
+```
+
+### 4.3 TerminalsTab - Конфигурация
+
+**Файл:** `frontend/src/pages/KioskAdminPage.tsx`
+
+Функционалност:
+- Списък с всички терминали
+- За всеки терминал:
+  - Избор на врата (dropdown)
+  - Избор на режим (radio: clock/access/both)
+  - Свързване/разкачане
+
+### 4.4 CodeKeyboard Компонент
+
+**Файл:** `frontend/src/components/CodeKeyboard.tsx`
+
+```
+┌─────────────────────────────┐
+│  [1] [2] [3] [🗑️ Изтрий] │
+│  [4] [5] [6] [🚪 Вход]    │
+│  [7] [8] [9] [0] [⏎ OK]   │
+└─────────────────────────────┘
+```
+
+### 4.5 KioskTerminalPage
+
+**Файл:** `frontend/src/pages/KioskTerminalPage.tsx`
+
+Поток:
+```
+1. Покажи QR скенер + клавиатура
+         │
+2. QR сканиран ИЛИ код въведен
+         │
+3. Изпрати → /kiosk/terminal/scan
+         │
+4. Backend:
+   - Валидира QR/код
+   - Проверява зони
+   - Trigger → Gateway
+         │
+5. Резултат:
+   - ✅ TTS: "Добре дошли, {име}!"
+   - ❌ TTS: "Достъп отказан: {причина}"
+```
+
+### 4.6 Звуци (TTS)
+
+```tsx
+// Използва Web Speech API
+const speak = (text: string) => {
+  const msg = new SpeechSynthesisUtterance(text);
+  msg.lang = 'bg-BG';
+  speechSynthesis.speak(msg);
+};
+```
+
+---
+
+## 5. GATEWAY ПРОМЕНИ
+
+### 5.1 Terminal Config UI
+
+**Файл:** `chronos-gateway/gateway/server/web_dashboard.py`
+
+Добавяне на секция за избор на вратата за терминала:
+- Списък с врати
+- Dropdown за избор на врата
+- Бутон "Свържи"
+
+### 5.2 Periodic Sync
+
+**Файл:** `chronos-gateway/gateway/main.py`
+
+```python
+async def sync_with_backend():
+    """Sync на всеки 60 секунди"""
+    while self._running:
+        try:
+            # Вземи врати от backend
+            doors = await fetch_doors_from_backend()
+            zone_manager.update_doors(doors)
+        except Exception as e:
+            logger.error(f"Sync failed: {e}")
+        
+        await asyncio.sleep(60)  # 60 секунди
+```
+
+---
+
+## 6. КЛАВИАТУРА - ВАЛИДАЦИЯ НА КОДОВЕ
+
+### 6.1 Източник на кодове
+
+Кодовете се зареждат от `access_codes` таблицата в базата:
+
+```python
+class AccessCode(Base):
+    code = Column(String(20), unique=True)      # напр. "1234"
+    code_type = Column(String(20))             # "one_time", "daily", "guest"
+    zones = Column(JSON, default=[])           # ["zone_1", "zone_2"]
+    expires_at = Column(DateTime)              # Кога изтича
+    uses_remaining = Column(Integer)           # Оставащи използвания
+    is_active = Column(Boolean, default=True)
+```
+
+### 6.2 Валидационна логика
+
+```
+1. Кодът съществува в базата?
+         │
+2. Кодът е активен (is_active)?
+         │
+3. Кодът не е изтекъл (expires_at > now)?
+         │
+4. Остават опити (uses_remaining > 0)?
+         │
+5. Зоните съвпадат?
+         │
+6. ✅ Валиден → Отработи достъп
+    ❌ Невалиден → Върни грешка
+```
+
+---
+
+## 7. ТЕСТОВЕ
+
+### 7.1 Backend тестове
+
+| # | Тест | Описание |
+|---|------|----------|
+| 1 | `test_terminal_scan_with_access` | QR сканиране + отваряне на врата |
+| 2 | `test_terminal_scan_clock_only` | Само отчитане на часове |
+| 3 | `test_terminal_scan_both` | Избор меню + достъп |
+| 4 | `test_code_validation_valid` | Валиден код от клавиатура |
+| 5 | `test_code_validation_expired` | Изтекъл код |
+| 6 | `test_code_validation_invalid` | Невалиден код |
+| 7 | `test_door_terminal_update` | Обновяване на врата+режим |
+| 8 | `test_sync_doors` | Sync врати от backend |
+
+### 7.2 Frontend тестове
+
+| # | Тест | Описание |
+|---|------|----------|
+| 1 | `test_keyboard_input` | Въвеждане на код |
+| 2 | `test_keyboard_delete` | Изтриване на символ |
+| 3 | `test_terminal_page_render` | Рендериране на страницата |
+| 4 | `test_mode_selection` | Избор на режим |
+
+### 7.3 Интеграционни тестове
+
+| # | Тест | Описание |
+|---|------|----------|
+| 1 | `test_full_access_flow` | Пълен поток: QR → Backend → Gateway → Door |
+| 2 | `test_keyboard_access_flow` | Пълен поток: Код → Backend → Gateway → Door |
+| 3 | `test_gateway_sync` | Sync между Gateway и Backend |
+
+---
+
+## 8. СТЪПКИ ЗА ИМПЛЕМЕНТАЦИЯ
+
+### Фаза 1: Backend
+1. Добави `terminal_mode` поле в `AccessDoor` модела
+2. Създай Alembic миграция
+3. Добави GraphQL mutation `updateDoorTerminal`
+4. Създай endpoint `/kiosk/terminal/scan`
+5. Създай endpoint `/kiosk/terminal/validate-code`
+6. Създай endpoint `/gateways/sync-doors`
+
+### Фаза 2: Frontend
+1. Добави route `/admin/kiosk/terminals`
+2. Добави в меню "Терминали"
+3. Създай `TerminalsTab` в `KioskAdminPage`
+4. Създай компонент `CodeKeyboard`
+5. Създай страница `KioskTerminalPage`
+6. Добави TTS звуци
+
+### Фаза 3: Gateway
+1. Добави Terminal Config UI в Web Dashboard
+2. Добави Periodic Sync логика
+
+### Фаза 4: Тестове
+1. Пусни всички тестове
+2. Ръчно тестване
+
+---
+
+*Този документ е обновен на 2026-03-04 с плана за Kiosk терминал за достъп*

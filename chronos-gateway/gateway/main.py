@@ -255,6 +255,8 @@ class GatewayService:
         
         import uvicorn
         
+        self._stop_event = asyncio.Event()
+        
         async def run_terminal_hub():
             config_terminal = uvicorn.Config(
                 terminal_hub.app,
@@ -263,7 +265,16 @@ class GatewayService:
                 log_level="info"
             )
             server = uvicorn.Server(config_terminal)
+            server.install_signal_handlers = False
+            
+            # Таск за спиране на сървъра при стоп събитие
+            async def watch_stop():
+                await self._stop_event.wait()
+                server.should_exit = True
+            
+            stop_task = asyncio.create_task(watch_stop())
             await server.serve()
+            stop_task.cancel()
         
         async def run_web_dashboard():
             config_web = uvicorn.Config(
@@ -273,40 +284,73 @@ class GatewayService:
                 log_level="info"
             )
             server = uvicorn.Server(config_web)
+            server.install_signal_handlers = False
+            
+            # Таск за спиране на сървъра при стоп събитие
+            async def watch_stop():
+                await self._stop_event.wait()
+                server.should_exit = True
+            
+            stop_task = asyncio.create_task(watch_stop())
             await server.serve()
+            stop_task.cancel()
         
         async def run_all():
             # Initial registration attempt (only if leader/master)
             if self.cluster_manager.is_master():
                 await self.register_with_backend()
             
-            await asyncio.gather(
-                run_terminal_hub(),
-                run_web_dashboard(),
-                self.cluster_manager.start(),
-                self.start_heartbeat(),
-                self.sync_config_from_backend(),
-                self.cleanup_offline_terminals(),
-            )
+            # Старт на всички под-системи като таскове
+            tasks = [
+                asyncio.create_task(run_terminal_hub()),
+                asyncio.create_task(run_web_dashboard()),
+                asyncio.create_task(self.cluster_manager.start()),
+                asyncio.create_task(self.start_heartbeat()),
+                asyncio.create_task(self.sync_config_from_backend()),
+                asyncio.create_task(self.cleanup_offline_terminals()),
+            ]
+            
+            # Изчакваме събитие за стоп
+            await self._stop_event.wait()
+            logger.info("Graceful shutdown initiated...")
+            
+            # Изчакваме малко сървърите да спрат сами (те слушат за should_exit през watch_stop)
+            await asyncio.sleep(1)
+            
+            # Канселираме останалите таскове (heartbeat, sync и т.н.)
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            
+            # Изчакваме всички да приключат и игнорираме грешки от канселиране
+            await asyncio.gather(*tasks, return_exceptions=True)
+            logger.info("All tasks settled")
+        
+        # Закачаме сигналния хендлър към цикъла
         try:
-            asyncio.run(run_all())
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user")
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        def handle_signal():
+            logger.info("Shutdown signal received")
+            self.stop()
+            self._stop_event.set()
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, handle_signal)
+
+        try:
+            loop.run_until_complete(run_all())
+        except Exception as e:
+            logger.error(f"Error in main loop: {e}")
         finally:
             self.stop()
 
 
 def main():
     service = GatewayService()
-    
-    def signal_handler(sig, frame):
-        logger.info("Received shutdown signal")
-        service.stop()
-        sys.exit(0)
-    
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
     service.run()
 
 

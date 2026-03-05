@@ -65,7 +65,13 @@
 
         <div id="section-access" class="hidden space-y-4">
             <div class="bg-white rounded-lg shadow p-4">
-                <div class="flex justify-between mb-4"><h2 class="font-bold">SR201 Устройства</h2><button onclick="findDevices()" class="bg-purple-600 text-white px-3 py-1 rounded text-sm">Намери Устройство</button></div>
+                <div class="flex justify-between mb-4">
+                    <h2 class="font-bold">SR201 Устройства</h2>
+                    <div class="flex gap-2">
+                        <button onclick="findDevices()" class="bg-purple-600 text-white px-3 py-1 rounded text-sm">Намери</button>
+                        <button onclick="showAddHardwareModal()" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">+ Добави</button>
+                    </div>
+                </div>
                 <div id="hardware-list" class="space-y-2"></div>
             </div>
             <div class="bg-white rounded-lg shadow p-4">
@@ -133,6 +139,20 @@
             <input type="text" name="device_id" placeholder="Device ID" required class="w-full border p-2 rounded">
             <input type="number" name="relay_number" value="1" class="w-full border p-2 rounded">
             <div class="flex justify-end gap-2"><button type="button" onclick="closeModal('door-modal')" class="p-2">Cancel</button><button type="submit" class="bg-blue-600 text-white p-2 rounded">Добави</button></div>
+        </form>
+    </div></div>
+
+    <div id="hardware-modal" class="modal"><div class="bg-white rounded-lg m-auto p-6 w-full max-w-md">
+        <h3 class="font-bold mb-4">Добави SR201 Устройство</h3>
+        <form id="hardware-form" class="space-y-3">
+            <input type="text" name="id" placeholder="ID (sr201_1)" required class="w-full border p-2 rounded">
+            <input type="text" name="name" placeholder="Име (напр. Вход)" required class="w-full border p-2 rounded">
+            <input type="text" name="ip" placeholder="IP (192.168.1.100)" required class="w-full border p-2 rounded">
+            <input type="number" name="port" value="6722" class="w-full border p-2 rounded">
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="closeModal('hardware-modal')" class="p-2">Отказ</button>
+                <button type="submit" class="bg-blue-600 text-white p-2 rounded">Запази</button>
+            </div>
         </form>
     </div></div>
 
@@ -216,13 +236,30 @@
         async function loadHardware() {
             const r = await fetch('/access/hardware');
             const data = await r.json();
-            document.getElementById('hardware-list').innerHTML = data.map(d => `<div class="p-2 border rounded flex justify-between"><div>${d.name} (${d.ip})</div><button onclick="testHardware('${d.device_id}')" class="text-blue-600">Тест</button></div>`).join('');
+            document.getElementById('hardware-list').innerHTML = data.map(d => `
+                <div class="p-2 border rounded flex justify-between items-center">
+                    <div>
+                        <div class="font-bold">${d.name}</div>
+                        <div class="text-xs text-gray-500">${d.ip}:${d.port} | ID: ${d.device_id}</div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="testHardware('${d.device_id}')" class="text-blue-600 text-sm">Тест</button>
+                        <button onclick="deleteHardware('${d.device_id}')" class="text-red-600 text-sm">Изтрий</button>
+                    </div>
+                </div>
+            `).join('') || '<p class="text-gray-400 text-center text-sm py-2">Няма добавени устройства</p>';
+        }
+
+        async function deleteHardware(id) {
+            if (!confirm('Премахни устройството?')) return;
+            await fetch(`/access/hardware/${id}`, { method: 'DELETE' });
+            loadHardware();
         }
 
         async function testHardware(id) {
             const r = await fetch(`/access/hardware/${id}/test`, {method: 'POST'});
             const res = await r.json();
-            alert(res.message || 'Готово');
+            alert(res.message || (res.success ? 'Успешна връзка!' : 'Грешка при връзка'));
         }
 
         async function loadZones() {
@@ -258,7 +295,57 @@
         function showAddPrinterModal() { document.getElementById('printer-modal').classList.add('active'); }
         function showAddZoneModal() { document.getElementById('zone-modal').classList.add('active'); }
         function showAddDoorModal() { document.getElementById('door-modal').classList.add('active'); }
+        function showAddHardwareModal() { document.getElementById('hardware-modal').classList.add('active'); }
         function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        document.getElementById('printer-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            await fetch('/api/printers', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            closeModal('printer-modal');
+            e.target.reset();
+            loadStatus();
+        });
+
+        document.getElementById('hardware-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            try {
+                const r = await fetch('/access/hardware', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (r.ok) {
+                    closeModal('hardware-modal');
+                    e.target.reset();
+                    loadHardware();
+                } else {
+                    const res = await r.json();
+                    alert(res.message || 'Грешка при добавяне');
+                }
+            } catch (err) { alert(err); }
+        });
+
+        document.getElementById('zone-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            await fetch('/access/zones', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            closeModal('zone-modal');
+            loadZones();
+        });
+
+        document.getElementById('door-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            await fetch('/access/doors', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            closeModal('door-modal');
+            loadDoors();
+        });
 
         loadStatus();
         setInterval(loadStatus, 10000);

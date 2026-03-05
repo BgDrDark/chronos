@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 import socket
+import asyncio
 from pathlib import Path
 
 from gateway.config import config
@@ -144,6 +145,38 @@ class WebDashboard:
                 content=self.gateway.terminal_manager.get_all_terminals()
             )
         
+        @self.app.post("/api/terminal/config")
+        async def update_terminal_config(data: dict):
+            """Обновяване конфигурацията на терминал (свързване с врата)"""
+            from gateway.access import zone_manager
+            
+            hardware_uuid = data.get("hardware_uuid")
+            door_id = data.get("door_id")
+            mode = data.get("mode", "access")
+            
+            if not hardware_uuid:
+                return JSONResponse(content={"status": "error", "message": "hardware_uuid is required"}, status_code=400)
+            
+            # Намираме вратата и обновяваме нейния terminal_id
+            doors = zone_manager.get_all_doors()
+            found = False
+            for door in doors:
+                if door['id'] == door_id:
+                    door['terminal_id'] = hardware_uuid
+                    door['terminal_mode'] = mode
+                    found = True
+                    # Запазваме промяната обратно в мениджъра
+                    zone_manager.update_door(door['id'], door)
+                elif door.get('terminal_id') == hardware_uuid:
+                    # Разкачаме старата връзка ако има такава
+                    door['terminal_id'] = None
+                    zone_manager.update_door(door['id'], door)
+            
+            if not found and door_id:
+                return JSONResponse(content={"status": "error", "message": "Door not found"}, status_code=404)
+            
+            return JSONResponse(content={"status": "updated", "hardware_uuid": hardware_uuid, "door_id": door_id})
+
         @self.app.get("/api/printers")
         async def get_printers():
             """Списък с принтери"""

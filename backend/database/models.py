@@ -1829,6 +1829,7 @@ class AccessDoor(Base):
     device_id = Column(String(50), nullable=False) # ID of relay device
     relay_number = Column(Integer, default=1)
     terminal_id = Column(String(100), nullable=True) # Hardware UUID of associated terminal
+    terminal_mode = Column(String(20), default="access") # "clock", "access", "both"
     
     description = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)

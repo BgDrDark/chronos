@@ -17,12 +17,12 @@ import DocumentationPage from './pages/DocumentationPage';
 import ProfilePage from './pages/ProfilePage';
 import KioskPage from './pages/KioskPage';
 import KioskAdminPage from './pages/KioskAdminPage';
+import KioskTerminalPage from './pages/KioskTerminalPage';
 import GatewayAdminPage from './pages/GatewayAdminPage';
 import MyCardPage from './pages/MyCardPage';
 import WarehousePage from './pages/WarehousePage';
 import RecipesPage from './pages/RecipesPage';
 import OrdersPage from './pages/OrdersPage';
-import ProductionKioskPage from './pages/ProductionKioskPage';
 import ProductionControlPage from './pages/ProductionControlPage';
 import AccountingPage from './pages/AccountingPage';
 import NotificationsPage from './pages/NotificationsPage';
@@ -51,7 +51,7 @@ function App() {
   const location = useLocation();
   const isKioskMode = location.pathname === '/kiosk';
   const isCardMode = location.pathname === '/my-card';
-  const isProductionKiosk = location.pathname === '/production-kiosk';
+  const isTerminalMode = location.pathname === '/kiosk/terminal';
 
   if (isKioskMode) {
     return (
@@ -61,10 +61,10 @@ function App() {
     );
   }
 
-  if (isProductionKiosk) {
+  if (isTerminalMode) {
     return (
       <Routes>
-        <Route path="/production-kiosk" element={<ProductionKioskPage />} />
+        <Route path="/kiosk/terminal" element={<KioskTerminalPage />} />
       </Routes>
     );
   }
@@ -306,6 +306,22 @@ function App() {
           element={
             <AdminRoute>
               <KioskAdminPage tab="users" />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/kiosk/terminals"
+          element={
+            <AdminRoute>
+              <KioskAdminPage tab="terminals" />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/kiosk/terminal"
+          element={
+            <AdminRoute>
+              <KioskTerminalPage />
             </AdminRoute>
           }
         />

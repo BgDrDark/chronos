@@ -45,6 +45,7 @@ import {
   DELETE_ACCESS_ZONE,
   CREATE_ACCESS_DOOR,
   DELETE_ACCESS_DOOR,
+  UPDATE_DOOR_TERMINAL,
   CREATE_ACCESS_CODE,
   REVOKE_ACCESS_CODE,
   DELETE_ACCESS_CODE,
@@ -132,12 +133,13 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const navigate = useNavigate();
     const tabMap: Record<string, number> = {
         'kiosk': 0,
-        'gateways': 1,
-        'zones': 2,
-        'doors': 3,
-        'codes': 4,
-        'logs': 5,
-        'users': 6
+        'terminals': 1,
+        'gateways': 2,
+        'zones': 3,
+        'doors': 4,
+        'codes': 5,
+        'logs': 6,
+        'users': 7
     };
     
     const activeTab = tab ? tabMap[tab] || 0 : 0;
@@ -152,6 +154,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
 
     // Queries
     const { data: gatewaysData, loading: gatewaysLoading, refetch: refetchGateways } = useQuery(GATEWAYS_QUERY);
+    const { data: terminalsData, loading: terminalsLoading, refetch: refetchTerminals } = useQuery(TERMINALS_QUERY);
     const { data: zonesData, loading: zonesLoading, refetch: refetchZones } = useQuery(ACCESS_ZONES_QUERY);
     const { data: doorsData, loading: doorsLoading, refetch: refetchDoors } = useQuery(ACCESS_DOORS_QUERY);
     const { data: codesData, loading: codesLoading, refetch: refetchCodes } = useQuery(ACCESS_CODES_QUERY);
@@ -165,6 +168,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const [deleteZone] = useMutation(DELETE_ACCESS_ZONE);
     const [createDoor] = useMutation(CREATE_ACCESS_DOOR);
     const [deleteDoor] = useMutation(DELETE_ACCESS_DOOR);
+    const [updateDoorTerminal] = useMutation(UPDATE_DOOR_TERMINAL);
     const [createCode] = useMutation(CREATE_ACCESS_CODE);
     const [revokeCode] = useMutation(REVOKE_ACCESS_CODE);
     const [deleteCode] = useMutation(DELETE_ACCESS_CODE);
@@ -173,6 +177,8 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     // Dialog States
     const [zoneDialogOpen, setZoneDialogOpen] = useState(false);
     const [doorDialogOpen, setDoorDialogOpen] = useState(false);
+    const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
+    const [selectedTerminal, setSelectedTerminal] = useState<any>(null);
     const [codeDialogOpen, setCodeDialogOpen] = useState(false);
     const [aliasDialogOpen, setAliasDialogOpen] = useState(false);
     const [usersDialogOpen, setUsersDialogOpen] = useState(false);
@@ -225,6 +231,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                 sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
             >
                 <Tab icon={<QrCodeScannerIcon />} label="Kiosk" />
+                <Tab icon={<PeopleIcon />} label="Терминали" />
                 <Tab icon={<GatewayIcon />} label="Gateways" />
                 <Tab icon={<ZoneIcon />} label="Зони" />
                 <Tab icon={<DoorIcon />} label="Врати" />
@@ -242,14 +249,24 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                                 <Typography variant="h6">Kiosk Терминал</Typography>
                                 <Typography variant="body2">Отворете интерфейса за маркиране на време чрез QR кодове.</Typography>
                             </Box>
-                            <Button 
-                                variant="contained" 
-                                color="secondary" 
-                                startIcon={<QrCodeScannerIcon />}
-                                onClick={() => navigate('/kiosk')}
-                            >
-                                Отвори Терминал
-                            </Button>
+                            <Box sx={{ display: 'flex', gap: 2 }}>
+                                <Button 
+                                    variant="contained" 
+                                    color="secondary" 
+                                    startIcon={<QrCodeScannerIcon />}
+                                    onClick={() => navigate('/kiosk')}
+                                >
+                                    Clock In/Out
+                                </Button>
+                                <Button 
+                                    variant="contained" 
+                                    color="info" 
+                                    startIcon={<DoorIcon />}
+                                    onClick={() => navigate('/kiosk/terminal')}
+                                >
+                                    Access Terminal
+                                </Button>
+                            </Box>
                         </CardContent>
                     </Card>
                     <KioskSecuritySettings />
@@ -257,8 +274,70 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                 </Box>
             )}
 
-            {/* Gateways Tab */}
+            {/* Terminals Tab */}
             {activeTab === 1 && (
+                <Card>
+                    <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                            <Typography variant="h6">Активни Терминали</Typography>
+                            <IconButton onClick={() => refetchTerminals()}><RefreshIcon /></IconButton>
+                        </Box>
+                        <TableContainer component={Paper} variant="outlined">
+                            <Table size="small">
+                                <TableHead sx={{ bgcolor: 'action.hover' }}>
+                                    <TableRow>
+                                        <TableCell>Статус</TableCell>
+                                        <TableCell>Alias / Device</TableCell>
+                                        <TableCell>Хардуерен ID</TableCell>
+                                        <TableCell>Свързана врата</TableCell>
+                                        <TableCell>Последна активност</TableCell>
+                                        <TableCell>Действия</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {terminalsLoading ? (
+                                        <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={24} /></TableCell></TableRow>
+                                    ) : terminalsData?.terminals.map((t: any) => {
+                                        const associatedDoor = doorsData?.accessDoors.find((d: any) => d.terminalId === t.hardwareUuid);
+                                        return (
+                                            <TableRow key={t.id}>
+                                                <TableCell><Chip size="small" label={t.isActive ? 'Online' : 'Offline'} color={t.isActive ? 'success' : 'default'} /></TableCell>
+                                                <TableCell>
+                                                    <Typography variant="body2" fontWeight="bold">{t.alias || t.deviceName}</Typography>
+                                                    <Typography variant="caption" color="text.secondary">{t.deviceModel} ({t.osVersion})</Typography>
+                                                </TableCell>
+                                                <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{t.hardwareUuid}</TableCell>
+                                                <TableCell>
+                                                    {associatedDoor ? (
+                                                        <Chip 
+                                                            icon={<DoorIcon />} 
+                                                            label={`${associatedDoor.name} (${associatedDoor.terminalMode})`} 
+                                                            color="primary" 
+                                                            size="small" 
+                                                            variant="outlined" 
+                                                        />
+                                                    ) : (
+                                                        <Typography variant="caption" color="text.secondary">Няма свързана врата</Typography>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>{formatTimeAgo(t.lastSeen)}</TableCell>
+                                                <TableCell>
+                                                    <IconButton size="small" color="primary" onClick={() => { setSelectedTerminal(t); setTerminalDialogOpen(true); }}>
+                                                        <EditIcon fontSize="inherit" />
+                                                    </IconButton>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Gateways Tab */}
+            {activeTab === 2 && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <EmergencyControl 
                         currentMode={gatewaysData?.gateways[0]?.systemMode || 'normal'} 
@@ -306,7 +385,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Zones Tab */}
-            {activeTab === 2 && (
+            {activeTab === 3 && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -349,7 +428,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Doors Tab */}
-            {activeTab === 3 && (
+            {activeTab === 4 && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -387,7 +466,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Codes Tab */}
-            {activeTab === 4 && (
+            {activeTab === 5 && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -428,7 +507,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Logs Tab */}
-            {activeTab === 5 && (
+            {activeTab === 6 && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -457,7 +536,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Users Tab */}
-            {activeTab === 6 && (
+            {activeTab === 7 && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
@@ -511,11 +590,128 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             <CodeCreateDialog open={codeDialogOpen} onClose={() => setCodeDialogOpen(false)} onSuccess={() => { setCodeDialogOpen(false); refetchCodes(); }} />
             <ZoneUsersDialog open={usersDialogOpen} onClose={() => setUsersDialogOpen(false)} zone={selectedZone} usersData={usersData} />
             <UserAccessDialog open={accessDialogOpen} onClose={() => { setAccessDialogOpen(false); setSelectedUsers([]); }} user={selectedUserForAccess} bulkUsers={selectedUsers} zones={zonesData?.accessZones || []} onSuccess={() => { setAccessDialogOpen(false); setSelectedUsers([]); refetchZones(); }} />
+            <TerminalUpdateDialog 
+                open={terminalDialogOpen} 
+                onClose={() => setTerminalDialogOpen(false)} 
+                terminal={selectedTerminal} 
+                doors={doorsData?.accessDoors || []}
+                onSuccess={() => { setTerminalDialogOpen(false); refetchTerminals(); refetchDoors(); }}
+            />
         </Box>
     );
 };
 
 // --- Sub-components for dialogs ---
+
+const TerminalUpdateDialog: React.FC<{
+    open: boolean, 
+    onClose: () => void, 
+    terminal: any, 
+    doors: any[],
+    onSuccess: () => void
+}> = ({ open, onClose, terminal, doors, onSuccess }) => {
+    const [updateDoorTerminal] = useMutation(UPDATE_DOOR_TERMINAL);
+    const [selectedDoorId, setSelectedDoorId] = useState<number | ''>('');
+    const [mode, setMode] = useState<string>('access');
+    const [loading, setLoading] = useState(false);
+
+    React.useEffect(() => {
+        if (terminal && open) {
+            const currentDoor = doors.find(d => d.terminalId === terminal.hardwareUuid);
+            if (currentDoor) {
+                setSelectedDoorId(currentDoor.id);
+                setMode(currentDoor.terminalMode || 'access');
+            } else {
+                setSelectedDoorId('');
+                setMode('access');
+            }
+        }
+    }, [terminal, open, doors]);
+
+    const handleSave = async () => {
+        if (!terminal) return;
+        setLoading(true);
+        try {
+            // Ако има избрана врата, свързваме я
+            if (selectedDoorId) {
+                await updateDoorTerminal({
+                    variables: {
+                        id: selectedDoorId,
+                        terminalId: terminal.hardwareUuid,
+                        terminalMode: mode
+                    }
+                });
+            } else {
+                // Ако няма избрана врата, проверяваме дали терминалът е бил свързан с някоя и я разкачаме
+                const currentDoor = doors.find(d => d.terminalId === terminal.hardwareUuid);
+                if (currentDoor) {
+                    await updateDoorTerminal({
+                        variables: {
+                            id: currentDoor.id,
+                            terminalId: null,
+                            terminalMode: 'access'
+                        }
+                    });
+                }
+            }
+            onSuccess();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+            <DialogTitle>Настройка на Терминал</DialogTitle>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 2 }}>
+                <Box>
+                    <Typography variant="subtitle2" color="text.secondary">Устройство:</Typography>
+                    <Typography variant="body1" fontWeight="bold">{terminal?.alias || terminal?.deviceName}</Typography>
+                    <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{terminal?.hardwareUuid}</Typography>
+                </Box>
+
+                <FormControl fullWidth>
+                    <InputLabel>Свържи с врата</InputLabel>
+                    <Select
+                        value={selectedDoorId}
+                        label="Свържи с врата"
+                        onChange={(e) => setSelectedDoorId(e.target.value as number)}
+                    >
+                        <MenuItem value=""><em>Няма (Само за работно време)</em></MenuItem>
+                        {doors.map(d => (
+                            <MenuItem key={d.id} value={d.id}>
+                                {d.name} {d.terminalId && d.terminalId !== terminal?.hardwareUuid ? '(Зает)' : ''}
+                            </MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+
+                {selectedDoorId && (
+                    <FormControl fullWidth>
+                        <InputLabel>Режим на работа</InputLabel>
+                        <Select
+                            value={mode}
+                            label="Режим на работа"
+                            onChange={(e) => setMode(e.target.value)}
+                        >
+                            <MenuItem value="access">Само Достъп (Отваря врата)</MenuItem>
+                            <MenuItem value="clock">Само Работно време (Clock In/Out)</MenuItem>
+                            <MenuItem value="both">Комбиниран (Достъп + Работно време)</MenuItem>
+                        </Select>
+                    </FormControl>
+                )}
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose}>Отказ</Button>
+                <Button variant="contained" onClick={handleSave} disabled={loading}>
+                    {loading ? <CircularProgress size={24} /> : 'Запази'}
+                </Button>
+            </DialogActions>
+        </Dialog>
+    );
+};
 
 const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess: () => void}> = ({ open, onClose, onSuccess }) => {
     const [createZone] = useMutation(CREATE_ACCESS_ZONE);

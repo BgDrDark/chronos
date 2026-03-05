@@ -2557,6 +2557,7 @@ class AccessDoor:
     device_id: str
     relay_number: int
     terminal_id: Optional[str]
+    terminal_mode: Optional[str] = "access"
     description: Optional[str]
     is_active: bool
 
@@ -2583,6 +2584,7 @@ class AccessDoor:
             device_id=instance.device_id,
             relay_number=instance.relay_number,
             terminal_id=instance.terminal_id,
+            terminal_mode=instance.terminal_mode or "access",
             description=instance.description,
             is_active=instance.is_active,
         )

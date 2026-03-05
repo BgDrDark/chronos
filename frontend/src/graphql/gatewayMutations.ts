@@ -87,3 +87,14 @@ export const BULK_EMERGENCY_ACTION = gql`
     bulkEmergencyAction(action: $action)
   }
 `;
+
+export const UPDATE_DOOR_TERMINAL = gql`
+  mutation UpdateDoorTerminal($id: Int!, $terminalId: String, $terminalMode: String) {
+    updateDoorTerminal(id: $id, terminalId: $terminalId, terminalMode: $terminalMode) {
+      id
+      doorId
+      terminalId
+      terminalMode
+    }
+  }
+`;

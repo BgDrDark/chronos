@@ -44,6 +44,20 @@ export default defineConfig({
             icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
           },
           {
+            name: 'Kiosk Достъп',
+            short_name: 'Достъп',
+            description: 'Терминал за достъп и отчитане',
+            url: '/kiosk/terminal',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
+          },
+          {
+            name: 'Kiosk Clock',
+            short_name: 'Clock',
+            description: 'Терминал за отчитане на работно време',
+            url: '/kiosk',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
+          },
+          {
             name: 'Производство 1',
             short_name: 'Цех 1',
             description: 'Производствен терминал - Цех 1',

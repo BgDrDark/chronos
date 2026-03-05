@@ -4115,6 +4115,33 @@ class Mutation:
         return False
 
     @strawberry.mutation
+    async def update_door_terminal(
+        self,
+        id: int,
+        terminal_id: Optional[str],
+        terminal_mode: Optional[str],
+        info: strawberry.Info
+    ) -> types.AccessDoor:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+        
+        from backend.database.models import AccessDoor
+        door = await db.get(AccessDoor, id)
+        if not door:
+            raise Exception("Door not found")
+        
+        if terminal_id is not None:
+            door.terminal_id = terminal_id
+        if terminal_mode is not None:
+            door.terminal_mode = terminal_mode
+        
+        await db.commit()
+        await db.refresh(door)
+        return types.AccessDoor.from_instance(door)
+
+    @strawberry.mutation
     async def create_access_code(self, input: inputs.AccessCodeInput, info: strawberry.Info) -> types.AccessCode:
         db = info.context["db"]
         current_user = info.context["current_user"]
