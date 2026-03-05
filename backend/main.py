@@ -25,7 +25,6 @@ import logging
 from backend.auth.limiter import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from prometheus_client import make_asgi_app
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +66,6 @@ app = FastAPI(
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# Prometheus metrics endpoint
-metrics_app = make_asgi_app()
-app.mount("/metrics", metrics_app)
 
 # Transaction Error Handlers
 @app.exception_handler(TransactionError)
