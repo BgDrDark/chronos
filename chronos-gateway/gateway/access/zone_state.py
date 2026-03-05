@@ -195,3 +195,85 @@ class ZoneState:
         """Проверява дали потребителят е в дадена зона"""
         user_zones = self._user_zones.get(user_id, {})
         return zone_id in user_zones
+    
+    def export_state(self) -> dict:
+        """
+        Експортира цялата зона state за синхронизация между Masters
+        """
+        exported = {}
+        for user_id, zones in self._user_zones.items():
+            exported[user_id] = {
+                zone_id: ts.isoformat()
+                for zone_id, ts in zones.items()
+            }
+        
+        return {
+            "version": 1,
+            "timestamp": datetime.utcnow().isoformat(),
+            "user_zones": exported
+        }
+    
+    def import_state(self, state: dict, force: bool = False) -> int:
+        """
+        Импортира зона state от друг Master
+        
+        Args:
+            state: Експортирания state
+            force: Ако True, замества изцяло
+            
+        Returns:
+            Брой обновени записи
+        """
+        if state.get("version") != 1:
+            logger.warning(f"Unknown zone state version: {state.get('version')}")
+            return 0
+        
+        imported_timestamp = datetime.fromisoformat(state["timestamp"])
+        
+        # Проверка дали state-а е по-нов
+        # (опростено - приемаме всичко)
+        
+        user_zones = state.get("user_zones", {})
+        count = 0
+        
+        for user_id, zones in user_zones.items():
+            if force or user_id not in self._user_zones:
+                self._user_zones[user_id] = {
+                    zone_id: datetime.fromisoformat(ts)
+                    for zone_id, ts in zones.items()
+                }
+                count += 1
+        
+        logger.info(f"Imported zone state: {count} users")
+        return count
+    
+    def merge_state(self, state: dict) -> int:
+        """
+        Обединява зона state с приоритет на по-новите записи
+        """
+        if state.get("version") != 1:
+            return 0
+        
+        imported_timestamp = datetime.fromisoformat(state["timestamp"])
+        user_zones = state.get("user_zones", {})
+        count = 0
+        
+        for user_id, zones in user_zones.items():
+            if user_id not in self._user_zones:
+                # Нов потребител - директно добавяме
+                self._user_zones[user_id] = {
+                    zone_id: datetime.fromisoformat(ts)
+                    for zone_id, ts in zones.items()
+                }
+                count += 1
+            else:
+                # Обединяваме - запазваме по-новите записи
+                for zone_id, ts_str in zones.items():
+                    ts = datetime.fromisoformat(ts_str)
+                    existing = self._user_zones[user_id].get(zone_id)
+                    if existing is None or ts > existing:
+                        self._user_zones[user_id][zone_id] = ts
+                        count += 1
+        
+        logger.info(f"Merged zone state: {count} updates")
+        return count

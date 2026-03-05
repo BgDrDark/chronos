@@ -53,8 +53,92 @@ cluster:
 
 ## 5. Пътна карта на имплементацията
 
-1. **Phase 1:** Cluster Discovery (UDP Broadcast) - откриване на партньори в мрежата.
-2. **Phase 2:** Hardware Scorer - логика за автоматично изчисляване на приоритета.
-3. **Phase 3:** Cluster API (FastAPI) - вътрешна комуникация за проверка на достъп.
-4. **Phase 4:** Leader Election Engine - автоматична ротация на Master ролята.
-5. **Phase 5:** State Re-sync - прехвърляне на Anti-passback състояние при смяна на лидера.
+1. **Phase 1:** Cluster Discovery (UDP Broadcast) - откриване на партньори в мрежата. ✅ Готово
+2. **Phase 2:** Hardware Scorer - логика за автоматично изчисляване на приоритета. ✅ Готово
+3. **Phase 3:** Cluster API (FastAPI) - вътрешна комуникация за проверка на достъп. ✅ Готово
+4. **Phase 4:** Leader Election Engine - автоматична ротация на Master ролята. ✅ Готово
+5. **Phase 5:** State Re-sync - прехвърляне на Anti-passback състояние при смяна на лидера. ✅ Готово
+
+---
+
+## 6. Имплементирани Функционалности
+
+### 6.1 Cluster Discovery
+- UDP Broadcast на всеки 5 секунди
+- Auto-discovery на peers в мрежата
+- Priority tuple: (manual_priority, hardware_score, mac_address)
+
+### 6.2 Leader Election
+- **Auto-Failover**: При отсъствие на Master > 60 сек, Slave с най-висок приоритет става Master
+- **Preemption**: При връщане на оригинален Master с по-висок приоритет, връща Master ролята
+
+### 6.3 Zone State Sync
+- `export_state()` - експортира състоянието на зоните
+- `import_state()` / `merge_state()` - обединява състояния
+- `/cluster/sync-state` endpoint - синхронизация между Masters
+
+### 6.4 Config Sync
+- `export_config()` - експортира зони + врати
+- `import_config()` - импортира конфигурация
+- `/cluster/config` endpoint - Master изпраща конфигурация на Slaves
+
+### 6.5 Dashboard
+- Показване на всички peers в клъстера
+- Роля (Master/Slave), IP, hostname, score
+- Ръчно включване/изключване на cluster mode
+
+---
+
+## 7. API Endpoints
+
+| Endpoint | Метод | Описание |
+|---------|-------|----------|
+| `/cluster/sync-logs` | POST | Синхронизация на логове |
+| `/cluster/sync-state` | POST | Синхронизация на зони |
+| `/cluster/state` | GET | Връща зона state |
+| `/cluster/config` | POST | Получава конфигурация |
+| `/cluster/peers` | GET | Списък с всички peers |
+
+---
+
+## 8. Очаквано Поведение
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Cluster с 2-3 Gateway-а                   │
+├─────────────────────────────────────────────────────────┤
+│  Gateway 1 (Master)                                   │
+│    - ZoneState: sync                                  │
+│    - Anti-passback: sync                              │
+│    - Backend: heartbeat                                │
+│    - Config: изпраща на Slaves на всеки 60 сек       │
+├─────────────────────────────────────────────────────────┤
+│  Gateway 2 (Slave)                                    │
+│    - Проксира заявките към Master                    │
+│    - Локална SQLite буферира логовете                │
+│    - Auto-failover при падане на Master              │
+│    - Зони state: sync със Master                     │
+├─────────────────────────────────────────────────────────┤
+│  Gateway 3 (Slave)                                   │
+│    - Проксира заявките към Master                    │
+│    - Auto-failover при падане на Master              │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 9. Конфигурация
+
+```yaml
+cluster:
+  enabled: true
+  priority: auto # auto или число (1, 2, 3...)
+  shared_secret: "secure_intercom_key"
+  discovery_port: 8891
+  heartbeat_interval: 5
+  master_timeout: 60
+```
+
+---
+
+*Този документ е обновен на 2026-03-05 с пълната имплементация на Cluster функционалността*

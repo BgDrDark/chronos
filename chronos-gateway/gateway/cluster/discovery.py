@@ -11,12 +11,13 @@ from gateway.cluster.scorer import calculate_hardware_score, get_mac_address_val
 logger = logging.getLogger(__name__)
 
 class ClusterPeer:
-    def __init__(self, ip: str, hostname: str, score: int, mac: int, role: str):
+    def __init__(self, ip: str, hostname: str, score: int, mac: int, role: str, priority: int = None):
         self.ip = ip
         self.hostname = hostname
         self.score = score
         self.mac = mac
         self.role = role
+        self.priority = priority  # Manual priority override
         self.last_seen = datetime.now()
 
 class DiscoveryManager:
@@ -105,7 +106,8 @@ class DiscoveryManager:
                     hostname=payload.get("hostname"),
                     score=payload.get("score", 0),
                     mac=payload.get("mac", 0),
-                    role=payload.get("role", "slave")
+                    role=payload.get("role", "slave"),
+                    priority=payload.get("priority")  # Manual priority
                 )
                 # Почистване на стари пиъри
                 self._cleanup_peers()
@@ -123,23 +125,51 @@ class DiscoveryManager:
         for ip in to_delete:
             del self.peers[ip]
 
+    def get_peer_priority(self, peer: 'ClusterPeer') -> tuple:
+        """Връща приоритета на peer"""
+        p_override = peer.priority if peer.priority else 999999
+        return (p_override, peer.score, peer.mac)
+
     def is_leader(self) -> bool:
         """
-        Логика за избор на лидер (Фаза 4 - преглед)
-        Сравнява локалния приоритет с всички познати пиъри.
+        Логика за избор на лидер с Preemption и Auto-Failover
         """
         local_p = self.get_local_priority_tuple()
+        current_master = None
         
         for ip, peer in self.peers.items():
-            peer_p_override = 999999 # Slave devices don't usually override unless config says so
-            peer_p = (peer_p_override, peer.score, peer.mac)
+            peer_p = self.get_peer_priority(peer)
             
-            # Ако някой друг има по-висок приоритет (по-малко число или по-висок скор)
+            # Проверяваме кой е текущия Master
+            if peer.role == "master":
+                if current_master is None:
+                    current_master = (ip, peer_p)
+                elif self._compare_priority(peer_p, current_master[1]) > 0:
+                    current_master = (ip, peer_p)
+        
+        # Ако имаме текущ Master
+        if current_master:
+            master_ip, master_p = current_master
+            
+            # Preemption: Ако ние имаме по-висок приоритет от текущия Master
+            if self._compare_priority(local_p, master_p) > 0:
+                logger.info(f"PREEMPTION: Taking over from {master_ip} (local priority is higher)")
+                return True
+            
+            # Ако текущия Master е "по-добър", оставаме Slave
+            return False
+        
+        # Няма Master - Auto-Failover: Ако сме най-високия приоритет, ставаме Master
+        for ip, peer in self.peers.items():
+            peer_p = self.get_peer_priority(peer)
             if self._compare_priority(peer_p, local_p) > 0:
-                return False
+                # Имаме по-висок приоритет от някой друг - ние сме най-подходящи
+                return True
+        
+        # Няма други peers или сме с най-висок приоритет
         return True
 
-    def _compare_priority(self, p1, p2) -> int:
+    def _compare_priority(self, p1: tuple, p2: tuple) -> int:
         """
         Сравнява два приоритета. Връща > 0 ако p1 е по-силен от p2.
         Priority Tuple: (manual_priority, hardware_score, mac_address)

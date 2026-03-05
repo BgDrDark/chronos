@@ -81,6 +81,25 @@ class WebDashboard:
                 return HTMLResponse(content=html_path.read_text(encoding='utf-8'))
             return HTMLResponse(content=self._get_default_html())
         
+        def _get_cluster_peers(self) -> list:
+            """Връща списък с peers в клъстера"""
+            try:
+                from gateway.cluster.discovery import discovery_manager
+                peers = []
+                for ip, peer in discovery_manager.peers.items():
+                    peers.append({
+                        "ip": ip,
+                        "hostname": peer.hostname,
+                        "role": peer.role,
+                        "score": peer.score,
+                        "priority": peer.priority,
+                        "last_seen": peer.last_seen.isoformat()
+                    })
+                return peers
+            except Exception as e:
+                logger.debug(f"Error getting cluster peers: {e}")
+                return []
+        
         @self.app.get("/api/status")
         async def get_status():
             """Общ статус на gateway"""
@@ -105,6 +124,7 @@ class WebDashboard:
                     "cluster_role": self.gateway.cluster_manager.role if config.get("cluster.enabled") else "standalone",
                     "terminal_port": config.terminal_port,
                     "web_port": config.web_port,
+                    "cluster_peers": self._get_cluster_peers() if config.get("cluster.enabled") else []
                 },
                 "terminals": terminals_status,
                 "printers": printers_status,

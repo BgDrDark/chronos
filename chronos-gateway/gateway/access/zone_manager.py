@@ -235,6 +235,59 @@ class ZoneManager:
                 "list": self.get_all_doors()
             }
         }
+    
+    def export_config(self) -> dict:
+        """
+        Експортира цялата конфигурация (зони + врати) за синхронизация
+        """
+        from datetime import datetime
+        
+        return {
+            "version": 1,
+            "timestamp": datetime.utcnow().isoformat(),
+            "zones": self.get_all_zones(),
+            "doors": self.get_all_doors()
+        }
+    
+    def import_config(self, config: dict, merge: bool = False) -> dict:
+        """
+        Импортира конфигурация от друг Gateway
+        
+        Args:
+            config: Експортираната конфигурация
+            merge: Ако True, обединява; ако False, замества
+            
+        Returns:
+            Брой обновени зони/врати
+        """
+        if config.get("version") != 1:
+            logger.warning(f"Unknown config version: {config.get('version')}")
+            return {"zones": 0, "doors": 0}
+        
+        count = {"zones": 0, "doors": 0}
+        
+        zones = config.get("zones", [])
+        doors = config.get("doors", [])
+        
+        if not merge:
+            # Заместваме изцяло
+            self.zones.clear()
+            self.doors.clear()
+        
+        for zone_data in zones:
+            zone_id = zone_data.get("id")
+            if zone_id:
+                self.add_zone(zone_data)
+                count["zones"] += 1
+        
+        for door_data in doors:
+            door_id = door_data.get("id")
+            if door_id:
+                self.add_door(door_data)
+                count["doors"] += 1
+        
+        logger.info(f"Imported config: {count['zones']} zones, {count['doors']} doors")
+        return count
 
 
 zone_manager = ZoneManager()

@@ -535,6 +535,70 @@ class TerminalHub:
             logger.info(f"Verified and synced {count} logs from cluster peer")
             return {"status": "success", "synced_ids": [l.get("id") for l in logs]}
         
+        @self.app.post("/cluster/sync-state")
+        async def cluster_sync_state(state: dict, x_secret: str = Header(None, alias="X-Cluster-Secret")):
+            """Синхронизира зона state между Masters"""
+            if x_secret != config.get("cluster.shared_secret"):
+                return JSONResponse(content={"status": "error", "message": "Unauthorized cluster request"}, status_code=401)
+            
+            if not access_controller.zone_state:
+                return {"status": "error", "message": "Zone state not initialized"}
+            
+            # Merge the state (keeps newer entries)
+            count = access_controller.zone_state.merge_state(state)
+            
+            return {
+                "status": "success", 
+                "imported": count,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        
+        @self.app.get("/cluster/state")
+        async def cluster_get_state(x_secret: str = Header(None, alias="X-Cluster-Secret")):
+            """Връща локалния зона state за синхронизация"""
+            if x_secret != config.get("cluster.shared_secret"):
+                return JSONResponse(content={"status": "error", "message": "Unauthorized cluster request"}, status_code=401)
+            
+            if not access_controller.zone_state:
+                return {"status": "error", "message": "Zone state not initialized"}
+            
+            return access_controller.zone_state.export_state()
+        
+        @self.app.post("/cluster/config")
+        async def cluster_receive_config(config_data: dict, x_secret: str = Header(None, alias="X-Cluster-Secret")):
+            """Получава конфигурация от Master"""
+            if x_secret != config.get("cluster.shared_secret"):
+                return JSONResponse(content={"status": "error", "message": "Unauthorized cluster request"}, status_code=401)
+            
+            result = zone_manager.import_config(config_data, merge=True)
+            
+            return {
+                "status": "success",
+                "imported": result
+            }
+        
+        @self.app.get("/cluster/peers")
+        async def cluster_get_peers(x_secret: str = Header(None, alias="X-Cluster-Secret")):
+            """Връща списък с всички peers в клъстера"""
+            if x_secret != config.get("cluster.shared_secret"):
+                return JSONResponse(content={"status": "error", "message": "Unauthorized cluster request"}, status_code=401)
+            
+            from gateway.cluster.discovery import discovery_manager
+            return {
+                "local_ip": discovery_manager.get_local_ip(),
+                "peers": [
+                    {
+                        "ip": ip,
+                        "hostname": peer.hostname,
+                        "role": peer.role,
+                        "score": peer.score,
+                        "priority": peer.priority,
+                        "last_seen": peer.last_seen.isoformat()
+                    }
+                    for ip, peer in discovery_manager.peers.items()
+                ]
+            }
+        
         @self.app.post("/access/exit")
         async def access_exit(data: dict):
             """Изход от зона"""

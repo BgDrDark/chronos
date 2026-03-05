@@ -104,6 +104,9 @@
                     <span id="cluster-role" class="ml-2 text-xs font-bold text-blue-600"></span>
                     <button id="cluster-toggle-btn" onclick="toggleCluster()" class="ml-2 px-2 py-0.5 bg-gray-600 text-white rounded text-xs">Enable</button>
                 </div>
+                <div id="cluster-peers" class="mt-2 space-y-1">
+                    <p class="text-gray-500 text-sm">Loading peers...</p>
+                </div>
                 <div><span class="text-gray-500">Ports:</span> <span class="ml-2">Terminal: <span id="term-port">1424</span> | Web: <span id="web-port">8889</span></span></div>
             </div>
         </div>
@@ -177,6 +180,25 @@
                 document.getElementById('cluster-status').textContent = clusterEnabled ? 'Enabled' : 'Disabled';
                 document.getElementById('cluster-role').textContent = clusterEnabled ? `(${data.gateway.cluster_role.toUpperCase()})` : '';
                 document.getElementById('cluster-toggle-btn').textContent = clusterEnabled ? 'Disable Cluster' : 'Enable Cluster';
+                
+                // Render cluster peers
+                const peers = data.gateway.cluster_peers || [];
+                const peersContainer = document.getElementById('cluster-peers');
+                if (peersContainer) {
+                    if (peers.length === 0) {
+                        peersContainer.innerHTML = '<p class="text-gray-500 text-sm">No other peers found</p>';
+                    } else {
+                        peersContainer.innerHTML = peers.map(p => `
+                            <div class="p-2 border rounded flex justify-between items-center">
+                                <div>
+                                    <b>${p.hostname || p.ip}</b><br>
+                                    <small class="text-gray-500">${p.ip} | Score: ${p.score}</small>
+                                </div>
+                                <span class="px-2 py-1 rounded text-xs ${p.role === 'master' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">${p.role.toUpperCase()}</span>
+                            </div>
+                        `).join('');
+                    }
+                }
                 document.getElementById('term-port').textContent = data.gateway.terminal_port;
                 document.getElementById('web-port').textContent = data.gateway.web_port;
                 document.getElementById('active-terminals').textContent = data.terminals.active || 0;
