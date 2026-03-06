@@ -85,7 +85,7 @@ class TerminalManager:
     
     def cleanup_offline(self, timeout_seconds: int = 300):
         """Премахва офлайн терминали"""
-        now = datetime.utcnow()
+        now = datetime.now()
         to_remove = []
         
         for terminal_id, last_heartbeat in self.heartbeats.items():

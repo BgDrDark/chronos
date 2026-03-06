@@ -167,7 +167,7 @@ class AccessController:
         # Подписване
         secret = config.get("cluster.shared_secret", "chronos_cluster_secret")
         msg = f"{log_id}|{log_data['timestamp']}|{log_data['user_id']}|{log_data['result']}"
-        signature = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
+        signature = hmac.new(str(secret).encode(), msg.encode(), hashlib.sha256).hexdigest()
         log_data["signature"] = signature
 
         try:
@@ -207,7 +207,7 @@ class AccessController:
 
     def verify_log_signature(self, log: dict) -> bool:
         """Проверка на подписа"""
-        secret = config.get("cluster.shared_secret", "default_secret")
+        secret = str(config.get("cluster.shared_secret", "default_secret"))
         msg = f"{log['id']}|{log['timestamp']}|{log['user_id']}|{log['result']}"
         expected = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, log.get("signature", ""))

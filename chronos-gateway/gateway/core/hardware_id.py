@@ -58,7 +58,7 @@ def get_hardware_uuid() -> str:
     return hw_uuid
 
 
-def _get_wmi_info(wmi_class: str, attribute: str) -> str:
+def _get_wmi_info(wmi_class: str, attribute: str) -> str | None:
     """Извлича информация от WMI (Windows)"""
     if sys.platform != 'win32':
         return None
@@ -78,12 +78,12 @@ def _get_wmi_info(wmi_class: str, attribute: str) -> str:
     return None
 
 
-def _get_cpu_id() -> str:
+def _get_cpu_id() -> str | None:
     """CPU ID чрез WMI"""
     return _get_wmi_info("Win32_Processor", "ProcessorId")
 
 
-def _get_primary_mac() -> str:
+def _get_primary_mac() -> str | None:
     """Първи MAC адрес"""
     if sys.platform == 'win32':
         try:

@@ -10,7 +10,7 @@ from gateway.config import config
 from gateway.devices.terminal_manager import TerminalManager
 from gateway.devices.printer_manager import PrinterManager
 from gateway.devices.relay_controller import relay_controller
-from gateway.access import zone_manager, zone_state, access_controller
+from gateway.access import zone_manager, zone_state, access_controller, code_manager
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,10 @@ class TerminalHub:
         async def register_terminal(data: dict, request: Request):
             """Регистрация на терминал"""
             terminal_id = data.get("hardware_uuid")
-            client_ip = request.client.host
+            if not terminal_id:
+                return {"status": "error", "message": "Missing hardware_uuid"}
+            
+            client_ip = request.client.host if request.client else "unknown"
             
             device_info = {
                 "device_name": data.get("device_name"),
@@ -522,11 +525,15 @@ class TerminalHub:
 
                 if result == "granted" and user_id and zone_id:
                     if action == "enter":
-                        access_controller.zone_state.enter_zone(user_id, zone_id)
-                        access_controller.anti_passback.record(user_id, zone_id, "in")
+                        if access_controller.zone_state:
+                            access_controller.zone_state.enter_zone(user_id, zone_id)
+                        if access_controller.anti_passback:
+                            access_controller.anti_passback.record(user_id, zone_id, "in")
                     else:
-                        access_controller.zone_state.leave_zone(user_id, zone_id)
-                        access_controller.anti_passback.record(user_id, zone_id, "out")
+                        if access_controller.zone_state:
+                            access_controller.zone_state.leave_zone(user_id, zone_id)
+                        if access_controller.anti_passback:
+                            access_controller.anti_passback.record(user_id, zone_id, "out")
                 
                 # 3. Запис в локалната база на Master-а
                 access_controller._create_log(**log)
@@ -622,7 +629,10 @@ class TerminalHub:
         @self.app.get("/access/state/{user_id}")
         async def get_user_state(user_id: str):
             """Състояние на потребител"""
-            state = access_controller.get_user_state(user_id)
+            if access_controller.zone_state:
+                state = access_controller.zone_state.get_user_zones(user_id)
+            else:
+                state = {}
             return JSONResponse(content=state)
         
         @self.app.post("/access/state/reset")
@@ -705,7 +715,7 @@ class TerminalHub:
             # Fallback - автономно решение при отпадане на Master
             return await access_controller.grant_access(**data)
 
-    async def _proxy_to_backend(self, endpoint: str, data: dict = None, method: str = "POST") -> dict:
+    async def _proxy_to_backend(self, endpoint: str, data: Optional[dict] = None, method: str = "POST") -> dict:
         """Проксиране на заявка към бекенд"""
         import aiohttp
         

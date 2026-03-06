@@ -187,6 +187,8 @@ services:
     volumes:
       - ./npm/data:/data
       - ./npm/letsencrypt:/etc/letsencrypt
+    networks:
+      - default
     depends_on:
       - frontend
       - backend

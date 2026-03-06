@@ -1,7 +1,7 @@
 import os
 import yaml
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 BASE_DIR = Path(__file__).parent.parent
 CONFIG_FILE = BASE_DIR / 'config.yaml'
@@ -35,7 +35,7 @@ class Config:
                 'system_mode': 'normal',
             },
             'cluster': {
-                'enabled': false,
+                'enabled': False,
                 'priority': 'auto', # auto or 1, 2, 3...
                 'shared_secret': 'chronos_cluster_secret',
                 'discovery_port': 8891,
@@ -90,7 +90,7 @@ class Config:
             },
         }
     
-    def get(self, key: str, default=None):
+    def get(self, key: str, default=None) -> Any:
         keys = key.split('.')
         value = self._config
         for k in keys:
@@ -112,7 +112,7 @@ class Config:
     
     @property
     def gateway_id(self) -> str:
-        return self.get('gateway.id', 'auto')
+        return str(self.get('gateway.id', 'auto'))
     
     @property
     def alias(self) -> str:
@@ -137,6 +137,10 @@ class Config:
     @property
     def backend_url(self) -> str:
         return self.get('backend.url', 'https://dev.oblak24.org')
+    
+    @property
+    def fallback_url(self) -> str:
+        return self.get('backend.fallback_url', '')
     
     @property
     def api_key(self) -> str:

@@ -17,7 +17,7 @@ class AccessCode:
     uses_remaining: int = 1
     expires_at: Optional[datetime] = None
     created_by: str = ""
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=datetime.now)
     last_used_at: Optional[datetime] = None
     active: bool = True
     
@@ -26,7 +26,7 @@ class AccessCode:
         if not self.active:
             return False, "Кодът е деактивиран"
         
-        if self.expires_at and datetime.utcnow() > self.expires_at:
+        if self.expires_at and datetime.now() > self.expires_at:
             return False, "Кодът е изтекъл"
         
         if self.uses_remaining == 0:
@@ -57,7 +57,7 @@ class AccessCode:
         else:
             self.uses_remaining -= 1
         
-        self.last_used_at = datetime.utcnow()
+        self.last_used_at = datetime.now()
         return True
     
     def to_dict(self) -> dict:
@@ -97,7 +97,7 @@ class AccessCode:
             uses_remaining=data.get("uses_remaining", 1),
             expires_at=expires_at,
             created_by=data.get("created_by", ""),
-            created_at=created_at or datetime.utcnow(),
+            created_at=created_at or datetime.now(),
             last_used_at=last_used_at,
             active=data.get("active", True)
         )
@@ -149,9 +149,9 @@ class CodeManager:
         expires_hours = code_config.get("expires_hours")
         expires_at = None
         if expires_hours:
-            expires_at = datetime.utcnow() + timedelta(hours=expires_hours)
+            expires_at = datetime.now() + timedelta(hours=expires_hours)
         elif code_type == "daily":
-            expires_at = datetime.utcnow().replace(hour=23, minute=59, second=59)
+            expires_at = datetime.now().replace(hour=23, minute=59, second=59)
         
         max_uses = code_config.get("max_uses", -1)
         if code_type == "one_time":
@@ -265,7 +265,7 @@ class CodeManager:
     
     def cleanup_expired(self):
         """Почиства изтеклите кодове"""
-        now = datetime.utcnow()
+        now = datetime.now()
         expired = []
         
         for code, access_code in self.codes.items():

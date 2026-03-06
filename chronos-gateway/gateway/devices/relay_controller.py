@@ -1,11 +1,17 @@
 import logging
 import uuid
+import yaml
+import os
+from pathlib import Path
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 
 from gateway.devices.sr201_relay import SR201Relay
 
 logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).parent.parent
+CONFIG_FILE = BASE_DIR / 'config.yaml'
 
 
 class RelayController:
@@ -18,6 +24,74 @@ class RelayController:
     
     def __init__(self):
         self.devices: Dict[str, SR201Relay] = {}
+        self._load_from_config()
+    
+    def _load_from_config(self):
+        """Зарежда устройства от config.yaml"""
+        try:
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, 'r') as f:
+                    config = yaml.safe_load(f) or {}
+                
+                hardware_config = config.get('access_control', {}).get('hardware', {}).get('devices', [])
+                for device_config in hardware_config:
+                    try:
+                        self.add_device(
+                            device_id=device_config.get('id'),
+                            name=device_config.get('name', ''),
+                            ip=device_config.get('ip', ''),
+                            port=device_config.get('port', 6722),
+                            device_type=device_config.get('type', 'sr201'),
+                            relay_1_duration=device_config.get('relay_1_duration', 500),
+                            relay_2_duration=device_config.get('relay_2_duration', 500),
+                            relay_1_manual=device_config.get('relay_1_manual', False),
+                            relay_2_manual=device_config.get('relay_2_manual', False),
+                            active=device_config.get('active', True),
+                            mac_address=device_config.get('mac_address', ''),
+                            _save=False
+                        )
+                        logger.info(f"Loaded device {device_config.get('id')} from config")
+                    except Exception as e:
+                        logger.error(f"Error loading device {device_config.get('id')}: {e}")
+        except Exception as e:
+            logger.error(f"Error loading config: {e}")
+    
+    def _save_to_config(self):
+        """Записва устройствата в config.yaml"""
+        try:
+            config = {}
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, 'r') as f:
+                    config = yaml.safe_load(f) or {}
+            
+            devices_list = []
+            for device in self.devices.values():
+                devices_list.append({
+                    'id': device.device_id,
+                    'name': device.name,
+                    'ip': device.ip,
+                    'port': device.port,
+                    'type': 'sr201',
+                    'mac_address': device.mac_address,
+                    'relay_1_duration': device.relay_1_duration,
+                    'relay_2_duration': device.relay_2_duration,
+                    'relay_1_manual': device.relay_1_manual,
+                    'relay_2_manual': device.relay_2_manual,
+                    'active': True
+                })
+            
+            if 'access_control' not in config:
+                config['access_control'] = {}
+            if 'hardware' not in config['access_control']:
+                config['access_control']['hardware'] = {}
+            config['access_control']['hardware']['devices'] = devices_list
+            
+            with open(CONFIG_FILE, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False)
+            
+            logger.info(f"Saved {len(devices_list)} devices to config")
+        except Exception as e:
+            logger.error(f"Error saving config: {e}")
     
     def add_device(
         self,
@@ -31,7 +105,8 @@ class RelayController:
         relay_1_manual: bool = False,
         relay_2_manual: bool = False,
         active: bool = True,
-        mac_address: str = ""
+        mac_address: str = "",
+        _save: bool = True
     ) -> str:
         """
         Добавя ново устройство
@@ -62,6 +137,9 @@ class RelayController:
         else:
             raise ValueError(f"Unknown device type: {device_type}")
         
+        if _save:
+            self._save_to_config()
+        
         return device_id
     
     def remove_device(self, device_id: str) -> bool:
@@ -69,6 +147,7 @@ class RelayController:
         if device_id in self.devices:
             del self.devices[device_id]
             logger.info(f"Removed device: {device_id}")
+            self._save_to_config()
             return True
         return False
     
@@ -120,6 +199,7 @@ class RelayController:
             device.relay_2_manual = relay_2_manual
         
         logger.info(f"Updated device: {device_id}")
+        self._save_to_config()
         return True
     
     def toggle_relay_mode(self, device_id: str, relay_number: int, manual: bool) -> Dict[str, Any]:

@@ -18,7 +18,8 @@ activity:
   timeout: 120
 backend:
   api_key: gw_be9697906a6f40963d793164616e6fbaf61246f4682a82ef
-  url: http://localhost:14240
+  url: https://dev.oblak24.org
+  fallback_url: https://chronos.oblak24.org
   verify_ssl: false
 cluster:
   enabled: false

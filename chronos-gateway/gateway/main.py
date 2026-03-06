@@ -65,53 +65,63 @@ class GatewayService:
         
         import aiohttp
         
-        url = f"{config.backend_url}/gateways/register"
-        
-        data = {
-            "hardware_uuid": config.hardware_uuid,
-            "ip_address": self.get_local_ip(),
-            "local_hostname": socket.gethostname(),
-            "terminal_port": config.terminal_port,
-            "web_port": config.web_port,
-        }
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        api_key = result.get("api_key")
-                        if api_key:
-                            config.set("backend.api_key", api_key)
-                            if result.get("id"):
-                                gateway_id = str(result.get("id"))
-                                config.set("gateway.id", gateway_id)
-                                logger.info(f"Registered with backend. Persistent Gateway ID: {gateway_id}")
-                            self._registered = True
-                            return True
-                    elif response.status == 400:
-                        result = await response.json()
-                        detail = result.get("detail", {})
-                        if isinstance(detail, dict):
-                            msg = detail.get("message", "")
-                            gateway_id = detail.get("id")
-                            api_key = detail.get("api_key")
-                        else:
-                            msg = detail
-                            gateway_id = None
-                            api_key = None
-
-                        if "вече" in msg:
-                            if gateway_id:
-                                config.set("gateway.id", str(gateway_id))
+        async def try_register(base_url: str) -> bool:
+            url = f"{base_url}/gateways/register"
+            
+            data = {
+                "hardware_uuid": config.hardware_uuid,
+                "ip_address": self.get_local_ip(),
+                "local_hostname": socket.gethostname(),
+                "terminal_port": config.terminal_port,
+                "web_port": config.web_port,
+            }
+            
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                        if response.status == 200:
+                            result = await response.json()
+                            api_key = result.get("api_key")
                             if api_key:
                                 config.set("backend.api_key", api_key)
-                            logger.info(f"Gateway already registered. Found ID: {gateway_id}")
-                            self._registered = True
-                            return True
-                    logger.warning(f"Registration failed: {response.status}")
-        except Exception as e:
-            logger.warning(f"Could not register with backend: {e}")
+                                if result.get("id"):
+                                    gateway_id = str(result.get("id"))
+                                    config.set("gateway.id", gateway_id)
+                                    logger.info(f"Registered with backend. Persistent Gateway ID: {gateway_id}")
+                                return True
+                        elif response.status == 400:
+                            result = await response.json()
+                            detail = result.get("detail", {})
+                            if isinstance(detail, dict):
+                                msg = detail.get("message", "")
+                                gateway_id = detail.get("id")
+                                api_key = detail.get("api_key")
+                            else:
+                                msg = detail
+                                gateway_id = None
+                                api_key = None
+
+                            if "вече" in msg:
+                                if gateway_id:
+                                    config.set("gateway.id", str(gateway_id))
+                                if api_key:
+                                    config.set("backend.api_key", api_key)
+                                logger.info(f"Gateway already registered. Found ID: {gateway_id}")
+                                return True
+                        logger.warning(f"Registration failed: {response.status}")
+            except Exception as e:
+                logger.warning(f"Could not register with backend {base_url}: {e}")
+            return False
+        
+        if await try_register(config.backend_url):
+            self._registered = True
+            return True
+        
+        if config.fallback_url:
+            logger.info(f"Primary backend failed, trying fallback: {config.fallback_url}")
+            if await try_register(config.fallback_url):
+                self._registered = True
+                return True
         
         return False
     
@@ -170,23 +180,29 @@ class GatewayService:
         terminals_status = self.terminal_manager.get_status(config.heartbeat_timeout)
         printers_status = self.printer_manager.get_status()
         
-        url = f"{config.backend_url}/gateways/{config.gateway_id}/heartbeat"
-        
         data = {
             "status": "online",
             "terminal_count": terminals_status["total"],
             "printer_count": printers_status["total"],
         }
         
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=data) as response:
-                    if response.status == 200:
-                        logger.debug("Heartbeat sent successfully")
-                    else:
-                        logger.warning(f"Heartbeat failed: {response.status}")
-        except Exception as e:
-            logger.debug(f"Heartbeat skipped (backend unreachable): {e}")
+        async def try_heartbeat(base_url: str) -> bool:
+            url = f"{base_url}/gateways/{config.gateway_id}/heartbeat"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json=data) as response:
+                        if response.status == 200:
+                            logger.debug("Heartbeat sent successfully")
+                            return True
+                        else:
+                            logger.warning(f"Heartbeat failed: {response.status}")
+            except Exception as e:
+                logger.debug(f"Heartbeat skipped (backend unreachable): {e}")
+            return False
+        
+        if not await try_heartbeat(config.backend_url):
+            if config.fallback_url:
+                await try_heartbeat(config.fallback_url)
 
     async def sync_config_from_backend(self):
         """Периодично изтегляне на конфигурация (зони, врати) от бакенда"""
@@ -196,17 +212,16 @@ class GatewayService:
         import aiohttp
         from gateway.access import zone_manager
 
-        url = f"{config.backend_url}/gateways/{config.gateway_id}/config"
         headers = {"X-Kiosk-Secret": config.api_key}
 
-        while self._running:
+        async def try_sync(base_url: str) -> bool:
+            url = f"{base_url}/gateways/{config.gateway_id}/config"
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                         if response.status == 200:
                             data = await response.json()
                             
-                            # Обновяване на системния режим
                             mode = data.get("system_mode", "normal")
                             if mode != config.get("gateway.system_mode"):
                                 config.set("gateway.system_mode", mode)
@@ -219,10 +234,18 @@ class GatewayService:
                                 doors = ac_config.get("doors", [])
                                 zone_manager.load_from_config(zones, doors)
                                 logger.info(f"Synced configuration from backend: {len(zones)} zones, {len(doors)} doors")
+                            return True
                         else:
                             logger.warning(f"Config sync failed: {response.status}")
             except Exception as e:
                 logger.error(f"Error syncing config: {e}")
+            return False
+
+        while self._running:
+            success = await try_sync(config.backend_url)
+            if not success and config.fallback_url:
+                logger.info(f"Primary backend failed, trying fallback for config sync")
+                await try_sync(config.fallback_url)
             
             await asyncio.sleep(300) # Every 5 minutes
     
@@ -265,7 +288,6 @@ class GatewayService:
                 log_level="info"
             )
             server = uvicorn.Server(config_terminal)
-            server.install_signal_handlers = False
             
             # Таск за спиране на сървъра при стоп събитие
             async def watch_stop():
@@ -284,7 +306,6 @@ class GatewayService:
                 log_level="info"
             )
             server = uvicorn.Server(config_web)
-            server.install_signal_handlers = False
             
             # Таск за спиране на сървъра при стоп събитие
             async def watch_stop():

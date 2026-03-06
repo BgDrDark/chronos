@@ -18,7 +18,8 @@ activity:
   timeout: 120
 backend:
   api_key: ''
-  url: https://chronos.example.com
+  url: https://chronos.oblak24.org
+  fallback_url: https://dev.oblak24.org
   verify_ssl: true
 gateway:
   alias: ''

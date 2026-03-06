@@ -2,9 +2,9 @@
 ; Inno Setup Script
 
 #define MyAppName "Chronos Gateway"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "2.0.0"
 #define MyAppPublisher "Chronos"
-#define MyAppURL "https://chronos.example.com"
+#define MyAppURL "https://chronos.oblak24.org"
 #define MyAppExeName "ChronosGateway.exe"
 
 [Setup]

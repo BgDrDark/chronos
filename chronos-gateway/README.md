@@ -12,14 +12,14 @@ Windows service за комуникация между терминалите в
 
 ```yaml
 backend:
-  url: "https://your-backend-url.com"
+  url: "https://chronos.obka24.org"
   api_key: "your-api-key"
 ```
 
 ## Портове
 
-- **8080** - Terminal Hub (за терминалите)
-- **8888** - Web Dashboard (за мониторинг)
+- **1424** - Terminal Hub (за терминалите)
+- **8889** - Web Dashboard (за мониторинг)
 
 ## Функции
 

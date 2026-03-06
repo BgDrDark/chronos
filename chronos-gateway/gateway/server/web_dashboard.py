@@ -71,6 +71,25 @@ class WebDashboard:
         
         self._setup_routes()
     
+    def _get_cluster_peers(self) -> list:
+        """Връща списък с peers в клъстера"""
+        try:
+            from gateway.cluster.discovery import discovery_manager
+            peers = []
+            for ip, peer in discovery_manager.peers.items():
+                peers.append({
+                    "ip": ip,
+                    "hostname": peer.hostname,
+                    "role": peer.role,
+                    "score": peer.score,
+                    "priority": peer.priority,
+                    "last_seen": peer.last_seen.isoformat()
+                })
+            return peers
+        except Exception as e:
+            logger.debug(f"Error getting cluster peers: {e}")
+            return []
+    
     def _setup_routes(self):
         
         @self.app.get("/", response_class=HTMLResponse)
@@ -80,25 +99,6 @@ class WebDashboard:
             if html_path.exists():
                 return HTMLResponse(content=html_path.read_text(encoding='utf-8'))
             return HTMLResponse(content=self._get_default_html())
-        
-        def _get_cluster_peers(self) -> list:
-            """Връща списък с peers в клъстера"""
-            try:
-                from gateway.cluster.discovery import discovery_manager
-                peers = []
-                for ip, peer in discovery_manager.peers.items():
-                    peers.append({
-                        "ip": ip,
-                        "hostname": peer.hostname,
-                        "role": peer.role,
-                        "score": peer.score,
-                        "priority": peer.priority,
-                        "last_seen": peer.last_seen.isoformat()
-                    })
-                return peers
-            except Exception as e:
-                logger.debug(f"Error getting cluster peers: {e}")
-                return []
         
         @self.app.get("/api/status")
         async def get_status():
@@ -351,11 +351,16 @@ class WebDashboard:
             """Сканира мрежата за SR201 устройства"""
             import asyncio
             import socket
+            import logging
+            
+            logger = logging.getLogger(__name__)
             
             gateway_ip = self.gateway.get_local_ip()
             subnet = gateway_ip.rsplit('.', 1)[0]
             
-            def check_port_sync(host: str, port: int = 6722, timeout: float = 0.3) -> dict:
+            logger.info(f"Starting network scan from {gateway_ip}, subnet {subnet}.0/24")
+            
+            def check_port_sync(host: str, port: int = 6722, timeout: float = 0.5) -> dict | None:
                 try:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.settimeout(timeout)
@@ -376,19 +381,35 @@ class WebDashboard:
             
             results = await asyncio.gather(*tasks)
             
+            # Count online hosts
+            online_count = sum(1 for r in results if r and r.get('online'))
+            logger.info(f"Found {online_count} hosts with port 6722 open")
+            
             # Check MAC for found devices
             found_devices = []
             for r in results:
                 if r and r.get('online'):
                     mac = await get_mac_from_arp(r['ip'])
-                    if mac and mac.upper().startswith('00:FF:B0'):
-                        found_devices.append({
-                            'ip': r['ip'],
-                            'mac': mac.upper(),
-                            'is_sr201': True
-                        })
+                    logger.debug(f"Host {r['ip']} MAC: {mac}")
+                    # Show all hosts with port 6722 as potential SR201
+                    is_sr201 = mac and mac.upper().startswith('00:FF:B0')
+                    found_devices.append({
+                        'ip': r['ip'],
+                        'mac': mac.upper() if mac else '',
+                        'is_sr201': is_sr201
+                    })
             
-            return JSONResponse(content={"success": True, "devices": found_devices})
+            logger.info(f"Found {len(found_devices)} devices with port 6722 open")
+            
+            return JSONResponse(content={
+                "success": True, 
+                "devices": found_devices,
+                "debug": {
+                    "gateway_ip": gateway_ip,
+                    "subnet": f"{subnet}.0/24",
+                    "online_hosts": online_count
+                }
+            })
         
         @self.app.post("/access/hardware/{ip_or_device_id}/test")
         async def test_hardware_by_ip(ip_or_device_id: str):
