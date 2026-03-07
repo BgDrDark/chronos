@@ -338,6 +338,70 @@ async def trigger_door(door_id: int, db: AsyncSession = Depends(get_db)):
                 raise HTTPException(status_code=500, detail="Грешка от gateway")
     except: raise HTTPException(status_code=503, detail="Няма връзка")
 
+class GatewayConfigPush(BaseModel):
+    zones: List[dict] = []
+    doors: List[dict] = []
+    devices: List[dict] = []
+    terminals: List[dict] = []
+    printers: List[dict] = []
+
+class GatewayConfigPushResponse(BaseModel):
+    status: str
+    zones_synced: int
+    doors_synced: int
+    devices_synced: int
+
+@router.post("/{gateway_id}/push-config")
+async def push_gateway_config(gateway_id: int, config: GatewayConfigPush, db: AsyncSession = Depends(get_db)):
+    gw = await db.get(Gateway, gateway_id)
+    if not gw: raise HTTPException(status_code=404, detail="Gateway не е намерен")
+    
+    zones_synced = 0
+    for z in config.zones:
+        res = await db.execute(select(AccessZone).where(AccessZone.zone_id == z.get("zone_id")))
+        existing = res.scalar_one_or_none()
+        if existing:
+            for key, value in z.items():
+                if hasattr(existing, key):
+                    setattr(existing, key, value)
+        else:
+            db.add(AccessZone(**z, company_id=gw.company_id or 1))
+        zones_synced += 1
+    
+    doors_synced = 0
+    for d in config.doors:
+        res = await db.execute(select(AccessDoor).where(AccessDoor.door_id == d.get("door_id")))
+        existing = res.scalar_one_or_none()
+        if existing:
+            for key, value in d.items():
+                if hasattr(existing, key):
+                    setattr(existing, key, value)
+        else:
+            db.add(AccessDoor(**d, gateway_id=gateway_id))
+        doors_synced += 1
+    
+    await db.commit()
+    return {"status": "synced", "zones_synced": zones_synced, "doors_synced": doors_synced}
+
+@router.post("/{gateway_id}/pull-config")
+async def pull_gateway_config(gateway_id: int, db: AsyncSession = Depends(get_db)):
+    gw = await db.get(Gateway, gateway_id)
+    if not gw: raise HTTPException(status_code=404, detail="Gateway не е намерен")
+    
+    doors_res = await db.execute(select(AccessDoor).where(AccessDoor.gateway_id == gateway_id))
+    doors = doors_res.scalars().all()
+    zone_ids = list(set([d.zone_db_id for d in doors]))
+    zones = []
+    if zone_ids:
+        zones_res = await db.execute(select(AccessZone).where(AccessZone.id.in_(zone_ids)))
+        zones = zones_res.scalars().all()
+    
+    return {
+        "status": "ok",
+        "zones": [{"id": z.zone_id, "name": z.name, "level": z.level, "depends_on": z.depends_on, "required_hours_start": z.required_hours_start, "required_hours_end": z.required_hours_end, "anti_passback_enabled": z.anti_passback_enabled, "anti_passback_type": z.anti_passback_type, "anti_passback_timeout": z.anti_passback_timeout} for z in zones],
+        "doors": [{"id": d.door_id, "name": d.name, "zone_db_id": d.zone_db_id, "device_id": d.device_id, "relay_number": d.relay_number, "terminal_id": d.terminal_id} for d in doors]
+    }
+
 @router.post("/{gateway_id}/access/sync-logs")
 async def sync_logs(gateway_id: int, logs: List[AccessLogSync], db: AsyncSession = Depends(get_db)):
     for l in logs: db.add(AccessLog(**l.model_dump(), gateway_id=gateway_id))

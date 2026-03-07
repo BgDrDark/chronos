@@ -24,7 +24,10 @@ import {
   CheckCircle as CheckIcon,
   Cancel as CancelIcon,
   Group as GroupIcon,
-  People as PeopleIcon
+  People as PeopleIcon,
+  Sync as SyncIcon,
+  CloudDownload as DownloadIcon,
+  CloudUpload as UploadIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import KioskCustomizationSettings from '../components/KioskCustomizationSettings';
@@ -188,6 +191,32 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const [selectedZone, setSelectedZone] = useState<any>(null);
     const [selectedGateway, setSelectedGateway] = useState<any>(null);
     const [newAlias, setNewAlias] = useState('');
+    const [syncingGateway, setSyncingGateway] = useState<number | null>(null);
+    const [syncingStatus, setSyncingStatus] = useState<string>('');
+
+    const syncGatewayConfig = async (gatewayId: number, direction: 'push' | 'pull') => {
+        setSyncingGateway(gatewayId);
+        setSyncingStatus(direction === 'push' ? 'Синхронизиране към cloud...' : 'Изтегляне от cloud...');
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`/api/gateways/${gatewayId}/${direction}-config`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setSyncingStatus(direction === 'push' ? 'Успешно синхронизирано!' : 'Успешно изтеглено!');
+                refetchGateways();
+                refetchZones();
+                refetchDoors();
+            } else {
+                setSyncingStatus(`Грешка: ${data.detail || 'Unknown error'}`);
+            }
+        } catch (err) {
+            setSyncingStatus('Грешка при свързване');
+        }
+        setTimeout(() => { setSyncingGateway(null); setSyncingStatus(''); }, 3000);
+    };
 
 
     const formatTimeAgo = (dateStr: string | null) => {
@@ -372,7 +401,15 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                                                 <TableCell>{gw.ipAddress || '-'}</TableCell>
                                                 <TableCell>{formatTimeAgo(gw.lastHeartbeat)}</TableCell>
                                                 <TableCell>
-                                                    <IconButton size="small" onClick={() => { setSelectedGateway(gw); setNewAlias(gw.alias || ''); setAliasDialogOpen(true); }}><EditIcon fontSize="inherit" /></IconButton>
+                                                    {syncingGateway === gw.id ? (
+                                                        <Typography variant="caption" color="primary">{syncingStatus}</Typography>
+                                                    ) : (
+                                                        <>
+                                                            <IconButton size="small" title="Sync to Cloud" onClick={() => syncGatewayConfig(gw.id, 'push')}><UploadIcon fontSize="inherit" /></IconButton>
+                                                            <IconButton size="small" title="Pull from Cloud" onClick={() => syncGatewayConfig(gw.id, 'pull')}><DownloadIcon fontSize="inherit" /></IconButton>
+                                                            <IconButton size="small" onClick={() => { setSelectedGateway(gw); setNewAlias(gw.alias || ''); setAliasDialogOpen(true); }}><EditIcon fontSize="inherit" /></IconButton>
+                                                        </>
+                                                    )}
                                                 </TableCell>
                                             </TableRow>
                                         ))}
