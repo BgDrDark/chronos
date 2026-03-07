@@ -306,6 +306,46 @@ class WebDashboard:
             success = relay_controller.remove_device(device_id)
             return JSONResponse(content={"status": "deleted" if success else "not_found"})
         
+        @self.app.put("/access/hardware/{device_id}")
+        async def update_hardware(device_id: str, data: dict):
+            from gateway.devices.relay_controller import relay_controller
+            
+            # Check if it's an IP change request (from editHardwareIP)
+            new_ip = data.get("ip")
+            netmask = data.get("netmask")
+            gateway = data.get("gateway")
+            
+            if new_ip and (netmask or gateway):
+                new_netmask = netmask or "255.255.255.0"
+                new_gateway = gateway or "192.168.1.1"
+                result = await relay_controller.change_ip(device_id, new_ip, new_netmask, new_gateway)
+                return JSONResponse(content=result)
+            
+            # Full device update
+            update_data = {}
+            if 'name' in data:
+                update_data['name'] = data['name']
+            if 'ip' in data:
+                update_data['ip'] = data['ip']
+            if 'port' in data:
+                update_data['port'] = data['port']
+            if 'relay_1_duration' in data:
+                update_data['relay_1_duration'] = data['relay_1_duration']
+            if 'relay_2_duration' in data:
+                update_data['relay_2_duration'] = data['relay_2_duration']
+            if 'relay_1_manual' in data:
+                update_data['relay_1_manual'] = data['relay_1_manual']
+            if 'relay_2_manual' in data:
+                update_data['relay_2_manual'] = data['relay_2_manual']
+            
+            if update_data:
+                success = relay_controller.update_device(device_id, **update_data)
+                if success:
+                    return JSONResponse(content={"success": True, "message": "Device updated"})
+                return JSONResponse(content={"success": False, "message": "Device not found"})
+            
+            return JSONResponse(content={"success": False, "message": "No updates"})
+        
         @self.app.post("/access/hardware/{device_id}/trigger")
         async def trigger_hardware(device_id: str, data: dict):
             from gateway.devices.relay_controller import relay_controller
@@ -485,6 +525,14 @@ class WebDashboard:
             door_id = zone_manager.add_door(data)
             return JSONResponse(content={"status": "created", "id": door_id}, status_code=201)
         
+        @self.app.put("/access/doors/{door_id}")
+        async def update_door(door_id: str, data: dict):
+            from gateway.access import zone_manager
+            success = zone_manager.update_door(door_id, data)
+            if success:
+                return JSONResponse(content={"status": "updated"})
+            return JSONResponse(content={"status": "not_found"}, status_code=404)
+        
         @self.app.delete("/access/doors/{door_id}")
         async def delete_door(door_id: str):
             from gateway.access import zone_manager
@@ -526,14 +574,46 @@ class WebDashboard:
         
         @self.app.get("/access/logs")
         async def get_access_logs(limit: int = 100):
-            from gateway.access import access_controller
-            return JSONResponse(content={"logs": access_controller.get_logs(limit)})
+            from gateway.database.sqlite_manager import logs_db
+            logs = logs_db.get_logs(limit)
+            return JSONResponse(content={"logs": logs, "total": logs_db.get_logs_count()})
         
         @self.app.get("/access/state")
         async def get_access_state():
             from gateway.access import access_controller
             users = access_controller.get_active_users()
             return JSONResponse(content={"users": users})
+        
+        # Sync endpoints
+        @self.app.get("/sync/status")
+        async def get_sync_status():
+            from gateway.sync import get_sync_manager
+            sm = get_sync_manager()
+            return JSONResponse(content=sm.get_status())
+        
+        @self.app.post("/sync/push")
+        async def sync_push():
+            """Ръчно синхронизиране към backend"""
+            from gateway.sync import get_sync_manager
+            sm = get_sync_manager()
+            
+            await sm.sync_logs_to_backend()
+            await sm.sync_config_to_backend()
+            
+            return JSONResponse(content={"status": "ok", "message": "Sync completed"})
+        
+        @self.app.post("/sync/pull")
+        async def sync_pull():
+            """Ръчно теглене от backend"""
+            from gateway.sync import get_sync_manager
+            sm = get_sync_manager()
+            
+            success = await sm.pull_config_from_backend()
+            
+            if success:
+                return JSONResponse(content={"status": "ok", "message": "Config pulled from backend"})
+            else:
+                return JSONResponse(content={"status": "error", "message": "Failed to pull config"}, status_code=500)
     
     def _get_default_html(self) -> str:
         """Default HTML ако липсва файл"""

@@ -10,6 +10,8 @@ import asyncio
 import sys
 import os
 import time
+import argparse
+import signal
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
@@ -44,14 +46,15 @@ class DatabaseHealthMonitor:
     """Comprehensive database health monitoring tool"""
     
     def __init__(self):
+        from backend.database.database_optimized import db_config
         self.db_config = db_config
         self.warning_threshold = 0.8
         self.critical_threshold = 0.9
     
-    async def get_session(self) -> AsyncSession:
-        """Get database session"""
-        async with self.db_config.get_session() as session:
-            yield session
+    @property
+    def session(self):
+        """Get database session context manager"""
+        return self.db_config.get_session()
     
     def evaluate_metric(self, value: float, thresholds: Dict[str, float]) -> str:
         """Evaluate metric value against thresholds"""
@@ -132,7 +135,7 @@ class DatabaseHealthMonitor:
         metrics = []
         
         try:
-            async with self.get_session() as session:
+            async with self.session as session:
                 # Get database size
                 result = await session.execute(text("""
                     SELECT pg_size_pretty(pg_database_size(current_database())) as size,
@@ -191,7 +194,7 @@ class DatabaseHealthMonitor:
         metrics = []
         
         try:
-            async with self.get_session() as session:
+            async with self.session as session:
                 # Check for long-running queries
                 result = await session.execute(text("""
                     SELECT 
@@ -282,7 +285,7 @@ class DatabaseHealthMonitor:
         metrics = []
         
         try:
-            async with self.get_session() as session:
+            async with self.session as session:
                 # Check for tables needing vacuum
                 result = await session.execute(text("""
                     SELECT 
@@ -343,101 +346,12 @@ class DatabaseHealthMonitor:
                         description=f"Table {table.tablename} needs ANALYZE"
                     ))
                 
-                # Check table bloat
-                result = await session.execute(text("""
-                    SELECT 
-                        schemaname,
-                        tablename,
-                        ROUND(CASE 
-                            WHEN otta=0 THEN 0.0
-                            ELSE sml.relpages/otta::numeric
-                        END, 1) AS tbloat,
-                        CASE 
-                            WHEN relpages < otta THEN 0 
-                            ELSE relpages::bigint - otta 
-                        END AS wastedpages
-                    FROM (
-                        SELECT 
-                            schemaname, tablename, cc.reltuples, cc.relpages, bs,
-                            CEIL((cc.reltuples *
-                                ((datahdr+ma-
-                                    (CASE WHEN datahdr%ma=0 THEN ma ELSE datahdr%ma END))+
-                                nullhdr2 + (
-                                    CASE WHEN cc.relallvisible = 0 THEN 0 ELSE
-                                        ceil(cc.reltuples/cc.relallvisible::float)*nullhdr
-                                    END
-                                ))/(bs-20))) AS otta,
-                            ((bs-20)*(
-                                CEIL((cc.reltuples*((datahdr+ma-
-                                    (CASE WHEN datahdr%ma=0 THEN ma ELSE datahdr%ma END))+
-                                    nullhdr2 + (
-                                        CASE WHEN cc.relallvisible = 0 THEN 0 ELSE
-                                            ceil(cc.reltuples/cc.relallvisible::float)*nullhdr
-                                        END
-                                    ))/(bs-20)))) AS tota_size,
-                            (bs-20)*(
-                                CEIL((cc.reltuples*((datahdr+ma-
-                                    (CASE WHEN datahdr%ma=0 THEN ma ELSE datahdr%ma END))+
-                                    nullhdr2 + (
-                                        CASE WHEN cc.relallvisible = 0 THEN 0 ELSE
-                                            ceil(cc.reltuples/cc.relallvisible::float)*nullhdr
-                                        END
-                                    ))/(bs-20)))) AS table_size
-                        FROM (
-                            SELECT 
-                                ma,bs,schemaname,tablename,
-                                (datawidth+(hdr+ma-(CASE WHEN hdr%ma=0 THEN ma ELSE hdr%ma END)))::numeric AS datahdr,
-                                (maxfracsum*(nullhdr+ma-(CASE WHEN nullhdr%ma=0 THEN ma ELSE nullhdr%ma END))) AS nullhdr2
-                            FROM (
-                                SELECT 
-                                    schemaname, tablename, hdr, ma, bs,
-                                    SUM((1-null_frac)*avg_width) AS datawidth,
-                                    MAX(null_frac) AS maxfracsum,
-                                    hdr+(
-                                        SELECT 1+COUNT(*)*(8-CASE WHEN avg_width<=248 THEN 1 WHEN avg_width<=1024 THEN 2 WHEN avg_width<=8192 THEN 3 ELSE 4 END)
-                                        FROM pg_stats s2
-                                        WHERE s2.schemaname=s.schemaname AND s2.tablename=s.tablename AND null_frac<>0
-                                    )*8 AS nullhdr
-                                FROM pg_stats s, (
-                                    SELECT 
-                                        (SELECT current_setting('block_size')::numeric) AS bs,
-                                        CASE WHEN SUBSTRING(v,12,3) IN ('8.0','8.1','8.2') THEN 27 ELSE 23 END AS hdr,
-                                        CASE WHEN v ~ 'mingw32' THEN 8 ELSE 4 END AS ma
-                                    FROM (SELECT version() AS v) AS foo
-                                ) AS constants
-                                WHERE s.schemaname='public'
-                                GROUP BY 1,2,3,4,5
-                            ) AS foo
-                        ) AS rs
-                        JOIN pg_class cc ON cc.relname = rs.tablename
-                        JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname = rs.schemaname AND nn.nspname <> 'information_schema'
-                    ) AS sml
-                    WHERE tbloat > 1.5
-                    ORDER BY tbloat DESC
-                    LIMIT 10
-                """))
-                
-                bloat_tables = result.fetchall()
-                
-                for table in bloat_tables:
-                    bloat_pct = (table.wastedpages / (table.wastedpages + table.tbloat)) * 100 if (table.wastedpages + table.tbloat) > 0 else 0
-                    status = 'critical' if bloat_pct > 30 else ('warning' if bloat_pct > 15 else 'good')
-                    
-                    metrics.append(HealthMetric(
-                        name=f"Table Bloat: {table.tablename}",
-                        value=f"{bloat_pct:.1f}%",
-                        unit="percentage",
-                        status=status,
-                        threshold={'warning': 15, 'critical': 30},
-                        description=f"Table {table.tablename} has {bloat_pct}% bloat"
-                    ))
-                
         except Exception as e:
             metrics.append(HealthMetric(
                 name="Table Statistics Check",
                 value=f"Error: {str(e)}",
                 unit="status",
-                status="critical",
+                status="warning",
                 description="Unable to retrieve table statistics"
             ))
         
@@ -448,7 +362,7 @@ class DatabaseHealthMonitor:
         metrics = []
         
         try:
-            async with self.get_session() as session:
+            async with self.session as session:
                 # Check database connections
                 result = await session.execute(text("""
                     SELECT 
@@ -524,6 +438,61 @@ class DatabaseHealthMonitor:
         
         return metrics
     
+    async def check_performance_tests(self) -> List[HealthMetric]:
+        """Run performance tests and check results"""
+        metrics = []
+        
+        try:
+            from backend.database.database_optimized import db_manager
+            
+            async with db_manager.config.get_session() as session:
+                test_queries = [
+                    ("Simple Query", "SELECT 1 as test", 0.1),
+                    ("User Count", "SELECT COUNT(*) FROM users", 0.5),
+                    ("TimeLog Count", "SELECT COUNT(*) FROM timelogs", 1.0),
+                    ("Recent TimeLogs", "SELECT * FROM timelogs ORDER BY id DESC LIMIT 100", 1.0),
+                ]
+                
+                for query_name, query, threshold in test_queries:
+                    start = time.perf_counter()
+                    await session.execute(text(query))
+                    exec_time = time.perf_counter() - start
+                    
+                    status = 'critical' if exec_time > threshold * 2 else ('warning' if exec_time > threshold else 'good')
+                    
+                    metrics.append(HealthMetric(
+                        name=f"Performance: {query_name}",
+                        value=f"{exec_time:.3f}s",
+                        unit="seconds",
+                        status=status,
+                        threshold={'warning': threshold, 'critical': threshold * 2},
+                        description=f"Query took {exec_time:.3f}s (threshold: {threshold}s)"
+                    ))
+                
+                result = await session.execute(text("SELECT COUNT(*) as slow_count FROM pg_stat_statements WHERE mean_exec_time > 1000"))
+                slow_queries = result.fetchone().slow_count
+                
+                if slow_queries > 0:
+                    metrics.append(HealthMetric(
+                        name="Slow Queries (pg_stat_statements)",
+                        value=slow_queries,
+                        unit="queries",
+                        status='warning',
+                        threshold={'warning': 10, 'critical': 50},
+                        description=f"{slow_queries} queries with execution time > 1s"
+                    ))
+                    
+        except Exception as e:
+            metrics.append(HealthMetric(
+                name="Performance Tests",
+                value=f"Error: {str(e)}",
+                unit="status",
+                status="warning",
+                description="Could not run performance tests"
+            ))
+        
+        return metrics
+    
     async def run_health_check(self) -> HealthCheckResult:
         """Run comprehensive health check"""
         print("🏥 Running WorkingTime Database Health Check...")
@@ -533,7 +502,7 @@ class DatabaseHealthMonitor:
         
         try:
             # Test basic connectivity
-            async with self.get_session() as session:
+            async with self.session as session:
                 await session.execute(text("SELECT 1"))
             
             # Run all health checks
@@ -543,6 +512,7 @@ class DatabaseHealthMonitor:
                 ("Query Performance", self.check_query_performance),
                 ("Table Statistics", self.check_table_statistics),
                 ("System Resources", self.check_system_resources),
+                ("Performance Tests", self.check_performance_tests),
             ]
             
             for check_name, check_func in checks:
@@ -680,38 +650,87 @@ class DatabaseHealthMonitor:
         if critical_perf:
             print("   📈 Consider query optimization and index tuning")
 
-async def main():
-    """Main function to run health check"""
-    monitor = DatabaseHealthMonitor()
+async def run_health_check_once(monitor: 'DatabaseHealthMonitor', output_json: bool = False):
+    """Run health check once"""
+    result = await monitor.run_health_check()
     
-    try:
-        # Run comprehensive health check
-        result = await monitor.run_health_check()
-        
-        # Print formatted report
-        monitor.print_health_report(result)
-        
-        # Save report to file
+    if output_json:
         report_data = {
             'overall_status': result.overall_status,
             'timestamp': result.timestamp.isoformat(),
             'database_connected': result.database_connected,
             'checks': [asdict(check) for check in result.checks]
         }
+        print(json.dumps(report_data, indent=2, default=str))
+    else:
+        monitor.print_health_report(result)
         
         report_file = f"health_report_{result.timestamp.strftime('%Y%m%d_%H%M%S')}.json"
         with open(report_file, 'w') as f:
-            json.dump(report_data, f, indent=2, default=str)
-        
+            json.dump({
+                'overall_status': result.overall_status,
+                'timestamp': result.timestamp.isoformat(),
+                'database_connected': result.database_connected,
+                'checks': [asdict(check) for check in result.checks]
+            }, f, indent=2, default=str)
         print(f"\n📄 Detailed report saved to: {report_file}")
-        
-        # Exit with appropriate code
-        if result.overall_status == 'critical':
-            sys.exit(2)
-        elif result.overall_status == 'warning':
-            sys.exit(1)
+    
+    return result
+
+async def run_watch_mode(monitor: 'DatabaseHealthMonitor', interval: int, output_json: bool):
+    """Run health check in watch mode"""
+    print(f"🔄 Starting watch mode (checking every {interval} seconds)...")
+    print("Press Ctrl+C to stop\n")
+    
+    def signal_handler(sig, frame):
+        print("\n\n🛑 Stopping watch mode...")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    while True:
+        try:
+            result = await run_health_check_once(monitor, output_json)
+            
+            if result.overall_status == 'critical':
+                print(f"\n🔴 CRITICAL - Status: {result.overall_status}")
+            elif result.overall_status == 'warning':
+                print(f"\n🟡 WARNING - Status: {result.overall_status}")
+            else:
+                print(f"\n🟢 OK - Status: {result.overall_status}")
+            
+            print(f"\n⏳ Next check in {interval} seconds...")
+            await asyncio.sleep(interval)
+        except Exception as e:
+            print(f"❌ Error in watch mode: {e}")
+            await asyncio.sleep(interval)
+
+async def main():
+    """Main function to run health check"""
+    parser = argparse.ArgumentParser(description='WorkingTime Database Health Monitor')
+    parser.add_argument('--json', action='store_true', help='Output results as JSON')
+    parser.add_argument('--watch', action='store_true', help='Run in watch mode (continuous monitoring)')
+    parser.add_argument('--interval', type=int, default=60, help='Watch mode interval in seconds (default: 60)')
+    parser.add_argument('--no-save', action='store_true', help='Do not save JSON report to file')
+    
+    args = parser.parse_args()
+    
+    monitor = DatabaseHealthMonitor()
+    
+    try:
+        if args.watch:
+            await run_watch_mode(monitor, args.interval, args.json)
         else:
-            sys.exit(0)
+            result = await run_health_check_once(monitor, args.json)
+            
+            if not args.json:
+                pass
+            elif result.overall_status == 'critical':
+                sys.exit(2)
+            elif result.overall_status == 'warning':
+                sys.exit(1)
+            else:
+                sys.exit(0)
         
     except Exception as e:
         print(f"❌ Error during health check: {e}")

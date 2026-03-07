@@ -101,7 +101,7 @@ class GatewayService:
                                 gateway_id = None
                                 api_key = None
 
-                            if "вече" in msg:
+                            if "вече" in msg.lower():
                                 if gateway_id:
                                     config.set("gateway.id", str(gateway_id))
                                 if api_key:

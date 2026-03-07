@@ -68,8 +68,8 @@
                 <div class="flex justify-between mb-4">
                     <h2 class="font-bold">SR201 Устройства</h2>
                     <div class="flex gap-2">
-                        <button onclick="findDevices()" class="bg-purple-600 text-white px-3 py-1 rounded text-sm">Намери</button>
-                        <button onclick="showAddHardwareModal()" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">+ Добави</button>
+                        <button onclick="findDevices()" class="bg-purple-600 text-white px-3 py-1 rounded text-sm">Намерени устройства</button>
+                        <button onclick="showAddHardwareModal()" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">+ Добави устройство</button>
                     </div>
                 </div>
                 <div id="hardware-list" class="space-y-2"></div>
@@ -150,6 +150,26 @@
         </form>
     </div></div>
 
+    <div id="door-edit-modal" class="modal"><div class="bg-white rounded-lg m-auto p-6 w-full max-w-md">
+        <h3 class="font-bold mb-4">Редакция на Врата</h3>
+        <form id="door-edit-form" class="space-y-3">
+            <input type="hidden" name="id" id="edit-door-id">
+            <input type="text" name="name" id="edit-door-name" placeholder="Име" required class="w-full border p-2 rounded">
+            <input type="text" name="zone_id" id="edit-door-zone_id" placeholder="Zone ID" required class="w-full border p-2 rounded">
+            <select name="device_id" id="edit-door-device-select" required class="w-full border p-2 rounded">
+                <option value="">-- Избери устройство --</option>
+            </select>
+            <select name="relay_number" id="edit-door-relay_number" class="w-full border p-2 rounded">
+                <option value="1">Реле 1</option>
+                <option value="2">Реле 2</option>
+            </select>
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="closeModal('door-edit-modal')" class="p-2">Отказ</button>
+                <button type="submit" class="bg-blue-600 text-white p-2 rounded">Запази</button>
+            </div>
+        </form>
+    </div></div>
+
     <div id="hardware-modal" class="modal"><div class="bg-white rounded-lg m-auto p-6 w-full max-w-md">
         <h3 class="font-bold mb-4">Добави SR201 Устройство</h3>
         <form id="hardware-form" class="space-y-3">
@@ -177,6 +197,38 @@
             </div>
             <div class="flex justify-end gap-2">
                 <button type="button" onclick="closeModal('hardware-modal')" class="p-2">Отказ</button>
+                <button type="submit" class="bg-blue-600 text-white p-2 rounded">Запази</button>
+            </div>
+        </form>
+    </div></div>
+
+    <div id="hardware-edit-modal" class="modal"><div class="bg-white rounded-lg m-auto p-6 w-full max-w-md">
+        <h3 class="font-bold mb-4">Редакция на SR201</h3>
+        <form id="hardware-edit-form" class="space-y-3">
+            <input type="hidden" name="id" id="edit-hardware-id">
+            <input type="text" name="name" id="edit-hardware-name" placeholder="Име (напр. Вход)" required class="w-full border p-2 rounded">
+            <input type="text" name="ip" id="edit-hardware-ip" placeholder="IP (192.168.1.100)" required class="w-full border p-2 rounded">
+            <input type="number" name="port" id="edit-hardware-port" value="6722" class="w-full border p-2 rounded">
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="text-xs text-gray-500">Релe 1 Пулс (ms)</label>
+                    <input type="number" name="relay_1_duration" id="edit-relay_1_duration" value="500" class="w-full border p-2 rounded">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500">Релe 2 Пулс (ms)</label>
+                    <input type="number" name="relay_2_duration" id="edit-relay_2_duration" value="500" class="w-full border p-2 rounded">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="relay_1_manual" id="edit-relay_1_manual" class="w-4 h-4"> Релe 1 Ръчно
+                </label>
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="relay_2_manual" id="edit-relay_2_manual" class="w-4 h-4"> Релe 2 Ръчно
+                </label>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="closeModal('hardware-edit-modal')" class="p-2">Отказ</button>
                 <button type="submit" class="bg-blue-600 text-white p-2 rounded">Запази</button>
             </div>
         </form>
@@ -289,8 +341,10 @@
                             <div class="text-xs text-gray-500">${d.ip}:${d.port} | ID: ${d.device_id}</div>
                         </div>
                         <div class="flex gap-2">
+                            <button onclick="editHardware('${d.device_id}')" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">Редакция</button>
+                            <button onclick="editHardwareIP('${d.device_id}', '${d.ip}')" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">Промени IP</button>
                             <button onclick="testHardware('${d.device_id}')" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">Тест</button>
-                            <button onclick="deleteHardware('${d.device_id}')" class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs">Изтрий</button>
+                            <button onclick="deleteHardware('${d.device_id}')" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">Изтрий</button>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4 mt-3">
@@ -317,6 +371,44 @@
                     </div>
                 </div>
             `).join('') || '<p class="text-gray-400 text-center text-sm py-2">Няма добавени устройства</p>';
+        }
+
+        async function editHardware(deviceId) {
+            const devices = await fetch('/access/hardware').then(r => r.json());
+            const device = devices.find(d => d.device_id === deviceId);
+            if (!device) return;
+            
+            document.getElementById('edit-hardware-id').value = device.device_id;
+            document.getElementById('edit-hardware-name').value = device.name || '';
+            document.getElementById('edit-hardware-ip').value = device.ip || '';
+            document.getElementById('edit-hardware-port').value = device.port || 6722;
+            document.getElementById('edit-relay_1_duration').value = device.relay_1_duration || 500;
+            document.getElementById('edit-relay_2_duration').value = device.relay_2_duration || 500;
+            document.getElementById('edit-relay_1_manual').checked = device.relay_1_manual || false;
+            document.getElementById('edit-relay_2_manual').checked = device.relay_2_manual || false;
+            
+            document.getElementById('hardware-edit-modal').classList.add('active');
+        }
+
+        async function editHardwareIP(deviceId, currentIP) {
+            const newIP = prompt('Въведи ново IP адрес:', currentIP);
+            if (!newIP || newIP === currentIP) return;
+            
+            const newNetmask = prompt('Въведи subnet mask (255.255.255.0):', '255.255.255.0') || '255.255.255.0';
+            const newGateway = prompt('Въведи gateway (192.168.1.1):', '192.168.1.1') || '192.168.1.1';
+            
+            const r = await fetch(`/access/hardware/${deviceId}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ip: newIP, netmask: newNetmask, gateway: newGateway})
+            });
+            const res = await r.json();
+            if (res.success) {
+                alert('IP адресът е променен!');
+                loadHardware();
+            } else {
+                alert('Грешка: ' + (res.message || 'Неуспешна промяна'));
+            }
         }
 
         async function relayOn(id, relay) {
@@ -374,7 +466,11 @@
                 <div class="p-2 border rounded">
                     <div class="flex justify-between">
                         <div><b>${d.name}</b> (Зона: ${d.zone_id})</div>
-                        <button onclick="triggerDoor('${d.id}')" class="text-green-600 text-sm">Отвори</button>
+                        <div class="flex gap-2">
+                            <button onclick="editDoor('${d.id}', '${d.name}', '${d.zone_id}', '${d.device_id}', ${d.relay_number})" class="text-blue-600 text-sm">Редакция</button>
+                            <button onclick="deleteDoor('${d.id}')" class="text-red-600 text-sm">Изтрий</button>
+                            <button onclick="triggerDoor('${d.id}')" class="text-green-600 text-sm">Отвори</button>
+                        </div>
                     </div>
                     <div class="text-xs text-gray-500">Устройство: ${d.device_id || 'Няма'} | Реле: ${d.relay_number || 1}</div>
                 </div>
@@ -386,6 +482,30 @@
             alert('Вратата е задействана');
         }
 
+        async function deleteDoor(id) {
+            if (!confirm('Премахни вратата?')) return;
+            await fetch(`/access/doors/${id}`, {method: 'DELETE'});
+            loadDoors();
+        }
+
+        async function editDoor(id, name, zoneId, deviceId, relayNumber) {
+            document.getElementById('edit-door-id').value = id;
+            document.getElementById('edit-door-name').value = name;
+            document.getElementById('edit-door-zone_id').value = zoneId;
+            
+            // Populate device dropdown
+            const select = document.getElementById('edit-door-device-select');
+            select.innerHTML = '<option value="">-- Избери устройство --</option>';
+            const devices = await fetch('/access/hardware').then(r => r.json());
+            devices.forEach(d => {
+                const selected = d.device_id === deviceId ? 'selected' : '';
+                select.innerHTML += `<option value="${d.device_id}" ${selected}>${d.name} (${d.ip})</option>`;
+            });
+            
+            document.getElementById('edit-door-relay_number').value = relayNumber || 1;
+            document.getElementById('door-edit-modal').classList.add('active');
+        }
+
         async function findDevices() {
             document.getElementById('scan-modal').classList.add('active');
             document.getElementById('scan-results').innerHTML = '<p class="text-center text-gray-500">Сканиране на мрежата...</p>';
@@ -394,7 +514,7 @@
                 const data = await res.json();
                 console.log('Scan results:', data);
                 if (data.devices && data.devices.length > 0) {
-                    document.getElementById('scan-results').innerHTML = data.devices.map(d => `<div class="p-2 border rounded flex justify-between"><div>${d.ip} <span class="text-xs text-gray-500">(${d.mac})</span></div><button onclick="addFoundDevice('${d.ip}', '${d.mac}')" class="bg-green-600 text-white px-2 py-1 rounded text-xs">Добави</button></div>`).join('');
+                    document.getElementById('scan-results').innerHTML = data.devices.map(d => `<div class="p-2 border rounded flex justify-between"><div>${d.ip} <span class="text-xs text-gray-500">(${d.mac})</span></div><button onclick="addFoundDevice('${d.ip}', '${d.mac}')" class="bg-green-600 text-white px-2 py-1 rounded text-xs">Добави устройство</button></div>`).join('');
                 } else {
                     let msg = '<p class="text-center text-gray-500">Няма намерени SR201 устройства</p>';
                     if (data.debug) {
@@ -472,6 +592,35 @@
             } catch (err) { alert(err); }
         });
 
+        document.getElementById('hardware-edit-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const deviceId = formData.get('id');
+            const data = {
+                name: formData.get('name'),
+                ip: formData.get('ip'),
+                port: parseInt(formData.get('port') || '6722'),
+                relay_1_duration: parseInt(formData.get('relay_1_duration') || '500'),
+                relay_2_duration: parseInt(formData.get('relay_2_duration') || '500'),
+                relay_1_manual: formData.has('relay_1_manual'),
+                relay_2_manual: formData.has('relay_2_manual')
+            };
+            try {
+                const r = await fetch(`/access/hardware/${deviceId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (r.ok) {
+                    closeModal('hardware-edit-modal');
+                    loadHardware();
+                } else {
+                    const res = await r.json();
+                    alert(res.message || 'Грешка при обновяване');
+                }
+            } catch (err) { alert(err); }
+        });
+
         document.getElementById('zone-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
@@ -485,8 +634,27 @@
             e.preventDefault();
             const formData = new FormData(e.target);
             const data = Object.fromEntries(formData.entries());
+            // Convert relay_number to integer
+            data.relay_number = parseInt(data.relay_number) || 1;
             await fetch('/access/doors', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
             closeModal('door-modal');
+            loadDoors();
+        });
+
+        document.getElementById('door-edit-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            const doorId = data.id;
+            delete data.id;
+            data.relay_number = parseInt(data.relay_number) || 1;
+            
+            await fetch(`/access/doors/${doorId}`, { 
+                method: 'PUT', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify(data) 
+            });
+            closeModal('door-edit-modal');
             loadDoors();
         });
 

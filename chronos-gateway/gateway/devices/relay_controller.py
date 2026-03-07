@@ -7,6 +7,7 @@ from typing import Optional, Dict, List, Any
 from datetime import datetime
 
 from gateway.devices.sr201_relay import SR201Relay
+from gateway.database.sqlite_manager import config_db
 
 logger = logging.getLogger(__name__)
 
@@ -20,78 +21,68 @@ class RelayController:
     
     Поддържа:
     - SR201 Ethernet Relay
+    
+    Данните се запазват в SQLite (config.db)
     """
     
     def __init__(self):
         self.devices: Dict[str, SR201Relay] = {}
-        self._load_from_config()
+        self._load_from_sqlite()
     
-    def _load_from_config(self):
-        """Зарежда устройства от config.yaml"""
+    def _load_from_sqlite(self):
+        """Зарежда устройства от SQLite"""
         try:
-            if os.path.exists(CONFIG_FILE):
-                with open(CONFIG_FILE, 'r') as f:
-                    config = yaml.safe_load(f) or {}
-                
-                hardware_config = config.get('access_control', {}).get('hardware', {}).get('devices', [])
-                for device_config in hardware_config:
-                    try:
-                        self.add_device(
-                            device_id=device_config.get('id'),
-                            name=device_config.get('name', ''),
-                            ip=device_config.get('ip', ''),
-                            port=device_config.get('port', 6722),
-                            device_type=device_config.get('type', 'sr201'),
-                            relay_1_duration=device_config.get('relay_1_duration', 500),
-                            relay_2_duration=device_config.get('relay_2_duration', 500),
-                            relay_1_manual=device_config.get('relay_1_manual', False),
-                            relay_2_manual=device_config.get('relay_2_manual', False),
-                            active=device_config.get('active', True),
-                            mac_address=device_config.get('mac_address', ''),
-                            _save=False
-                        )
-                        logger.info(f"Loaded device {device_config.get('id')} from config")
-                    except Exception as e:
-                        logger.error(f"Error loading device {device_config.get('id')}: {e}")
+            devices = config_db.get_all_devices()
+            for d in devices:
+                try:
+                    self.add_device(
+                        device_id=d.get('id'),
+                        name=d.get('name', ''),
+                        ip=d.get('ip', ''),
+                        port=d.get('port', 6722),
+                        device_type='sr201',
+                        relay_1_duration=d.get('relay_1_duration', 500),
+                        relay_2_duration=d.get('relay_2_duration', 500),
+                        relay_1_manual=bool(d.get('relay_1_manual', 0)),
+                        relay_2_manual=bool(d.get('relay_2_manual', 0)),
+                        active=True,
+                        mac_address=d.get('mac_address', ''),
+                        _save=False
+                    )
+                    logger.info(f"Loaded device {d.get('id')} from SQLite")
+                except Exception as e:
+                    logger.error(f"Error loading device {d.get('id')}: {e}")
         except Exception as e:
-            logger.error(f"Error loading config: {e}")
+            logger.error(f"Error loading from SQLite: {e}")
+    
+    def _save_to_sqlite(self, device: SR201Relay):
+        """Записва устройство в SQLite"""
+        try:
+            config_db.save_device({
+                'id': device.device_id,
+                'name': device.name,
+                'ip': device.ip,
+                'port': device.port,
+                'mac_address': device.mac_address,
+                'relay_1_duration': device.relay_1_duration,
+                'relay_2_duration': device.relay_2_duration,
+                'relay_1_manual': device.relay_1_manual,
+                'relay_2_manual': device.relay_2_manual
+            })
+        except Exception as e:
+            logger.error(f"Error saving device to SQLite: {e}")
+    
+    def _delete_from_sqlite(self, device_id: str):
+        """Изтрива устройство от SQLite"""
+        try:
+            config_db.delete_device(device_id)
+        except Exception as e:
+            logger.error(f"Error deleting device from SQLite: {e}")
     
     def _save_to_config(self):
-        """Записва устройствата в config.yaml"""
-        try:
-            config = {}
-            if os.path.exists(CONFIG_FILE):
-                with open(CONFIG_FILE, 'r') as f:
-                    config = yaml.safe_load(f) or {}
-            
-            devices_list = []
-            for device in self.devices.values():
-                devices_list.append({
-                    'id': device.device_id,
-                    'name': device.name,
-                    'ip': device.ip,
-                    'port': device.port,
-                    'type': 'sr201',
-                    'mac_address': device.mac_address,
-                    'relay_1_duration': device.relay_1_duration,
-                    'relay_2_duration': device.relay_2_duration,
-                    'relay_1_manual': device.relay_1_manual,
-                    'relay_2_manual': device.relay_2_manual,
-                    'active': True
-                })
-            
-            if 'access_control' not in config:
-                config['access_control'] = {}
-            if 'hardware' not in config['access_control']:
-                config['access_control']['hardware'] = {}
-            config['access_control']['hardware']['devices'] = devices_list
-            
-            with open(CONFIG_FILE, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False)
-            
-            logger.info(f"Saved {len(devices_list)} devices to config")
-        except Exception as e:
-            logger.error(f"Error saving config: {e}")
+        """Записва устройствата в SQLite (legacy - kept for compatibility)"""
+        # Now saves to SQLite automatically via _save_to_sqlite
+        logger.info(f"Devices auto-saved to SQLite: {len(self.devices)}")
     
     def add_device(
         self,
@@ -138,7 +129,7 @@ class RelayController:
             raise ValueError(f"Unknown device type: {device_type}")
         
         if _save:
-            self._save_to_config()
+            self._save_to_sqlite(relay)
         
         return device_id
     
@@ -147,7 +138,7 @@ class RelayController:
         if device_id in self.devices:
             del self.devices[device_id]
             logger.info(f"Removed device: {device_id}")
-            self._save_to_config()
+            self._delete_from_sqlite(device_id)
             return True
         return False
     
@@ -176,7 +167,8 @@ class RelayController:
         relay_2_duration: Optional[int] = None,
         relay_1_manual: Optional[bool] = None,
         relay_2_manual: Optional[bool] = None,
-        active: Optional[bool] = None
+        active: Optional[bool] = None,
+        **kwargs
     ) -> bool:
         """Обновява настройките на устройство"""
         device = self.devices.get(device_id)
@@ -199,7 +191,7 @@ class RelayController:
             device.relay_2_manual = relay_2_manual
         
         logger.info(f"Updated device: {device_id}")
-        self._save_to_config()
+        self._save_to_sqlite(device)
         return True
     
     def toggle_relay_mode(self, device_id: str, relay_number: int, manual: bool) -> Dict[str, Any]:

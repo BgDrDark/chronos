@@ -249,7 +249,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
         { text: 'SMTP Настройки', path: '/admin/notifications/smtp', visible: true },
       ]
     },
-    { text: 'Настройки', icon: <SettingsIcon />, path: '/admin/kiosk', visible: isAdmin && isEnabled('kiosk') },
+    { text: 'Настройки', icon: <SettingsIcon />, path: '/settings', visible: isAdmin && isEnabled('kiosk') },
     { text: 'Документация', icon: <HelpOutlineIcon />, path: '/documentation', visible: isAdmin && isEnabled('integrations') },
     { 
       text: 'отдел КД', 

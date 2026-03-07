@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 
 from gateway.access.zone_state import Zone, Door
+from gateway.database.sqlite_manager import config_db
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +18,64 @@ class ZoneManager:
     - Врати (Door)
     - Зависимости между зони
     - Работно време
+    
+    Данните се запазват в SQLite (config.db)
     """
     
     def __init__(self):
         self.zones: Dict[str, Zone] = {}
         self.doors: Dict[str, Door] = {}
+        self._load_from_sqlite()
+    
+    def _load_from_sqlite(self):
+        """Зарежда зони и врати от SQLite"""
+        try:
+            # Load zones
+            zones = config_db.get_all_zones()
+            for z in zones:
+                z['active'] = bool(z.get('active', 1))
+                z['anti_passback_enabled'] = bool(z.get('anti_passback_enabled', 0))
+                zone = Zone.from_dict(z)
+                self.zones[zone.id] = zone
+            
+            # Load doors
+            doors = config_db.get_all_doors()
+            for d in doors:
+                d['active'] = bool(d.get('active', 1))
+                door = Door.from_dict(d)
+                self.doors[door.id] = door
+            
+            logger.info(f"Loaded {len(self.zones)} zones and {len(self.doors)} doors from SQLite")
+        except Exception as e:
+            logger.error(f"Error loading from SQLite: {e}")
+    
+    def _save_zone_to_sqlite(self, zone: Zone):
+        """Запазва зона в SQLite"""
+        try:
+            config_db.save_zone(zone.to_dict())
+        except Exception as e:
+            logger.error(f"Error saving zone to SQLite: {e}")
+    
+    def _save_door_to_sqlite(self, door: Door):
+        """Запазва врата в SQLite"""
+        try:
+            config_db.save_door(door.to_dict())
+        except Exception as e:
+            logger.error(f"Error saving door to SQLite: {e}")
+    
+    def _delete_zone_from_sqlite(self, zone_id: str):
+        """Изтрива зона от SQLite"""
+        try:
+            config_db.delete_zone(zone_id)
+        except Exception as e:
+            logger.error(f"Error deleting zone from SQLite: {e}")
+    
+    def _delete_door_from_sqlite(self, door_id: str):
+        """Изтрива врата от SQLite"""
+        try:
+            config_db.delete_door(door_id)
+        except Exception as e:
+            logger.error(f"Error deleting door from SQLite: {e}")
     
     def add_zone(self, zone_data: dict) -> str:
         """Добавя нова зона"""
@@ -35,6 +89,9 @@ class ZoneManager:
         zone = Zone.from_dict(zone_data)
         zone.id = zone_id
         self.zones[zone_id] = zone
+        
+        # Save to SQLite
+        self._save_zone_to_sqlite(zone)
         
         logger.info(f"Added zone: {zone_id} - {zone.name}")
         return zone_id
@@ -50,6 +107,9 @@ class ZoneManager:
             if door.zone_id == zone_id:
                 del self.doors[door.id]
         
+        # Delete from SQLite
+        self._delete_zone_from_sqlite(zone_id)
+        
         logger.info(f"Removed zone: {zone_id}")
         return True
     
@@ -61,6 +121,9 @@ class ZoneManager:
         zone = Zone.from_dict(zone_data)
         zone.id = zone_id
         self.zones[zone_id] = zone
+        
+        # Save to SQLite
+        self._save_zone_to_sqlite(zone)
         
         logger.info(f"Updated zone: {zone_id}")
         return True
@@ -90,6 +153,9 @@ class ZoneManager:
         door.id = door_id
         self.doors[door_id] = door
         
+        # Save to SQLite
+        self._save_door_to_sqlite(door)
+        
         logger.info(f"Added door: {door_id} - {door.name}")
         return door_id
     
@@ -99,6 +165,10 @@ class ZoneManager:
             return False
         
         del self.doors[door_id]
+        
+        # Delete from SQLite
+        self._delete_door_from_sqlite(door_id)
+        
         logger.info(f"Removed door: {door_id}")
         return True
     
@@ -107,9 +177,25 @@ class ZoneManager:
         if door_id not in self.doors:
             return False
         
-        door = Door.from_dict(door_data)
-        door.id = door_id
-        self.doors[door_id] = door
+        existing_door = self.doors[door_id]
+        
+        if 'name' in door_data:
+            existing_door.name = door_data['name']
+        if 'zone_id' in door_data:
+            existing_door.zone_id = door_data['zone_id']
+        if 'device_id' in door_data:
+            existing_door.device_id = door_data['device_id']
+        if 'relay_number' in door_data:
+            existing_door.relay_number = door_data['relay_number']
+        if 'terminal_id' in door_data:
+            existing_door.terminal_id = door_data['terminal_id']
+        if 'description' in door_data:
+            existing_door.description = door_data['description']
+        if 'active' in door_data:
+            existing_door.active = door_data['active']
+        
+        # Save to SQLite
+        self._save_door_to_sqlite(existing_door)
         
         logger.info(f"Updated door: {door_id}")
         return True
