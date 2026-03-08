@@ -7,7 +7,7 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent, 
   DialogActions, TextField, Select, MenuItem, InputLabel,
   FormControl, Autocomplete, Checkbox, List, ListItem,
-  ListItemText, ListItemButton, ListItemIcon
+  ListItemText, ListItemButton, ListItemIcon, Stack
 } from '@mui/material';
 import {
   Security as SecurityIcon,
@@ -46,6 +46,7 @@ import {
 } from '../graphql/queries';
 import {
   CREATE_ACCESS_ZONE,
+  UPDATE_ACCESS_ZONE,
   DELETE_ACCESS_ZONE,
   CREATE_ACCESS_DOOR,
   DELETE_ACCESS_DOOR,
@@ -173,6 +174,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
 
     // Mutations
     const [createZone] = useMutation(CREATE_ACCESS_ZONE);
+    const [updateZone] = useMutation(UPDATE_ACCESS_ZONE);
     const [deleteZone] = useMutation(DELETE_ACCESS_ZONE);
     const [createDoor] = useMutation(CREATE_ACCESS_DOOR);
     const [deleteDoor] = useMutation(DELETE_ACCESS_DOOR);
@@ -206,6 +208,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
 
     // Dialog States
     const [zoneDialogOpen, setZoneDialogOpen] = useState(false);
+    const [zoneEditOpen, setZoneEditOpen] = useState(false);
     const [doorDialogOpen, setDoorDialogOpen] = useState(false);
     const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
     const [selectedTerminal, setSelectedTerminal] = useState<any>(null);
@@ -448,9 +451,11 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                                             <TableCell>{z.requiredHoursStart} - {z.requiredHours_end}</TableCell>
                                             <TableCell>{z.antiPassbackEnabled ? <Chip size="small" label={z.antiPassbackType} color="primary" variant="outlined" /> : 'Изкл.'}</TableCell>
                                             <TableCell>
-                                                <IconButton size="small" color="primary" onClick={() => { setSelectedZone(z); setUsersDialogOpen(true); }}><GroupIcon fontSize="inherit" /></IconButton>
+                                                <IconButton size="small" color="primary" onClick={() => { setSelectedZone(z); setZoneEditOpen(true); }}><EditIcon fontSize="inherit" /></IconButton>
+                                                <IconButton size="small" onClick={() => { setSelectedZone(z); setUsersDialogOpen(true); }}><PeopleIcon fontSize="inherit" /></IconButton>
                                                 <IconButton size="small" color="error" onClick={() => handleDeleteZone(z.id)}><DeleteIcon fontSize="inherit" /></IconButton>
                                             </TableCell>
+
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -636,7 +641,8 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                 onSuccess={() => { setGatewayEditOpen(false); refetchGateways(); }}
             />
 
-            <ZoneCreateDialog open={zoneDialogOpen} onClose={() => setZoneDialogOpen(false)} onSuccess={() => { setZoneDialogOpen(false); refetchZones(); }} />
+            <ZoneCreateDialog open={zoneDialogOpen} onClose={() => setZoneDialogOpen(false)} onSuccess={() => { setZoneDialogOpen(false); refetchZones(); }} zones={zonesData?.accessZones || []} />
+            <ZoneEditDialog open={zoneEditOpen} onClose={() => setZoneEditOpen(false)} onSuccess={() => { setZoneEditOpen(false); refetchZones(); }} zones={zonesData?.accessZones || []} zone={selectedZone} />
             <DoorCreateDialog open={doorDialogOpen} onClose={() => setDoorDialogOpen(false)} onSuccess={() => { setDoorDialogOpen(false); refetchDoors(); }} gateways={gatewaysData?.gateways || []} zones={zonesData?.accessZones || []} />
             <CodeCreateDialog open={codeDialogOpen} onClose={() => setCodeDialogOpen(false)} onSuccess={() => { setCodeDialogOpen(false); refetchCodes(); }} />
             <ZoneUsersDialog open={usersDialogOpen} onClose={() => setUsersDialogOpen(false)} zone={selectedZone} usersData={usersData} />
@@ -781,21 +787,70 @@ const TerminalUpdateDialog: React.FC<{
     );
 };
 
-const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess: () => void}> = ({ open, onClose, onSuccess }) => {
+const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess: () => void, zones: any[]}> = ({ open, onClose, onSuccess, zones }) => {
     const [createZone] = useMutation(CREATE_ACCESS_ZONE);
-    const [formData, setFormData] = useState({ zoneId: '', name: '', level: 1, requiredHoursStart: '00:00', requiredHoursEnd: '23:59', antiPassbackEnabled: false, antiPassbackType: 'soft', antiPassbackTimeout: 5 });
+    const [formData, setFormData] = useState({ 
+        zoneId: '', 
+        name: '', 
+        level: 1, 
+        dependsOn: [] as string[],
+        requiredHoursStart: '00:00', 
+        requiredHoursEnd: '23:59', 
+        antiPassbackEnabled: false, 
+        antiPassbackType: 'soft', 
+        antiPassbackTimeout: 5 
+    });
+    const [loading, setLoading] = useState(false);
+
+    const handleCreate = async () => {
+        setLoading(true);
+        try {
+            await createZone({ variables: { input: formData } });
+            onSuccess();
+            setFormData({ zoneId: '', name: '', level: 1, dependsOn: [], requiredHoursStart: '00:00', requiredHoursEnd: '23:59', antiPassbackEnabled: false, antiPassbackType: 'soft', antiPassbackTimeout: 5 });
+        } catch (e: any) { alert(e.message); } finally { setLoading(false); }
+    };
+
     return (
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
             <DialogTitle>Нова Зона</DialogTitle>
             <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
                 <TextField label="ID" fullWidth value={formData.zoneId} onChange={(e) => setFormData({...formData, zoneId: e.target.value})} />
                 <TextField label="Име" fullWidth value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-                <Select value={formData.level} onChange={(e) => setFormData({...formData, level: e.target.value as number})}>
-                    <MenuItem value={1}>Ниво 1</MenuItem>
-                    <MenuItem value={2}>Ниво 2</MenuItem>
-                </Select>
+                <FormControl fullWidth>
+                    <InputLabel>Ниво</InputLabel>
+                    <Select value={formData.level} label="Ниво" onChange={(e) => setFormData({...formData, level: e.target.value as number})}>
+                        <MenuItem value={1}>Ниво 1</MenuItem>
+                        <MenuItem value={2}>Ниво 2</MenuItem>
+                        <MenuItem value={3}>Ниво 3</MenuItem>
+                    </Select>
+                </FormControl>
+
+                <FormControl fullWidth>
+                    <InputLabel>Зависи от</InputLabel>
+                    <Select
+                        multiple
+                        value={formData.dependsOn}
+                        label="Зависи от"
+                        onChange={(e) => setFormData({...formData, dependsOn: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value})}
+                        renderValue={(selected) => (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                {selected.map((value) => (
+                                    <Chip key={value} label={value} size="small" />
+                                ))}
+                            </Box>
+                        )}
+                    >
+                        {zones.filter(z => z.zoneId !== formData.zoneId).map((z: any) => (
+                            <MenuItem key={z.id} value={z.zoneId}>{z.name}</MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
             </DialogContent>
-            <DialogActions><Button onClick={onClose}>Отказ</Button><Button variant="contained" onClick={async () => { await createZone({ variables: { input: formData } }); onSuccess(); }}>Създай</Button></DialogActions>
+            <DialogActions>
+                <Button onClick={onClose}>Отказ</Button>
+                <Button variant="contained" onClick={handleCreate} disabled={loading}>{loading ? <CircularProgress size={24} /> : 'Създай'}</Button>
+            </DialogActions>
         </Dialog>
     );
 };
@@ -930,6 +985,109 @@ const EmergencyControl: React.FC<{currentMode: string, onAction: () => void}> = 
                 </Box>
             </CardContent>
         </Card>
+    );
+};
+
+const ZoneEditDialog: React.FC<{
+    open: boolean, 
+    onClose: () => void, 
+    onSuccess: () => void, 
+    zones: any[],
+    zone: any
+}> = ({ open, onClose, onSuccess, zones, zone }) => {
+    const [updateZone] = useMutation(UPDATE_ACCESS_ZONE);
+    const [formData, setFormData] = useState({ 
+        zoneId: '', 
+        name: '', 
+        level: 1, 
+        dependsOn: [] as string[],
+        requiredHoursStart: '00:00', 
+        requiredHoursEnd: '23:59', 
+        antiPassbackEnabled: false, 
+        antiPassbackType: 'soft', 
+        antiPassbackTimeout: 5,
+        description: ''
+    });
+    const [loading, setLoading] = useState(false);
+
+    React.useEffect(() => {
+        if (zone && open) {
+            setFormData({
+                zoneId: zone.zoneId || '',
+                name: zone.name || '',
+                level: zone.level || 1,
+                dependsOn: zone.dependsOn || [],
+                requiredHoursStart: zone.requiredHoursStart || '00:00',
+                requiredHoursEnd: zone.requiredHours_end || '23:59',
+                antiPassbackEnabled: zone.antiPassbackEnabled || false,
+                antiPassbackType: zone.antiPassbackType || 'soft',
+                antiPassbackTimeout: zone.antiPassbackTimeout || 5,
+                description: zone.description || ''
+            });
+        }
+    }, [zone, open]);
+
+    const handleSave = async () => {
+        setLoading(true);
+        try {
+            await updateZone({ 
+                variables: { 
+                    id: parseInt(zone.id),
+                    input: formData 
+                } 
+            });
+            onSuccess();
+        } catch (e: any) { alert(e.message); } finally { setLoading(false); }
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+            <DialogTitle>Редактиране на Зона</DialogTitle>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+                <TextField label="ID" fullWidth value={formData.zoneId} onChange={(e) => setFormData({...formData, zoneId: e.target.value})} />
+                <TextField label="Име" fullWidth value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                <FormControl fullWidth>
+                    <InputLabel>Ниво</InputLabel>
+                    <Select value={formData.level} label="Ниво" onChange={(e) => setFormData({...formData, level: e.target.value as number})}>
+                        <MenuItem value={1}>Ниво 1</MenuItem>
+                        <MenuItem value={2}>Ниво 2</MenuItem>
+                        <MenuItem value={3}>Ниво 3</MenuItem>
+                    </Select>
+                </FormControl>
+
+                <FormControl fullWidth>
+                    <InputLabel>Зависи от</InputLabel>
+                    <Select
+                        multiple
+                        value={formData.dependsOn}
+                        label="Зависи от"
+                        onChange={(e) => setFormData({...formData, dependsOn: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value})}
+                        renderValue={(selected) => (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                {selected.map((value) => (
+                                    <Chip key={value} label={value} size="small" />
+                                ))}
+                            </Box>
+                        )}
+                    >
+                        {zones.filter(z => z.zoneId !== formData.zoneId).map((z: any) => (
+                            <MenuItem key={z.id} value={z.zoneId}>{z.name}</MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+                
+                <Stack direction="row" spacing={2}>
+                    <TextField label="От" type="time" fullWidth value={formData.requiredHoursStart} onChange={(e) => setFormData({...formData, requiredHoursStart: e.target.value})} InputLabelProps={{ shrink: true }} />
+                    <TextField label="До" type="time" fullWidth value={formData.requiredHoursEnd} onChange={(e) => setFormData({...formData, requiredHoursEnd: e.target.value})} InputLabelProps={{ shrink: true }} />
+                </Stack>
+
+                <TextField label="Описание" fullWidth multiline rows={2} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose}>Отказ</Button>
+                <Button variant="contained" onClick={handleSave} disabled={loading}>{loading ? <CircularProgress size={24} /> : 'Запази'}</Button>
+            </DialogActions>
+        </Dialog>
     );
 };
 

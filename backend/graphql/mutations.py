@@ -4115,6 +4115,34 @@ class Mutation:
         return types.AccessZone.from_instance(new_zone)
 
     @strawberry.mutation
+    async def update_access_zone(self, id: int, input: inputs.AccessZoneInput, info: strawberry.Info) -> types.AccessZone:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+            
+        from backend.database.models import AccessZone
+        zone = await db.get(AccessZone, id)
+        if not zone:
+            raise Exception("Zone not found")
+            
+        # Update fields
+        zone.zone_id = input.zone_id
+        zone.name = input.name
+        zone.level = input.level
+        zone.depends_on = input.depends_on
+        zone.required_hours_start = input.required_hours_start
+        zone.required_hours_end = input.required_hours_end
+        zone.anti_passback_enabled = input.anti_passback_enabled
+        zone.anti_passback_type = input.anti_passback_type
+        zone.anti_passback_timeout = input.anti_passback_timeout
+        zone.description = input.description
+        
+        await db.commit()
+        await db.refresh(zone)
+        return types.AccessZone.from_instance(zone)
+
+    @strawberry.mutation
     async def delete_access_zone(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
         current_user = info.context["current_user"]

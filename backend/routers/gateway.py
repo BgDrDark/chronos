@@ -464,13 +464,32 @@ async def pull_gateway_config(gateway_id: int, db: AsyncSession = Depends(get_db
     zone_ids = list(set([d.zone_db_id for d in doors]))
     zones = []
     if zone_ids:
-        zones_res = await db.execute(select(AccessZone).where(AccessZone.id.in_(zone_ids)))
+        # Load zones with authorized users
+        from sqlalchemy.orm import selectinload
+        zones_res = await db.execute(
+            select(AccessZone)
+            .where(AccessZone.id.in_(zone_ids))
+            .options(selectinload(AccessZone.authorized_users))
+        )
         zones = zones_res.scalars().all()
     
     return {
         "status": "ok",
-        "zones": [{"id": z.zone_id, "name": z.name, "level": z.level, "depends_on": z.depends_on, "required_hours_start": z.required_hours_start, "required_hours_end": z.required_hours_end, "anti_passback_enabled": z.anti_passback_enabled, "anti_passback_type": z.anti_passback_type, "anti_passback_timeout": z.anti_passback_timeout} for z in zones],
-        "doors": [{"id": d.door_id, "name": d.name, "zone_db_id": d.zone_db_id, "device_id": d.device_id, "relay_number": d.relay_number, "terminal_id": d.terminal_id} for d in doors]
+        "zones": [
+            {
+                "id": z.zone_id, 
+                "name": z.name, 
+                "level": z.level, 
+                "depends_on": z.depends_on, 
+                "authorized_users": [u.id for u in z.authorized_users],
+                "required_hours_start": z.required_hours_start, 
+                "required_hours_end": z.required_hours_end, 
+                "anti_passback_enabled": z.anti_passback_enabled, 
+                "anti_passback_type": z.anti_passback_type, 
+                "anti_passback_timeout": z.anti_passback_timeout
+            } for z in zones
+        ],
+        "doors": [{"id": d.door_id, "name": d.name, "zone_id": d.zone.zone_id if d.zone else None, "device_id": d.device_id, "relay_number": d.relay_number, "terminal_id": d.terminal_id} for d in doors]
     }
 
 @router.post("/{gateway_id}/sync-push")

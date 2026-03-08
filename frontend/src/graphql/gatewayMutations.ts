@@ -10,6 +10,16 @@ export const CREATE_ACCESS_ZONE = gql`
   }
 `;
 
+export const UPDATE_ACCESS_ZONE = gql`
+  mutation UpdateAccessZone($id: Int!, $input: AccessZoneInput!) {
+    updateAccessZone(id: $id, input: $input) {
+      id
+      zoneId
+      name
+    }
+  }
+`;
+
 export const DELETE_ACCESS_ZONE = gql`
   mutation DeleteAccessZone($id: Int!) {
     deleteAccessZone(id: $id)
