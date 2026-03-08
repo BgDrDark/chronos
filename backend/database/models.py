@@ -254,6 +254,9 @@ class Terminal(Base):
     total_scans = Column(Integer, default=0)
     
     alias = Column(String(100), nullable=True)
+    
+    # Terminal mode: "clock" (Clock In/Out), "access" (Достъп), "both" (Комбиниран)
+    mode = Column(String(20), default="both")
 
 
 class Printer(Base):

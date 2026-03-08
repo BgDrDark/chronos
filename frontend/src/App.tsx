@@ -18,6 +18,7 @@ import ProfilePage from './pages/ProfilePage';
 import KioskPage from './pages/KioskPage';
 import KioskAdminPage from './pages/KioskAdminPage';
 import KioskTerminalPage from './pages/KioskTerminalPage';
+import UnifiedKiosk from './pages/UnifiedKiosk';
 import GatewayAdminPage from './pages/GatewayAdminPage';
 import MyCardPage from './pages/MyCardPage';
 import WarehousePage from './pages/WarehousePage';
@@ -53,18 +54,11 @@ function App() {
   const isCardMode = location.pathname === '/my-card';
   const isTerminalMode = location.pathname === '/kiosk/terminal';
 
-  if (isKioskMode) {
+  if (isKioskMode || isTerminalMode) {
     return (
       <Routes>
-        <Route path="/kiosk" element={<KioskPage />} />
-      </Routes>
-    );
-  }
-
-  if (isTerminalMode) {
-    return (
-      <Routes>
-        <Route path="/kiosk/terminal" element={<KioskTerminalPage />} />
+        <Route path="/kiosk" element={<UnifiedKiosk />} />
+        <Route path="/kiosk/terminal" element={<UnifiedKiosk />} />
       </Routes>
     );
   }

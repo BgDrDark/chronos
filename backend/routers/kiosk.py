@@ -342,7 +342,7 @@ async def validate_code(
     request: Request,
     validation: CodeValidationRequest,
     db: AsyncSession = Depends(get_db),
-    x_kiosk_secret: str = Header(..., alias="X-Kiosk-Secret")
+    x_kiosk_secret: str = Header(..., alias="X-KiosK-Secret")
 ):
     """Валидира код от клавиатурата (без да отваря врата)"""
     from backend.config import settings
@@ -351,3 +351,221 @@ async def validate_code(
     
     result = await validate_access_code(db, validation.code, validation.terminal_hardware_uuid)
     return result
+
+
+# === UNIFIED KIOSK TERMINAL ENDPOINTS ===
+
+class TerminalScanRequest(BaseModel):
+    qr_token: str
+    action: Optional[str] = "auto"  # auto, in, out, access
+    terminal_hardware_uuid: Optional[str] = None
+
+class TerminalSyncRequest(BaseModel):
+    offline_logs: list = []
+
+@router.get("/terminal/{hwid}/config")
+async def get_terminal_config(
+    hwid: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Връща конфигурацията на терминала (режим на работа)"""
+    from backend.database.models import Terminal
+    from sqlalchemy import select
+    
+    stmt = select(Terminal).where(Terminal.hardware_uuid == hwid)
+    result = await db.execute(stmt)
+    terminal = result.scalar_one_or_none()
+    
+    if not terminal:
+        # Ако терминалът не е регистриран, връщаме подразбираща конфигурация
+        return {
+            "mode": "both",  # clock, access, both
+            "registered": False,
+            "terminal_id": None,
+            "alias": None
+        }
+    
+    return {
+        "mode": terminal.mode or "both",
+        "registered": True,
+        "terminal_id": terminal.id,
+        "alias": terminal.alias,
+        "is_active": terminal.is_active
+    }
+
+
+@router.post("/terminal/{hwid}/scan")
+@require_module("kiosk")
+@limiter.limit("20/minute")
+async def unified_terminal_scan(
+    request: Request,
+    hwid: str,
+    scan: TerminalScanRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Обработва сканиране от обединения терминал (Clock In/Out + Access)"""
+    from backend.database.models import Terminal
+    from backend.auth.qr_utils import verify_dynamic_qr_token
+    from sqlalchemy import select
+    from backend import crud
+    from backend.config import settings
+    
+    # 1. Get terminal config
+    stmt = select(Terminal).where(Terminal.hardware_uuid == hwid)
+    result = await db.execute(stmt)
+    terminal = result.scalar_one_or_none()
+    
+    mode = terminal.mode if terminal else "both"
+    
+    # 2. Find user by QR token
+    user = None
+    if ":" in scan.qr_token:
+        try:
+            user_id_str, token = scan.qr_token.split(":")
+            user_id = int(user_id_str)
+            user = await crud.get_user_by_id(db, user_id)
+            if user and user.qr_secret:
+                if not verify_dynamic_qr_token(user.qr_secret, token):
+                    user = None
+        except:
+            user = None
+    
+    if not user:
+        user = await crud.get_user_by_qr_token(db, scan.qr_token)
+    
+    if not user:
+        return {"status": "error", "message": "Невалиден QR код", "success": False}
+    
+    if not user.is_active:
+        return {"status": "error", "message": "Акаунтът е деактивиран", "success": False}
+    
+    response = {
+        "status": "ok",
+        "user": user.first_name,
+        "success": True
+    }
+    
+    # 3. Handle Clock In/Out
+    if mode in ["clock", "both"]:
+        if scan.action in ["auto", "in", "out"]:
+            from backend.crud import get_active_time_log, create_time_log
+            
+            active_log = await get_active_time_log(db, user.id)
+            action = scan.action if scan.action != "auto" else ("out" if active_log else "in")
+            
+            if action == "in":
+                new_log = await create_time_log(db, user.id, "in")
+                response["clock_action"] = "in"
+                response["message"] = f"Добър ден, {user.first_name}!"
+            else:
+                # Close the active log
+                if active_log:
+                    active_log.time_out = datetime.datetime.now()
+                    await db.commit()
+                response["clock_action"] = "out"
+                response["message"] = f"Довиждане, {user.first_name}!"
+    
+    # 4. Handle Access (Door)
+    if mode in ["access", "both"]:
+        if scan.action == "access" or scan.action == "auto":
+            # Find doors associated with this terminal
+            from backend.database.models import AccessDoor
+            
+            stmt = select(AccessDoor).where(
+                AccessDoor.terminal_id == hwid,
+                AccessDoor.is_active == True
+            )
+            result = await db.execute(stmt)
+            doors = result.scalars().all()
+            
+            if doors:
+                door = doors[0]  # Use first door
+                
+                # Check access rights
+                from backend.routers.access import check_user_access_to_zone
+                has_access = await check_user_access_to_zone(db, user.id, door.zone_db_id)
+                
+                if has_access:
+                    # Trigger door (would need gateway for actual hardware)
+                    response["door_opened"] = True
+                    response["door_name"] = door.name
+                    response["access_granted"] = True
+                else:
+                    response["door_opened"] = False
+                    response["access_granted"] = False
+                    response["message"] = "Нямате достъп до тази зона"
+            else:
+                response["door_opened"] = False
+                response["access_granted"] = None
+                response["message"] = "Няма конфигурирана врата за този терминал"
+    
+    # 5. Update terminal last_seen
+    if terminal:
+        terminal.last_seen = datetime.datetime.now()
+        terminal.total_scans = (terminal.total_scans or 0) + 1
+        await db.commit()
+    
+    return response
+
+
+@router.post("/terminal/{hwid}/sync")
+@require_module("kiosk")
+async def sync_offline_data(
+    request: Request,
+    hwid: str,
+    sync_data: TerminalSyncRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Синхронизира офлайн данни от терминала"""
+    from backend.database.models import Terminal, AccessLog, TimeLog
+    from sqlalchemy import select
+    from datetime import datetime
+    
+    synced_count = 0
+    
+    for log_entry in sync_data.offline_logs:
+        try:
+            log_type = log_entry.get("type")
+            
+            if log_type == "clock":
+                # Create time log
+                time_log = TimeLog(
+                    user_id=log_entry.get("user_id"),
+                    date=datetime.now().date(),
+                    time_in=log_entry.get("timestamp"),
+                    time_out=None,
+                    company_id=1  # Would get from terminal config
+                )
+                db.add(time_log)
+                synced_count += 1
+                
+            elif log_type == "access":
+                # Create access log
+                access_log = AccessLog(
+                    timestamp=log_entry.get("timestamp"),
+                    user_id=log_entry.get("user_id"),
+                    zone_id=log_entry.get("zone_id"),
+                    door_id=log_entry.get("door_id"),
+                    result="granted" if log_entry.get("result") == "granted" else "denied",
+                    method="qr"
+                )
+                db.add(access_log)
+                synced_count += 1
+        
+        except Exception as e:
+            print(f"Error syncing log: {e}")
+    
+    await db.commit()
+    
+    # Update terminal last_seen
+    stmt = select(Terminal).where(Terminal.hardware_uuid == hwid)
+    result = await db.execute(stmt)
+    terminal = result.scalar_one_or_none()
+    if terminal:
+        terminal.last_seen = datetime.datetime.now()
+        await db.commit()
+    
+    return {
+        "status": "ok",
+        "synced": synced_count
+    }
