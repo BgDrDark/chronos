@@ -33,6 +33,22 @@ const ModuleManager: React.FC = () => {
   const [msg, setMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [modules, setModules] = useState<ModuleData[]>([]);
 
+  const getCsrfToken = (): string | null => {
+    const name = 'csrf_token=';
+    const decodedCookie = decodeURIComponent(document.cookie);
+    const ca = decodedCookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+      let c = ca[i];
+      while (c.charAt(0) === ' ') {
+        c = c.substring(1);
+      }
+      if (c.indexOf(name) === 0) {
+        return c.substring(name.length, c.length);
+      }
+    }
+    return null;
+  };
+
   useEffect(() => {
     if (data?.modules) {
       setModules(data.modules);
@@ -52,12 +68,15 @@ const ModuleManager: React.FC = () => {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:14240';
       const newStatus = !currentStatus;
       
+      const csrfToken = getCsrfToken();
+      
       await axios.patch(`${apiUrl}/system/modules/${code}`, 
         { is_enabled: newStatus },
         { 
           headers: { 
             'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken || ''
           } 
         }
       );
