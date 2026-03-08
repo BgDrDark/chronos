@@ -356,31 +356,102 @@ async def push_gateway_config(gateway_id: int, config: GatewayConfigPush, db: As
     gw = await db.get(Gateway, gateway_id)
     if not gw: raise HTTPException(status_code=404, detail="Gateway не е намерен")
     
+    logger.info(f"Syncing config for gateway {gateway_id}. Zones: {len(config.zones)}, Doors: {len(config.doors)}")
+    
     zones_synced = 0
-    for z in config.zones:
-        res = await db.execute(select(AccessZone).where(AccessZone.zone_id == z.get("zone_id")))
+    for z_data in config.zones:
+        zone_id = z_data.get("id") or z_data.get("zone_id")
+        if not zone_id: 
+            logger.warning(f"Zone skipped: no ID in {z_data}")
+            continue
+        
+        # Map gateway fields to backend fields
+        mapped_data = {
+            "zone_id": zone_id,
+            "name": z_data.get("name"),
+            "level": z_data.get("level", 1),
+            "depends_on": z_data.get("depends_on", []),
+            "description": z_data.get("description"),
+            "is_active": z_data.get("active", True)
+        }
+        
+        # Flatten nested structures
+        hours = z_data.get("required_hours", {})
+        if hours:
+            mapped_data["required_hours_start"] = hours.get("start", "00:00")
+            mapped_data["required_hours_end"] = hours.get("end", "23:59")
+            
+        ap = z_data.get("anti_passback", {})
+        if ap:
+            mapped_data["anti_passback_enabled"] = ap.get("enabled", False)
+            mapped_data["anti_passback_type"] = ap.get("type", "soft")
+            mapped_data["anti_passback_timeout"] = ap.get("timeout_minutes", 5)
+
+        res = await db.execute(select(AccessZone).where(AccessZone.zone_id == zone_id))
         existing = res.scalar_one_or_none()
+        
         if existing:
-            for key, value in z.items():
-                if hasattr(existing, key):
-                    setattr(existing, key, value)
+            for key, value in mapped_data.items():
+                setattr(existing, key, value)
         else:
-            db.add(AccessZone(**z, company_id=gw.company_id or 1))
+            db.add(AccessZone(**mapped_data, company_id=gw.company_id or 1))
         zones_synced += 1
     
+    # Flush to ensure new zones get IDs for the door sync below
+    await db.flush()
+    
+    # Ensure gateway has a company_id if missing
+    if gw.company_id is None:
+        gw.company_id = 1
+        db.add(gw)
+        await db.flush()
+
     doors_synced = 0
-    for d in config.doors:
-        res = await db.execute(select(AccessDoor).where(AccessDoor.door_id == d.get("door_id")))
+    # Map device status for quick lookup
+    device_status = {d.get("device_id"): (d.get("is_online") or d.get("online", False)) for d in config.devices}
+    
+    for d_data in config.doors:
+        door_id = d_data.get("id") or d_data.get("door_id")
+        if not door_id: 
+            logger.warning(f"Door skipped: no ID in {d_data}")
+            continue
+        
+        # Find zone internal ID
+        z_id = d_data.get("zone_id")
+        z_res = await db.execute(select(AccessZone.id).where(AccessZone.zone_id == z_id))
+        zone_db_id = z_res.scalar_one_or_none()
+        
+        if not zone_db_id: 
+            logger.warning(f"Door {door_id} skipped: zone_id {z_id} not found in backend")
+            continue
+
+        dev_id = d_data.get("device_id")
+        mapped_door = {
+            "door_id": door_id,
+            "name": d_data.get("name"),
+            "zone_db_id": zone_db_id,
+            "gateway_id": gateway_id,
+            "device_id": dev_id,
+            "relay_number": d_data.get("relay_number", 1),
+            "terminal_id": d_data.get("terminal_id"),
+            "terminal_mode": d_data.get("terminal_mode", "access"),
+            "description": d_data.get("description"),
+            "is_active": d_data.get("active", True),
+            "is_online": device_status.get(dev_id, False),
+            "last_check": datetime.now()
+        }
+
+        res = await db.execute(select(AccessDoor).where(AccessDoor.door_id == door_id))
         existing = res.scalar_one_or_none()
         if existing:
-            for key, value in d.items():
-                if hasattr(existing, key):
-                    setattr(existing, key, value)
+            for key, value in mapped_door.items():
+                setattr(existing, key, value)
         else:
-            db.add(AccessDoor(**d, gateway_id=gateway_id))
+            db.add(AccessDoor(**mapped_door))
         doors_synced += 1
     
     await db.commit()
+    logger.info(f"Sync complete. Synced {zones_synced} zones and {doors_synced} doors.")
     return {"status": "synced", "zones_synced": zones_synced, "doors_synced": doors_synced}
 
 @router.post("/{gateway_id}/pull-config")
@@ -401,6 +472,40 @@ async def pull_gateway_config(gateway_id: int, db: AsyncSession = Depends(get_db
         "zones": [{"id": z.zone_id, "name": z.name, "level": z.level, "depends_on": z.depends_on, "required_hours_start": z.required_hours_start, "required_hours_end": z.required_hours_end, "anti_passback_enabled": z.anti_passback_enabled, "anti_passback_type": z.anti_passback_type, "anti_passback_timeout": z.anti_passback_timeout} for z in zones],
         "doors": [{"id": d.door_id, "name": d.name, "zone_db_id": d.zone_db_id, "device_id": d.device_id, "relay_number": d.relay_number, "terminal_id": d.terminal_id} for d in doors]
     }
+
+@router.post("/{gateway_id}/sync-push")
+@require_module("kiosk")
+async def trigger_gateway_push(gateway_id: int, db: AsyncSession = Depends(get_db)):
+    import aiohttp
+    gw = await db.get(Gateway, gateway_id)
+    if not gw or not gw.ip_address: raise HTTPException(status_code=400, detail="Gateway офлайн или без IP")
+    
+    url = f"http://{gw.ip_address}:{gw.web_port}/sync/push"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, timeout=10) as r:
+                if r.status == 200: return await r.json()
+                return JSONResponse(status_code=r.status, content=await r.json())
+    except Exception as e:
+        logger.error(f"Sync push error: {e}")
+        raise HTTPException(status_code=503, detail="Няма връзка с Gateway")
+
+@router.post("/{gateway_id}/sync-pull")
+@require_module("kiosk")
+async def trigger_gateway_pull(gateway_id: int, db: AsyncSession = Depends(get_db)):
+    import aiohttp
+    gw = await db.get(Gateway, gateway_id)
+    if not gw or not gw.ip_address: raise HTTPException(status_code=400, detail="Gateway офлайн или без IP")
+    
+    url = f"http://{gw.ip_address}:{gw.web_port}/sync/pull"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, timeout=10) as r:
+                if r.status == 200: return await r.json()
+                return JSONResponse(status_code=r.status, content=await r.json())
+    except Exception as e:
+        logger.error(f"Sync pull error: {e}")
+        raise HTTPException(status_code=503, detail="Няма връзка с Gateway")
 
 @router.post("/{gateway_id}/access/sync-logs")
 async def sync_logs(gateway_id: int, logs: List[AccessLogSync], db: AsyncSession = Depends(get_db)):

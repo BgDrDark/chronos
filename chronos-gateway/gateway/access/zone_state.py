@@ -46,21 +46,37 @@ class Zone:
     
     @classmethod
     def from_dict(cls, data: dict) -> 'Zone':
+        # Support both nested (API) and flat (SQLite) formats
         hours = data.get("required_hours", {})
         ap = data.get("anti_passback", {})
+        
+        req_start = hours.get("start") or data.get("required_hours_start", "00:00")
+        req_end = hours.get("end") or data.get("required_hours_end", "23:59")
+        
+        # Handle anti_passback fields
+        if "enabled" in ap:
+            ap_enabled = ap["enabled"]
+        elif "anti_passback_enabled" in data:
+            ap_enabled = bool(data["anti_passback_enabled"])
+        else:
+            ap_enabled = False
+            
+        ap_type = ap.get("type") or data.get("anti_passback_type", "soft")
+        ap_timeout = ap.get("timeout_minutes") or data.get("anti_passback_timeout", 5)
+
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),
             level=data.get("level", 1),
-            depends_on=data.get("depends_on", []),
-            authorized_users=data.get("authorized_users", []),
-            required_hours_start=hours.get("start", "00:00"),
-            required_hours_end=hours.get("end", "23:59"),
-            anti_passback_enabled=ap.get("enabled", False),
-            anti_passback_type=ap.get("type", "soft"),
-            anti_passback_timeout=ap.get("timeout_minutes", 5),
+            depends_on=data.get("depends_on") if isinstance(data.get("depends_on"), list) else [],
+            authorized_users=data.get("authorized_users") if isinstance(data.get("authorized_users"), list) else [],
+            required_hours_start=req_start,
+            required_hours_end=req_end,
+            anti_passback_enabled=ap_enabled,
+            anti_passback_type=ap_type,
+            anti_passback_timeout=ap_timeout,
             description=data.get("description", ""),
-            active=data.get("active", True)
+            active=bool(data.get("active", True))
         )
 
 

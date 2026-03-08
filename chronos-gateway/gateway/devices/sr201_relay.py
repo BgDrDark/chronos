@@ -201,6 +201,7 @@ class SR201Relay:
         """Връща конфигурацията като речник"""
         return {
             "device_id": self.device_id,
+            "id": self.device_id, # Compatibility
             "name": self.name,
             "ip": self.ip,
             "port": self.port,
@@ -211,6 +212,7 @@ class SR201Relay:
             "relay_1_manual": self.relay_1_manual,
             "relay_2_manual": self.relay_2_manual,
             "is_online": self._is_online,
+            "online": self._is_online,
             "last_check": self._last_status_check.isoformat() if self._last_status_check else None
         }
     

@@ -44,6 +44,8 @@ MODULE_MAPPING = {
     "payrollSummary": "salaries",
     
     # Kiosk
+    "terminals": "kiosk",
+    "gateways": "kiosk",
     "kioskDevices": "kiosk",
     "createKioskDevice": "kiosk",
     

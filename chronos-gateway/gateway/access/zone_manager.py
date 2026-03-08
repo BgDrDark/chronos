@@ -33,15 +33,12 @@ class ZoneManager:
             # Load zones
             zones = config_db.get_all_zones()
             for z in zones:
-                z['active'] = bool(z.get('active', 1))
-                z['anti_passback_enabled'] = bool(z.get('anti_passback_enabled', 0))
                 zone = Zone.from_dict(z)
                 self.zones[zone.id] = zone
             
             # Load doors
             doors = config_db.get_all_doors()
             for d in doors:
-                d['active'] = bool(d.get('active', 1))
                 door = Door.from_dict(d)
                 self.doors[door.id] = door
             

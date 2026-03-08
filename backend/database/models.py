@@ -1838,6 +1838,9 @@ class AccessDoor(Base):
     description = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
     
+    is_online = Column(Boolean, default=False)
+    last_check = Column(DateTime, nullable=True)
+    
     zone = relationship("AccessZone", back_populates="doors")
     gateway = relationship("Gateway")
 

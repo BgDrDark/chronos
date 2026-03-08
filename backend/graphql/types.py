@@ -2410,6 +2410,7 @@ class Gateway:
     is_active: bool
     last_heartbeat: Optional[datetime.datetime]
     registered_at: datetime.datetime
+    company_id: Optional[int]
 
     @classmethod
     def from_instance(cls, instance: models.Gateway) -> "Gateway":
@@ -2424,7 +2425,8 @@ class Gateway:
             web_port=instance.web_port or 8888,
             is_active=instance.is_active,
             last_heartbeat=instance.last_heartbeat,
-            registered_at=instance.registered_at
+            registered_at=instance.registered_at,
+            company_id=instance.company_id
         )
 
 
@@ -2441,6 +2443,7 @@ class Terminal:
     last_seen: Optional[datetime.datetime]
     total_scans: int
     alias: Optional[str]
+    mode: str
 
     @classmethod
     def from_instance(cls, instance: models.Terminal) -> "Terminal":
@@ -2455,7 +2458,8 @@ class Terminal:
             is_active=instance.is_active,
             last_seen=instance.last_seen,
             total_scans=instance.total_scans or 0,
-            alias=instance.alias
+            alias=instance.alias,
+            mode=instance.mode or "both"
         )
 
 
@@ -2560,6 +2564,8 @@ class AccessDoor:
     terminal_mode: Optional[str] = "access"
     description: Optional[str]
     is_active: bool
+    is_online: bool
+    last_check: Optional[datetime.datetime]
 
     @strawberry.field
     async def zone(self, info: strawberry.Info) -> Optional[AccessZone]:
@@ -2587,6 +2593,8 @@ class AccessDoor:
             terminal_mode=instance.terminal_mode or "access",
             description=instance.description,
             is_active=instance.is_active,
+            is_online=instance.is_online or False,
+            last_check=instance.last_check,
         )
 
 @strawberry.type

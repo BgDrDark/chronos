@@ -337,7 +337,10 @@
                 <div class="p-3 border rounded">
                     <div class="flex justify-between items-start mb-2">
                         <div>
-                            <div class="font-bold">${d.name}</div>
+                            <div class="flex items-center gap-2">
+                                <span class="status-dot ${d.is_online ? 'status-online' : 'status-offline'}"></span>
+                                <div class="font-bold">${d.name}</div>
+                            </div>
                             <div class="text-xs text-gray-500">${d.ip}:${d.port} | ID: ${d.device_id}</div>
                         </div>
                         <div class="flex gap-2">
@@ -450,7 +453,13 @@
         async function testHardware(id) {
             const r = await fetch(`/access/hardware/${id}/test`, {method: 'POST'});
             const res = await r.json();
-            alert(res.message || (res.success ? 'Успешна връзка!' : 'Грешка при връзка'));
+            if (res.success) {
+                alert('Успешна връзка!');
+                loadHardware(); // Refresh list to show green dot
+            } else {
+                alert('Грешка при връзка: ' + (res.message || 'Unknown error'));
+                loadHardware();
+            }
         }
 
         async function loadZones() {

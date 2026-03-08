@@ -165,6 +165,7 @@ app.add_middleware(
         re.compile(r"^/graphql.*"),    # Exempt GraphQL for now
         re.compile(r"^/gateways/.*"),  # Exempt Gateway endpoints
         re.compile(r"^/kiosk/scan"),   # Exempt Kiosk scan
+        re.compile(r"^/kiosk/terminal/.*"), # Exempt unified terminal endpoints
     ],
     safe_methods={"GET", "HEAD", "OPTIONS", "TRACE"},
 )

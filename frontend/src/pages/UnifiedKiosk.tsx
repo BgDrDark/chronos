@@ -3,14 +3,21 @@ import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { 
     Box, Typography, Paper, Button, Container, Dialog, 
     DialogTitle, DialogContent, DialogActions, TextField, Alert, Avatar, 
-    CircularProgress, Card, CardContent, Grid
+    CircularProgress, Divider, Stack, IconButton, Chip
 } from '@mui/material';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ErrorIcon from '@mui/icons-material/Error';
-import LockIcon from '@mui/icons-material/Lock';
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
+import {
+    AccessTime as AccessTimeIcon,
+    CheckCircle as CheckCircleIcon,
+    Error as ErrorIcon,
+    Lock as LockIcon,
+    QrCodeScanner as QrCodeScannerIcon,
+    Keyboard as KeyboardIcon,
+    Sync as SyncIcon,
+    Close as CloseIcon
+} from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { getApiUrl } from '../utils/api';
+import CodeKeyboard from '../components/CodeKeyboard';
 
 interface TerminalConfig {
     mode: 'clock' | 'access' | 'both';
@@ -35,14 +42,16 @@ const UnifiedKiosk: React.FC = () => {
     const [config, setConfig] = useState<TerminalConfig | null>(null);
     const [loading, setLoading] = useState(true);
     const [scanResult, setScanResult] = useState<{ 
-        status: 'success' | 'error', 
+        status: 'success' | 'warning' | 'error', 
         message: string, 
         user?: string,
         clock_action?: string,
         door_opened?: boolean,
-        door_name?: string
+        door_name?: string,
+        profile_picture?: string
     } | null>(null);
     const [isScanning, setIsScanning] = useState(true);
+    const [entryMode, setEntryMode] = useState<'qr' | 'keyboard'>('qr');
     const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
     const [offlineQueue, setOfflineQueue] = useState<OfflineLog[]>([]);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -59,6 +68,16 @@ const UnifiedKiosk: React.FC = () => {
     const scannerRef = useRef<Html5QrcodeScanner | null>(null);
     const hwidRef = useRef<string>('');
 
+    // TTS Function
+    const speak = (text: string) => {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const msg = new SpeechSynthesisUtterance(text);
+            msg.lang = 'en-US';
+            window.speechSynthesis.speak(msg);
+        }
+    };
+
     // Get or create hardware UUID
     const getOrCreateHWID = (): string => {
         let id = localStorage.getItem('terminal_hardware_uuid');
@@ -70,38 +89,9 @@ const UnifiedKiosk: React.FC = () => {
         return id;
     };
 
-    // Load offline queue from localStorage
-    const loadOfflineQueue = () => {
-        const saved = localStorage.getItem('offline_queue');
-        if (saved) {
-            try {
-                setOfflineQueue(JSON.parse(saved));
-            } catch (e) {
-                console.error('Failed to parse offline queue', e);
-            }
-        }
-    };
-
-    // Save offline queue to localStorage
-    const saveOfflineQueue = (queue: OfflineLog[]) => {
-        localStorage.setItem('offline_queue', JSON.stringify(queue));
-        setOfflineQueue(queue);
-    };
-
-    // Add to offline queue
-    const addToOfflineQueue = (log: Omit<OfflineLog, 'id'>) => {
-        const newLog: OfflineLog = {
-            ...log,
-            id: Date.now().toString() + Math.random().toString(36).substring(7)
-        };
-        const newQueue = [...offlineQueue, newLog];
-        saveOfflineQueue(newQueue);
-    };
-
-    // Sync offline data with backend
+    // Sync offline data
     const syncOfflineData = async () => {
         if (offlineQueue.length === 0) return;
-        
         setSyncing(true);
         try {
             const hwid = getOrCreateHWID();
@@ -110,9 +100,10 @@ const UnifiedKiosk: React.FC = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ offline_logs: offlineQueue })
             });
-            
             if (response.ok) {
-                saveOfflineQueue([]); // Clear queue after successful sync
+                const newQueue: OfflineLog[] = [];
+                localStorage.setItem('offline_queue', JSON.stringify(newQueue));
+                setOfflineQueue(newQueue);
             }
         } catch (err) {
             console.error('Sync failed:', err);
@@ -121,151 +112,111 @@ const UnifiedKiosk: React.FC = () => {
         }
     };
 
-    // Check online status
-    useEffect(() => {
-        const handleOnline = () => {
-            setIsOnline(true);
-            // Try to sync when back online
-            if (offlineQueue.length > 0) {
-                syncOfflineData();
-            }
-        };
-        
-        const handleOffline = () => {
-            setIsOnline(false);
-        };
-
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-
-        return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-        };
-    }, [offlineQueue]);
-
-    // Initialize terminal
+    // Init and Config
     useEffect(() => {
         const initTerminal = async () => {
             const hwid = getOrCreateHWID();
-            loadOfflineQueue();
             
-            // Request fullscreen
-            if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen().catch(() => {});
-            }
+            // Load queue
+            const saved = localStorage.getItem('offline_queue');
+            if (saved) setOfflineQueue(JSON.parse(saved));
 
-            // Prevent screen sleep
-            let wakeLock: any = null;
-            const requestWakeLock = async () => {
-                try {
-                    if ('wakeLock' in navigator) {
-                        wakeLock = await (navigator as any).wakeLock.request('screen');
-                    }
-                } catch (err) {
-                    console.log('Wake Lock not available');
-                }
-            };
-            requestWakeLock();
+            // Request Fullscreen
+            try { document.documentElement.requestFullscreen(); } catch(e){}
 
-            // Fetch config from backend
+            // Fetch Config
             try {
                 const response = await fetch(getApiUrl(`kiosk/terminal/${hwid}/config`));
                 const data = await response.json();
                 setConfig(data);
             } catch (err) {
-                console.error('Failed to fetch config:', err);
-                // Use default config if offline
                 setConfig({ mode: 'both', registered: false, terminal_id: null, alias: null });
             }
 
-            // Fetch background image
+            // Fetch Background
             try {
                 const bgResponse = await fetch(getApiUrl('kiosk/config'));
                 const bgData = await bgResponse.json();
                 if (bgData.background_image) {
                     setBackgroundImage(getApiUrl(`uploads/${bgData.background_image}`));
                 }
-            } catch (e) {
-                console.error("Failed to fetch kiosk config", e);
-            }
+            } catch (e) {}
 
             setLoading(false);
-
-            return () => {
-                if (wakeLock) {
-                    wakeLock.release();
-                }
-            };
         };
-
         initTerminal();
     }, []);
 
-    // Play sound
+    // Scanner Management
+    useEffect(() => {
+        if (entryMode === 'qr' && !loading && !scanResult) {
+            const scanner = new Html5QrcodeScanner(
+                "qr-reader",
+                { fps: 10, qrbox: { width: 280, height: 280 }, formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE] },
+                false
+            );
+            scanner.render(onScanSuccess, () => {});
+            scannerRef.current = scanner;
+            return () => { scanner.clear().catch(() => {}); };
+        }
+    }, [entryMode, loading, !!scanResult]);
+
     const playSound = (type: 'success' | 'error') => {
         const audio = new Audio(type === 'success' ? '/success.mp3' : '/error.mp3');
         audio.play().catch(() => {});
     };
 
-    // Handle QR scan success
-    const onScanSuccess = async (decodedText: string) => {
-        if (!isScanning || !config) return;
-        
-        if (scannerRef.current) {
-            scannerRef.current.pause();
-        }
+    const handleRequest = async (payload: { qr_token?: string, code?: string }) => {
+        if (!isScanning) return;
         setIsScanning(false);
+        if (scannerRef.current) scannerRef.current.pause();
 
         const hwid = getOrCreateHWID();
 
         try {
-            let response;
-            
             if (isOnline) {
-                // Direct API call
-                response = await fetch(getApiUrl(`kiosk/terminal/${hwid}/scan`), {
+                const response = await fetch(getApiUrl(`kiosk/terminal/${hwid}/scan`), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        qr_token: decodedText,
-                        action: 'auto',
-                        terminal_hardware_uuid: hwid
-                    })
+                    body: JSON.stringify({ ...payload, terminal_hardware_uuid: hwid })
                 });
-                
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
                     setScanResult({
-                        status: 'success',
-                        message: data.message || 'Успешно!',
+                        status: data.door_opened === false && data.access_granted === false ? 'warning' : 'success',
+                        message: data.message,
                         user: data.user,
                         clock_action: data.clock_action,
                         door_opened: data.door_opened,
-                        door_name: data.door_name
+                        door_name: data.door_name,
+                        profile_picture: data.profile_picture
                     });
+                    
+                    // Restore English TTS logic
+                    let ttsMsg = "Success";
+                    if (data.clock_action === "in") {
+                        ttsMsg = "Thank you, have a nice day";
+                    } else if (data.clock_action === "out") {
+                        ttsMsg = "Thank you, goodbye";
+                    } else if (data.access_granted) {
+                        ttsMsg = "Access granted";
+                    }
+                    speak(ttsMsg);
                     playSound('success');
                 } else {
-                    setScanResult({
-                        status: 'error',
-                        message: data.message || 'Грешка'
-                    });
+                    const msg = data.message || data.detail || 'Error';
+                    setScanResult({ status: 'error', message: msg });
+                    speak("Access denied");
                     playSound('error');
                 }
+
             } else {
-                // Offline mode - add to queue
-                addToOfflineQueue({
-                    type: 'clock',
-                    timestamp: new Date().toISOString(),
-                    action: 'auto'
-                });
-                
-                setScanResult({
-                    status: 'success',
-                    message: 'Записано офлайн. Ще бъде синхронизирано по-късно.',
-                    clock_action: 'in'
-                });
+                // Offline fallback
+                const queue = [...offlineQueue, { id: Date.now().toString(), type: 'clock', timestamp: new Date().toISOString(), action: 'auto' }];
+                localStorage.setItem('offline_queue', JSON.stringify(queue));
+                setOfflineQueue(queue as OfflineLog[]);
+                setScanResult({ status: 'success', message: 'Записано офлайн (БЕЗ ДОСТЪП)' });
                 playSound('success');
             }
         } catch (e) {
@@ -273,299 +224,158 @@ const UnifiedKiosk: React.FC = () => {
             playSound('error');
         }
 
-        // Reset scanner after 4 seconds
         setTimeout(() => {
             setScanResult(null);
             setIsScanning(true);
-            if (scannerRef.current) {
-                scannerRef.current.resume();
-            }
+            if (scannerRef.current) scannerRef.current.resume();
         }, 4000);
     };
 
-    const onScanFailure = () => {
-        // Ignored
-    };
-
-    // Handle exit attempt
-    const handleExitAttempt = () => {
-        setExitDialogOpen(true);
-    };
+    const onScanSuccess = (text: string) => handleRequest({ qr_token: text });
 
     const handleExitVerify = async () => {
         setIsVerifying(true);
+        setExitError(null);
         try {
             const response = await fetch(getApiUrl('auth/token'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `username=${encodeURIComponent(adminEmail)}&password=${encodeURIComponent(adminPassword)}`
             });
-            
-            if (response.ok) {
-                window.location.href = '/';
-            } else {
-                setExitError('Невалиден имейл или парола');
-            }
-        } catch (e) {
-            setExitError('Грешка при свързване');
-        } finally {
-            setIsVerifying(false);
-        }
+            if (response.ok) navigate('/');
+            else setExitError('Невалиден имейл или парола');
+        } catch (e) { setExitError('Грешка при свързване'); }
+        finally { setIsVerifying(false); }
     };
 
-    // Handle manual code entry
-    const handleManualCodeEntry = async (code: string) => {
-        if (!code || !config) return;
-        
-        const hwid = getOrCreateHWID();
-        
-        try {
-            if (isOnline) {
-                const response = await fetch(getApiUrl(`kiosk/terminal/${hwid}/scan`), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        qr_token: code,
-                        action: 'auto',
-                        terminal_hardware_uuid: hwid
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok && data.success) {
-                    setScanResult({
-                        status: 'success',
-                        message: data.message || 'Успешно!',
-                        user: data.user,
-                        clock_action: data.clock_action
-                    });
-                    playSound('success');
-                } else {
-                    setScanResult({
-                        status: 'error',
-                        message: data.message || 'Грешка'
-                    });
-                    playSound('error');
-                }
-            } else {
-                addToOfflineQueue({
-                    type: 'clock',
-                    timestamp: new Date().toISOString(),
-                    action: 'auto'
-                });
-                setScanResult({
-                    status: 'success',
-                    message: 'Записано офлайн'
-                });
-                playSound('success');
-            }
-        } catch (e) {
-            setScanResult({ status: 'error', message: 'Мрежова грешка' });
-            playSound('error');
-        }
-        
-        setTimeout(() => {
-            setScanResult(null);
-        }, 4000);
-    };
+    if (loading) return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: '#1a237e', color: 'white', flexDirection: 'column', gap: 2 }}>
+            <CircularProgress color="inherit" />
+            <Typography variant="h6">Инициализиране на терминал...</Typography>
+        </Box>
+    );
 
-    if (loading) {
-        return (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', gap: 2 }}>
-                <CircularProgress size={48} />
-                <Typography>Зареждане на терминала...</Typography>
-            </Box>
-        );
-    }
+    const defaultBg = 'linear-gradient(135deg, #1a237e 0%, #0d47a1 100%)';
 
     return (
         <Box sx={{ 
             minHeight: '100vh', 
-            bgcolor: backgroundImage ? `url(${backgroundImage})` : '#f5f5f5',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            display: 'flex',
-            flexDirection: 'column'
+            background: backgroundImage ? `url(${backgroundImage})` : defaultBg,
+            backgroundSize: 'cover', backgroundPosition: 'center',
+            display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden'
         }}>
-            {/* Status bar */}
-            <Box sx={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                p: 1,
-                bgcolor: isOnline ? 'success.main' : 'warning.main',
-                color: 'white'
-            }}>
-                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                    {config?.alias || 'Терминал'}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {!isOnline && (
-                        <Typography variant="body2">⚠️ Офлайн</Typography>
-                    )}
+            <Box sx={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', bgcolor: 'rgba(0,0,0,0.4)', zIndex: 0 }} />
+
+            {/* Top Bar */}
+            <Box sx={{ zIndex: 1, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(5px)' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}><LockIcon /></Avatar>
+                    <Box>
+                        <Typography variant="subtitle1" sx={{ color: 'white', fontWeight: 'bold', lineHeight: 1 }}>{config?.alias || 'Chronos Terminal'}</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>{isOnline ? '● Онлайн' : '○ Офлайн'}</Typography>
+                    </Box>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
                     {offlineQueue.length > 0 && (
-                        <Typography variant="body2">📥 {offlineQueueQueue.length} чака</Typography>
-                    )}
-                    {isOnline && offlineQueue.length > 0 && (
-                        <Button size="small" color="inherit" onClick={syncOfflineData} disabled={syncing}>
-                            {syncing ? 'Синхр...' : 'Синхр'}
+                        <Button startIcon={<SyncIcon />} variant="contained" color="warning" size="small" onClick={syncOfflineData} disabled={syncing}>
+                            {syncing ? 'Синхр...' : `${offlineQueue.length} в опашка`}
                         </Button>
                     )}
-                    <Button size="small" color="inherit" onClick={handleExitAttempt}>✕</Button>
+                    <IconButton onClick={() => setExitDialogOpen(true)} sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.1)' }}><CloseIcon /></IconButton>
                 </Box>
             </Box>
 
-            {/* Main content */}
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 3 }}>
-                {/* Mode indicator */}
-                <Box sx={{ mb: 3, display: 'flex', gap: 1 }}>
-                    {config?.mode === 'clock' && (
-                        <Chip icon={<AccessTimeIcon />} label="Clock In/Out" color="primary" />
-                    )}
-                    {config?.mode === 'access' && (
-                        <Chip icon={<LockIcon />} label="Достъп" color="secondary" />
-                    )}
-                    {config?.mode === 'both' && (
-                        <>
-                            <Chip icon={<AccessTimeIcon />} label="Clock In/Out" color="primary" />
-                            <Chip icon={<LockIcon />} label="Достъп" color="secondary" />
-                        </>
-                    )}
-                </Box>
-
-                {/* Scan Result */}
-                {scanResult ? (
+            {/* Main Center Area */}
+            <Box sx={{ zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 3 }}>
+                
+                {/* Result Overlay */}
+                {scanResult && (
                     <Paper sx={{ 
-                        p: 4, 
-                        textAlign: 'center',
-                        bgcolor: scanResult.status === 'success' ? 'success.light' : 'error.light',
-                        minWidth: 300
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                        bgcolor: scanResult.status === 'success' ? 'rgba(27, 94, 32, 0.95)' : 
+                                 scanResult.status === 'warning' ? 'rgba(255, 145, 0, 0.95)' : 'rgba(183, 28, 28, 0.95)',
+                        backdropFilter: 'blur(20px)', color: 'white', p: 4, textAlign: 'center',
+                        animation: 'fadeIn 0.3s ease-out', '@keyframes fadeIn': { from: { opacity: 0 }, to: { opacity: 1 } }
                     }}>
-                        {scanResult.status === 'success' ? (
-                            <CheckCircleIcon sx={{ fontSize: 80, color: 'success.dark', mb: 2 }} />
-                        ) : (
-                            <ErrorIcon sx={{ fontSize: 80, color: 'error.dark', mb: 2 }} />
-                        )}
-                        <Typography variant="h5" sx={{ mb: 1 }}>
-                            {scanResult.message}
-                        </Typography>
-                        {scanResult.user && (
-                            <Typography variant="h6">{scanResult.user}</Typography>
-                        )}
+                        <Avatar 
+                            src={scanResult.profile_picture ? (scanResult.profile_picture.startsWith('http') ? scanResult.profile_picture : getApiUrl(scanResult.profile_picture.substring(1))) : undefined} 
+                            sx={{ width: 280, height: 280, mb: 4, border: '10px solid white', boxShadow: 20 }}
+                        >
+                            {scanResult.user?.charAt(0)}
+                        </Avatar>
+                        <Typography variant="h1" sx={{ fontWeight: 900, mb: 1, textShadow: '0 4px 10px rgba(0,0,0,0.3)' }}>{scanResult.message}</Typography>
+                        <Typography variant="h3" sx={{ opacity: 0.9, mb: 4 }}>{scanResult.user}</Typography>
                         {scanResult.door_opened && (
-                            <Typography>🚪 {scanResult.door_name}</Typography>
+                            <Box sx={{ p: 2, px: 4, border: '4px dashed white', borderRadius: 4, mb: 4 }}>
+                                <Typography variant="h4" fontWeight="bold">🚪 {scanResult.door_name} (ОТВОРЕНО)</Typography>
+                            </Box>
                         )}
+                        {scanResult.status === 'success' ? <CheckCircleIcon sx={{ fontSize: 120, color: '#a5d6a7' }} /> : <ErrorIcon sx={{ fontSize: 120, color: '#ffcc80' }} />}
                     </Paper>
-                ) : (
-                    /* QR Scanner */
-                    <Paper sx={{ p: 3, maxWidth: 500, width: '100%' }}>
-                        <Typography variant="h6" align="center" sx={{ mb: 2 }}>
-                            {config?.mode === 'clock' ? 'Сканирайте QR кода си' : 
-                             config?.mode === 'access' ? 'Сканирайте за достъп' :
-                             'Сканирайте QR кода'}
-                        </Typography>
-                        
-                        <Box id="qr-scanner" sx={{ width: '100%' }}>
-                            <Html5QrcodeScanner
-                                fps={10}
-                                qrbox={250}
-                                supportedFormats={[Html5QrcodeSupportedFormats.QR_CODE]}
-                                onSuccess={onScanSuccess}
-                                onFailure={onScanFailure}
-                                config={{ fps: 10, qrbox: { width: 250, height: 250 } }}
-                            />
+                )}
+
+                {/* Entry Interface */}
+                {!scanResult && (
+                    <Container maxWidth="sm">
+                        <Stack direction="row" spacing={2} justifyContent="center" sx={{ mb: 4 }}>
+                            <Button 
+                                variant={entryMode === 'qr' ? 'contained' : 'outlined'} 
+                                onClick={() => setEntryMode('qr')}
+                                startIcon={<QrCodeScannerIcon />}
+                                sx={{ borderRadius: 4, px: 4, py: 1.5, color: 'white', borderColor: 'white' }}
+                            >
+                                QR СКЕНЕР
+                            </Button>
+                            <Button 
+                                variant={entryMode === 'keyboard' ? 'contained' : 'outlined'} 
+                                onClick={() => setEntryMode('keyboard')}
+                                startIcon={<KeyboardIcon />}
+                                sx={{ borderRadius: 4, px: 4, py: 1.5, color: 'white', borderColor: 'white' }}
+                            >
+                                КЛАВИАТУРА
+                            </Button>
+                        </Stack>
+
+                        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                            <Box sx={{ width: '100%' }}>
+                                {entryMode === 'qr' ? (
+                                    <Box sx={{ 
+                                        overflow: 'hidden', borderRadius: 8, border: '8px solid rgba(255,255,255,0.2)', 
+                                        bgcolor: 'black', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+                                        '& #qr-reader': { border: 'none !important' }
+                                    }}>
+                                        <div id="qr-reader" style={{ width: '100%' }}></div>
+                                    </Box>
+                                ) : (
+                                    <CodeKeyboard onCodeSubmit={(code) => handleRequest({ code })} isLoading={!isScanning} />
+                                )}
+                            </Box>
                         </Box>
-                        
-                        <Divider sx={{ my: 2 }}>
-                            <Typography variant="body2" color="text.secondary">или</Typography>
-                        </Divider>
-                        
-                        {/* Manual code entry */}
-                        <ManualCodeEntry onSubmit={handleManualCodeEntry} />
-                    </Paper>
+
+                        <Box sx={{ mt: 4, textAlign: 'center', display: 'flex', justifyContent: 'center', gap: 2 }}>
+                            {config?.mode !== 'access' && <Chip icon={<AccessTimeIcon sx={{ color: 'white !important' }} />} label="Работно Време" sx={{ bgcolor: 'primary.main', color: 'white' }} />}
+                            {config?.mode !== 'clock' && <Chip icon={<LockIcon sx={{ color: 'white !important' }} />} label="Контрол на Достъпа" sx={{ bgcolor: 'secondary.main', color: 'white' }} />}
+                        </Box>
+                    </Container>
                 )}
             </Box>
 
-            {/* Exit dialog */}
+            {/* Admin Exit Dialog */}
             <Dialog open={exitDialogOpen} onClose={() => setExitDialogOpen(false)}>
-                <DialogTitle>Изход от терминал</DialogTitle>
+                <DialogTitle>Администраторски изход</DialogTitle>
                 <DialogContent>
-                    <TextField
-                        fullWidth
-                        label="Email"
-                        value={adminEmail}
-                        onChange={(e) => setAdminEmail(e.target.value)}
-                        sx={{ mt: 1 }}
-                    />
-                    <TextField
-                        fullWidth
-                        label="Парола"
-                        type="password"
-                        value={adminPassword}
-                        onChange={(e) => setAdminPassword(e.target.value)}
-                        sx={{ mt: 1 }}
-                    />
-                    {exitError && <Alert severity="error" sx={{ mt: 1 }}>{exitError}</Alert>}
+                    <TextField fullWidth label="Имейл" margin="normal" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
+                    <TextField fullWidth label="Парола" type="password" margin="normal" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
+                    {exitError && <Alert severity="error" sx={{ mt: 2 }}>{exitError}</Alert>}
                 </DialogContent>
-                <DialogActions>
+                <DialogActions sx={{ p: 3 }}>
                     <Button onClick={() => setExitDialogOpen(false)}>Отказ</Button>
-                    <Button onClick={handleExitVerify} variant="contained" disabled={isVerifying}>
-                        {isVerifying ? 'Проверка...' : 'Вход'}
-                    </Button>
+                    <Button onClick={handleExitVerify} variant="contained" disabled={isVerifying}>Вход</Button>
                 </DialogActions>
             </Dialog>
         </Box>
     );
 };
-
-// Manual code entry component
-const ManualCodeEntry: React.FC<{ onSubmit: (code: string) => void }> = ({ onSubmit }) => {
-    const [code, setCode] = useState('');
-    
-    return (
-        <Box sx={{ display: 'flex', gap: 1 }}>
-            <TextField
-                fullWidth
-                size="small"
-                label="Въведете код"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                onKeyPress={(e) => {
-                    if (e.key === 'Enter' && code) {
-                        onSubmit(code);
-                        setCode('');
-                    }
-                }}
-            />
-            <Button variant="contained" onClick={() => { onSubmit(code); setCode(''); }} disabled={!code}>
-                OK
-            </Button>
-        </Box>
-    );
-};
-
-// Chip component (simple implementation)
-const Chip: React.FC<{ icon?: React.ReactNode; label: string; color?: string }> = ({ icon, label, color }) => (
-    <Box sx={{ 
-        display: 'inline-flex', 
-        alignItems: 'center', 
-        gap: 0.5,
-        px: 1.5, 
-        py: 0.5, 
-        borderRadius: 1,
-        bgcolor: color === 'primary' ? 'primary.light' : color === 'secondary' ? 'secondary.light' : 'grey.300',
-        color: color === 'primary' ? 'primary.contrastText' : color === 'secondary' ? 'secondary.contrastText' : 'text.primary'
-    }}>
-        {icon}
-        <Typography variant="body2">{label}</Typography>
-    </Box>
-);
-
-// Add useNavigate import
-import { useNavigate } from 'react-router-dom';
-
-// Fix: offlineQueue.length reference
-const offlineQueueQueue = { length: 0 };
 
 export default UnifiedKiosk;

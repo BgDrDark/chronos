@@ -6,6 +6,7 @@ Manages local SQLite databases for configuration and logs
 import sqlite3
 import os
 import logging
+import json
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -73,6 +74,14 @@ class ConfigDatabaseManager(SQLiteManager):
                 )
             """)
             
+            # Check for missing columns in existing devices table
+            cursor.execute("PRAGMA table_info(devices)")
+            columns = [row['name'] for row in cursor.fetchall()]
+            if 'is_online' not in columns:
+                cursor.execute("ALTER TABLE devices ADD COLUMN is_online INTEGER DEFAULT 0")
+            if 'last_check' not in columns:
+                cursor.execute("ALTER TABLE devices ADD COLUMN last_check TIMESTAMP")
+
             # Zones
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS zones (
@@ -80,16 +89,26 @@ class ConfigDatabaseManager(SQLiteManager):
                     name TEXT,
                     level INTEGER DEFAULT 0,
                     depends_on TEXT,
+                    authorized_users TEXT,
                     anti_passback_enabled INTEGER DEFAULT 0,
                     anti_passback_type TEXT DEFAULT 'soft',
                     anti_passback_timeout INTEGER DEFAULT 5,
                     required_hours_start TEXT,
                     required_hours_end TEXT,
                     active INTEGER DEFAULT 1,
+                    description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Check for missing columns in existing zones table
+            cursor.execute("PRAGMA table_info(zones)")
+            columns = [row['name'] for row in cursor.fetchall()]
+            if 'authorized_users' not in columns:
+                cursor.execute("ALTER TABLE zones ADD COLUMN authorized_users TEXT")
+            if 'description' not in columns:
+                cursor.execute("ALTER TABLE zones ADD COLUMN description TEXT")
             
             # Doors
             cursor.execute("""
@@ -175,14 +194,16 @@ class ConfigDatabaseManager(SQLiteManager):
             cursor.execute("""
                 INSERT OR REPLACE INTO devices 
                 (id, name, ip, port, mac_address, relay_1_duration, relay_2_duration, 
-                 relay_1_manual, relay_2_manual, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                 relay_1_manual, relay_2_manual, is_online, last_check, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (
                 device.get('id'), device.get('name'), device.get('ip'), device.get('port', 6722),
                 device.get('mac_address'), device.get('relay_1_duration', 500), 
                 device.get('relay_2_duration', 500), 
                 1 if device.get('relay_1_manual') else 0,
-                1 if device.get('relay_2_manual') else 0
+                1 if device.get('relay_2_manual') else 0,
+                1 if device.get('is_online') or device.get('online') else 0,
+                device.get('last_check')
             ))
             return True
     
@@ -198,28 +219,77 @@ class ConfigDatabaseManager(SQLiteManager):
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM zones")
-            return [dict(row) for row in cursor.fetchall()]
+            results = []
+            for row in cursor.fetchall():
+                d = dict(row)
+                # Deserialize lists
+                for field in ['depends_on', 'authorized_users']:
+                    if d.get(field):
+                        try:
+                            d[field] = json.loads(d[field])
+                        except Exception:
+                            d[field] = []
+                    else:
+                        d[field] = []
+                results.append(d)
+            return results
     
     def get_zone(self, zone_id: str) -> Optional[Dict[str, Any]]:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM zones WHERE id = ?", (zone_id,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            d = dict(row)
+            for field in ['depends_on', 'authorized_users']:
+                if d.get(field):
+                    try:
+                        d[field] = json.loads(d[field])
+                    except Exception:
+                        d[field] = []
+                else:
+                    d[field] = []
+            return d
     
     def save_zone(self, zone: Dict[str, Any]) -> bool:
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            
+            # Extract nested fields if they exist (to_dict format)
+            hours = zone.get('required_hours', {})
+            ap = zone.get('anti_passback', {})
+            
+            req_start = hours.get('start') or zone.get('required_hours_start')
+            req_end = hours.get('end') or zone.get('required_hours_end')
+            
+            # Handle anti_passback fields
+            if 'enabled' in ap:
+                ap_enabled = ap['enabled']
+            else:
+                ap_enabled = zone.get('anti_passback_enabled', False)
+                
+            ap_type = ap.get('type') or zone.get('anti_passback_type', 'soft')
+            ap_timeout = ap.get('timeout_minutes') or zone.get('anti_passback_timeout', 5)
+
+            # Serialize lists
+            depends_on = zone.get('depends_on', [])
+            if isinstance(depends_on, list):
+                depends_on = json.dumps(depends_on)
+            
+            authorized_users = zone.get('authorized_users', [])
+            if isinstance(authorized_users, list):
+                authorized_users = json.dumps(authorized_users)
+
             cursor.execute("""
                 INSERT OR REPLACE INTO zones 
-                (id, name, level, depends_on, anti_passback_enabled, anti_passback_type,
-                 anti_passback_timeout, required_hours_start, required_hours_end, active, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                (id, name, level, depends_on, authorized_users, anti_passback_enabled, anti_passback_type,
+                 anti_passback_timeout, required_hours_start, required_hours_end, active, description, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (
-                zone.get('id'), zone.get('name'), zone.get('level', 0), zone.get('depends_on'),
-                1 if zone.get('anti_passback_enabled') else 0, zone.get('anti_passback_type', 'soft'),
-                zone.get('anti_passback_timeout', 5), zone.get('required_hours_start'),
-                zone.get('required_hours_end'), 1 if zone.get('active', True) else 0
+                zone.get('id'), zone.get('name'), zone.get('level', 0), depends_on, authorized_users,
+                1 if ap_enabled else 0, ap_type, ap_timeout, req_start, req_end, 
+                1 if zone.get('active', True) else 0, zone.get('description', '')
             ))
             return True
     

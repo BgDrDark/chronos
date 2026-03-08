@@ -252,12 +252,11 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Настройки', icon: <SettingsIcon />, path: '/settings', visible: isAdmin && isEnabled('kiosk') },
     { text: 'Документация', icon: <HelpOutlineIcon />, path: '/documentation', visible: isAdmin && isEnabled('integrations') },
     { 
-      text: 'отдел КД', 
+      text: 'Отдел КД', 
       icon: <QrCodeScannerIcon />, 
       visible: isAdmin && isEnabled('kiosk'),
       children: [
-        { text: 'Kiosk Терминал', path: '/admin/kiosk', visible: true },
-        { text: 'Kiosk Достъп', path: '/admin/kiosk/terminal', visible: true },
+        { text: 'Конфигурация', path: '/admin/kiosk', visible: true },
         { text: 'Терминали', path: '/admin/kiosk/terminals', visible: true },
         { text: 'Gateways', path: '/admin/kiosk/gateways', visible: true },
         { text: 'Зони за достъп', path: '/admin/kiosk/zones', visible: true },
@@ -271,8 +270,8 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Рецепти', icon: <RecipeIcon />, path: '/admin/recipes', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Поръчки', icon: <OrderIcon />, path: '/admin/orders', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Контрол', icon: <TaskIcon />, path: '/admin/production/control', visible: isAdmin && isEnabled('confectionery') },
-    { text: 'Clock In/Out', icon: <QrCodeScannerIcon />, path: '/kiosk', visible: true },
-    { text: 'Kiosk Terminal', icon: <DoorIcon />, path: '/kiosk/terminal', visible: true },
+    { text: 'Терминал за присъствие', icon: <QrCodeScannerIcon />, path: '/kiosk', visible: true },
+    { text: 'Терминал за достъп', icon: <DoorIcon />, path: '/kiosk/terminal', visible: true },
   ];
 
   const drawer = (

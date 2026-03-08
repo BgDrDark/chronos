@@ -321,6 +321,8 @@ class GatewayService:
             if self.cluster_manager.is_master():
                 await self.register_with_backend()
             
+            from gateway.devices.relay_controller import relay_controller
+            
             # Старт на всички под-системи като таскове
             tasks = [
                 asyncio.create_task(run_terminal_hub()),
@@ -329,6 +331,7 @@ class GatewayService:
                 asyncio.create_task(self.start_heartbeat()),
                 asyncio.create_task(self.sync_config_from_backend()),
                 asyncio.create_task(self.cleanup_offline_terminals()),
+                asyncio.create_task(relay_controller.start_background_checks()),
             ]
             
             # Изчакваме събитие за стоп

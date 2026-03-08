@@ -4130,6 +4130,37 @@ class Mutation:
         return False
 
     @strawberry.mutation
+    async def open_door(self, id: int, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+            
+        from backend.database.models import AccessDoor, Gateway
+        door = await db.get(AccessDoor, id)
+        if not door: raise Exception("Door not found")
+        
+        gw = await db.get(Gateway, door.gateway_id)
+        if not gw or not gw.ip_address: raise Exception("Gateway offline or no IP")
+
+        import aiohttp
+        # Gateway internal endpoint: /access/doors/{door_id}/trigger
+        url = f"http://{gw.ip_address}:{gw.web_port}/access/doors/{door.door_id}/trigger"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, timeout=5) as r:
+                    if r.status == 200:
+                        return True
+                    try:
+                        data = await r.json()
+                        msg = data.get("message", "Gateway error")
+                    except:
+                        msg = f"Gateway returned {r.status}"
+                    raise Exception(msg)
+        except Exception as e:
+            raise Exception(f"Connection error: {str(e)}")
+
+    @strawberry.mutation
     async def create_access_door(self, input: inputs.AccessDoorInput, info: strawberry.Info) -> types.AccessDoor:
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -4180,19 +4211,66 @@ class Mutation:
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
             raise Exception("Not authorized")
         
-        from backend.database.models import AccessDoor
+        from backend.database.models import AccessDoor, Terminal
+        from sqlalchemy import update
+        
         door = await db.get(AccessDoor, id)
         if not door:
             raise Exception("Door not found")
         
-        if terminal_id is not None:
-            door.terminal_id = terminal_id
+        # 1. Ако задаваме нов терминал на тази врата, първо разкачаме този терминал от ВСИЧКИ други врати
+        if terminal_id:
+            await db.execute(
+                update(AccessDoor)
+                .where(AccessDoor.terminal_id == terminal_id)
+                .where(AccessDoor.id != id)
+                .values(terminal_id=None)
+            )
+            
+            # Обновяваме режима и на самия терминал за синхрон
+            res = await db.execute(select(Terminal).where(Terminal.hardware_uuid == terminal_id))
+            terminal = res.scalar_one_or_none()
+            if terminal and terminal_mode:
+                terminal.mode = terminal_mode
+        
+        # 2. Обновяваме вратата
+        door.terminal_id = terminal_id
         if terminal_mode is not None:
             door.terminal_mode = terminal_mode
         
         await db.commit()
         await db.refresh(door)
         return types.AccessDoor.from_instance(door)
+
+    @strawberry.mutation
+    async def update_terminal(
+        self,
+        id: int,
+        alias: Optional[str] = None,
+        mode: Optional[str] = None,
+        is_active: Optional[bool] = None,
+        info: strawberry.Info = None
+    ) -> types.Terminal:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+            
+        from backend.database.models import Terminal
+        terminal = await db.get(Terminal, id)
+        if not terminal:
+            raise Exception("Terminal not found")
+            
+        if alias is not None:
+            terminal.alias = alias
+        if mode is not None:
+            terminal.mode = mode
+        if is_active is not None:
+            terminal.is_active = is_active
+            
+        await db.commit()
+        await db.refresh(terminal)
+        return types.Terminal.from_instance(terminal)
 
     @strawberry.mutation
     async def create_access_code(self, input: inputs.AccessCodeInput, info: strawberry.Info) -> types.AccessCode:
@@ -4236,6 +4314,35 @@ class Mutation:
             await db.commit()
             return True
         return False
+
+    @strawberry.mutation
+    async def sync_gateway_config(self, id: int, direction: str, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user: raise Exception("Not authenticated")
+        
+        from backend.database.models import Gateway
+        gw = await db.get(Gateway, id)
+        if not gw: raise Exception("Gateway not found")
+        if not gw.ip_address: raise Exception("Gateway offline or no IP")
+
+        import aiohttp
+        # Map push/pull to gateway's internal endpoints
+        # gateway has /sync/push and /sync/pull
+        url = f"http://{gw.ip_address}:{gw.web_port}/sync/{direction}"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, timeout=10) as r:
+                    if r.status == 200:
+                        return True
+                    try:
+                        data = await r.json()
+                        msg = data.get("message", "Gateway error")
+                    except:
+                        msg = f"Gateway returned {r.status}"
+                    raise Exception(msg)
+        except Exception as e:
+            raise Exception(f"Connection error: {str(e)}")
 
     @strawberry.mutation
     async def delete_access_code(self, id: int, info: strawberry.Info) -> bool:
@@ -4346,18 +4453,44 @@ class Mutation:
         return True
 
     @strawberry.mutation
-    async def update_gateway_alias(self, id: int, alias: str, info: strawberry.Info) -> types.Gateway:
+    async def delete_terminal(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
             raise Exception("Not authorized")
-        
+            
+        from backend.database.models import Terminal
+        terminal = await db.get(Terminal, id)
+        if terminal:
+            await db.delete(terminal)
+            await db.commit()
+            return True
+        return False
+
+    @strawberry.mutation
+    async def update_gateway(
+        self, 
+        id: int, 
+        alias: Optional[str] = None, 
+        company_id: Optional[int] = None,
+        info: strawberry.Info = None
+    ) -> types.Gateway:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
         from backend.database.models import Gateway
         gateway = await db.get(Gateway, id)
         if not gateway:
             raise Exception("Gateway not found")
-        
-        gateway.alias = alias
+
+        if alias is not None:
+            gateway.alias = alias
+        if company_id is not None:
+            gateway.company_id = company_id
+
         await db.commit()
         await db.refresh(gateway)
         return types.Gateway.from_instance(gateway)
+

@@ -17,7 +17,7 @@ activity:
   heartbeat_interval: 30
   timeout: 120
 backend:
-  api_key: gw_be9697906a6f40963d793164616e6fbaf61246f4682a82ef
+  api_key: gw_bbda6eec16021f0c8a9f9c759d4ca9041a295d3e543b0d6f
   url: http://localhost:14240
   verify_ssl: false
 cluster:

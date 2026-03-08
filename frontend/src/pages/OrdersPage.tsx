@@ -408,7 +408,8 @@ const OrdersPage: React.FC = () => {
                   )}
                 </TableCell>
               </TableRow>
-            ))}
+            );
+            })}
             {filteredOrders.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} align="center">Няма поръчки.</TableCell>

@@ -99,7 +99,11 @@ class SyncManager:
     async def sync_config_to_backend(self):
         """Синхронизира конфигурацията към backend"""
         try:
+            from gateway.devices.relay_controller import relay_controller
             config_data = config_db.export_all_config()
+            
+            # Update devices with actual status from memory
+            config_data['devices'] = relay_controller.get_all_devices()
             
             success = await self._push_with_retry(
                 f"/gateways/{self.gateway_id}/push-config",

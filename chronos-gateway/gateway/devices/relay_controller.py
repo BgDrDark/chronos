@@ -28,25 +28,43 @@ class RelayController:
     def __init__(self):
         self.devices: Dict[str, SR201Relay] = {}
         self._load_from_sqlite()
-    
+        self._status_task = None
+
+    async def start_background_checks(self):
+        """Стартира периодична проверка на статуса"""
+        if self._status_task:
+            return
+        
+        logger.info("Starting SR201 background status checks")
+        self._status_task = True # Mark as running
+        
+        while True:
+            try:
+                for device in self.devices.values():
+                    await device.status()
+                    self._save_to_sqlite(device)
+            except Exception as e:
+                logger.error(f"Error in SR201 status check loop: {e}")
+            
+            await asyncio.sleep(30) # Check every 30 seconds
+
     def _load_from_sqlite(self):
         """Зарежда устройства от SQLite"""
         try:
             devices = config_db.get_all_devices()
             for d in devices:
                 try:
+                    # Map SQLite fields to constructor
                     self.add_device(
                         device_id=d.get('id'),
                         name=d.get('name', ''),
                         ip=d.get('ip', ''),
                         port=d.get('port', 6722),
-                        device_type='sr201',
+                        mac_address=d.get('mac_address', ''),
                         relay_1_duration=d.get('relay_1_duration', 500),
                         relay_2_duration=d.get('relay_2_duration', 500),
                         relay_1_manual=bool(d.get('relay_1_manual', 0)),
                         relay_2_manual=bool(d.get('relay_2_manual', 0)),
-                        active=True,
-                        mac_address=d.get('mac_address', ''),
                         _save=False
                     )
                     logger.info(f"Loaded device {d.get('id')} from SQLite")

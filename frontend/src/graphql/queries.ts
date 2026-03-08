@@ -94,6 +94,7 @@ export const GATEWAYS_QUERY = gql`
       isActive
       lastHeartbeat
       registeredAt
+      companyId
     }
   }
 `;
@@ -112,6 +113,16 @@ export const GATEWAY_QUERY = gql`
       isActive
       lastHeartbeat
       registeredAt
+      companyId
+    }
+  }
+`;
+
+export const COMPANIES_QUERY = gql`
+  query GetCompanies {
+    companies {
+      id
+      name
     }
   }
 `;
@@ -130,6 +141,7 @@ export const TERMINALS_QUERY = gql`
       lastSeen
       totalScans
       alias
+      mode
     }
   }
 `;
@@ -204,8 +216,11 @@ export const ACCESS_DOORS_QUERY = gql`
       deviceId
       relayNumber
       terminalId
+      terminalMode
       description
       isActive
+      isOnline
+      lastCheck
       zone {
         id
         name

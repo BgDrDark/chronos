@@ -363,6 +363,23 @@ class TerminalScanRequest(BaseModel):
 class TerminalSyncRequest(BaseModel):
     offline_logs: list = []
 
+@router.get("/terminal")
+@router.get("/terminals")
+@require_module("kiosk")
+async def get_terminals_list(
+    db: AsyncSession = Depends(get_db)
+):
+    """Списък на всички регистрирани терминали"""
+    from backend.database.models import Terminal
+    from sqlalchemy import select
+    
+    stmt = select(Terminal)
+    result = await db.execute(stmt)
+    terminals = result.scalars().all()
+    
+    return terminals
+
+
 @router.get("/terminal/{hwid}/config")
 async def get_terminal_config(
     hwid: str,
@@ -377,12 +394,26 @@ async def get_terminal_config(
     terminal = result.scalar_one_or_none()
     
     if not terminal:
-        # Ако терминалът не е регистриран, връщаме подразбираща конфигурация
+        # Автоматично регистриране на нов терминал
+        terminal = Terminal(
+            hardware_uuid=hwid,
+            device_name=f"New Terminal {hwid[:8]}",
+            device_type="tablet",
+            mode="both",
+            is_active=True,
+            last_seen=datetime.datetime.now()
+        )
+        db.add(terminal)
+        await db.commit()
+        await db.refresh(terminal)
+        
         return {
-            "mode": "both",  # clock, access, both
-            "registered": False,
-            "terminal_id": None,
-            "alias": None
+            "mode": "both",
+            "registered": True,
+            "terminal_id": terminal.id,
+            "alias": None,
+            "is_active": True,
+            "new_registration": True
         }
     
     return {
@@ -448,20 +479,19 @@ async def unified_terminal_scan(
     # 3. Handle Clock In/Out
     if mode in ["clock", "both"]:
         if scan.action in ["auto", "in", "out"]:
-            from backend.crud import get_active_time_log, create_time_log
+            from backend.crud import get_active_time_log, start_time_log, end_time_log
             
             active_log = await get_active_time_log(db, user.id)
             action = scan.action if scan.action != "auto" else ("out" if active_log else "in")
             
             if action == "in":
-                new_log = await create_time_log(db, user.id, "in")
+                if not active_log:
+                    await start_time_log(db, user.id)
                 response["clock_action"] = "in"
                 response["message"] = f"Добър ден, {user.first_name}!"
             else:
-                # Close the active log
                 if active_log:
-                    active_log.time_out = datetime.datetime.now()
-                    await db.commit()
+                    await end_time_log(db, user.id)
                 response["clock_action"] = "out"
                 response["message"] = f"Довиждане, {user.first_name}!"
     
@@ -470,30 +500,81 @@ async def unified_terminal_scan(
         if scan.action == "access" or scan.action == "auto":
             # Find doors associated with this terminal
             from backend.database.models import AccessDoor
+            from sqlalchemy.orm import joinedload
             
             stmt = select(AccessDoor).where(
                 AccessDoor.terminal_id == hwid,
                 AccessDoor.is_active == True
-            )
+            ).options(joinedload(AccessDoor.zone))
             result = await db.execute(stmt)
             doors = result.scalars().all()
             
             if doors:
                 door = doors[0]  # Use first door
-                
-                # Check access rights
-                from backend.routers.access import check_user_access_to_zone
-                has_access = await check_user_access_to_zone(db, user.id, door.zone_db_id)
-                
+
+                # Check access rights directly via association table
+                from backend.database.models import user_access_zones, AccessLog
+                from sqlalchemy import and_
+                from datetime import datetime
+
+                stmt = select(user_access_zones).where(
+                    and_(
+                        user_access_zones.c.user_id == user.id,
+                        user_access_zones.c.zone_id == door.zone_db_id
+                    )
+                )
+                res = await db.execute(stmt)
+                has_access = res.first() is not None or user.role.name == "super_admin"
+
+                log_entry = AccessLog(
+                    timestamp=datetime.now(),
+                    user_id=str(user.id),
+                    user_name=f"{user.first_name} {user.last_name}",
+                    zone_id=door.zone.zone_id if door.zone else "unknown",
+                    zone_name=door.zone.name if door.zone else "Unknown Zone",
+                    door_id=door.door_id,
+                    door_name=door.name,
+                    action="entry",
+                    method="qr" if scan.qr_token else "code",
+                    terminal_id=hwid,
+                    gateway_id=door.gateway_id
+                )
+
                 if has_access:
-                    # Trigger door (would need gateway for actual hardware)
-                    response["door_opened"] = True
+                    # ... (trigger door logic)
+                    try:
+                        from backend.database.models import Gateway
+                        import aiohttp
+                        
+                        gw = await db.get(Gateway, door.gateway_id)
+                        if gw and gw.ip_address:
+                            url = f"http://{gw.ip_address}:{gw.web_port}/access/doors/{door.door_id}/trigger"
+                            async with aiohttp.ClientSession() as session:
+                                async with session.post(url, timeout=3) as r:
+                                    if r.status == 200:
+                                        response["door_opened"] = True
+                                    else:
+                                        response["door_opened"] = False
+                        else:
+                            response["door_opened"] = False
+                    except Exception:
+                        response["door_opened"] = False
+
                     response["door_name"] = door.name
                     response["access_granted"] = True
+                    
+                    log_entry.result = "granted"
+                    log_entry.reason = "Authorized"
                 else:
                     response["door_opened"] = False
                     response["access_granted"] = False
                     response["message"] = "Нямате достъп до тази зона"
+                    
+                    log_entry.result = "denied"
+                    log_entry.reason = "No Zone Permission"
+                
+                db.add(log_entry)
+                await db.commit()
             else:
                 response["door_opened"] = False
                 response["access_granted"] = None
@@ -501,7 +582,8 @@ async def unified_terminal_scan(
     
     # 5. Update terminal last_seen
     if terminal:
-        terminal.last_seen = datetime.datetime.now()
+        from datetime import datetime
+        terminal.last_seen = datetime.now()
         terminal.total_scans = (terminal.total_scans or 0) + 1
         await db.commit()
     
@@ -562,7 +644,7 @@ async def sync_offline_data(
     result = await db.execute(stmt)
     terminal = result.scalar_one_or_none()
     if terminal:
-        terminal.last_seen = datetime.datetime.now()
+        terminal.last_seen = datetime.now()
         await db.commit()
     
     return {

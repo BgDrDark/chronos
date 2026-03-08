@@ -41,22 +41,27 @@ import {
   ACCESS_DOORS_QUERY,
   ACCESS_CODES_QUERY,
   ACCESS_LOGS_QUERY,
-  USERS_QUERY
+  USERS_QUERY,
+  COMPANIES_QUERY
 } from '../graphql/queries';
 import {
   CREATE_ACCESS_ZONE,
   DELETE_ACCESS_ZONE,
   CREATE_ACCESS_DOOR,
   DELETE_ACCESS_DOOR,
+  OPEN_DOOR,
   UPDATE_DOOR_TERMINAL,
   CREATE_ACCESS_CODE,
   REVOKE_ACCESS_CODE,
   DELETE_ACCESS_CODE,
-  UPDATE_GATEWAY_ALIAS,
+  UPDATE_GATEWAY,
   ASSIGN_ZONE_TO_USER,
   REMOVE_ZONE_FROM_USER,
   BULK_UPDATE_USER_ACCESS,
-  BULK_EMERGENCY_ACTION
+  BULK_EMERGENCY_ACTION,
+  SYNC_GATEWAY_CONFIG,
+  UPDATE_TERMINAL,
+  DELETE_TERMINAL
 } from '../graphql/gatewayMutations';
 
 const GET_KIOSK_SECURITY_SETTINGS = gql`
@@ -171,11 +176,33 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const [deleteZone] = useMutation(DELETE_ACCESS_ZONE);
     const [createDoor] = useMutation(CREATE_ACCESS_DOOR);
     const [deleteDoor] = useMutation(DELETE_ACCESS_DOOR);
+    const [openDoor] = useMutation(OPEN_DOOR);
+
+    const handleOpenDoor = async (id: number) => {
+        try {
+            const { data } = await openDoor({ variables: { id } });
+            if (data.openDoor) alert('Вратата е отворена успешно!');
+        } catch (e: any) {
+            alert(`Грешка: ${e.message}`);
+        }
+    };
     const [updateDoorTerminal] = useMutation(UPDATE_DOOR_TERMINAL);
     const [createCode] = useMutation(CREATE_ACCESS_CODE);
     const [revokeCode] = useMutation(REVOKE_ACCESS_CODE);
     const [deleteCode] = useMutation(DELETE_ACCESS_CODE);
-    const [updateAlias] = useMutation(UPDATE_GATEWAY_ALIAS);
+    const [updateGateway] = useMutation(UPDATE_GATEWAY);
+    const [deleteTerminal] = useMutation(DELETE_TERMINAL);
+
+    const handleDeleteTerminal = async (id: number) => {
+        if (window.confirm('Сигурни ли сте, че искате да изтриете този терминал?')) {
+            try {
+                await deleteTerminal({ variables: { id } });
+                refetchTerminals();
+            } catch (e: any) {
+                alert(e.message);
+            }
+        }
+    };
 
     // Dialog States
     const [zoneDialogOpen, setZoneDialogOpen] = useState(false);
@@ -183,37 +210,29 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
     const [selectedTerminal, setSelectedTerminal] = useState<any>(null);
     const [codeDialogOpen, setCodeDialogOpen] = useState(false);
-    const [aliasDialogOpen, setAliasDialogOpen] = useState(false);
+    const [gatewayEditOpen, setGatewayEditOpen] = useState(false);
     const [usersDialogOpen, setUsersDialogOpen] = useState(false);
     const [accessDialogOpen, setAccessDialogOpen] = useState(false);
     const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
     const [selectedUserForAccess, setSelectedUserForAccess] = useState<any>(null);
     const [selectedZone, setSelectedZone] = useState<any>(null);
     const [selectedGateway, setSelectedGateway] = useState<any>(null);
-    const [newAlias, setNewAlias] = useState('');
     const [syncingGateway, setSyncingGateway] = useState<number | null>(null);
     const [syncingStatus, setSyncingStatus] = useState<string>('');
 
+    const [syncGateway] = useMutation(SYNC_GATEWAY_CONFIG);
+
     const syncGatewayConfig = async (gatewayId: number, direction: 'push' | 'pull') => {
         setSyncingGateway(gatewayId);
-        setSyncingStatus(direction === 'push' ? 'Синхронизиране към cloud...' : 'Изтегляне от cloud...');
+        setSyncingStatus(direction === 'push' ? 'Изтегляне на данни от Gateway...' : 'Изпращане на данни към Gateway...');
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`/api/gateways/${gatewayId}/${direction}-config`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setSyncingStatus(direction === 'push' ? 'Успешно синхронизирано!' : 'Успешно изтеглено!');
-                refetchGateways();
-                refetchZones();
-                refetchDoors();
-            } else {
-                setSyncingStatus(`Грешка: ${data.detail || 'Unknown error'}`);
-            }
-        } catch (err) {
-            setSyncingStatus('Грешка при свързване');
+            await syncGateway({ variables: { id: gatewayId, direction } });
+            setSyncingStatus(direction === 'push' ? 'Успешно изтеглено!' : 'Успешно изпратено!');
+            refetchGateways();
+            refetchZones();
+            refetchDoors();
+        } catch (err: any) {
+            setSyncingStatus(`Грешка: ${err.message || 'Грешка при свързване'}`);
         }
         setTimeout(() => { setSyncingGateway(null); setSyncingStatus(''); }, 3000);
     };
@@ -259,7 +278,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                 scrollButtons="auto"
                 sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
             >
-                <Tab icon={<QrCodeScannerIcon />} label="Kiosk" />
+                <Tab icon={<QrCodeScannerIcon />} label="Конфигурация" />
                 <Tab icon={<PeopleIcon />} label="Терминали" />
                 <Tab icon={<GatewayIcon />} label="Gateways" />
                 <Tab icon={<ZoneIcon />} label="Зони" />
@@ -272,32 +291,6 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             {/* Kiosk Settings Tab */}
             {activeTab === 0 && (
                 <Box>
-                    <Card sx={{ mb: 4, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
-                        <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <Box>
-                                <Typography variant="h6">Kiosk Терминал</Typography>
-                                <Typography variant="body2">Отворете интерфейса за маркиране на време чрез QR кодове.</Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', gap: 2 }}>
-                                <Button 
-                                    variant="contained" 
-                                    color="secondary" 
-                                    startIcon={<QrCodeScannerIcon />}
-                                    onClick={() => navigate('/kiosk')}
-                                >
-                                    Clock In/Out
-                                </Button>
-                                <Button 
-                                    variant="contained" 
-                                    color="info" 
-                                    startIcon={<DoorIcon />}
-                                    onClick={() => navigate('/kiosk/terminal')}
-                                >
-                                    Access Terminal
-                                </Button>
-                            </Box>
-                        </CardContent>
-                    </Card>
                     <KioskSecuritySettings />
                     <KioskCustomizationSettings />
                 </Box>
@@ -351,8 +344,11 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                                                 </TableCell>
                                                 <TableCell>{formatTimeAgo(t.lastSeen)}</TableCell>
                                                 <TableCell>
-                                                    <IconButton size="small" color="primary" onClick={() => { setSelectedTerminal(t); setTerminalDialogOpen(true); }}>
+                                                    <IconButton size="small" color="primary" onClick={() => { setSelectedTerminal(t); setTerminalDialogOpen(true); }} title="Редактирай">
                                                         <EditIcon fontSize="inherit" />
+                                                    </IconButton>
+                                                    <IconButton size="small" color="error" onClick={() => handleDeleteTerminal(t.id)} title="Изтрий">
+                                                        <DeleteIcon fontSize="inherit" />
                                                     </IconButton>
                                                 </TableCell>
                                             </TableRow>
@@ -405,9 +401,9 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                                                         <Typography variant="caption" color="primary">{syncingStatus}</Typography>
                                                     ) : (
                                                         <>
-                                                            <IconButton size="small" title="Sync to Cloud" onClick={() => syncGatewayConfig(gw.id, 'push')}><UploadIcon fontSize="inherit" /></IconButton>
-                                                            <IconButton size="small" title="Pull from Cloud" onClick={() => syncGatewayConfig(gw.id, 'pull')}><DownloadIcon fontSize="inherit" /></IconButton>
-                                                            <IconButton size="small" onClick={() => { setSelectedGateway(gw); setNewAlias(gw.alias || ''); setAliasDialogOpen(true); }}><EditIcon fontSize="inherit" /></IconButton>
+                                                            <IconButton size="small" title="Pull from Gateway" onClick={() => syncGatewayConfig(gw.id, 'push')}><DownloadIcon fontSize="inherit" /></IconButton>
+                                                            <IconButton size="small" title="Push to Gateway" onClick={() => syncGatewayConfig(gw.id, 'pull')}><UploadIcon fontSize="inherit" /></IconButton>
+                                                            <IconButton size="small" onClick={() => { setSelectedGateway(gw); setGatewayEditOpen(true); }}><EditIcon fontSize="inherit" /></IconButton>
                                                         </>
                                                     )}
                                                 </TableCell>
@@ -481,18 +477,35 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                                         <TableCell>Зона</TableCell>
                                         <TableCell>Хардуер</TableCell>
                                         <TableCell>Действия</TableCell>
+                                        <TableCell>Статус</TableCell>
                                     </TableRow>
+
                                 </TableHead>
                                 <TableBody>
                                     {doorsLoading ? (
-                                        <TableRow><TableCell colSpan={5} align="center"><CircularProgress size={24} /></TableCell></TableRow>
+                                        <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={24} /></TableCell></TableRow>
                                     ) : doorsData?.accessDoors.map((d: any) => (
                                         <TableRow key={d.id}>
                                             <TableCell sx={{ fontFamily: 'monospace' }}>{d.doorId}</TableCell>
                                             <TableCell>{d.name}</TableCell>
                                             <TableCell>{d.zone?.name || d.zoneDbId}</TableCell>
                                             <TableCell>{d.deviceId} (P{d.relayNumber})</TableCell>
-                                            <TableCell><IconButton size="small" color="error" onClick={() => handleDeleteDoor(d.id)}><DeleteIcon fontSize="inherit" /></IconButton></TableCell>
+                                            <TableCell>
+                                                <IconButton size="small" color="success" onClick={() => handleOpenDoor(d.id)} title="Отвори врата">
+                                                    <DoorIcon fontSize="inherit" />
+                                                </IconButton>
+                                                <IconButton size="small" color="error" onClick={() => handleDeleteDoor(d.id)} title="Изтрий">
+                                                    <DeleteIcon fontSize="inherit" />
+                                                </IconButton>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Chip 
+                                                    size="small" 
+                                                    label={d.isOnline ? 'Online' : 'Offline'} 
+                                                    color={d.isOnline ? 'success' : 'error'} 
+                                                    variant={d.isOnline ? 'filled' : 'outlined'}
+                                                />
+                                            </TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -616,11 +629,12 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Dialogs */}
-            <Dialog open={aliasDialogOpen} onClose={() => setAliasDialogOpen(false)}>
-                <DialogTitle>Промяна на Alias</DialogTitle>
-                <DialogContent sx={{ pt: 2 }}><TextField fullWidth value={newAlias} onChange={(e) => setNewAlias(e.target.value)} /></DialogContent>
-                <DialogActions><Button onClick={() => setAliasDialogOpen(false)}>Отказ</Button><Button variant="contained" onClick={async () => { await updateAlias({ variables: { id: selectedGateway.id, alias: newAlias } }); setAliasDialogOpen(false); refetchGateways(); }}>Запази</Button></DialogActions>
-            </Dialog>
+            <GatewayEditDialog
+                open={gatewayEditOpen}
+                onClose={() => setGatewayEditOpen(false)}
+                gateway={selectedGateway}
+                onSuccess={() => { setGatewayEditOpen(false); refetchGateways(); }}
+            />
 
             <ZoneCreateDialog open={zoneDialogOpen} onClose={() => setZoneDialogOpen(false)} onSuccess={() => { setZoneDialogOpen(false); refetchZones(); }} />
             <DoorCreateDialog open={doorDialogOpen} onClose={() => setDoorDialogOpen(false)} onSuccess={() => { setDoorDialogOpen(false); refetchDoors(); }} gateways={gatewaysData?.gateways || []} zones={zonesData?.accessZones || []} />
@@ -648,8 +662,11 @@ const TerminalUpdateDialog: React.FC<{
     onSuccess: () => void
 }> = ({ open, onClose, terminal, doors, onSuccess }) => {
     const [updateDoorTerminal] = useMutation(UPDATE_DOOR_TERMINAL);
+    const [updateTerminal] = useMutation(UPDATE_TERMINAL);
+    
     const [selectedDoorId, setSelectedDoorId] = useState<number | ''>('');
-    const [mode, setMode] = useState<string>('access');
+    const [mode, setMode] = useState<string>('both');
+    const [alias, setAlias] = useState<string>('');
     const [loading, setLoading] = useState(false);
 
     React.useEffect(() => {
@@ -657,11 +674,12 @@ const TerminalUpdateDialog: React.FC<{
             const currentDoor = doors.find(d => d.terminalId === terminal.hardwareUuid);
             if (currentDoor) {
                 setSelectedDoorId(currentDoor.id);
-                setMode(currentDoor.terminalMode || 'access');
+                setMode(terminal.mode || currentDoor.terminalMode || 'both');
             } else {
                 setSelectedDoorId('');
-                setMode('access');
+                setMode(terminal.mode || 'both');
             }
+            setAlias(terminal.alias || terminal.deviceName || '');
         }
     }, [terminal, open, doors]);
 
@@ -669,7 +687,16 @@ const TerminalUpdateDialog: React.FC<{
         if (!terminal) return;
         setLoading(true);
         try {
-            // Ако има избрана врата, свързваме я
+            // 1. Обновяваме данните на самия терминал (Alias, Mode)
+            await updateTerminal({
+                variables: {
+                    id: parseInt(terminal.id),
+                    alias: alias,
+                    mode: mode
+                }
+            });
+
+            // 2. Обновяваме връзката с врата
             if (selectedDoorId) {
                 await updateDoorTerminal({
                     variables: {
@@ -679,7 +706,7 @@ const TerminalUpdateDialog: React.FC<{
                     }
                 });
             } else {
-                // Ако няма избрана врата, проверяваме дали терминалът е бил свързан с някоя и я разкачаме
+                // Разкачаме ако е имало
                 const currentDoor = doors.find(d => d.terminalId === terminal.hardwareUuid);
                 if (currentDoor) {
                     await updateDoorTerminal({
@@ -704,10 +731,29 @@ const TerminalUpdateDialog: React.FC<{
             <DialogTitle>Настройка на Терминал</DialogTitle>
             <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 2 }}>
                 <Box>
-                    <Typography variant="subtitle2" color="text.secondary">Устройство:</Typography>
-                    <Typography variant="body1" fontWeight="bold">{terminal?.alias || terminal?.deviceName}</Typography>
-                    <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{terminal?.hardwareUuid}</Typography>
+                    <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>HWID: {terminal?.hardwareUuid}</Typography>
                 </Box>
+
+                <TextField
+                    label="Име (Alias)"
+                    fullWidth
+                    value={alias}
+                    onChange={(e) => setAlias(e.target.value)}
+                    placeholder="напр. Вход Цех"
+                />
+
+                <FormControl fullWidth>
+                    <InputLabel>Режим на работа</InputLabel>
+                    <Select
+                        value={mode}
+                        label="Режим на работа"
+                        onChange={(e) => setMode(e.target.value)}
+                    >
+                        <MenuItem value="access">Само Достъп (Отваря врата)</MenuItem>
+                        <MenuItem value="clock">Само Работно време (Clock In/Out)</MenuItem>
+                        <MenuItem value="both">Комбиниран (Достъп + Работно време)</MenuItem>
+                    </Select>
+                </FormControl>
 
                 <FormControl fullWidth>
                     <InputLabel>Свържи с врата</InputLabel>
@@ -724,21 +770,6 @@ const TerminalUpdateDialog: React.FC<{
                         ))}
                     </Select>
                 </FormControl>
-
-                {selectedDoorId && (
-                    <FormControl fullWidth>
-                        <InputLabel>Режим на работа</InputLabel>
-                        <Select
-                            value={mode}
-                            label="Режим на работа"
-                            onChange={(e) => setMode(e.target.value)}
-                        >
-                            <MenuItem value="access">Само Достъп (Отваря врата)</MenuItem>
-                            <MenuItem value="clock">Само Работно време (Clock In/Out)</MenuItem>
-                            <MenuItem value="both">Комбиниран (Достъп + Работно време)</MenuItem>
-                        </Select>
-                    </FormControl>
-                )}
             </DialogContent>
             <DialogActions>
                 <Button onClick={onClose}>Отказ</Button>
@@ -899,6 +930,78 @@ const EmergencyControl: React.FC<{currentMode: string, onAction: () => void}> = 
                 </Box>
             </CardContent>
         </Card>
+    );
+};
+
+const GatewayEditDialog: React.FC<{
+    open: boolean,
+    onClose: () => void,
+    gateway: any,
+    onSuccess: () => void
+}> = ({ open, onClose, gateway, onSuccess }) => {
+    const { data: compData } = useQuery(COMPANIES_QUERY);
+    const [updateGateway] = useMutation(UPDATE_GATEWAY);
+    
+    const [alias, setAlias] = useState('');
+    const [companyId, setCompanyId] = useState<number | ''>('');
+    const [loading, setLoading] = useState(false);
+
+    React.useEffect(() => {
+        if (gateway && open) {
+            setAlias(gateway.alias || '');
+            setCompanyId(gateway.companyId || '');
+        }
+    }, [gateway, open]);
+
+    const handleSave = async () => {
+        setLoading(true);
+        try {
+            await updateGateway({
+                variables: {
+                    id: gateway.id,
+                    alias: alias,
+                    companyId: companyId === '' ? null : parseInt(companyId.toString())
+                }
+            });
+            onSuccess();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+            <DialogTitle>Редакция на Gateway</DialogTitle>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+                <TextField
+                    label="Alias (Приятелско име)"
+                    fullWidth
+                    value={alias}
+                    onChange={(e) => setAlias(e.target.value)}
+                />
+                <FormControl fullWidth>
+                    <InputLabel>Фирма</InputLabel>
+                    <Select
+                        value={companyId}
+                        label="Фирма"
+                        onChange={(e) => setCompanyId(e.target.value as number)}
+                    >
+                        <MenuItem value=""><em>-- Няма (Системна) --</em></MenuItem>
+                        {compData?.companies.map((c: any) => (
+                            <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose}>Отказ</Button>
+                <Button variant="contained" onClick={handleSave} disabled={loading}>
+                    {loading ? <CircularProgress size={24} /> : 'Запази'}
+                </Button>
+            </DialogActions>
+        </Dialog>
     );
 };
 

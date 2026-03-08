@@ -12,107 +12,6 @@ from backend.services.payroll_calculator import PayrollCalculator
 @strawberry.type
 class Query:
     @strawberry.field
-    async def gateways(self, info: strawberry.Info, is_active: Optional[bool] = None) -> List[types.Gateway]:
-        db = info.context["db"]
-        from backend.database import models
-        query = select(models.Gateway)
-        if is_active is not None:
-            query = query.where(models.Gateway.is_active == is_active)
-        result = await db.execute(query)
-        return [types.Gateway.from_instance(g) for g in result.scalars().all()]
-
-    @strawberry.field
-    async def gateway(self, info: strawberry.Info, id: int) -> Optional[types.Gateway]:
-        db = info.context["db"]
-        from backend.database import models
-        res = await db.get(models.Gateway, id)
-        return types.Gateway.from_instance(res) if res else None
-
-    @strawberry.field
-    async def terminals(self, info: strawberry.Info, gateway_id: Optional[int] = None, is_active: Optional[bool] = None) -> List[types.Terminal]:
-        db = info.context["db"]
-        from backend.database import models
-        query = select(models.Terminal)
-        if gateway_id is not None:
-            query = query.where(models.Terminal.gateway_id == gateway_id)
-        if is_active is not None:
-            query = query.where(models.Terminal.is_active == is_active)
-        result = await db.execute(query)
-        return [types.Terminal.from_instance(t) for t in result.scalars().all()]
-
-    @strawberry.field
-    async def printers(self, info: strawberry.Info, gateway_id: int) -> List[types.Printer]:
-        db = info.context["db"]
-        from backend.database import models
-        result = await db.execute(select(models.Printer).where(models.Printer.gateway_id == gateway_id))
-        return [types.Printer.from_instance(p) for p in result.scalars().all()]
-
-    @strawberry.field
-    async def gateway_stats(self, info: strawberry.Info) -> types.GatewayStats:
-        db = info.context["db"]
-        from backend.database import models
-        from sqlalchemy import func
-        
-        total_gateways = await db.scalar(select(func.count(models.Gateway.id)))
-        active_gateways = await db.scalar(select(func.count(models.Gateway.id)).where(models.Gateway.is_active == True))
-        inactive_gateways = total_gateways - (active_gateways or 0)
-        
-        total_terminals = await db.scalar(select(func.count(models.Terminal.id)))
-        active_terminals = await db.scalar(select(func.count(models.Terminal.id)).where(models.Terminal.is_active == True))
-        
-        total_printers = await db.scalar(select(func.count(models.Printer.id)))
-        active_printers = await db.scalar(select(func.count(models.Printer.id)).where(models.Printer.is_active == True))
-        
-        return types.GatewayStats(
-            total_gateways=total_gateways or 0,
-            active_gateways=active_gateways or 0,
-            inactive_gateways=inactive_gateways or 0,
-            total_terminals=total_terminals or 0,
-            active_terminals=active_terminals or 0,
-            total_printers=total_printers or 0,
-            active_printers=active_printers or 0,
-        )
-
-    @strawberry.field
-    async def access_zones(self, info: strawberry.Info) -> List[types.AccessZone]:
-        db = info.context["db"]
-        from backend.database import models
-        user = info.context["current_user"]
-        result = await db.execute(select(models.AccessZone).where(models.AccessZone.company_id == user.company_id))
-        return [types.AccessZone.from_instance(z) for z in result.scalars().all()]
-
-    @strawberry.field
-    async def access_doors(self, info: strawberry.Info, gateway_id: Optional[int] = None) -> List[types.AccessDoor]:
-        db = info.context["db"]
-        from backend.database import models
-        user = info.context["current_user"]
-        query = select(models.AccessDoor).join(models.AccessZone).where(models.AccessZone.company_id == user.company_id)
-        if gateway_id:
-            query = query.where(models.AccessDoor.gateway_id == gateway_id)
-        result = await db.execute(query)
-        return [types.AccessDoor.from_instance(d) for d in result.scalars().all()]
-
-    @strawberry.field
-    async def access_codes(self, info: strawberry.Info, gateway_id: Optional[int] = None) -> List[types.AccessCode]:
-        db = info.context["db"]
-        from backend.database import models
-        query = select(models.AccessCode)
-        if gateway_id:
-            query = query.where(models.AccessCode.gateway_id == gateway_id)
-        result = await db.execute(query)
-        return [types.AccessCode.from_instance(c) for c in result.scalars().all()]
-
-    @strawberry.field
-    async def access_logs(self, info: strawberry.Info, gateway_id: Optional[int] = None, limit: int = 100) -> List[types.AccessLog]:
-        db = info.context["db"]
-        from backend.database import models
-        query = select(models.AccessLog).order_by(models.AccessLog.timestamp.desc()).limit(limit)
-        if gateway_id:
-            query = query.where(models.AccessLog.gateway_id == gateway_id)
-        result = await db.execute(query)
-        return [types.AccessLog.from_instance(l) for l in result.scalars().all()]
-
-    @strawberry.field
     async def hello(self) -> str:
         return "Hello World"
 
@@ -2065,6 +1964,9 @@ class Query:
 
         from backend.database.models import Gateway
         stmt = select(Gateway)
+        
+        if current_user.role.name != "super_admin":
+            stmt = stmt.where(Gateway.company_id == current_user.company_id)
 
         if is_active is not None:
             stmt = stmt.where(Gateway.is_active == is_active)
@@ -2100,8 +2002,15 @@ class Query:
         current_user = info.context["current_user"]
         if not current_user: raise Exception("Not authenticated")
 
-        from backend.database.models import Terminal
+        from backend.database.models import Terminal, Gateway
         stmt = select(Terminal)
+        
+        # Filter by company via Gateway, but ALWAYS allow terminals without gateway
+        if current_user.role.name != "super_admin":
+            from sqlalchemy import or_
+            stmt = stmt.outerjoin(Gateway).where(
+                or_(Gateway.company_id == current_user.company_id, Terminal.gateway_id == None)
+            )
 
         if gateway_id is not None:
             stmt = stmt.where(Terminal.gateway_id == gateway_id)
@@ -2170,6 +2079,73 @@ class Query:
             total_printers=total_printers or 0,
             active_printers=active_printers or 0
         )
+
+    @strawberry.field
+    async def access_zones(self, info: strawberry.Info) -> List[types.AccessZone]:
+        db = info.context["db"]
+        from backend.database import models
+        user = info.context["current_user"]
+        if not user: raise Exception("Not authenticated")
+        
+        stmt = select(models.AccessZone)
+        if user.role.name != "super_admin":
+            stmt = stmt.where(models.AccessZone.company_id == user.company_id)
+            
+        result = await db.execute(stmt)
+        return [types.AccessZone.from_instance(z) for z in result.scalars().all()]
+
+    @strawberry.field
+    async def access_doors(self, info: strawberry.Info, gateway_id: Optional[int] = None) -> List[types.AccessDoor]:
+        db = info.context["db"]
+        from backend.database import models
+        user = info.context["current_user"]
+        if not user: raise Exception("Not authenticated")
+        
+        query = select(models.AccessDoor).join(models.AccessZone)
+        if user.role.name != "super_admin":
+            query = query.where(models.AccessZone.company_id == user.company_id)
+            
+        if gateway_id:
+            query = query.where(models.AccessDoor.gateway_id == gateway_id)
+        result = await db.execute(query)
+        return [types.AccessDoor.from_instance(d) for d in result.scalars().all()]
+
+    @strawberry.field
+    async def access_codes(self, info: strawberry.Info, gateway_id: Optional[int] = None) -> List[types.AccessCode]:
+        db = info.context["db"]
+        from backend.database import models
+        user = info.context["current_user"]
+        if not user: raise Exception("Not authenticated")
+        
+        query = select(models.AccessCode)
+        if user.role.name != "super_admin":
+            from sqlalchemy import or_
+            from backend.database.models import Gateway
+            query = query.outerjoin(Gateway).where(
+                or_(Gateway.company_id == user.company_id, models.AccessCode.gateway_id == None)
+            )
+            
+        if gateway_id:
+            query = query.where(models.AccessCode.gateway_id == gateway_id)
+        result = await db.execute(query)
+        return [types.AccessCode.from_instance(c) for c in result.scalars().all()]
+
+    @strawberry.field
+    async def access_logs(self, info: strawberry.Info, gateway_id: Optional[int] = None, limit: int = 100) -> List[types.AccessLog]:
+        db = info.context["db"]
+        from backend.database import models
+        user = info.context["current_user"]
+        if not user: raise Exception("Not authenticated")
+        
+        query = select(models.AccessLog).order_by(models.AccessLog.timestamp.desc()).limit(limit)
+        if user.role.name != "super_admin":
+            from backend.database.models import Gateway
+            query = query.join(Gateway).where(Gateway.company_id == user.company_id)
+            
+        if gateway_id:
+            query = query.where(models.AccessLog.gateway_id == gateway_id)
+        result = await db.execute(query)
+        return [types.AccessLog.from_instance(l) for l in result.scalars().all()]
 
     # ========== PRODUCTION CONTROL QUERIES ==========
 
