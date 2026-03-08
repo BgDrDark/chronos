@@ -585,10 +585,13 @@ interface InvoiceItem {
   id?: number;
   ingredientId?: number | null;
   batchId?: number | null;
+  batchNumber?: string | null;
+  expirationDate?: string | null;
   name: string;
   quantity: number;
   unit: string;
   unitPrice: number;
+  unitPriceWithVat?: number | null;
   discountPercent: number;
 }
 
@@ -2158,10 +2161,13 @@ function SAFTTab() {
           id: item.id,
           ingredientId: item.ingredientId,
           batchId: item.batchId,
+          batchNumber: (item as any).batchNumber || '',
+          expirationDate: (item as any).expirationDate ? (item as any).expirationDate.split('T')[0] : '',
           name: item.name,
           quantity: Number(item.quantity),
           unit: item.unit,
           unitPrice: Number(item.unitPrice),
+          unitPriceWithVat: (item as any).unitPriceWithVat ? Number((item as any).unitPriceWithVat) : null,
           discountPercent: Number(item.discountPercent),
         })),
       });
@@ -2201,7 +2207,7 @@ function SAFTTab() {
       ...formData,
       items: [
         ...formData.items,
-        { name: '', quantity: 1, unit: 'br', unitPrice: 0, discountPercent: 0 },
+        { name: '', quantity: 1, unit: 'br', unitPrice: 0, unitPriceWithVat: null, batchNumber: '', expirationDate: '', discountPercent: 0 },
       ],
     });
   };
@@ -2222,7 +2228,18 @@ function SAFTTab() {
         newItems[index].name = ingredient.name;
         newItems[index].unit = ingredient.unit;
         newItems[index].unitPrice = Number(ingredient.currentPrice) || 0;
+        newItems[index].unitPriceWithVat = Number(ingredient.currentPrice) ? Number(ingredient.currentPrice) * 1.20 : null;
       }
+    }
+
+    if (field === 'unitPrice' && value) {
+      const priceWithoutVat = parseFloat(value) || 0;
+      newItems[index].unitPriceWithVat = priceWithoutVat * (1 + formData.vatRate / 100);
+    }
+
+    if (field === 'unitPriceWithVat' && value) {
+      const priceWithVat = parseFloat(value) || 0;
+      newItems[index].unitPrice = priceWithVat / (1 + formData.vatRate / 100);
     }
 
     setFormData({ ...formData, items: newItems });
@@ -2297,10 +2314,13 @@ function SAFTTab() {
         items: formData.items.map(item => ({
           ingredientId: item.ingredientId,
           batchId: item.batchId,
+          batchNumber: item.batchNumber || null,
+          expirationDate: item.expirationDate || null,
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
           unitPrice: item.unitPrice,
+          unitPriceWithVat: item.unitPriceWithVat,
           discountPercent: item.discountPercent,
         })),
       };
@@ -2496,6 +2516,107 @@ function SAFTTab() {
             <Grid size={{ xs: 12 }}>
               <Typography variant="h6">Сума: {total.toFixed(2)} лв. (ДДС: {vatAmount.toFixed(2)} лв.)</Typography>
             </Grid>
+
+            {/* Артикули */}
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">Артикули</Typography>
+                  <Button size="small" startIcon={<AddIcon />} onClick={handleAddItem}>Добави артикул</Button>
+                </Box>
+                
+                {errors.items && <Alert severity="error" sx={{ mb: 2 }}>{errors.items}</Alert>}
+                
+                {formData.items.map((item, index) => (
+                  <Paper key={index} sx={{ p: 2, mb: 2 }}>
+                    <Grid container spacing={2} alignItems="center">
+                      <Grid size={{ xs: 12, sm: 3 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Наименование"
+                          value={item.name}
+                          onChange={(e) => handleItemChange(index, 'name', e.target.value)}
+                          error={!!errors[`item_${index}`]}
+                          helperText={errors[`item_${index}`]}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 6, sm: 2 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="К-во"
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(index, 'quantity', parseFloat(e.target.value) || 0)}
+                          error={!!errors[`quantity_${index}`]}
+                          helperText={errors[`quantity_${index}`]}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 6, sm: 1 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Мярка"
+                          value={item.unit}
+                          onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 6, sm: 2 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Цена без ДДС"
+                          type="number"
+                          value={item.unitPrice}
+                          onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
+                          error={!!errors[`price_${index}`]}
+                          helperText={errors[`price_${index}`]}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 6, sm: 2 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Цена със ДДС"
+                          type="number"
+                          value={item.unitPriceWithVat || ''}
+                          onChange={(e) => handleItemChange(index, 'unitPriceWithVat', e.target.value)}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 6, sm: 2 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Партида №"
+                          value={item.batchNumber || ''}
+                          onChange={(e) => handleItemChange(index, 'batchNumber', e.target.value)}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 6, sm: 2 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Срок годност"
+                          type="date"
+                          value={item.expirationDate || ''}
+                          onChange={(e) => handleItemChange(index, 'expirationDate', e.target.value)}
+                          InputLabelProps={{ shrink: true }}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 6, sm: 1 }}>
+                        <IconButton color="error" onClick={() => handleRemoveItem(index)}>
+                          <DeleteIcon />
+                        </IconButton>
+                      </Grid>
+                    </Grid>
+                    <Typography variant="caption" color="text.secondary">
+                      Общо: {(item.quantity * item.unitPrice).toFixed(2)} лв. (със ДДС: {(item.quantity * (item.unitPriceWithVat || item.unitPrice * 1.2)).toFixed(2)} лв.)
+                    </Typography>
+                  </Paper>
+                ))}
+              </Box>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -2560,7 +2681,10 @@ function SAFTTab() {
                         <TableCell>Наименование</TableCell>
                         <TableCell align="right">К-во</TableCell>
                         <TableCell>Ед.мярка</TableCell>
-                        <TableCell align="right">Ед. цена</TableCell>
+                        <TableCell align="right">Цена без ДДС</TableCell>
+                        <TableCell align="right">Цена със ДДС</TableCell>
+                        <TableCell>Партида</TableCell>
+                        <TableCell>Срок годност</TableCell>
                         <TableCell align="right">ДДС %</TableCell>
                         <TableCell align="right">Сума</TableCell>
                       </TableRow>
@@ -2578,25 +2702,31 @@ function SAFTTab() {
                             <TableCell align="right">{Number(item.quantity).toFixed(3)}</TableCell>
                             <TableCell>{item.unit}</TableCell>
                             <TableCell align="right">{Number(item.unitPrice).toFixed(2)}</TableCell>
+                            <TableCell align="right">{item.unitPriceWithVat ? Number(item.unitPriceWithVat).toFixed(2) : (Number(item.unitPrice) * (1 + Number(selectedInvoice.vatRate)/100)).toFixed(2)}</TableCell>
+                            <TableCell>{item.batchNumber || '-'}</TableCell>
+                            <TableCell>{item.expirationDate ? new Date(item.expirationDate).toLocaleDateString('bg-BG') : '-'}</TableCell>
                             <TableCell align="right">{Number(selectedInvoice.vatRate)}%</TableCell>
                             <TableCell align="right">{(itemSubtotal + itemVat).toFixed(2)}</TableCell>
                           </TableRow>
                         );
                       })}
                       <TableRow sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>
-                        <TableCell colSpan={5} align="right"><strong>Сума:</strong></TableCell>
+                        <TableCell colSpan={7} align="right"><strong>Сума:</strong></TableCell>
                         <TableCell align="right"><strong>{Number(selectedInvoice.subtotal).toFixed(2)}</strong></TableCell>
+                        <TableCell></TableCell>
                         <TableCell></TableCell>
                       </TableRow>
                       <TableRow sx={{ bgcolor: 'grey.100' }}>
-                        <TableCell colSpan={5} align="right">ДДС {Number(selectedInvoice.vatRate)}%:</TableCell>
+                        <TableCell colSpan={7} align="right">ДДС {Number(selectedInvoice.vatRate)}%:</TableCell>
                         <TableCell align="right">{Number(selectedInvoice.vatAmount).toFixed(2)}</TableCell>
+                        <TableCell></TableCell>
                         <TableCell></TableCell>
                       </TableRow>
                       <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
-                        <TableCell colSpan={5} align="right"><strong>ОБЩО:</strong></TableCell>
+                        <TableCell colSpan={7} align="right"><strong>ОБЩО:</strong></TableCell>
                         <TableCell align="right"><strong>{Number(selectedInvoice.total).toFixed(2)}</strong></TableCell>
                         <TableCell>лв.</TableCell>
+                        <TableCell></TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
