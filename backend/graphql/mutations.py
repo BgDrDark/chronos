@@ -4010,6 +4010,59 @@ class Mutation:
         await db.refresh(order)
         return types.ProductionOrder.from_instance(order)
 
+    @strawberry.mutation
+    async def create_quick_sale(self, input: inputs.QuickSaleInput, info: strawberry.Info) -> types.ProductionOrder:
+        """Създава бърза продажба и я записва като приход в касовия дневник"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
+        if not target_company_id:
+            raise HTTPException(status_code=400, detail="Company ID is required")
+
+        from backend.database.models import ProductionOrder, Recipe, sofia_now, Company
+        from datetime import timedelta
+
+        # Get recipe
+        recipe = await db.get(Recipe, input.recipe_id)
+        if not recipe:
+            raise HTTPException(status_code=400, detail="Рецептата не е намерена")
+
+        # Create production order with completed status (direct sale)
+        now = sofia_now()
+        order = ProductionOrder(
+            recipe_id=input.recipe_id,
+            quantity=Decimal(str(input.quantity)),
+            due_date=now,
+            production_deadline=now,
+            status="completed",
+            notes=f"Бърза продажба - {input.paymentMethod}" + (f" - {input.clientName}" if input.client_name else ""),
+            company_id=target_company_id,
+            created_by=current_user.id
+        )
+        db.add(order)
+        await db.flush()
+
+        # Create cash journal entry (приход)
+        from backend.database.models import CashJournalEntry
+        cash_entry = CashJournalEntry(
+            date=now.date() if hasattr(now, 'date') else now,
+            operation_type="income",
+            amount=Decimal(str(input.price)) if input.price else Decimal("0"),
+            description=f"Продажба: {recipe.name} x {input.quantity}" + (f" - {input.client_name}" if input.client_name else ""),
+            reference_type="quick_sale",
+            payment_method=input.payment_method,
+            company_id=target_company_id,
+            created_by=current_user.id
+        )
+        db.add(cash_entry)
+
+        await db.commit()
+        await db.refresh(order)
+        return types.ProductionOrder.from_instance(order)
+
     # --- Access Control (KD) Mutations ---
 
     @strawberry.mutation

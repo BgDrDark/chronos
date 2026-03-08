@@ -207,66 +207,6 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}7. Monitoring Services:${NC}"
-
-# Check Prometheus
-echo -n "  Prometheus: "
-if docker ps --format "{{.Names}}" | grep -q "chronos-prometheus"; then
-    if curl -s http://localhost:9090/-/healthy > /dev/null 2>&1; then
-        echo -e "${GREEN}✅ Running${NC}"
-    else
-        echo -e "${YELLOW}⚠️ Container running but not responding${NC}"
-    fi
-else
-    echo -e "${YELLOW}⚠️ Not Running (optional)${NC}"
-fi
-
-# Check Grafana
-echo -n "  Grafana: "
-if docker ps --format "{{.Names}}" | grep -q "chronos-grafana"; then
-    if curl -s http://localhost:3002/api/health > /dev/null 2>&1; then
-        echo -e "${GREEN}✅ Running${NC}"
-    else
-        echo -e "${YELLOW}⚠️ Container running but not responding${NC}"
-    fi
-else
-    echo -e "${YELLOW}⚠️ Not Running (optional)${NC}"
-fi
-
-echo ""
-echo "======================================"
-echo -e "${BLUE}🎯 System Readiness Assessment:${NC}"
-echo ""
-
-# Overall assessment
-containers_running=$(docker ps --format "{{.Names}}" | grep -c "chronos-")
-backend_healthy=$(curl -s http://localhost:14240/health > /dev/null && echo "1" || echo "0")
-frontend_running=$(curl -s http://localhost:3000 > /dev/null || curl -s http://localhost:3001 > /dev/null && echo "1" || echo "0")
-db_ready=$(docker exec $db_container pg_isready -U postgres -d workingtimedb > /dev/null 2>&1 && echo "1" || echo "0")
-
-if [ "$containers_running" -ge "3" ] && [ "$backend_healthy" -eq "1" ] && [ "$frontend_running" -eq "1" ] && [ "$db_ready" -eq "1" ]; then
-    echo -e "${GREEN}🎉 System is READY for use!${NC}"
-    echo -e "${GREEN}✅ All containers running${NC}"
-    echo -e "${GREEN}✅ All services healthy${NC}"
-    echo -e "${GREEN}✅ Database ready${NC}"
-    echo ""
-    echo -e "${BLUE}Access URLs:${NC}"
-    echo -e "${BLUE}• Frontend: http://localhost:3000 (Prod) or http://localhost:3001 (Dev)${NC}"
-    echo -e "${BLUE}• Backend API: http://localhost:14240 (Prod) or http://localhost:14241 (Dev)${NC}"
-    echo -e "${BLUE}• API Documentation: http://localhost:14240/docs${NC}"
-    echo -e "${BLUE}• Database: chronos-DB:5432${NC}"
-elif [ "$containers_running" -ge "2" ] && [ "$db_ready" -eq "1" ]; then
-    echo -e "${YELLOW}⚠️ System partially ready - some services need attention${NC}"
-else
-    echo -e "${RED}❌ System NOT ready - containers not running or unhealthy${NC}"
-    echo ""
-    echo -e "${YELLOW}Troubleshooting:${NC}"
-    echo -e "${YELLOW}1. Check Docker: docker-compose ps${NC}"
-    echo -e "${YELLOW}2. Check logs: docker-compose logs [service-name]${NC}"
-    echo -e "${YELLOW}3. Restart services: docker-compose down && docker-compose up -d${NC}"
-fi
-
-echo ""
 echo "======================================"
 echo -e "${BLUE}🔧 Next Steps:${NC}"
 echo ""

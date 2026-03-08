@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Container, Typography, Box, Paper, Button, Grid, TextField, MenuItem,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Chip, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress,
-  List, ListItem, ListItemText, Divider, Select
+  List, ListItem, ListItemText, Divider, Select, InputAdornment
 } from '@mui/material';
 import {
   AddShoppingCart as OrderIcon,
   Visibility as ViewIcon,
   QrCode as QrCodeIcon,
   History as HistoryIcon,
+  Search as SearchIcon,
+  PointOfSale as SaleIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { CREATE_PRODUCTION_ORDER, UPDATE_PRODUCTION_ORDER_STATUS, CONFIRM_PRODUCTION_ORDER } from '../graphql/confectioneryMutations';
@@ -96,9 +98,26 @@ const GET_PRODUCTION_RECORD = gql`
 
 const OrdersPage: React.FC = () => {
   const [openModal, setOpenModal] = useState(false);
+  const [openSaleModal, setOpenSaleModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [labelData, setLabelData] = useState<any>(null);
   const [historyOrderId, setHistoryOrderId] = useState<number | null>(null);
+  
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  // Quick sale form state
+  const [saleForm, setSaleForm] = useState({
+    recipeId: '',
+    quantity: '1',
+    clientName: '',
+    clientPhone: '',
+    paymentMethod: 'В брой',
+    price: '',
+    notes: ''
+  });
+
   const { data, loading, error, refetch } = useQuery(GET_ORDERS_AND_RECIPES);
   const { data: recordData } = useQuery(GET_PRODUCTION_RECORD, {
     variables: { orderId: historyOrderId },
@@ -109,10 +128,76 @@ const OrdersPage: React.FC = () => {
   const [generateLabel] = useMutation(GENERATE_LABEL);
   const [confirmOrder] = useMutation(CONFIRM_PRODUCTION_ORDER);
 
+  const CREATE_QUICK_SALE = gql`
+    mutation CreateQuickSale($input: QuickSaleInput!) {
+      createQuickSale(input: $input) {
+        id
+        status
+      }
+    }
+  `;
+  const [createQuickSale] = useMutation(CREATE_QUICK_SALE);
+
+  const filteredOrders = useMemo(() => {
+    if (!data?.productionOrders) return [];
+    
+    let orders = data.productionOrders;
+    
+    // Filter by status
+    if (statusFilter !== 'all') {
+      orders = orders.filter((o: any) => o.status === statusFilter);
+    }
+    
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      orders = orders.filter((o: any) => 
+        o.id.toString().includes(query) ||
+        o.recipe?.name?.toLowerCase().includes(query) ||
+        o.notes?.toLowerCase().includes(query)
+      );
+    }
+    
+    return orders;
+  }, [data, searchQuery, statusFilter]);
+
   const handleGenerateLabel = async (orderId: number) => {
     try {
       const result = await generateLabel({ variables: { orderId } });
       setLabelData(result.data.generateLabel);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleQuickSale = async () => {
+    if (!user?.companyId || !saleForm.recipeId) return;
+    try {
+      await createQuickSale({
+        variables: {
+          input: {
+            recipeId: parseInt(saleForm.recipeId),
+            quantity: parseFloat(saleForm.quantity),
+            clientName: saleForm.clientName || null,
+            clientPhone: saleForm.clientPhone || null,
+            paymentMethod: saleForm.paymentMethod,
+            price: saleForm.price ? parseFloat(saleForm.price) : null,
+            notes: saleForm.notes || null,
+            companyId: user.companyId
+          }
+        }
+      });
+      setOpenSaleModal(false);
+      setSaleForm({
+        recipeId: '',
+        quantity: '1',
+        clientName: '',
+        clientPhone: '',
+        paymentMethod: 'В брой',
+        price: '',
+        notes: ''
+      });
+      refetch();
     } catch (err) {
       console.error(err);
     }
@@ -159,7 +244,7 @@ const OrdersPage: React.FC = () => {
       case 'confirmed': return 'info';
       case 'awaiting_stock': return 'warning';
       case 'in_progress': return 'primary';
-      case 'completed': return 'info';
+      case 'completed': return 'success';
       default: return 'default';
     }
   };
@@ -173,6 +258,17 @@ const OrdersPage: React.FC = () => {
       case 'completed': return 'Завършена';
       default: return status;
     }
+  };
+
+  const getOrderPriority = (order: any) => {
+    if (order.status === 'completed') return 'normal';
+    const dueDate = new Date(order.dueDate);
+    const now = new Date();
+    const diffHours = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    
+    if (diffHours < 0) return 'overdue'; // Просрочена
+    if (diffHours < 24) return 'soon'; // Скоро изтича
+    return 'normal';
   };
 
   const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
@@ -207,9 +303,50 @@ const OrdersPage: React.FC = () => {
         <Typography variant="h4" component="h1">
           Поръчки за производство
         </Typography>
-        <Button variant="contained" startIcon={<OrderIcon />} onClick={() => setOpenModal(true)}>
-          Нова Поръчка
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button 
+            variant="contained" 
+            color="success" 
+            startIcon={<SaleIcon />} 
+            onClick={() => setOpenSaleModal(true)}
+          >
+            Продажба
+          </Button>
+          <Button variant="contained" startIcon={<OrderIcon />} onClick={() => setOpenModal(true)}>
+            Нова Поръчка
+          </Button>
+        </Box>
+      </Box>
+
+      {/* Search and Filter */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+        <TextField
+          size="small"
+          placeholder="Търси поръчка..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ minWidth: 250 }}
+        />
+        <Select
+          size="small"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          sx={{ minWidth: 180 }}
+        >
+          <MenuItem value="all">Всички статуси</MenuItem>
+          <MenuItem value="awaiting_stock">Чака продукти</MenuItem>
+          <MenuItem value="ready">Готова за работа</MenuItem>
+          <MenuItem value="confirmed">Потвърдена</MenuItem>
+          <MenuItem value="in_progress">В производство</MenuItem>
+          <MenuItem value="completed">Завършена</MenuItem>
+        </Select>
       </Box>
 
       <TableContainer component={Paper}>
@@ -227,8 +364,16 @@ const OrdersPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {data?.productionOrders.map((order: any) => (
-              <TableRow key={order.id}>
+            {filteredOrders.map((order: any) => {
+              const priority = getOrderPriority(order);
+              return (
+              <TableRow 
+                key={order.id}
+                sx={{ 
+                  bgcolor: priority === 'overdue' ? 'rgba(244, 67, 54, 0.1)' : 
+                          priority === 'soon' ? 'rgba(255, 152, 0, 0.1)' : 'inherit'
+                }}
+              >
                 <TableCell>{order.id}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{order.recipe.name}</TableCell>
                 <TableCell align="right">{order.quantity}</TableCell>
@@ -264,9 +409,9 @@ const OrdersPage: React.FC = () => {
                 </TableCell>
               </TableRow>
             ))}
-            {data?.productionOrders.length === 0 && (
+            {filteredOrders.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} align="center">Няма активни поръчки.</TableCell>
+                <TableCell colSpan={7} align="center">Няма поръчки.</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -340,6 +485,100 @@ const OrdersPage: React.FC = () => {
             disabled={!form.recipeId || !form.dueDate}
           >
             Приеми Поръчка
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal: Бърза продажба */}
+      <Dialog open={openSaleModal} onClose={() => setOpenSaleModal(false)} fullWidth maxWidth="sm">
+        <DialogTitle>💰 Бърза продажба</DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                fullWidth
+                select
+                label="Продукт"
+                value={saleForm.recipeId}
+                onChange={e => setSaleForm({...saleForm, recipeId: e.target.value})}
+              >
+                {data?.recipes.map((r: any) => (
+                  <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Количество"
+                type="number"
+                value={saleForm.quantity}
+                onChange={e => setSaleForm({...saleForm, quantity: e.target.value})}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Цена (лв)"
+                type="number"
+                value={saleForm.price}
+                onChange={e => setSaleForm({...saleForm, price: e.target.value})}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">лв</InputAdornment>,
+                }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                fullWidth
+                select
+                label="Начин на плащане"
+                value={saleForm.paymentMethod}
+                onChange={e => setSaleForm({...saleForm, paymentMethod: e.target.value})}
+              >
+                <MenuItem value="В брой">В брой</MenuItem>
+                <MenuItem value="Карта">Карта</MenuItem>
+                <MenuItem value="Банков превод">Банков превод</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Клиент (име)"
+                value={saleForm.clientName}
+                onChange={e => setSaleForm({...saleForm, clientName: e.target.value})}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Телефон"
+                value={saleForm.clientPhone}
+                onChange={e => setSaleForm({...saleForm, clientPhone: e.target.value})}
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                fullWidth
+                label="Бележки"
+                multiline
+                rows={2}
+                value={saleForm.notes}
+                onChange={e => setSaleForm({...saleForm, notes: e.target.value})}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenSaleModal(false)}>Отказ</Button>
+          <Button 
+            onClick={handleQuickSale} 
+            variant="contained" 
+            color="success"
+            disabled={!saleForm.recipeId}
+            startIcon={<SaleIcon />}
+          >
+            ✅ Продай
           </Button>
         </DialogActions>
       </Dialog>

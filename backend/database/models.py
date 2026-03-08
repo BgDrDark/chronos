@@ -1502,6 +1502,7 @@ class CashJournalEntry(Base):
     description = Column(Text, nullable=True)
     reference_type = Column(String(20), nullable=True)  # invoice / manual / other
     reference_id = Column(Integer, nullable=True)
+    payment_method = Column(String(50), nullable=True)  # Банков превод, В брой, Карта
     
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)

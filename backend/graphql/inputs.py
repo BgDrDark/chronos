@@ -300,6 +300,18 @@ class ProductionOrderInput:
 
 
 @strawberry.input
+class QuickSaleInput:
+    recipe_id: int
+    quantity: Decimal
+    client_name: Optional[str] = None
+    client_phone: Optional[str] = None
+    payment_method: str = "В брой"
+    price: Optional[Decimal] = None
+    notes: Optional[str] = None
+    company_id: int
+
+
+@strawberry.input
 class NotificationSettingInput:
     id: Optional[int] = None
     event_type: str
