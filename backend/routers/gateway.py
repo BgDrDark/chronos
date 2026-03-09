@@ -351,10 +351,35 @@ class GatewayConfigPushResponse(BaseModel):
     doors_synced: int
     devices_synced: int
 
+from backend.auth.gateway_hmac import require_gateway_auth, verify_timestamp, verify_hmac_signature, create_gateway_signature
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from fastapi import Request
+
+limiter = Limiter(key_func=get_remote_address)
+
+# Rate limit: 10 requests per minute for gateway endpoints
+GATEWAY_RATE_LIMIT = "10/minute"
+
+
 @router.post("/{gateway_id}/push-config")
-async def push_gateway_config(gateway_id: int, config: GatewayConfigPush, db: AsyncSession = Depends(get_db)):
-    gw = await db.get(Gateway, gateway_id)
-    if not gw: raise HTTPException(status_code=404, detail="Gateway не е намерен")
+@limiter.limit(GATEWAY_RATE_LIMIT)
+async def push_gateway_config(
+    request: Request,
+    gateway_id: int, 
+    config: GatewayConfigPush, 
+    x_signature: str = Header(..., alias="X-Signature"),
+    x_timestamp: str = Header(..., alias="X-Timestamp"),
+    db: AsyncSession = Depends(get_db)
+):
+    # Verify gateway and HMAC
+    gateway = await require_gateway_auth(x_signature, x_timestamp, request)
+    
+    # Verify this gateway matches the URL
+    if gateway.id != gateway_id:
+        raise HTTPException(status_code=403, detail="Gateway ID mismatch")
+    
+    gw = gateway
     
     logger.info(f"Syncing config for gateway {gateway_id}. Zones: {len(config.zones)}, Doors: {len(config.doors)}")
     
@@ -455,9 +480,22 @@ async def push_gateway_config(gateway_id: int, config: GatewayConfigPush, db: As
     return {"status": "synced", "zones_synced": zones_synced, "doors_synced": doors_synced}
 
 @router.post("/{gateway_id}/pull-config")
-async def pull_gateway_config(gateway_id: int, db: AsyncSession = Depends(get_db)):
-    gw = await db.get(Gateway, gateway_id)
-    if not gw: raise HTTPException(status_code=404, detail="Gateway не е намерен")
+@limiter.limit(GATEWAY_RATE_LIMIT)
+async def pull_gateway_config(
+    request: Request,
+    gateway_id: int, 
+    x_signature: str = Header(..., alias="X-Signature"),
+    x_timestamp: str = Header(..., alias="X-Timestamp"),
+    db: AsyncSession = Depends(get_db)
+):
+    # Verify gateway and HMAC
+    gateway = await require_gateway_auth(x_signature, x_timestamp, request)
+    
+    # Verify this gateway matches the URL
+    if gateway.id != gateway_id:
+        raise HTTPException(status_code=403, detail="Gateway ID mismatch")
+    
+    gw = gateway
     
     doors_res = await db.execute(select(AccessDoor).where(AccessDoor.gateway_id == gateway_id))
     doors = doors_res.scalars().all()
@@ -527,7 +565,23 @@ async def trigger_gateway_pull(gateway_id: int, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=503, detail="Няма връзка с Gateway")
 
 @router.post("/{gateway_id}/access/sync-logs")
-async def sync_logs(gateway_id: int, logs: List[AccessLogSync], db: AsyncSession = Depends(get_db)):
-    for l in logs: db.add(AccessLog(**l.model_dump(), gateway_id=gateway_id))
+@limiter.limit("5/minute")  # Stricter limit for log sync
+async def sync_logs(
+    request: Request,
+    gateway_id: int, 
+    logs: List[AccessLogSync],
+    x_signature: str = Header(..., alias="X-Signature"),
+    x_timestamp: str = Header(..., alias="X-Timestamp"),
+    db: AsyncSession = Depends(get_db)
+):
+    # Verify gateway and HMAC
+    gateway = await require_gateway_auth(x_signature, x_timestamp, request)
+    
+    # Verify this gateway matches the URL
+    if gateway.id != gateway_id:
+        raise HTTPException(status_code=403, detail="Gateway ID mismatch")
+    
+    for l in logs: 
+        db.add(AccessLog(**l.model_dump(), gateway_id=gateway_id))
     await db.commit()
     return {"status": "synced", "count": len(logs)}

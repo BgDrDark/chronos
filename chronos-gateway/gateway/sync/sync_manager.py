@@ -1,10 +1,15 @@
 """
 SyncManager for synchronizing data between Gateway and Backend
+Supports HTTPS + HMAC authentication
 """
 
 import asyncio
 import logging
 import aiohttp
+import hmac
+import hashlib
+import json
+import time
 from typing import Optional, Dict, Any
 from datetime import datetime
 
@@ -12,6 +17,16 @@ from gateway.database.sqlite_manager import config_db, logs_db
 from gateway.config import config
 
 logger = logging.getLogger(__name__)
+
+
+def generate_hmac_signature(payload: str, secret: str) -> str:
+    """Generate HMAC-SHA256 signature for a payload"""
+    signature = hmac.new(
+        secret.encode(),
+        payload.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    return signature
 
 
 class SyncManager:
@@ -122,13 +137,30 @@ class SyncManager:
             logger.error(f"Error syncing config: {e}")
     
     async def pull_config_from_backend(self) -> bool:
-        """Тегли конфигурацията от backend"""
+        """Тегли конфигурацията от backend с HMAC"""
         try:
-            url = f"{self.backend_url}/gateways/{self.gateway_id}/config"
-            headers = {"X-Kiosk-Secret": self.api_key}
+            url = f"{self.backend_url}/gateways/{self.gateway_id}/pull-config"
             
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            # Generate HMAC signature
+            timestamp = str(int(time.time()))
+            empty_payload = "{}"
+            signature = generate_hmac_signature(f"{empty_payload}{timestamp}", self.api_key)
+            
+            headers = {
+                "X-Gateway-Key": self.api_key,
+                "X-Timestamp": timestamp,
+                "X-Signature": signature,
+                "Content-Type": "application/json"
+            }
+            
+            # SSL verification
+            ssl_verify = not config.get('backend.ssl_verify_disabled', False)
+            connector = None
+            if not ssl_verify:
+                connector = aiohttp.TCPConnector(ssl=False)
+            
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.post(url, json={}, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
                     if response.status == 200:
                         data = await response.json()
                         
@@ -156,20 +188,34 @@ class SyncManager:
         return False
     
     async def _push_with_retry(self, endpoint: str, data: Dict[str, Any]) -> bool:
-        """Пушва данни с retry логика"""
+        """Пушва данни с retry логика + HMAC подписване"""
         if not self.backend_url:
             logger.warning("Backend URL not configured, skipping sync")
             return False
         
         url = f"{self.backend_url}{endpoint}"
+        
+        # Generate HMAC signature
+        timestamp = str(int(time.time()))
+        payload = json.dumps(data, separators=(',', ':'))
+        signature = generate_hmac_signature(f"{payload}{timestamp}", self.api_key)
+        
         headers = {
-            "X-Kiosk-Secret": self.api_key,
+            "X-Gateway-Key": self.api_key,
+            "X-Timestamp": timestamp,
+            "X-Signature": signature,
             "Content-Type": "application/json"
         }
         
+        # SSL verification settings
+        ssl_verify = not config.get('backend.ssl_verify_disabled', False)
+        connector = None
+        if not ssl_verify:
+            connector = aiohttp.TCPConnector(ssl=False)
+        
         for attempt in range(self.retry_attempts):
             try:
-                async with aiohttp.ClientSession() as session:
+                async with aiohttp.ClientSession(connector=connector) as session:
                     async with session.post(url, json=data, headers=headers, 
                                            timeout=aiohttp.ClientTimeout(total=30)) as response:
                         if response.status in (200, 201):
