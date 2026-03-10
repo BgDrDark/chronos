@@ -4,111 +4,75 @@ PyInstaller spec file for Chronos Gateway (Windows)
 
 Build command:
     pyinstaller chronos-gateway.spec
-
-Output will be in dist/chronos-gateway/
 """
 
+import os
 import sys
-from pathlib import Path
-
-# Get the gateway directory
-gateway_dir = Path(SPECPATH).parent / "gateway"
 
 block_cipher = None
 
+# Get the directory where this spec file is located  
+spec_dir = os.path.dirname(os.path.abspath(SPECPATH))
+# main.py is directly in chronos-gateway folder
+gateway_dir = spec_dir
+
 a = Analysis(
-    [str(gateway_dir / "main.py")],
-    pathex=[str(Path(SPECPATH).parent)],
+    [os.path.join(gateway_dir, 'main.py')],
+    pathex=[spec_dir, gateway_dir],
     binaries=[],
     datas=[
-        # Include config.yaml
-        (str(Path(SPECPATH).parent / "config.yaml"), "."),
+        (os.path.join(spec_dir, 'config.yaml'), '.'),
     ],
     hiddenimports=[
-        # Core dependencies
-        "aiohttp",
-        "aiohttp.web",
-        "aiohttp.helpers",
-        "fastapi",
-        "uvicorn",
-        "uvicorn.logging",
-        "uvicorn.loops",
-        "uvicorn.loops.auto",
-        "uvicorn.protocols",
-        "uvicorn.protocols.http",
-        "uvicorn.protocols.http.auto",
-        "uvicorn.protocols.websockets",
-        "uvicorn.protocols.websockets.auto",
-        "uvicorn.lifespan",
-        "uvicorn.lifespan.on",
+        # Core
+        'aiohttp', 'aiohttp.web', 'aiohttp.helpers',
+        'fastapi', 'uvicorn', 'uvicorn.logging', 'uvicorn.loops',
+        'uvicorn.protocols', 'uvicorn.protocols.http',
+        'uvicorn.protocols.websockets',
         
         # Gateway modules
-        "gateway.config",
-        "gateway.core.hardware_id",
-        "gateway.devices.terminal_manager",
-        "gateway.devices.printer_manager",
-        "gateway.devices.relay_controller",
-        "gateway.devices.sr201_relay",
-        "gateway.cluster.manager",
-        "gateway.cluster.discovery",
-        "gateway.cluster.scorer",
-        "gateway.sync.sync_manager",
-        "gateway.access.controller",
-        "gateway.access.zone_manager",
-        "gateway.access.code_manager",
-        "gateway.access.zone_state",
-        "gateway.access.anti_passback",
-        "gateway.server.web_dashboard",
-        "gateway.server.terminal_hub",
+        'gateway.config',
+        'gateway.core.hardware_id',
+        'gateway.devices.terminal_manager',
+        'gateway.devices.printer_manager',
+        'gateway.devices.relay_controller',
+        'gateway.devices.sr201_relay',
+        'gateway.cluster.manager',
+        'gateway.cluster.discovery',
+        'gateway.cluster.scorer',
+        'gateway.sync.sync_manager',
+        'gateway.access.controller',
+        'gateway.access.zone_manager',
+        'gateway.access.code_manager',
+        'gateway.access.zone_state',
+        'gateway.access.anti_passback',
+        'gateway.server.web_dashboard',
+        'gateway.server.terminal_hub',
+        'gateway.database.sqlite_manager',
         
         # Database
-        "sqlite3",
+        'sqlite3',
         
-        # Serial communication
-        "serial",
-        "serial.tools.list_ports",
+        # Serial
+        'serial', 'serial.tools.list_ports',
         
-        # Utilities
-        "json",
-        "hashlib",
-        "hmac",
-        "secrets",
-        "logging",
-        "datetime",
-        "asyncio",
-        "threading",
-        "socket",
-        "pathlib",
-        "urllib",
-        "urllib.request",
-        "urllib.parse",
-        "http.client",
-        "http.server",
-        "websockets",
-        "websockets.server",
-        "websockets.client",
-        "websockets.sync.server",
+        # Utils
+        'json', 'hashlib', 'hmac', 'secrets', 'logging',
+        'datetime', 'asyncio', 'threading', 'socket',
+        'pathlib', 'urllib', 'urllib.request', 'urllib.parse',
+        'http.client', 'http.server',
+        
+        # Websockets
+        'websockets', 'websockets.server', 'websockets.client',
         
         # YAML
-        "yaml",
-        "yaml.safe_load",
-        "yaml.safe_dump",
+        'yaml', 'yaml.safe_load', 'yaml.safe_dump',
         
-        # Cryptography
-        "cryptography",
-        "cryptography.fernet",
+        # Requests
+        'requests', 'requests.adapters',
         
-        # HTTP
-        "requests",
-        "requests.adapters",
-        
-        # Windows specific
-        "winreg",
-        "wmi",
-        
-        # Multiprocessing
-        "multiprocessing",
-        "multiprocessing.spawn",
+        # Cryptography  
+        'cryptography', 'cryptography.fernet',
     ],
     hookspath=[],
     hooksconfig={},
@@ -127,18 +91,17 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="ChronosGateway",
+    name='ChronosGateway',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,  # Set to False for production (no console window)
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Add icon path here: "icon.ico"
 )
 
 coll = COLLECT(
@@ -149,5 +112,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="ChronosGateway",
+    name='ChronosGateway',
 )
