@@ -178,6 +178,12 @@ class EmploymentContract:
     tax_resident: bool
     insurance_contributor: bool
     has_income_tax: bool
+    # ТРЗ разширение
+    night_work_rate: Optional[float]
+    overtime_rate: Optional[float]
+    holiday_rate: Optional[float]
+    work_class: Optional[str]
+    dangerous_work: bool
 
     @classmethod
     def from_instance(cls, instance: models.EmploymentContract) -> "EmploymentContract":
@@ -195,9 +201,15 @@ class EmploymentContract:
             salary_calculation_type=instance.salary_calculation_type,
             salary_installments_count=instance.salary_installments_count,
             monthly_advance_amount=float(instance.monthly_advance_amount or 0),
-            tax_resident=instance.tax_resident,
-            insurance_contributor=instance.insurance_contributor,
-            has_income_tax=instance.has_income_tax
+            tax_resident=instance.tax_resident if instance.tax_resident is not None else True,
+            insurance_contributor=instance.insurance_contributor if instance.insurance_contributor is not None else True,
+            has_income_tax=instance.has_income_tax if instance.has_income_tax is not None else True,
+            # ТРЗ разширение
+            night_work_rate=float(instance.night_work_rate) if instance.night_work_rate else None,
+            overtime_rate=float(instance.overtime_rate) if instance.overtime_rate else None,
+            holiday_rate=float(instance.holiday_rate) if instance.holiday_rate else None,
+            work_class=instance.work_class,
+            dangerous_work=instance.dangerous_work if instance.dangerous_work is not None else False,
         )
 
 @strawberry.type
@@ -288,6 +300,19 @@ class User:
         if not self.position_id: return None
         return await info.context["dataloaders"]["position_by_id"].load(self.position_id)
 
+    @strawberry.field
+    async def employment_contract(self, info: strawberry.Info) -> Optional["EmploymentContract"]:
+        from sqlalchemy import select
+        from backend.database.models import EmploymentContract
+        db = info.context["db"]
+        stmt = select(EmploymentContract).where(
+            EmploymentContract.user_id == self.id,
+            EmploymentContract.is_active == True
+        )
+        result = await db.execute(stmt)
+        contract = result.scalar_one_or_none()
+        return EmploymentContract.from_instance(contract) if contract else None
+    
     @strawberry.field
     async def timelogs(
         self, 

@@ -303,6 +303,12 @@ class UpdateUserInput:
     tax_resident: strawberry.auto
     insurance_contributor: strawberry.auto
     has_income_tax: strawberry.auto
+    # ТРЗ разширение
+    night_work_rate: strawberry.auto
+    overtime_rate: strawberry.auto
+    holiday_rate: strawberry.auto
+    work_class: strawberry.auto
+    dangerous_work: strawberry.auto
 
 @strawberry.input
 class ProductionOrderInput:

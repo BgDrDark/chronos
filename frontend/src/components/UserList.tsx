@@ -55,6 +55,23 @@ const GET_USERS_QUERY = gql`
         department { id name }
         position { id title }
         role { id name description }
+        employmentContract {
+          id
+          contractType
+          startDate
+          endDate
+          baseSalary
+          workHoursPerWeek
+          salaryInstallmentsCount
+          monthlyAdvanceAmount
+          taxResident
+          hasIncomeTax
+          nightWorkRate
+          overtimeRate
+          holidayRate
+          workClass
+          dangerousWork
+        }
       }
       totalCount
     }

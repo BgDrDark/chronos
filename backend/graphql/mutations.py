@@ -273,9 +273,72 @@ class Mutation:
             company_id=userInput.company_id,
             department_id=userInput.department_id,
             position_id=userInput.position_id,
-            base_salary=userInput.base_salary,  # Passed for payroll linkage
+            base_salary=userInput.base_salary,
         )
         db_user = await crud.update_user(db, user_id=userInput.id, user_in=update_data)
+        
+        # Update or create EmploymentContract with TRZ fields
+        if userInput.contract_type or userInput.base_salary:
+            from backend.database.models import EmploymentContract
+            from sqlalchemy import select
+            
+            stmt = select(EmploymentContract).where(
+                EmploymentContract.user_id == userInput.id,
+                EmploymentContract.is_active == True
+            )
+            result = await db.execute(stmt)
+            contract = result.scalar_one_or_none()
+            
+            if contract:
+                # Update existing contract
+                if userInput.contract_type:
+                    contract.contract_type = userInput.contract_type
+                if userInput.base_salary is not None:
+                    contract.base_salary = userInput.base_salary
+                if userInput.contract_start_date:
+                    contract.start_date = userInput.contract_start_date
+                if userInput.contract_end_date:
+                    contract.end_date = userInput.contract_end_date
+                if userInput.salary_installments_count:
+                    contract.salary_installments_count = userInput.salary_installments_count
+                if userInput.monthly_advance_amount is not None:
+                    contract.monthly_advance_amount = userInput.monthly_advance_amount
+                if userInput.tax_resident is not None:
+                    contract.tax_resident = userInput.tax_resident
+                if userInput.has_income_tax is not None:
+                    contract.has_income_tax = userInput.has_income_tax
+                # ТРЗ полета
+                if userInput.night_work_rate is not None:
+                    contract.night_work_rate = userInput.night_work_rate
+                if userInput.overtime_rate is not None:
+                    contract.overtime_rate = userInput.overtime_rate
+                if userInput.holiday_rate is not None:
+                    contract.holiday_rate = userInput.holiday_rate
+                if userInput.work_class:
+                    contract.work_class = userInput.work_class
+                if userInput.dangerous_work is not None:
+                    contract.dangerous_work = userInput.dangerous_work
+            else:
+                # Create new contract
+                contract = EmploymentContract(
+                    user_id=userInput.id,
+                    company_id=userInput.company_id or (db_user.company_id if db_user else None),
+                    contract_type=userInput.contract_type or 'full_time',
+                    start_date=userInput.contract_start_date or date.today(),
+                    base_salary=userInput.base_salary,
+                    is_active=True,
+                    salary_installments_count=userInput.salary_installments_count or 1,
+                    monthly_advance_amount=userInput.monthly_advance_amount or 0,
+                    tax_resident=userInput.tax_resident if userInput.tax_resident is not None else True,
+                    has_income_tax=userInput.has_income_tax if userInput.has_income_tax is not None else True,
+                    night_work_rate=userInput.night_work_rate or 0.5,
+                    overtime_rate=userInput.overtime_rate or 1.5,
+                    holiday_rate=userInput.holiday_rate or 2.0,
+                )
+                db.add(contract)
+            
+            await db.commit()
+        
         return types.User.from_instance(db_user)
 
     @strawberry.mutation

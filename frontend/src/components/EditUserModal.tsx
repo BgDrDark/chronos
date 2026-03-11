@@ -49,6 +49,12 @@ const updateUserSchema = z.object({
   salaryInstallmentsCount: z.number().min(1),
   monthlyAdvanceAmount: z.number().min(0),
   taxResident: z.boolean(),
+  // ТРЗ разширение
+  nightWorkRate: z.number().min(0).optional(),
+  overtimeRate: z.number().min(0).optional(),
+  holidayRate: z.number().min(0).optional(),
+  workClass: z.string().optional().or(z.literal('')),
+  dangerousWork: z.boolean().optional(),
 });
 
 type UpdateUserFormData = z.infer<typeof updateUserSchema>;
@@ -112,6 +118,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
 
   useEffect(() => {
     if (user) {
+      const contract = user.employmentContract;
       reset({
         id: parseInt(user.id),
         email: user.email || '',
@@ -129,15 +136,15 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         roleId: user.role?.id || null,
         isActive: user.isActive,
         password: '',
-        // These might need separate fetch if not in UserList, but assuming they are available
-        contractType: user.contractType || 'full_time',
-        contractStartDate: user.contractStartDate || '',
-        contractEndDate: user.contractEndDate || '',
-        baseSalary: user.baseSalary || null,
-        hasIncomeTax: user.hasIncomeTax ?? true,
-        salaryInstallmentsCount: user.salaryInstallmentsCount || 1,
-        monthlyAdvanceAmount: user.monthlyAdvanceAmount || 0,
-        taxResident: user.taxResident ?? true,
+        // ТРЗ данни от employment contract
+        contractType: contract?.contractType || 'full_time',
+        contractStartDate: contract?.startDate || '',
+        contractEndDate: contract?.endDate || '',
+        baseSalary: contract?.baseSalary || null,
+        hasIncomeTax: contract?.hasIncomeTax ?? true,
+        salaryInstallmentsCount: contract?.salaryInstallmentsCount || 1,
+        monthlyAdvanceAmount: contract?.monthlyAdvanceAmount || 0,
+        taxResident: contract?.taxResident ?? true,
       });
     }
   }, [user, reset]);
@@ -180,6 +187,12 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         salaryInstallmentsCount: formData.salaryInstallmentsCount,
         monthlyAdvanceAmount: formData.monthlyAdvanceAmount,
         taxResident: formData.taxResident,
+        // ТРЗ разширение
+        nightWorkRate: formData.nightWorkRate || 0.5,
+        overtimeRate: formData.overtimeRate || 1.5,
+        holidayRate: formData.holidayRate || 2.0,
+        workClass: formData.workClass || null,
+        dangerousWork: formData.dangerousWork || false,
       };
 
       if (formData.email !== user?.email) {
@@ -379,6 +392,43 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
               <FormControlLabel
                 control={<Controller name="hasIncomeTax" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} />} />}
                 label="Удържай ДОД (10%)"
+              />
+            </Grid>
+
+            {/* --- СЕКЦИЯ 4: ТРЗ --- */}
+            <Grid size={{ xs: 12 }} sx={{ mt: 1 }}>
+              <Alert severity="success" variant="outlined" icon={false} sx={{ py: 0 }}>ТРЗ - Трудови Права</Alert>
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <TextField fullWidth label="Нощен труд (%)" type="number" inputProps={{ step: 0.1, min: 0 }} {...register('nightWorkRate', { valueAsNumber: true })} size="small" />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <TextField fullWidth label="Извънреден (множ.)" type="number" inputProps={{ step: 0.1, min: 1 }} {...register('overtimeRate', { valueAsNumber: true })} size="small" />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <TextField fullWidth label="Празници (множ.)" type="number" inputProps={{ step: 0.1, min: 1 }} {...register('holidayRate', { valueAsNumber: true })} size="small" />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Клас</InputLabel>
+                <Controller
+                  name="workClass"
+                  control={control}
+                  render={({ field }) => (
+                    <Select {...field} label="Клас" value={field.value || ''}>
+                      <MenuItem value="I">Клас I</MenuItem>
+                      <MenuItem value="II">Клас II</MenuItem>
+                      <MenuItem value="III">Клас III</MenuItem>
+                      <MenuItem value="IV">Клас IV</MenuItem>
+                    </Select>
+                  )}
+                />
+              </FormControl>
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormControlLabel
+                control={<Controller name="dangerousWork" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} />} />}
+                label="Вредни условия на труд"
               />
             </Grid>
           </Grid>
