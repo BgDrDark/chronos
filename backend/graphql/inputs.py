@@ -3,7 +3,7 @@ from typing import Optional, List
 import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from strawberry.experimental.pydantic import input as pydantic_input
 
 # Pydantic models for validation
@@ -28,6 +28,13 @@ class UserCreatePydantic(BaseModel):
     
     # Employment Contract
     contract_type: Optional[str] = None
+    
+    @field_validator('email', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == '' or v is None:
+            return None
+        return v
     contract_start_date: Optional[datetime.date] = None
     contract_end_date: Optional[datetime.date] = None
     base_salary: Optional[Decimal] = None
@@ -64,6 +71,13 @@ class UpdateUserPydantic(BaseModel):
     company_id: Optional[int] = None
     department_id: Optional[int] = None
     position_id: Optional[int] = None
+    
+    @field_validator('email', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == '' or v is None:
+            return None
+        return v
 
     # Employment Contract
     contract_type: Optional[str] = None

@@ -19,6 +19,8 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from backend.jobs.rotation_job import check_and_rotate_keys
 from backend.jobs.contract_job import check_expired_contracts
+from backend.jobs.inventory_check_job import check_inventory_levels
+from backend.jobs.fleet_notifications_job import check_fleet_notifications
 from fastapi.responses import JSONResponse
 from fastapi import status
 import logging
@@ -36,6 +38,10 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(check_and_rotate_keys, 'interval', hours=24)
     # Run once a day to check for expired contracts
     scheduler.add_job(check_expired_contracts, 'interval', hours=24)
+    # Run daily at 2:00 AM for inventory check
+    scheduler.add_job(check_inventory_levels, 'cron', hour=2, minute=0)
+    # Run daily at 6:00 AM for fleet notifications
+    scheduler.add_job(check_fleet_notifications, 'cron', hour=6, minute=0)
     scheduler.start()
     
     # Run check with delay on startup to ensure DB is initialized

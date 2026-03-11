@@ -481,7 +481,14 @@ class Payslip(Base):
     overtime_amount = Column(Numeric(10, 2), default=0)
     bonus_amount = Column(Numeric(10, 2), default=0)
     
-    # New detail fields
+    # ТРЗ разширение - нови полета
+    night_work_amount = Column(Numeric(10, 2), default=0)  # Нощен труд
+    trip_amount = Column(Numeric(10, 2), default=0)  # Командировъчни
+    voucher_amount = Column(Numeric(10, 2), default=0)  # Ваучери за храна
+    benefit_amount = Column(Numeric(10, 2), default=0)  # Фирмени придобивки
+    sick_leave_amount = Column(Numeric(10, 2), default=0)  # Болнични
+    
+    # Existing detail fields
     tax_amount = Column(Numeric(10, 2), default=0)
     insurance_amount = Column(Numeric(10, 2), default=0)
     sick_days = Column(Integer, default=0)
@@ -792,9 +799,15 @@ class Supplier(Base):
     contact_person = Column(String, nullable=True)
     phone = Column(String(20), nullable=True)
     email = Column(String, nullable=True)
+    mol = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True)
+    notes = Column(Text, nullable=True)
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True)
 
     company = relationship("Company", backref="suppliers")
+
 
 class Ingredient(Base):
     __tablename__ = "ingredients"
@@ -810,6 +823,12 @@ class Ingredient(Base):
     baseline_min_stock = Column(Numeric(12, 3), default=0)
     current_price = Column(Numeric(12, 2), nullable=True) # Last purchase price
     
+    # Auto-reorder fields
+    min_quantity = Column(Numeric(12, 3), nullable=True)
+    reorder_quantity = Column(Numeric(12, 3), nullable=True)
+    is_auto_reorder = Column(Boolean, default=False)
+    preferred_supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    
     # Food safety
     storage_zone_id = Column(Integer, ForeignKey("storage_zones.id"), nullable=True)
     is_perishable = Column(Boolean, default=True)
@@ -820,6 +839,7 @@ class Ingredient(Base):
 
     storage_zone = relationship("StorageZone")
     company = relationship("Company", backref="ingredients")
+    preferred_supplier = relationship("Supplier")
 
 class Batch(Base):
     __tablename__ = "batches"
@@ -1313,6 +1333,14 @@ class EmploymentContract(Base):
     tax_resident = Column(Boolean, default=True)
     insurance_contributor = Column(Boolean, default=True)  # Whether employee pays insurance
     has_income_tax = Column(Boolean, default=True) # Whether to withhold income tax
+    
+    # ТРЗ разширение - ставки за надбавки
+    night_work_rate = Column(Numeric(4, 2), default=0.5)  # 50% надбавка за нощен труд
+    overtime_rate = Column(Numeric(4, 2), default=1.5)  # 50% множител за извънреден
+    holiday_rate = Column(Numeric(4, 2), default=2.0)  # 100% множител за празници
+    work_class = Column(String(10), nullable=True)  # Трудов клас (I, II, III, IV)
+    dangerous_work = Column(Boolean, default=False)  # Вредни условия на труд
+    
     created_at = Column(DateTime, default=sofia_now)
     updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
     
@@ -1328,11 +1356,135 @@ class PayrollPeriod(Base):
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     status = Column(String(20), default='open')  # 'open', 'processing', 'closed'
+    period_type = Column(String(20), default='monthly')  # 'monthly', 'quarterly', 'annual'
+    year_bonus_month = Column(Integer, nullable=True)  # Месец за 13-а заплата
     processing_date = Column(DateTime, nullable=True)
     payment_date = Column(Date, nullable=True)
     created_at = Column(DateTime, default=sofia_now)
     
     company = relationship("Company", backref="payroll_periods")
+
+
+class NightWorkBonus(Base):
+    """Нощен труд"""
+    __tablename__ = "night_work_bonuses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    period_id = Column(Integer, ForeignKey("payroll_periods.id", ondelete="SET NULL"), nullable=True)
+    date = Column(Date, nullable=False)
+    hours = Column(Numeric(5, 2), nullable=False)
+    hourly_rate = Column(Numeric(10, 2), nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
+    is_paid = Column(Boolean, default=False)
+    notes = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
+
+    user = relationship("User", backref="night_work_bonuses")
+    period = relationship("PayrollPeriod", backref="night_work_bonuses")
+
+
+class OvertimeWork(Base):
+    """Извънреден труд"""
+    __tablename__ = "overtime_works"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    period_id = Column(Integer, ForeignKey("payroll_periods.id", ondelete="SET NULL"), nullable=True)
+    date = Column(Date, nullable=False)
+    hours = Column(Numeric(5, 2), nullable=False)
+    hourly_rate = Column(Numeric(10, 2), nullable=False)
+    multiplier = Column(Numeric(4, 2), default=1.5)  # 1.5 за първи 2 часа, 2.0 за над 2 часа
+    amount = Column(Numeric(10, 2), nullable=False)
+    is_paid = Column(Boolean, default=False)
+    notes = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
+
+    user = relationship("User", backref="overtime_works")
+    period = relationship("PayrollPeriod", backref="overtime_works")
+
+
+class WorkOnHoliday(Base):
+    """Труд по празници"""
+    __tablename__ = "work_on_holidays"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    period_id = Column(Integer, ForeignKey("payroll_periods.id", ondelete="SET NULL"), nullable=True)
+    date = Column(Date, nullable=False)
+    hours = Column(Numeric(5, 2), nullable=False)
+    hourly_rate = Column(Numeric(10, 2), nullable=False)
+    multiplier = Column(Numeric(4, 2), default=2.0)  # 100% надбавка
+    amount = Column(Numeric(10, 2), nullable=False)
+    is_paid = Column(Boolean, default=False)
+    notes = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
+
+    user = relationship("User", backref="work_on_holidays")
+    period = relationship("PayrollPeriod", backref="work_on_holidays")
+
+
+class BusinessTripStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    PAID = "paid"
+
+
+class BusinessTrip(Base):
+    """Командировка"""
+    __tablename__ = "business_trips"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    period_id = Column(Integer, ForeignKey("payroll_periods.id", ondelete="SET NULL"), nullable=True)
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+    destination = Column(String(255), nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    daily_allowance = Column(Numeric(10, 2), default=40.00)  # Дневни
+    accommodation = Column(Numeric(10, 2), default=0)  # Нощувки
+    transport = Column(Numeric(10, 2), default=0)  # Транспорт
+    other_expenses = Column(Numeric(10, 2), default=0)  # Други разходи
+    total_amount = Column(Numeric(10, 2), default=0)
+    status = Column(String(20), default=BusinessTripStatus.PENDING.value)
+    approved_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    approved_notes = Column(String(500), nullable=True)
+    notes = Column(String(1000), nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
+
+    user = relationship("User", foreign_keys=[user_id], backref="business_trips")
+    period = relationship("PayrollPeriod", backref="business_trips")
+    department = relationship("Department", backref="business_trips")
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+
+
+class WorkExperience(Base):
+    """Трудов стаж"""
+    __tablename__ = "work_experiences"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    company_name = Column(String(255), nullable=False)
+    position = Column(String(255), nullable=True)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)  # NULL = продължава
+    years = Column(Integer, default=0)
+    months = Column(Integer, default=0)
+    class_level = Column(String(10), nullable=True)  # I, II, III, IV
+    is_current = Column(Boolean, default=False)
+    notes = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
+
+    user = relationship("User", backref="work_experiences")
+    company = relationship("Company", backref="work_experiences")
 
 
 class Payment(Base):
@@ -1891,3 +2043,673 @@ class AccessLog(Base):
     gateway_id = Column(Integer, ForeignKey("gateways.id", ondelete="CASCADE"), nullable=False)
     
     gateway = relationship("Gateway")
+
+
+# ============================================================
+# LOGISTICS MODELS
+# ============================================================
+
+class RequestTemplate(Base):
+    """Шаблони за заявки"""
+    __tablename__ = "request_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    items = Column(JSON, default=[])
+    default_department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    notes = Column(Text, nullable=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True)
+
+    company = relationship("Company", backref="request_templates")
+    default_department = relationship("Department")
+
+
+class PurchaseRequestStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    FULFILLED = "fulfilled"
+
+
+class PurchaseRequestPriority(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class PurchaseRequest(Base):
+    """Вътрешни заявки"""
+    __tablename__ = "purchase_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_number = Column(String(50), unique=True, nullable=False, index=True)
+    requested_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    status = Column(String(20), default=PurchaseRequestStatus.DRAFT.value)
+    priority = Column(String(20), default=PurchaseRequestPriority.MEDIUM.value)
+    reason = Column(Text, nullable=True)
+    due_date = Column(Date, nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    is_auto = Column(Boolean, default=False)
+    notes = Column(Text, nullable=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True)
+
+    company = relationship("Company", backref="purchase_requests")
+    requested_by_user = relationship("User", foreign_keys=[requested_by_id], back_populates="purchase_requests")
+    department = relationship("Department")
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+    items = relationship("PurchaseRequestItem", back_populates="purchase_request", cascade="all, delete-orphan")
+    approvals = relationship("PurchaseRequestApproval", back_populates="purchase_request", cascade="all, delete-orphan")
+    history = relationship("PurchaseRequestHistory", back_populates="purchase_request", cascade="all, delete-orphan")
+
+
+class PurchaseRequestItem(Base):
+    """Артикули в заявката"""
+    __tablename__ = "purchase_request_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    purchase_request_id = Column(Integer, ForeignKey("purchase_requests.id", ondelete="CASCADE"), nullable=False)
+    item_name = Column(String(255), nullable=False)
+    quantity = Column(Numeric(12, 3), nullable=False)
+    unit = Column(String(20), nullable=True)
+    notes = Column(String(500), nullable=True)
+
+    purchase_request = relationship("PurchaseRequest", back_populates="items")
+
+
+class PurchaseRequestApproval(Base):
+    """История на одобрения"""
+    __tablename__ = "purchase_request_approvals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("purchase_requests.id", ondelete="CASCADE"), nullable=False)
+    action = Column(String(20), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action_date = Column(DateTime, default=sofia_now)
+    reason = Column(Text, nullable=True)
+    is_auto = Column(Boolean, default=False)
+
+    purchase_request = relationship("PurchaseRequest", back_populates="approvals")
+    user = relationship("User")
+
+
+class PurchaseRequestHistory(Base):
+    """История на промените"""
+    __tablename__ = "purchase_request_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("purchase_requests.id", ondelete="CASCADE"), nullable=False)
+    field_name = Column(String(100), nullable=False)
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+    changed_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    changed_at = Column(DateTime, default=sofia_now)
+
+    purchase_request = relationship("PurchaseRequest", back_populates="history")
+    changed_by = relationship("User")
+
+
+class PurchaseOrderStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SENT = "sent"
+    CONFIRMED = "confirmed"
+    PARTIAL = "partial"
+    RECEIVED = "received"
+    CANCELLED = "cancelled"
+
+
+class PurchaseOrder(Base):
+    """Покупни поръчки"""
+    __tablename__ = "purchase_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    order_number = Column(String(50), unique=True, nullable=False, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    purchase_request_id = Column(Integer, ForeignKey("purchase_requests.id"), nullable=True)
+    status = Column(String(20), default=PurchaseOrderStatus.DRAFT.value)
+    order_date = Column(Date, nullable=True)
+    expected_date = Column(Date, nullable=True)
+    received_date = Column(Date, nullable=True)
+    total_amount = Column(Numeric(12, 2), default=0)
+    vat_amount = Column(Numeric(12, 2), default=0)
+    notes = Column(Text, nullable=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True)
+
+    company = relationship("Company", backref="purchase_orders")
+    supplier = relationship("Supplier", backref="purchase_orders")
+    purchase_request = relationship("PurchaseRequest")
+    items = relationship("PurchaseOrderItem", back_populates="purchase_order", cascade="all, delete-orphan")
+    deliveries = relationship("Delivery", back_populates="purchase_order", cascade="all, delete-orphan")
+
+
+class PurchaseOrderItem(Base):
+    """Артикули в поръчката"""
+    __tablename__ = "purchase_order_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id", ondelete="CASCADE"), nullable=False)
+    item_name = Column(String(255), nullable=False)
+    quantity = Column(Numeric(12, 3), nullable=False)
+    received_quantity = Column(Numeric(12, 3), default=0)
+    unit_price = Column(Numeric(12, 2), default=0)
+    vat_rate = Column(Numeric(5, 2), default=20)
+    unit = Column(String(20), nullable=True)
+
+    purchase_order = relationship("PurchaseOrder", back_populates="items")
+
+
+class DeliveryStatus(str, enum.Enum):
+    PENDING = "pending"
+    IN_TRANSIT = "in_transit"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+
+
+class Delivery(Base):
+    """Доставки"""
+    __tablename__ = "deliveries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    delivery_number = Column(String(50), unique=True, nullable=False, index=True)
+    purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=True)
+    driver_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(String(20), default=DeliveryStatus.PENDING.value)
+    shipped_date = Column(DateTime, nullable=True)
+    delivery_date = Column(DateTime, nullable=True)
+    tracking_number = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True)
+
+    company = relationship("Company", backref="deliveries")
+    purchase_order = relationship("PurchaseOrder", back_populates="deliveries")
+    vehicle = relationship("Vehicle", back_populates="deliveries")
+    driver = relationship("User", foreign_keys=[driver_id])
+    trips = relationship("VehicleTrip", back_populates="delivery")
+
+
+# ============================================================
+# FLEET MODELS
+# ============================================================
+
+class VehicleType(Base):
+    """Типове автомобили"""
+    __tablename__ = "vehicle_types"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    code = Column(String(20), nullable=True)
+
+    vehicles = relationship("Vehicle", back_populates="vehicle_type")
+
+
+class VehicleStatus(str, enum.Enum):
+    ACTIVE = "active"
+    IN_REPAIR = "in_repair"
+    OUT_OF_SERVICE = "out_of_service"
+    SOLD = "sold"
+
+
+class FuelType(str, enum.Enum):
+    BENZIN = "benzin"
+    DIZEL = "dizel"
+    ELECTRIC = "electric"
+    HYBRID = "hybrid"
+    LNG = "lng"
+    CNG = "cng"
+
+
+class Vehicle(Base):
+    """Автомобили"""
+    __tablename__ = "vehicles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    registration_number = Column(String(20), unique=True, nullable=False, index=True)
+    vin = Column(String(50), nullable=True)
+    make = Column(String(100), nullable=False)
+    model = Column(String(100), nullable=False)
+    year = Column(Integer, nullable=True)
+    vehicle_type_id = Column(Integer, ForeignKey("vehicle_types.id"), nullable=True)
+    fuel_type = Column(String(20), default=FuelType.DIZEL.value)
+    engine_number = Column(String(100), nullable=True)
+    chassis_number = Column(String(100), nullable=True)
+    color = Column(String(50), nullable=True)
+    initial_mileage = Column(Integer, default=0)
+    is_company = Column(Boolean, default=True)
+    owner_name = Column(String(255), nullable=True)
+    status = Column(String(20), default=VehicleStatus.ACTIVE.value)
+    notes = Column(Text, nullable=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True)
+
+    company = relationship("Company", backref="vehicles")
+    vehicle_type = relationship("VehicleType", back_populates="vehicles")
+    documents = relationship("VehicleDocument", back_populates="vehicle", cascade="all, delete-orphan")
+    fuel_cards = relationship("VehicleFuelCard", back_populates="vehicle", cascade="all, delete-orphan")
+    vignettes = relationship("VehicleVignette", back_populates="vehicle", cascade="all, delete-orphan")
+    tolls = relationship("VehicleToll", back_populates="vehicle", cascade="all, delete-orphan")
+    mileage_records = relationship("VehicleMileage", back_populates="vehicle", cascade="all, delete-orphan")
+    fuel_records = relationship("VehicleFuel", back_populates="vehicle", cascade="all, delete-orphan")
+    repairs = relationship("VehicleRepair", back_populates="vehicle", cascade="all, delete-orphan")
+    schedules = relationship("VehicleSchedule", back_populates="vehicle", cascade="all, delete-orphan")
+    insurances = relationship("VehicleInsurance", back_populates="vehicle", cascade="all, delete-orphan")
+    inspections = relationship("VehicleInspection", back_populates="vehicle", cascade="all, delete-orphan")
+    pretrip_inspections = relationship("VehiclePreTripInspection", back_populates="vehicle", cascade="all, delete-orphan")
+    drivers = relationship("VehicleDriver", back_populates="vehicle", cascade="all, delete-orphan")
+    trips = relationship("VehicleTrip", back_populates="vehicle", cascade="all, delete-orphan")
+    expenses = relationship("VehicleExpense", back_populates="vehicle", cascade="all, delete-orphan")
+    deliveries = relationship("Delivery", back_populates="vehicle")
+
+
+class VehicleDocumentType(str, enum.Enum):
+    INVOICE = "invoice"
+    POLICY = "policy"
+    INSPECTION = "inspection"
+    CONTRACT = "contract"
+    OTHER = "other"
+
+
+class VehicleDocument(Base):
+    """Документи на автомобили"""
+    __tablename__ = "vehicle_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    document_type = Column(String(20), nullable=False)
+    title = Column(String(255), nullable=False)
+    file_url = Column(String(500), nullable=True)
+    issue_date = Column(Date, nullable=True)
+    expiry_date = Column(Date, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="documents")
+
+
+class VehicleFuelCard(Base):
+    """Горивни карти"""
+    __tablename__ = "vehicle_fuel_cards"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    card_number = Column(String(50), nullable=False)
+    provider = Column(String(255), nullable=True)
+    pin = Column(String(10), nullable=True)
+    limit = Column(Numeric(12, 2), nullable=True)
+    is_active = Column(Boolean, default=True)
+    expiry_date = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="fuel_cards")
+    fuel_records = relationship("VehicleFuel", back_populates="fuel_card")
+
+
+class VehicleVignetteType(str, enum.Enum):
+    WEEK = "week"
+    MONTH = "month"
+    YEAR = "year"
+
+
+class VehicleVignette(Base):
+    """Е-винетки"""
+    __tablename__ = "vehicle_vignettes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    vignette_type = Column(String(20), nullable=False)
+    purchase_date = Column(Date, nullable=True)
+    valid_from = Column(Date, nullable=True)
+    valid_until = Column(Date, nullable=True)
+    price = Column(Numeric(12, 2), nullable=True)
+    provider = Column(String(255), nullable=True)
+    document_url = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="vignettes")
+
+
+class VehicleToll(Base):
+    """Тол такси"""
+    __tablename__ = "vehicle_tolls"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    route = Column(String(255), nullable=True)
+    toll_amount = Column(Numeric(12, 2), nullable=False)
+    toll_date = Column(DateTime, nullable=True)
+    section = Column(String(100), nullable=True)
+    document_url = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="tolls")
+
+
+class MileageSource(str, enum.Enum):
+    MANUAL = "manual"
+    GPS = "gps"
+    TACHO = "tacho"
+
+
+class VehicleMileage(Base):
+    """Километраж"""
+    __tablename__ = "vehicle_mileage"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    date = Column(Date, nullable=False)
+    mileage = Column(Integer, nullable=False)
+    source = Column(String(20), default=MileageSource.MANUAL.value)
+    notes = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="mileage_records")
+
+
+class VehicleFuel(Base):
+    """Зареждане на гориво"""
+    __tablename__ = "vehicle_fuel"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    date = Column(DateTime, nullable=False)
+    fuel_type = Column(String(20), nullable=True)
+    quantity = Column(Numeric(12, 3), nullable=False)
+    price_per_liter = Column(Numeric(12, 4), nullable=False)
+    total_amount = Column(Numeric(12, 2), nullable=False)
+    mileage = Column(Integer, nullable=True)
+    location = Column(String(255), nullable=True)
+    invoice_number = Column(String(50), nullable=True)
+    fuel_card_id = Column(Integer, ForeignKey("vehicle_fuel_cards.id"), nullable=True)
+    driver_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="fuel_records")
+    fuel_card = relationship("VehicleFuelCard", back_populates="fuel_records")
+    driver = relationship("User", foreign_keys=[driver_id])
+
+
+class RepairType(str, enum.Enum):
+    SCHEDULED = "scheduled"
+    UNSCHEDULED = "unscheduled"
+    INSPECTION = "inspection"
+
+
+class VehicleRepair(Base):
+    """Ремонти"""
+    __tablename__ = "vehicle_repairs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    repair_date = Column(DateTime, nullable=False)
+    repair_type = Column(String(20), default=RepairType.UNSCHEDULED.value)
+    description = Column(Text, nullable=True)
+    parts = Column(JSON, default=[])
+    labor_hours = Column(Numeric(8, 2), nullable=True)
+    labor_cost = Column(Numeric(12, 2), default=0)
+    parts_cost = Column(Numeric(12, 2), default=0)
+    total_cost = Column(Numeric(12, 2), default=0)
+    mileage = Column(Integer, nullable=True)
+    vehicle_service_id = Column(Integer, ForeignKey("vehicle_services.id"), nullable=True)
+    warranty_months = Column(Integer, nullable=True)
+    next_service_km = Column(Integer, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="repairs")
+    vehicle_service = relationship("VehicleService", back_populates="repairs")
+
+
+class VehicleService(Base):
+    """Сервизи"""
+    __tablename__ = "vehicle_services"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    address = Column(String(500), nullable=True)
+    phone = Column(String(50), nullable=True)
+    email = Column(String(255), nullable=True)
+    contact_person = Column(String(255), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+    repairs = relationship("VehicleRepair", back_populates="vehicle_service")
+    schedules = relationship("VehicleSchedule", back_populates="vehicle_service")
+
+
+class ScheduleType(str, enum.Enum):
+    OIL_CHANGE = "oil_change"
+    TIRE_ROTATION = "tire_rotation"
+    INSPECTION = "inspection"
+    GENERAL = "general"
+
+
+class VehicleSchedule(Base):
+    """График за поддръжка"""
+    __tablename__ = "vehicle_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    schedule_type = Column(String(20), nullable=False)
+    interval_km = Column(Integer, nullable=True)
+    interval_months = Column(Integer, nullable=True)
+    last_service_date = Column(Date, nullable=True)
+    last_service_km = Column(Integer, nullable=True)
+    next_service_date = Column(Date, nullable=True)
+    next_service_km = Column(Integer, nullable=True)
+    vehicle_service_id = Column(Integer, ForeignKey("vehicle_services.id"), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True)
+
+    vehicle = relationship("Vehicle", back_populates="schedules")
+    vehicle_service = relationship("VehicleService", back_populates="schedules")
+
+
+class InsuranceType(str, enum.Enum):
+    CIVIL = "civil"
+    KASKO = "kasko"
+    BORDER = "border"
+
+
+class PaymentType(str, enum.Enum):
+    ANNUAL = "annual"
+    SEMI_ANNUAL = "semi_annual"
+    QUARTERLY = "quarterly"
+
+
+class VehicleInsurance(Base):
+    """Застраховки"""
+    __tablename__ = "vehicle_insurances"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    insurance_type = Column(String(20), nullable=False)
+    policy_number = Column(String(50), nullable=False)
+    insurance_company = Column(String(255), nullable=True)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    premium = Column(Numeric(12, 2), nullable=True)
+    coverage_amount = Column(Numeric(12, 2), nullable=True)
+    payment_type = Column(String(20), default=PaymentType.ANNUAL.value)
+    document_url = Column(String(500), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="insurances")
+
+
+class InspectionResult(str, enum.Enum):
+    PASSED = "passed"
+    FAILED = "failed"
+    PENDING = "pending"
+
+
+class VehicleInspection(Base):
+    """ГТП"""
+    __tablename__ = "vehicle_inspections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    inspection_date = Column(Date, nullable=False)
+    valid_until = Column(Date, nullable=False)
+    result = Column(String(20), default=InspectionResult.PENDING.value)
+    mileage = Column(Integer, nullable=True)
+    inspector = Column(String(255), nullable=True)
+    certificate_number = Column(String(50), nullable=True)
+    next_inspection_date = Column(Date, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="inspections")
+
+
+class PreTripStatus(str, enum.Enum):
+    PASSED = "passed"
+    FAILED = "failed"
+
+
+class VehiclePreTripInspection(Base):
+    """Инспекция преди път"""
+    __tablename__ = "vehicle_pretrip_inspections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    driver_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    inspection_date = Column(DateTime, default=sofia_now)
+    tires_condition = Column(Boolean, default=False)
+    tires_pressure = Column(Boolean, default=False)
+    tires_tread = Column(Boolean, default=False)
+    brakes_condition = Column(Boolean, default=False)
+    brakes_parking = Column(Boolean, default=False)
+    lights_headlights = Column(Boolean, default=False)
+    lights_brake = Column(Boolean, default=False)
+    lights_turn = Column(Boolean, default=False)
+    lights_warning = Column(Boolean, default=False)
+    fluids_oil = Column(Boolean, default=False)
+    fluids_coolant = Column(Boolean, default=False)
+    fluids_washer = Column(Boolean, default=False)
+    fluids_brake = Column(Boolean, default=False)
+    mirrors = Column(Boolean, default=False)
+    wipers = Column(Boolean, default=False)
+    horn = Column(Boolean, default=False)
+    seatbelts = Column(Boolean, default=False)
+    first_aid_kit = Column(Boolean, default=False)
+    fire_extinguisher = Column(Boolean, default=False)
+    warning_triangle = Column(Boolean, default=False)
+    overall_status = Column(String(20), default=PreTripStatus.FAILED.value)
+    notes = Column(Text, nullable=True)
+    photos = Column(JSON, default=[])
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="pretrip_inspections")
+    driver = relationship("User")
+
+
+class VehicleDriver(Base):
+    """Водачи"""
+    __tablename__ = "vehicle_drivers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    assigned_from = Column(Date, nullable=False)
+    assigned_to = Column(Date, nullable=True)
+    is_primary = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="drivers")
+    user = relationship("User", back_populates="vehicle_assignments")
+
+
+class VehicleTrip(Base):
+    """Маршрути"""
+    __tablename__ = "vehicle_trips"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    driver_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    delivery_id = Column(Integer, ForeignKey("deliveries.id"), nullable=True)
+    start_address = Column(String(500), nullable=True)
+    end_address = Column(String(500), nullable=True)
+    start_time = Column(DateTime, nullable=True)
+    end_time = Column(DateTime, nullable=True)
+    distance_km = Column(Integer, nullable=True)
+    purpose = Column(String(255), nullable=True)
+    expenses = Column(Numeric(12, 2), default=0)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+    updated_at = Column(DateTime, nullable=True)
+
+    vehicle = relationship("Vehicle", back_populates="trips")
+    driver = relationship("User", foreign_keys=[driver_id], back_populates="vehicle_trips")
+    delivery = relationship("Delivery", back_populates="trips")
+
+
+class ExpenseType(str, enum.Enum):
+    FUEL = "fuel"
+    REPAIR = "repair"
+    INSURANCE = "insurance"
+    INSPECTION = "inspection"
+    VIGNETTE = "vignette"
+    TOLL = "toll"
+    TAX = "tax"
+    OTHER = "other"
+
+
+class VehicleExpense(Base):
+    """Разходи"""
+    __tablename__ = "vehicle_expenses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    expense_type = Column(String(20), nullable=False)
+    expense_date = Column(Date, nullable=False)
+    amount = Column(Numeric(12, 2), default=0)
+    vat_amount = Column(Numeric(12, 2), default=0)
+    total_amount = Column(Numeric(12, 2), default=0)
+    description = Column(String(500), nullable=True)
+    reference_id = Column(Integer, nullable=True)
+    reference_type = Column(String(50), nullable=True)
+    is_deductible = Column(Boolean, default=True)
+    cost_center_id = Column(Integer, ForeignKey("vehicle_cost_centers.id"), nullable=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", back_populates="expenses")
+    cost_center = relationship("VehicleCostCenter", back_populates="expenses")
+    company = relationship("Company", backref="vehicle_expenses")
+
+
+class VehicleCostCenter(Base):
+    """Разходни центрове"""
+    __tablename__ = "vehicle_cost_centers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    is_active = Column(Boolean, default=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=sofia_now)
+
+    department = relationship("Department")
+    company = relationship("Company", backref="vehicle_cost_centers")
+    expenses = relationship("VehicleExpense", back_populates="cost_center")
+
+
+# Add back_populates relationships after all models are defined
+User.purchase_requests = relationship("PurchaseRequest", foreign_keys=[PurchaseRequest.requested_by_id], back_populates="requested_by_user")
+User.vehicle_fuel_records = relationship("VehicleFuel", foreign_keys=[VehicleFuel.driver_id], back_populates="driver")
+User.vehicle_trips = relationship("VehicleTrip", foreign_keys=[VehicleTrip.driver_id], back_populates="driver")
+User.vehicle_assignments = relationship("VehicleDriver", back_populates="user")

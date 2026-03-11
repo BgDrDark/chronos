@@ -9,9 +9,10 @@ from backend.database.models import (
     User, WorkSchedule, TimeLog, LeaveRequest, PublicHoliday, 
     Payroll, Payslip, PayrollPaymentSchedule, PayrollDeduction,
     SickLeaveRecord, NOIPaymentDays, EmploymentContract, PayrollPeriod, Payment,
-    AdvancePayment, ServiceLoan
+    AdvancePayment, ServiceLoan, NightWorkBonus, OvertimeWork, WorkOnHoliday, BusinessTrip
 )
 from backend.database.models import sofia_now
+from backend.services.trz_calculators import NightWorkCalculator, OvertimeCalculator, BusinessTripCalculator
 
 
 class EnhancedPayrollCalculator(PayrollCalculator):
@@ -39,6 +40,17 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         self.advance_payments = []
         self.active_loans = []
         
+        # ТРЗ компоненти
+        self.night_work_records = []
+        self.overtime_records = []
+        self.business_trips = []
+        self.work_on_holidays = []
+        
+        # Калкулатори
+        self.night_work_calc = NightWorkCalculator()
+        self.overtime_calc = OvertimeCalculator()
+        self.business_trip_calc = BusinessTripCalculator()
+        
     async def calculate_enhanced_payroll(self) -> Dict[str, Any]:
         """Calculate complete payroll with all new components"""
         base_calculation = await self.calculate(
@@ -64,6 +76,20 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         
         # Calculate NOI payments (employer contribution)
         noi_payments = await self._calculate_noi_payments()
+        
+        # ==================== ТРЗ: Изчисления ====================
+        
+        # Calculate night work amount
+        night_work_amount = await self._calculate_night_work()
+        
+        # Calculate overtime amount
+        overtime_amount = await self._calculate_overtime()
+        
+        # Calculate work on holidays amount
+        holiday_amount = await self._calculate_work_on_holidays()
+        
+        # Calculate business trip amount
+        trip_amount = await self._calculate_business_trips()
         
         # Calculate base salary from contract
         base_salary = await self._get_base_salary()
@@ -118,7 +144,16 @@ class EnhancedPayrollCalculator(PayrollCalculator):
                 'count': installments_count,
                 'amount_per_installment': float(installment_amount)
             },
-            'contract_type': self.employment_contract.contract_type if self.employment_contract else 'unknown'
+            'contract_type': self.employment_contract.contract_type if self.employment_contract else 'unknown',
+            # ТРЗ компоненти
+            'night_work_amount': float(night_work_amount),
+            'overtime_amount': float(overtime_amount),
+            'holiday_amount': float(holiday_amount),
+            'trip_amount': float(trip_amount),
+            'night_work_count': len(self.night_work_records),
+            'overtime_hours': sum(float(r.hours) for r in self.overtime_records),
+            'holiday_hours': sum(float(r.hours) for r in self.work_on_holidays),
+            'business_trip_count': len(self.business_trips),
         }
     
     async def _apply_preloaded_data(self):
@@ -206,6 +241,56 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         )
         loan_res = await self.db.execute(loan_query)
         self.active_loans = loan_res.scalars().all()
+        
+        # ==================== ТРЗ: Зареждане на записи ====================
+        
+        # Load night work bonuses
+        night_query = select(NightWorkBonus).where(
+            and_(
+                NightWorkBonus.user_id == self.user_id,
+                NightWorkBonus.date >= self.calculation_period['start_date'],
+                NightWorkBonus.date <= self.calculation_period['end_date'],
+                NightWorkBonus.is_paid == False
+            )
+        )
+        night_res = await self.db.execute(night_query)
+        self.night_work_records = night_res.scalars().all()
+        
+        # Load overtime works
+        overtime_query = select(OvertimeWork).where(
+            and_(
+                OvertimeWork.user_id == self.user_id,
+                OvertimeWork.date >= self.calculation_period['start_date'],
+                OvertimeWork.date <= self.calculation_period['end_date'],
+                OvertimeWork.is_paid == False
+            )
+        )
+        overtime_res = await self.db.execute(overtime_query)
+        self.overtime_records = overtime_res.scalars().all()
+        
+        # Load work on holidays
+        holiday_query = select(WorkOnHoliday).where(
+            and_(
+                WorkOnHoliday.user_id == self.user_id,
+                WorkOnHoliday.date >= self.calculation_period['start_date'],
+                WorkOnHoliday.date <= self.calculation_period['end_date'],
+                WorkOnHoliday.is_paid == False
+            )
+        )
+        holiday_res = await self.db.execute(holiday_query)
+        self.work_on_holidays = holiday_res.scalars().all()
+        
+        # Load approved business trips
+        trip_query = select(BusinessTrip).where(
+            and_(
+                BusinessTrip.user_id == self.user_id,
+                BusinessTrip.start_date >= self.calculation_period['start_date'],
+                BusinessTrip.end_date <= self.calculation_period['end_date'],
+                BusinessTrip.status == 'approved'
+            )
+        )
+        trip_res = await self.db.execute(trip_query)
+        self.business_trips = trip_res.scalars().all()
     
     async def _get_payment_date(self) -> date:
         """Determine payment date according to company settings"""
@@ -491,3 +576,141 @@ def calculate_sick_leave_payment_by_law(
         'leave_type': leave_type,
         'total_days': total_days
     }
+
+    # ==================== ТРЗ Калкулатори ====================
+    
+    def _is_trz_feature_enabled(self, feature_key: str) -> bool:
+        """Проверява дали ТРЗ функцията е включена"""
+        from backend import crud
+        # По подразбиране всички са изключени
+        value = crud.get_global_setting(self.db, feature_key)
+        return value.lower() == "true" if value else False
+    
+    async def _calculate_night_work(self) -> Decimal:
+        """Изчислява сумата за нощен труд"""
+        # Проверяваме дали функцията е включена
+        if not self._is_trz_feature_enabled("trz_night_work_enabled"):
+            return Decimal('0')
+        
+        total_amount = Decimal('0')
+        
+        # Вземаме ставката от договора или използваме подразбиращата се
+        night_rate = Decimal('0.5')  # 50% надбавка
+        if self.employment_contract and self.employment_contract.night_work_rate:
+            night_rate = self.employment_contract.night_work_rate
+        
+        for record in self.night_work_records:
+            # Сума = часове * ставка * (1 + надбавка)
+            hours = Decimal(str(record.hours))
+            rate = Decimal(str(record.hourly_rate))
+            amount = hours * rate * (Decimal('1') + night_rate)
+            total_amount += amount
+        
+        return total_amount
+    
+    async def _calculate_overtime(self) -> Decimal:
+        """Изчислява сумата за извънреден труд"""
+        # Проверяваме дали функцията е включена
+        if not self._is_trz_feature_enabled("trz_overtime_enabled"):
+            return Decimal('0')
+        
+        total_amount = Decimal('0')
+        
+        for record in self.overtime_records:
+            hours = Decimal(str(record.hours))
+            rate = Decimal(str(record.hourly_rate))
+            multiplier = Decimal(str(record.multiplier))
+            amount = hours * rate * multiplier
+            total_amount += amount
+        
+        return total_amount
+    
+    async def _calculate_work_on_holidays(self) -> Decimal:
+        """Изчислява сумата за труд по празници"""
+        # Проверяваме дали функцията е включена
+        if not self._is_trz_feature_enabled("trz_holiday_work_enabled"):
+            return Decimal('0')
+        
+        total_amount = Decimal('0')
+        
+        for record in self.work_on_holidays:
+            hours = Decimal(str(record.hours))
+            rate = Decimal(str(record.hourly_rate))
+            multiplier = Decimal(str(record.multiplier))
+            amount = hours * rate * multiplier
+            total_amount += amount
+        
+        return total_amount
+    
+    async def _calculate_business_trips(self) -> Decimal:
+        """Изчислява сумата за командировки"""
+        # Проверяваме дали функцията е включена
+        if not self._is_trz_feature_enabled("trz_business_trips_enabled"):
+            return Decimal('0')
+        
+        total_amount = Decimal('0')
+        
+        for trip in self.business_trips:
+            total_amount += Decimal(str(trip.total_amount))
+        
+        return total_amount
+    
+    async def calculate_trz_for_period(self) -> Dict[str, Any]:
+        """
+        Изчислява всички ТРЗ компоненти за период.
+        Използва се за справки.
+        """
+        return {
+            'night_work': {
+                'count': len(self.night_work_records),
+                'total_hours': sum(float(r.hours) for r in self.night_work_records),
+                'total_amount': float(await self._calculate_night_work()),
+                'records': [
+                    {
+                        'date': r.date,
+                        'hours': float(r.hours),
+                        'amount': float(r.amount)
+                    }
+                    for r in self.night_work_records
+                ]
+            },
+            'overtime': {
+                'count': len(self.overtime_records),
+                'total_hours': sum(float(r.hours) for r in self.overtime_records),
+                'total_amount': float(await self._calculate_overtime()),
+                'records': [
+                    {
+                        'date': r.date,
+                        'hours': float(r.hours),
+                        'amount': float(r.amount)
+                    }
+                    for r in self.overtime_records
+                ]
+            },
+            'holidays': {
+                'count': len(self.work_on_holidays),
+                'total_hours': sum(float(r.hours) for r in self.work_on_holidays),
+                'total_amount': float(await self._calculate_work_on_holidays()),
+                'records': [
+                    {
+                        'date': r.date,
+                        'hours': float(r.hours),
+                        'amount': float(r.amount)
+                    }
+                    for r in self.work_on_holidays
+                ]
+            },
+            'business_trips': {
+                'count': len(self.business_trips),
+                'total_amount': float(await self._calculate_business_trips()),
+                'records': [
+                    {
+                        'destination': t.destination,
+                        'start_date': t.start_date,
+                        'end_date': t.end_date,
+                        'total_amount': float(t.total_amount)
+                    }
+                    for t in self.business_trips
+                ]
+            }
+        }

@@ -2,7 +2,7 @@ import datetime
 import json
 import enum
 import strawberry
-from typing import Optional, List, TYPE_CHECKING
+from typing import Optional, List, Any, TYPE_CHECKING
 from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -552,7 +552,14 @@ class Payslip:
     overtime_amount: Decimal
     bonus_amount: Decimal
     
-    # New detail fields
+    # ТРЗ разширение
+    night_work_amount: Decimal
+    trip_amount: Decimal
+    voucher_amount: Decimal
+    benefit_amount: Decimal
+    sick_leave_amount: Decimal
+    
+    # Existing detail fields
     tax_amount: Decimal
     insurance_amount: Decimal
     sick_days: int
@@ -577,6 +584,11 @@ class Payslip:
             regular_amount=instance.regular_amount,
             overtime_amount=instance.overtime_amount,
             bonus_amount=instance.bonus_amount if hasattr(instance, "bonus_amount") and instance.bonus_amount is not None else Decimal("0"),
+            night_work_amount=instance.night_work_amount if hasattr(instance, "night_work_amount") and instance.night_work_amount is not None else Decimal("0"),
+            trip_amount=instance.trip_amount if hasattr(instance, "trip_amount") and instance.trip_amount is not None else Decimal("0"),
+            voucher_amount=instance.voucher_amount if hasattr(instance, "voucher_amount") and instance.voucher_amount is not None else Decimal("0"),
+            benefit_amount=instance.benefit_amount if hasattr(instance, "benefit_amount") and instance.benefit_amount is not None else Decimal("0"),
+            sick_leave_amount=instance.sick_leave_amount if hasattr(instance, "sick_leave_amount") and instance.sick_leave_amount is not None else Decimal("0"),
             tax_amount=instance.tax_amount if hasattr(instance, "tax_amount") and instance.tax_amount is not None else Decimal("0"),
             insurance_amount=instance.insurance_amount if hasattr(instance, "insurance_amount") and instance.insurance_amount is not None else Decimal("0"),
             sick_days=instance.sick_days if hasattr(instance, "sick_days") and instance.sick_days is not None else 0,
@@ -2660,3 +2672,1145 @@ class AccessLog:
             terminal_id=instance.terminal_id,
             gateway_id=instance.gateway_id,
         )
+
+
+# ============================================================
+# LOGISTICS TYPES
+# ============================================================
+
+@strawberry.enum
+class PurchaseRequestStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    FULFILLED = "fulfilled"
+
+
+@strawberry.enum
+class PurchaseRequestPriority(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+@strawberry.enum
+class PurchaseOrderStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SENT = "sent"
+    CONFIRMED = "confirmed"
+    PARTIAL = "partial"
+    RECEIVED = "received"
+    CANCELLED = "cancelled"
+
+
+@strawberry.enum
+class DeliveryStatus(str, enum.Enum):
+    PENDING = "pending"
+    IN_TRANSIT = "in_transit"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+
+
+@strawberry.type
+class SupplierExtended:
+    id: int
+    name: str
+    eik: Optional[str]
+    vat_number: Optional[str]
+    mol: Optional[str]
+    address: Optional[str]
+    contact_person: Optional[str]
+    phone: Optional[str]
+    email: Optional[str]
+    is_active: Optional[bool]
+    notes: Optional[str]
+    company_id: int
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.Supplier) -> "SupplierExtended":
+        return cls(
+            id=instance.id,
+            name=instance.name,
+            eik=instance.eik,
+            vat_number=instance.vat_number,
+            mol=instance.mol,
+            address=instance.address,
+            contact_person=instance.contact_person,
+            phone=instance.phone,
+            email=instance.email,
+            is_active=instance.is_active,
+            notes=instance.notes,
+            company_id=instance.company_id,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class RequestTemplate:
+    id: int
+    name: str
+    items: Optional[List[Any]] = None
+    default_department_id: Optional[int]
+    notes: Optional[str]
+    company_id: int
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.RequestTemplate) -> "RequestTemplate":
+        return cls(
+            id=instance.id,
+            name=instance.name,
+            items=instance.items,
+            default_department_id=instance.default_department_id,
+            notes=instance.notes,
+            company_id=instance.company_id,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class PurchaseRequestItem:
+    id: int
+    purchase_request_id: int
+    item_name: str
+    quantity: float
+    unit: Optional[str]
+    notes: Optional[str]
+
+    @classmethod
+    def from_instance(cls, instance: models.PurchaseRequestItem) -> "PurchaseRequestItem":
+        return cls(
+            id=instance.id,
+            purchase_request_id=instance.purchase_request_id,
+            item_name=instance.item_name,
+            quantity=float(instance.quantity),
+            unit=instance.unit,
+            notes=instance.notes,
+        )
+
+
+@strawberry.type
+class PurchaseRequestApproval:
+    id: int
+    request_id: int
+    action: str
+    user_id: int
+    action_date: Optional[datetime.datetime]
+    reason: Optional[str]
+    is_auto: Optional[bool]
+
+    @classmethod
+    def from_instance(cls, instance: models.PurchaseRequestApproval) -> "PurchaseRequestApproval":
+        return cls(
+            id=instance.id,
+            request_id=instance.request_id,
+            action=instance.action,
+            user_id=instance.user_id,
+            action_date=instance.action_date,
+            reason=instance.reason,
+            is_auto=instance.is_auto,
+        )
+
+
+@strawberry.type
+class PurchaseRequest:
+    id: int
+    request_number: str
+    requested_by_id: int
+    department_id: Optional[int]
+    status: PurchaseRequestStatus
+    priority: PurchaseRequestPriority
+    reason: Optional[str]
+    due_date: Optional[datetime.date]
+    approved_by_id: Optional[int]
+    approved_at: Optional[datetime.datetime]
+    is_auto: Optional[bool]
+    notes: Optional[str]
+    company_id: int
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+    items: Optional[List[Any]] = None
+    approvals: Optional[List[Any]] = None
+
+    @classmethod
+    def from_instance(cls, instance: models.PurchaseRequest) -> "PurchaseRequest":
+        return cls(
+            id=instance.id,
+            request_number=instance.request_number,
+            requested_by_id=instance.requested_by_id,
+            department_id=instance.department_id,
+            status=PurchaseRequestStatus(instance.status),
+            priority=PurchaseRequestPriority(instance.priority),
+            reason=instance.reason,
+            due_date=instance.due_date,
+            approved_by_id=instance.approved_by_id,
+            approved_at=instance.approved_at,
+            is_auto=instance.is_auto,
+            notes=instance.notes,
+            company_id=instance.company_id,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class PurchaseOrderItem:
+    id: int
+    purchase_order_id: int
+    item_name: str
+    quantity: float
+    received_quantity: Optional[float]
+    unit_price: Optional[float]
+    vat_rate: Optional[float]
+    unit: Optional[str]
+
+    @classmethod
+    def from_instance(cls, instance: models.PurchaseOrderItem) -> "PurchaseOrderItem":
+        return cls(
+            id=instance.id,
+            purchase_order_id=instance.purchase_order_id,
+            item_name=instance.item_name,
+            quantity=float(instance.quantity),
+            received_quantity=float(instance.received_quantity) if instance.received_quantity else None,
+            unit_price=float(instance.unit_price) if instance.unit_price else None,
+            vat_rate=float(instance.vat_rate) if instance.vat_rate else None,
+            unit=instance.unit,
+        )
+
+
+@strawberry.type
+class PurchaseOrder:
+    id: int
+    order_number: str
+    supplier_id: int
+    purchase_request_id: Optional[int]
+    status: PurchaseOrderStatus
+    order_date: Optional[datetime.date]
+    expected_date: Optional[datetime.date]
+    received_date: Optional[datetime.date]
+    total_amount: Optional[float]
+    vat_amount: Optional[float]
+    notes: Optional[str]
+    company_id: int
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.PurchaseOrder) -> "PurchaseOrder":
+        return cls(
+            id=instance.id,
+            order_number=instance.order_number,
+            supplier_id=instance.supplier_id,
+            purchase_request_id=instance.purchase_request_id,
+            status=PurchaseOrderStatus(instance.status),
+            order_date=instance.order_date,
+            expected_date=instance.expected_date,
+            received_date=instance.received_date,
+            total_amount=float(instance.total_amount) if instance.total_amount else None,
+            vat_amount=float(instance.vat_amount) if instance.vat_amount else None,
+            notes=instance.notes,
+            company_id=instance.company_id,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class Delivery:
+    id: int
+    delivery_number: str
+    purchase_order_id: Optional[int]
+    vehicle_id: Optional[int]
+    driver_id: Optional[int]
+    status: DeliveryStatus
+    shipped_date: Optional[datetime.datetime]
+    delivery_date: Optional[datetime.datetime]
+    tracking_number: Optional[str]
+    notes: Optional[str]
+    company_id: int
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.Delivery) -> "Delivery":
+        return cls(
+            id=instance.id,
+            delivery_number=instance.delivery_number,
+            purchase_order_id=instance.purchase_order_id,
+            vehicle_id=instance.vehicle_id,
+            driver_id=instance.driver_id,
+            status=DeliveryStatus(instance.status),
+            shipped_date=instance.shipped_date,
+            delivery_date=instance.delivery_date,
+            tracking_number=instance.tracking_number,
+            notes=instance.notes,
+            company_id=instance.company_id,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+# ============================================================
+# FLEET TYPES
+# ============================================================
+
+@strawberry.enum
+class VehicleStatus(str, enum.Enum):
+    ACTIVE = "active"
+    IN_REPAIR = "in_repair"
+    OUT_OF_SERVICE = "out_of_service"
+    SOLD = "sold"
+
+
+@strawberry.enum
+class FuelType(str, enum.Enum):
+    BENZIN = "benzin"
+    DIZEL = "dizel"
+    ELECTRIC = "electric"
+    HYBRID = "hybrid"
+    LNG = "lng"
+    CNG = "cng"
+
+
+@strawberry.enum
+class VehicleDocumentType(str, enum.Enum):
+    INVOICE = "invoice"
+    POLICY = "policy"
+    INSPECTION = "inspection"
+    CONTRACT = "contract"
+    OTHER = "other"
+
+
+@strawberry.enum
+class InsuranceType(str, enum.Enum):
+    CIVIL = "civil"
+    KASKO = "kasko"
+    BORDER = "border"
+
+
+@strawberry.enum
+class InspectionResult(str, enum.Enum):
+    PASSED = "passed"
+    FAILED = "failed"
+    PENDING = "pending"
+
+
+@strawberry.enum
+class PreTripStatus(str, enum.Enum):
+    PASSED = "passed"
+    FAILED = "failed"
+
+
+@strawberry.enum
+class ExpenseType(str, enum.Enum):
+    FUEL = "fuel"
+    REPAIR = "repair"
+    INSURANCE = "insurance"
+    INSPECTION = "inspection"
+    VIGNETTE = "vignette"
+    TOLL = "toll"
+    TAX = "tax"
+    OTHER = "other"
+
+
+@strawberry.type
+class VehicleType:
+    id: int
+    name: str
+    code: Optional[str]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleType) -> "VehicleType":
+        return cls(
+            id=instance.id,
+            name=instance.name,
+            code=instance.code,
+        )
+
+
+@strawberry.type
+class Vehicle:
+    id: int
+    registration_number: str
+    vin: Optional[str]
+    make: str
+    model: str
+    year: Optional[int]
+    vehicle_type_id: Optional[int]
+    fuel_type: FuelType
+    engine_number: Optional[str]
+    chassis_number: Optional[str]
+    color: Optional[str]
+    initial_mileage: Optional[int]
+    is_company: Optional[bool]
+    owner_name: Optional[str]
+    status: VehicleStatus
+    notes: Optional[str]
+    company_id: int
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.Vehicle) -> "Vehicle":
+        return cls(
+            id=instance.id,
+            registration_number=instance.registration_number,
+            vin=instance.vin,
+            make=instance.make,
+            model=instance.model,
+            year=instance.year,
+            vehicle_type_id=instance.vehicle_type_id,
+            fuel_type=FuelType(instance.fuel_type) if instance.fuel_type else FuelType.DIZEL,
+            engine_number=instance.engine_number,
+            chassis_number=instance.chassis_number,
+            color=instance.color,
+            initial_mileage=instance.initial_mileage,
+            is_company=instance.is_company,
+            owner_name=instance.owner_name,
+            status=VehicleStatus(instance.status) if instance.status else VehicleStatus.ACTIVE,
+            notes=instance.notes,
+            company_id=instance.company_id,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class VehicleDocument:
+    id: int
+    vehicle_id: int
+    document_type: VehicleDocumentType
+    title: str
+    file_url: Optional[str]
+    issue_date: Optional[datetime.date]
+    expiry_date: Optional[datetime.date]
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleDocument) -> "VehicleDocument":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            document_type=VehicleDocumentType(instance.document_type),
+            title=instance.title,
+            file_url=instance.file_url,
+            issue_date=instance.issue_date,
+            expiry_date=instance.expiry_date,
+            notes=instance.notes,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleFuelCard:
+    id: int
+    vehicle_id: int
+    card_number: str
+    provider: Optional[str]
+    pin: Optional[str]
+    limit: Optional[float]
+    is_active: Optional[bool]
+    expiry_date: Optional[datetime.date]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleFuelCard) -> "VehicleFuelCard":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            card_number=instance.card_number,
+            provider=instance.provider,
+            pin=instance.pin,
+            limit=float(instance.limit) if instance.limit else None,
+            is_active=instance.is_active,
+            expiry_date=instance.expiry_date,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleVignette:
+    id: int
+    vehicle_id: int
+    vignette_type: str
+    purchase_date: Optional[datetime.date]
+    valid_from: Optional[datetime.date]
+    valid_until: Optional[datetime.date]
+    price: Optional[float]
+    provider: Optional[str]
+    document_url: Optional[str]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleVignette) -> "VehicleVignette":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            vignette_type=instance.vignette_type,
+            purchase_date=instance.purchase_date,
+            valid_from=instance.valid_from,
+            valid_until=instance.valid_until,
+            price=float(instance.price) if instance.price else None,
+            provider=instance.provider,
+            document_url=instance.document_url,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleToll:
+    id: int
+    vehicle_id: int
+    route: Optional[str]
+    toll_amount: float
+    toll_date: Optional[datetime.datetime]
+    section: Optional[str]
+    document_url: Optional[str]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleToll) -> "VehicleToll":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            route=instance.route,
+            toll_amount=float(instance.toll_amount),
+            toll_date=instance.toll_date,
+            section=instance.section,
+            document_url=instance.document_url,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleMileage:
+    id: int
+    vehicle_id: int
+    date: datetime.date
+    mileage: int
+    source: Optional[str]
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleMileage) -> "VehicleMileage":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            date=instance.date,
+            mileage=instance.mileage,
+            source=instance.source,
+            notes=instance.notes,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleFuel:
+    id: int
+    vehicle_id: int
+    date: datetime.datetime
+    fuel_type: Optional[str]
+    quantity: float
+    price_per_liter: float
+    total_amount: float
+    mileage: Optional[int]
+    location: Optional[str]
+    invoice_number: Optional[str]
+    fuel_card_id: Optional[int]
+    driver_id: Optional[int]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleFuel) -> "VehicleFuel":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            date=instance.date,
+            fuel_type=instance.fuel_type,
+            quantity=float(instance.quantity),
+            price_per_liter=float(instance.price_per_liter),
+            total_amount=float(instance.total_amount),
+            mileage=instance.mileage,
+            location=instance.location,
+            invoice_number=instance.invoice_number,
+            fuel_card_id=instance.fuel_card_id,
+            driver_id=instance.driver_id,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleService:
+    id: int
+    name: str
+    address: Optional[str]
+    phone: Optional[str]
+    email: Optional[str]
+    contact_person: Optional[str]
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleService) -> "VehicleService":
+        return cls(
+            id=instance.id,
+            name=instance.name,
+            address=instance.address,
+            phone=instance.phone,
+            email=instance.email,
+            contact_person=instance.contact_person,
+            notes=instance.notes,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleRepair:
+    id: int
+    vehicle_id: int
+    repair_date: datetime.datetime
+    repair_type: Optional[str]
+    description: Optional[str]
+    parts: Optional[List[Any]] = None
+    labor_hours: Optional[float]
+    labor_cost: Optional[float]
+    parts_cost: Optional[float]
+    total_cost: Optional[float]
+    mileage: Optional[int]
+    vehicle_service_id: Optional[int]
+    warranty_months: Optional[int]
+    next_service_km: Optional[int]
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleRepair) -> "VehicleRepair":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            repair_date=instance.repair_date,
+            repair_type=instance.repair_type,
+            description=instance.description,
+            parts=instance.parts,
+            labor_hours=float(instance.labor_hours) if instance.labor_hours else None,
+            labor_cost=float(instance.labor_cost) if instance.labor_cost else None,
+            parts_cost=float(instance.parts_cost) if instance.parts_cost else None,
+            total_cost=float(instance.total_cost) if instance.total_cost else None,
+            mileage=instance.mileage,
+            vehicle_service_id=instance.vehicle_service_id,
+            warranty_months=instance.warranty_months,
+            next_service_km=instance.next_service_km,
+            notes=instance.notes,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleSchedule:
+    id: int
+    vehicle_id: int
+    schedule_type: str
+    interval_km: Optional[int]
+    interval_months: Optional[int]
+    last_service_date: Optional[datetime.date]
+    last_service_km: Optional[int]
+    next_service_date: Optional[datetime.date]
+    next_service_km: Optional[int]
+    vehicle_service_id: Optional[int]
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleSchedule) -> "VehicleSchedule":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            schedule_type=instance.schedule_type,
+            interval_km=instance.interval_km,
+            interval_months=instance.interval_months,
+            last_service_date=instance.last_service_date,
+            last_service_km=instance.last_service_km,
+            next_service_date=instance.next_service_date,
+            next_service_km=instance.next_service_km,
+            vehicle_service_id=instance.vehicle_service_id,
+            notes=instance.notes,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class VehicleInsurance:
+    id: int
+    vehicle_id: int
+    insurance_type: InsuranceType
+    policy_number: str
+    insurance_company: Optional[str]
+    start_date: datetime.date
+    end_date: datetime.date
+    premium: Optional[float]
+    coverage_amount: Optional[float]
+    payment_type: Optional[str]
+    document_url: Optional[str]
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleInsurance) -> "VehicleInsurance":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            insurance_type=InsuranceType(instance.insurance_type),
+            policy_number=instance.policy_number,
+            insurance_company=instance.insurance_company,
+            start_date=instance.start_date,
+            end_date=instance.end_date,
+            premium=float(instance.premium) if instance.premium else None,
+            coverage_amount=float(instance.coverage_amount) if instance.coverage_amount else None,
+            payment_type=instance.payment_type,
+            document_url=instance.document_url,
+            notes=instance.notes,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleInspection:
+    id: int
+    vehicle_id: int
+    inspection_date: datetime.date
+    valid_until: datetime.date
+    result: InspectionResult
+    mileage: Optional[int]
+    inspector: Optional[str]
+    certificate_number: Optional[str]
+    next_inspection_date: Optional[datetime.date]
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleInspection) -> "VehicleInspection":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            inspection_date=instance.inspection_date,
+            valid_until=instance.valid_until,
+            result=InspectionResult(instance.result) if instance.result else InspectionResult.PENDING,
+            mileage=instance.mileage,
+            inspector=instance.inspector,
+            certificate_number=instance.certificate_number,
+            next_inspection_date=instance.next_inspection_date,
+            notes=instance.notes,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehiclePreTripInspection:
+    id: int
+    vehicle_id: int
+    driver_id: int
+    inspection_date: Optional[datetime.datetime]
+    tires_condition: Optional[bool]
+    tires_pressure: Optional[bool]
+    tires_tread: Optional[bool]
+    brakes_condition: Optional[bool]
+    brakes_parking: Optional[bool]
+    lights_headlights: Optional[bool]
+    lights_brake: Optional[bool]
+    lights_turn: Optional[bool]
+    lights_warning: Optional[bool]
+    fluids_oil: Optional[bool]
+    fluids_coolant: Optional[bool]
+    fluids_washer: Optional[bool]
+    fluids_brake: Optional[bool]
+    mirrors: Optional[bool]
+    wipers: Optional[bool]
+    horn: Optional[bool]
+    seatbelts: Optional[bool]
+    first_aid_kit: Optional[bool]
+    fire_extinguisher: Optional[bool]
+    warning_triangle: Optional[bool]
+    overall_status: PreTripStatus
+    notes: Optional[str]
+    photos: Optional[List[Any]] = None
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehiclePreTripInspection) -> "VehiclePreTripInspection":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            driver_id=instance.driver_id,
+            inspection_date=instance.inspection_date,
+            tires_condition=instance.tires_condition,
+            tires_pressure=instance.tires_pressure,
+            tires_tread=instance.tires_tread,
+            brakes_condition=instance.brakes_condition,
+            brakes_parking=instance.brakes_parking,
+            lights_headlights=instance.lights_headlights,
+            lights_brake=instance.lights_brake,
+            lights_turn=instance.lights_turn,
+            lights_warning=instance.lights_warning,
+            fluids_oil=instance.fluids_oil,
+            fluids_coolant=instance.fluids_coolant,
+            fluids_washer=instance.fluids_washer,
+            fluids_brake=instance.fluids_brake,
+            mirrors=instance.mirrors,
+            wipers=instance.wipers,
+            horn=instance.horn,
+            seatbelts=instance.seatbelts,
+            first_aid_kit=instance.first_aid_kit,
+            fire_extinguisher=instance.fire_extinguisher,
+            warning_triangle=instance.warning_triangle,
+            overall_status=PreTripStatus(instance.overall_status) if instance.overall_status else PreTripStatus.FAILED,
+            notes=instance.notes,
+            photos=instance.photos,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleDriver:
+    id: int
+    vehicle_id: int
+    user_id: int
+    assigned_from: datetime.date
+    assigned_to: Optional[datetime.date]
+    is_primary: Optional[bool]
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleDriver) -> "VehicleDriver":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            user_id=instance.user_id,
+            assigned_from=instance.assigned_from,
+            assigned_to=instance.assigned_to,
+            is_primary=instance.is_primary,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleTrip:
+    id: int
+    vehicle_id: int
+    driver_id: int
+    delivery_id: Optional[int]
+    start_address: Optional[str]
+    end_address: Optional[str]
+    start_time: Optional[datetime.datetime]
+    end_time: Optional[datetime.datetime]
+    distance_km: Optional[int]
+    purpose: Optional[str]
+    expenses: Optional[float]
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleTrip) -> "VehicleTrip":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            driver_id=instance.driver_id,
+            delivery_id=instance.delivery_id,
+            start_address=instance.start_address,
+            end_address=instance.end_address,
+            start_time=instance.start_time,
+            end_time=instance.end_time,
+            distance_km=instance.distance_km,
+            purpose=instance.purpose,
+            expenses=float(instance.expenses) if instance.expenses else None,
+            notes=instance.notes,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class VehicleCostCenter:
+    id: int
+    name: str
+    department_id: Optional[int]
+    is_active: Optional[bool]
+    company_id: int
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleCostCenter) -> "VehicleCostCenter":
+        return cls(
+            id=instance.id,
+            name=instance.name,
+            department_id=instance.department_id,
+            is_active=instance.is_active,
+            company_id=instance.company_id,
+            created_at=instance.created_at,
+        )
+
+
+@strawberry.type
+class VehicleExpense:
+    id: int
+    vehicle_id: int
+    expense_type: ExpenseType
+    expense_date: datetime.date
+    amount: Optional[float]
+    vat_amount: Optional[float]
+    total_amount: Optional[float]
+    description: Optional[str]
+    reference_id: Optional[int]
+    reference_type: Optional[str]
+    is_deductible: Optional[bool]
+    cost_center_id: Optional[int]
+    company_id: int
+    created_at: Optional[datetime.datetime]
+
+    @classmethod
+    def from_instance(cls, instance: models.VehicleExpense) -> "VehicleExpense":
+        return cls(
+            id=instance.id,
+            vehicle_id=instance.vehicle_id,
+            expense_type=ExpenseType(instance.expense_type),
+            expense_date=instance.expense_date,
+            amount=float(instance.amount) if instance.amount else None,
+            vat_amount=float(instance.vat_amount) if instance.vat_amount else None,
+            total_amount=float(instance.total_amount) if instance.total_amount else None,
+            description=instance.description,
+            reference_id=instance.reference_id,
+            reference_type=instance.reference_type,
+            is_deductible=instance.is_deductible,
+            cost_center_id=instance.cost_center_id,
+            company_id=instance.company_id,
+            created_at=instance.created_at,
+        )
+
+
+# ==================== ТРЗ Types ====================
+
+@strawberry.enum
+class BusinessTripStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    PAID = "paid"
+
+
+@strawberry.type
+class NightWorkBonus:
+    id: int
+    user_id: int
+    period_id: Optional[int]
+    date: datetime.date
+    hours: Decimal
+    hourly_rate: Decimal
+    amount: Decimal
+    is_paid: bool
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> "User":
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
+
+    @classmethod
+    def from_instance(cls, instance: models.NightWorkBonus) -> "NightWorkBonus":
+        return cls(
+            id=instance.id,
+            user_id=instance.user_id,
+            period_id=instance.period_id,
+            date=instance.date,
+            hours=instance.hours,
+            hourly_rate=instance.hourly_rate,
+            amount=instance.amount,
+            is_paid=instance.is_paid if instance.is_paid is not None else False,
+            notes=instance.notes,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class OvertimeWork:
+    id: int
+    user_id: int
+    period_id: Optional[int]
+    date: datetime.date
+    hours: Decimal
+    hourly_rate: Decimal
+    multiplier: Decimal
+    amount: Decimal
+    is_paid: bool
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> "User":
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
+
+    @classmethod
+    def from_instance(cls, instance: models.OvertimeWork) -> "OvertimeWork":
+        return cls(
+            id=instance.id,
+            user_id=instance.user_id,
+            period_id=instance.period_id,
+            date=instance.date,
+            hours=instance.hours,
+            hourly_rate=instance.hourly_rate,
+            multiplier=instance.multiplier if instance.multiplier is not None else Decimal("1.5"),
+            amount=instance.amount,
+            is_paid=instance.is_paid if instance.is_paid is not None else False,
+            notes=instance.notes,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class WorkOnHoliday:
+    id: int
+    user_id: int
+    period_id: Optional[int]
+    date: datetime.date
+    hours: Decimal
+    hourly_rate: Decimal
+    multiplier: Decimal
+    amount: Decimal
+    is_paid: bool
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> "User":
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
+
+    @classmethod
+    def from_instance(cls, instance: models.WorkOnHoliday) -> "WorkOnHoliday":
+        return cls(
+            id=instance.id,
+            user_id=instance.user_id,
+            period_id=instance.period_id,
+            date=instance.date,
+            hours=instance.hours,
+            hourly_rate=instance.hourly_rate,
+            multiplier=instance.multiplier if instance.multiplier is not None else Decimal("2.0"),
+            amount=instance.amount,
+            is_paid=instance.is_paid if instance.is_paid is not None else False,
+            notes=instance.notes,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class BusinessTrip:
+    id: int
+    user_id: int
+    period_id: Optional[int]
+    department_id: Optional[int]
+    destination: str
+    start_date: datetime.date
+    end_date: datetime.date
+    daily_allowance: Decimal
+    accommodation: Decimal
+    transport: Decimal
+    other_expenses: Decimal
+    total_amount: Decimal
+    status: BusinessTripStatus
+    approved_by_id: Optional[int]
+    approved_at: Optional[datetime.datetime]
+    approved_notes: Optional[str]
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> "User":
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
+
+    @strawberry.field
+    async def approved_by(self, info: strawberry.Info) -> Optional["User"]:
+        if self.approved_by_id:
+            return await info.context["dataloaders"]["user_by_id"].load(self.approved_by_id)
+        return None
+
+    @classmethod
+    def from_instance(cls, instance: models.BusinessTrip) -> "BusinessTrip":
+        return cls(
+            id=instance.id,
+            user_id=instance.user_id,
+            period_id=instance.period_id,
+            department_id=instance.department_id,
+            destination=instance.destination,
+            start_date=instance.start_date,
+            end_date=instance.end_date,
+            daily_allowance=instance.daily_allowance if instance.daily_allowance is not None else Decimal("0"),
+            accommodation=instance.accommodation if instance.accommodation is not None else Decimal("0"),
+            transport=instance.transport if instance.transport is not None else Decimal("0"),
+            other_expenses=instance.other_expenses if instance.other_expenses is not None else Decimal("0"),
+            total_amount=instance.total_amount if instance.total_amount is not None else Decimal("0"),
+            status=BusinessTripStatus(instance.status),
+            approved_by_id=instance.approved_by_id,
+            approved_at=instance.approved_at,
+            approved_notes=instance.approved_notes,
+            notes=instance.notes,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+
+
+@strawberry.type
+class WorkExperience:
+    id: int
+    user_id: int
+    company_id: Optional[int]
+    company_name: str
+    position: Optional[str]
+    start_date: datetime.date
+    end_date: Optional[datetime.date]
+    years: int
+    months: int
+    class_level: Optional[str]
+    is_current: bool
+    notes: Optional[str]
+    created_at: Optional[datetime.datetime]
+    updated_at: Optional[datetime.datetime]
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> "User":
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
+
+    @classmethod
+    def from_instance(cls, instance: models.WorkExperience) -> "WorkExperience":
+        return cls(
+            id=instance.id,
+            user_id=instance.user_id,
+            company_id=instance.company_id,
+            company_name=instance.company_name,
+            position=instance.position,
+            start_date=instance.start_date,
+            end_date=instance.end_date,
+            years=instance.years if instance.years is not None else 0,
+            months=instance.months if instance.months is not None else 0,
+            class_level=instance.class_level,
+            is_current=instance.is_current if instance.is_current is not None else False,
+            notes=instance.notes,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )
+

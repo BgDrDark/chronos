@@ -6,11 +6,14 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
+import BuildIcon from '@mui/icons-material/Build';
+import SecurityIcon from '@mui/icons-material/Security';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { 
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip as MuiChip
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip as MuiChip, Chip
 } from '@mui/material';
 import { formatDuration, formatDurationHHMM } from '../utils/formatUtils';
 import { useAppTheme } from '../ThemeContext';
@@ -81,6 +84,7 @@ const CLOCK_OUT_MUTATION = gql`
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { dashboardConfig } = useAppTheme();
+  const [isAdmin, setIsAdmin] = useState(false);
   
   // Calculate current week range
   const now = new Date();
@@ -106,6 +110,9 @@ const DashboardPage: React.FC = () => {
   useEffect(() => {
     if (!loading && (!data || !data.me)) {
       navigate('/login');
+    }
+    if (data?.me?.role?.name) {
+      setIsAdmin(['admin', 'super_admin'].includes(data.me.role.name));
     }
   }, [data, loading, navigate]);
 
@@ -272,6 +279,73 @@ const DashboardPage: React.FC = () => {
           </Grid>
         )}
       </Grid>
+
+      {/* АВТОПАРК WIDGET */}
+      {isAdmin && (
+        <Grid container spacing={3} sx={{ mt: 1, mb: 3 }}>
+          <Grid size={{ xs: 12 }}>
+            <Card sx={{ borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6" fontWeight="bold">Автопарк</Typography>
+                  <Button 
+                    size="small" 
+                    onClick={() => navigate('/admin/fleet')}
+                  >
+                    Към автомобили
+                  </Button>
+                </Box>
+                
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'primary.main', borderRadius: 2, color: 'white' }}>
+                      <DirectionsCarIcon sx={{ fontSize: 32, mb: 1 }} />
+                      <Typography variant="h4">0</Typography>
+                      <Typography variant="body2">Общо</Typography>
+                    </Box>
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'success.main', borderRadius: 2, color: 'white' }}>
+                      <DirectionsCarIcon sx={{ fontSize: 32, mb: 1 }} />
+                      <Typography variant="h4">0</Typography>
+                      <Typography variant="body2">Активни</Typography>
+                    </Box>
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'warning.main', borderRadius: 2, color: 'white' }}>
+                      <BuildIcon sx={{ fontSize: 32, mb: 1 }} />
+                      <Typography variant="h4">0</Typography>
+                      <Typography variant="body2">В ремонт</Typography>
+                    </Box>
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'error.main', borderRadius: 2, color: 'white' }}>
+                      <DirectionsCarIcon sx={{ fontSize: 32, mb: 1 }} />
+                      <Typography variant="h4">0</Typography>
+                      <Typography variant="body2">Извън експл.</Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
+
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2" color="error" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <WarningIcon fontSize="small" /> Под внимание:
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Chip 
+                      icon={<SecurityIcon />} 
+                      label="Няма изтичащи застраховки" 
+                      color="success" 
+                      variant="outlined" 
+                      size="small"
+                    />
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
 
       {/* ТАБЛИЧЕН СЕДМИЧЕН ГРАФИК */}
       {dashboardConfig.showWeeklyTable && (

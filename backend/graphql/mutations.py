@@ -4522,3 +4522,196 @@ class Mutation:
         await db.refresh(gateway)
         return types.Gateway.from_instance(gateway)
 
+    # ==================== ТРЗ Mutations ====================
+
+    @strawberry.mutation
+    async def create_night_work_bonus(
+        self,
+        user_id: int,
+        date: datetime.date,
+        hours: float,
+        hourly_rate: float,
+        period_id: Optional[int] = None,
+        notes: Optional[str] = None,
+        info: strawberry.Info = None
+    ) -> types.NightWorkBonus:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import NightWorkBonus
+        from decimal import Decimal
+
+        amount = Decimal(str(hours)) * Decimal(str(hourly_rate)) * Decimal("1.5")  # 50% надбавка
+
+        night_work = NightWorkBonus(
+            user_id=user_id,
+            period_id=period_id,
+            date=date,
+            hours=Decimal(str(hours)),
+            hourly_rate=Decimal(str(hourly_rate)),
+            amount=amount,
+            is_paid=False,
+            notes=notes
+        )
+        db.add(night_work)
+        await db.commit()
+        await db.refresh(night_work)
+        return types.NightWorkBonus.from_instance(night_work)
+
+    @strawberry.mutation
+    async def create_overtime_work(
+        self,
+        user_id: int,
+        date: datetime.date,
+        hours: float,
+        hourly_rate: float,
+        multiplier: float = 1.5,
+        period_id: Optional[int] = None,
+        notes: Optional[str] = None,
+        info: strawberry.Info = None
+    ) -> types.OvertimeWork:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import OvertimeWork
+        from decimal import Decimal
+
+        amount = Decimal(str(hours)) * Decimal(str(hourly_rate)) * Decimal(str(multiplier))
+
+        overtime = OvertimeWork(
+            user_id=user_id,
+            period_id=period_id,
+            date=date,
+            hours=Decimal(str(hours)),
+            hourly_rate=Decimal(str(hourly_rate)),
+            multiplier=Decimal(str(multiplier)),
+            amount=amount,
+            is_paid=False,
+            notes=notes
+        )
+        db.add(overtime)
+        await db.commit()
+        await db.refresh(overtime)
+        return types.OvertimeWork.from_instance(overtime)
+
+    @strawberry.mutation
+    async def create_business_trip(
+        self,
+        user_id: int,
+        destination: str,
+        start_date: datetime.date,
+        end_date: datetime.date,
+        daily_allowance: float = 40.00,
+        accommodation: float = 0,
+        transport: float = 0,
+        other_expenses: float = 0,
+        department_id: Optional[int] = None,
+        period_id: Optional[int] = None,
+        notes: Optional[str] = None,
+        info: strawberry.Info = None
+    ) -> types.BusinessTrip:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise Exception("Not authorized")
+
+        from backend.database.models import BusinessTrip
+        from decimal import Decimal
+
+        days = (end_date - start_date).days + 1
+        total_amount = Decimal(str(daily_allowance)) * Decimal(str(days)) + \
+                      Decimal(str(accommodation)) + Decimal(str(transport)) + Decimal(str(other_expenses))
+
+        trip = BusinessTrip(
+            user_id=user_id,
+            period_id=period_id,
+            department_id=department_id,
+            destination=destination,
+            start_date=start_date,
+            end_date=end_date,
+            daily_allowance=Decimal(str(daily_allowance)),
+            accommodation=Decimal(str(accommodation)),
+            transport=Decimal(str(transport)),
+            other_expenses=Decimal(str(other_expenses)),
+            total_amount=total_amount,
+            status="pending",
+            notes=notes
+        )
+        db.add(trip)
+        await db.commit()
+        await db.refresh(trip)
+        return types.BusinessTrip.from_instance(trip)
+
+    @strawberry.mutation
+    async def approve_business_trip(
+        self,
+        trip_id: int,
+        approved: bool,
+        notes: Optional[str] = None,
+        info: strawberry.Info = None
+    ) -> types.BusinessTrip:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import BusinessTrip
+        from backend.database.models import sofia_now
+
+        trip = await db.get(BusinessTrip, trip_id)
+        if not trip:
+            raise Exception("Business trip not found")
+
+        trip.status = "approved" if approved else "rejected"
+        trip.approved_by_id = current_user.id
+        trip.approved_at = sofia_now()
+        trip.approved_notes = notes
+
+        await db.commit()
+        await db.refresh(trip)
+        return types.BusinessTrip.from_instance(trip)
+
+    @strawberry.mutation
+    async def create_work_experience(
+        self,
+        user_id: int,
+        company_name: str,
+        start_date: datetime.date,
+        end_date: Optional[datetime.date] = None,
+        position: Optional[str] = None,
+        years: int = 0,
+        months: int = 0,
+        class_level: Optional[str] = None,
+        is_current: bool = False,
+        notes: Optional[str] = None,
+        info: strawberry.Info = None
+    ) -> types.WorkExperience:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import WorkExperience
+
+        experience = WorkExperience(
+            user_id=user_id,
+            company_id=current_user.company_id,
+            company_name=company_name,
+            position=position,
+            start_date=start_date,
+            end_date=end_date,
+            years=years,
+            months=months,
+            class_level=class_level,
+            is_current=is_current,
+            notes=notes
+        )
+        db.add(experience)
+        await db.commit()
+        await db.refresh(experience)
+        return types.WorkExperience.from_instance(experience)
+

@@ -27,6 +27,11 @@ import OrdersPage from './pages/OrdersPage';
 import ProductionControlPage from './pages/ProductionControlPage';
 import AccountingPage from './pages/AccountingPage';
 import NotificationsPage from './pages/NotificationsPage';
+import LogisticsPage from './pages/LogisticsPage';
+import FleetPage from './pages/FleetPage';
+import VehicleProfilePage from './pages/VehicleProfilePage';
+import FleetReportsPage from './pages/FleetReportsPage';
+import TRZSettingsPage from './pages/TRZSettingsPage';
 import { useQuery } from '@apollo/client';
 import { ME_QUERY } from './graphql/queries';
 
@@ -496,6 +501,56 @@ function App() {
           element={
             <AdminRoute>
               <NotificationsPage tab="smtp" />
+            </AdminRoute>
+          }
+        />
+        
+        {/* Логистика */}
+        <Route
+          path="/admin/logistics"
+          element={
+            <AdminRoute>
+              <LogisticsPage />
+            </AdminRoute>
+          }
+        />
+        
+        {/* Автомобили (Fleet) */}
+        <Route
+          path="/admin/fleet"
+          element={
+            <AdminRoute>
+              <FleetPage />
+            </AdminRoute>
+          }
+        />
+        
+        {/* Профил на автомобил */}
+        <Route
+          path="/admin/fleet/:id"
+          element={
+            <AdminRoute>
+              <VehicleProfilePage />
+            </AdminRoute>
+          }
+        />
+        
+        {/* Справки - Автомобили */}
+        <Route
+          path="/admin/fleet/reports"
+          element={
+            <AdminRoute>
+              <FleetReportsPage />
+            </AdminRoute>
+          }
+        />
+        
+        {/* ТРЗ Настройки */}
+        <Route
+          path="/admin/payroll/trz-settings"
+          element={
+            <AdminRoute>
+              <TRZSettingsPage />
             </AdminRoute>
           }
         />

@@ -26,7 +26,10 @@ import {
   Notifications as NotificationsIcon,
   Receipt as ReceiptIcon,
   ExpandMore as ExpandMoreIcon,
-  MeetingRoom as DoorIcon
+  MeetingRoom as DoorIcon,
+  LocalShipping as LogisticsIcon,
+  DirectionsCar as FleetIcon,
+  Assessment as ReportsIcon,
 } from '@mui/icons-material';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useApolloClient } from '@apollo/client';
@@ -216,6 +219,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
       children: [
         { text: 'Плащания', path: '/admin/payroll/payments', visible: true },
         { text: 'Празници', path: '/admin/payroll/declarations', visible: true },
+        { text: 'ТРЗ Настройки', path: '/admin/payroll/trz-settings', visible: true },
         { text: 'Настройки', path: '/admin/payroll/settings', visible: true },
         { text: 'Справки', path: '/admin/payroll/reports', visible: true },
       ]
@@ -270,6 +274,9 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Рецепти', icon: <RecipeIcon />, path: '/admin/recipes', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Поръчки', icon: <OrderIcon />, path: '/admin/orders', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Контрол', icon: <TaskIcon />, path: '/admin/production/control', visible: isAdmin && isEnabled('confectionery') },
+    { text: 'Логистика', icon: <LogisticsIcon />, path: '/admin/logistics', visible: isAdmin },
+    { text: 'Автомобили', icon: <FleetIcon />, path: '/admin/fleet', visible: isAdmin },
+    { text: 'Справки', icon: <ReportsIcon />, path: '/admin/fleet/reports', visible: isAdmin },
     { text: 'Терминал за присъствие', icon: <QrCodeScannerIcon />, path: '/kiosk', visible: true },
     { text: 'Терминал за достъп', icon: <DoorIcon />, path: '/kiosk/terminal', visible: true },
   ];

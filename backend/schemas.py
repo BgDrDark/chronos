@@ -29,6 +29,13 @@ class UserBase(BaseModel):
     department: Optional[str] = None
     company: Optional[str] = None
     
+    @field_validator('email', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == '' or v is None:
+            return None
+        return v
+    
     # Relation IDs
     company_id: Optional[int] = None
     department_id: Optional[int] = None
@@ -106,7 +113,14 @@ class UserUpdate(BaseModel):
     company_id: Optional[int] = None
     department_id: Optional[int] = None
     position_id: Optional[int] = None
-    base_salary: Optional[Decimal] = None # For payroll linkage
+    base_salary: Optional[Decimal] = None
+    
+    @field_validator('email', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == '' or v is None:
+            return None
+        return v # For payroll linkage
 
 class RoleBase(BaseModel):
     name: str
