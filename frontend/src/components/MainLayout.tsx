@@ -152,7 +152,11 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   const isMenuExpanded = (text: string, children?: MenuItem[]) => {
     if (!children || children.length === 0) return false;
     if (expandedMenus.includes(text)) return true;
-    return children.some(child => child.path && location.pathname.startsWith(child.path));
+    // Expand if current path matches child path OR expand all by default
+    const hasMatchingChild = children.some(child => child.path && location.pathname.startsWith(child.path));
+    if (hasMatchingChild) return true;
+    // Expand all menus by default
+    return true;
   };
 
   const isAdmin = user?.role && ['admin', 'super_admin'].includes(user.role.name);
