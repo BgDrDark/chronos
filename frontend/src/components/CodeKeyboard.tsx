@@ -30,13 +30,6 @@ const CodeKeyboard: React.FC<CodeKeyboardProps> = ({ onCodeSubmit, isLoading }) 
     }
   };
 
-  const buttons = [
-    '1', '2', '3',
-    '4', '5', '6',
-    '7', '8', '9',
-    '⌫', '0', '✓'
-  ];
-
   return (
     <Paper elevation={3} sx={{ p: 3, borderRadius: 4, bgcolor: '#f8f9fa' }}>
       <Box sx={{ 

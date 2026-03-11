@@ -15,7 +15,6 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import DocumentationPage from './pages/DocumentationPage';
 import ProfilePage from './pages/ProfilePage';
-import KioskPage from './pages/KioskPage';
 import KioskAdminPage from './pages/KioskAdminPage';
 import KioskTerminalPage from './pages/KioskTerminalPage';
 import UnifiedKiosk from './pages/UnifiedKiosk';

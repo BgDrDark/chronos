@@ -1012,13 +1012,29 @@ async def update_payroll_config(
     tax_percent: Optional[Decimal] = None,
     health_insurance_percent: Optional[Decimal] = None,
     has_tax_deduction: Optional[bool] = None,
-    has_health_insurance: Optional[bool] = None
+    has_health_insurance: Optional[bool] = None,
+    admin_user_id: Optional[int] = None
 ):
-    payroll_config = await get_payroll_config(db, user_id) # Gets the latest
+    # This specifically updates INDIVIDUAL user config
+    stmt = select(Payroll).where(Payroll.user_id == user_id)
+    result = await db.execute(stmt)
+    payroll_config = result.scalars().first()
+
     if not payroll_config:
-        # If no payroll config exists, create one using default values
-        # And the provided monthly_salary (if any)
-        return await create_payroll_config(db, user_id, monthly_salary or Decimal("0.00"))
+        # If no individual payroll config exists, create one
+        return await create_payroll_config(
+            db, user_id, 
+            monthly_salary=monthly_salary or Decimal("0.00"),
+            hourly_rate=hourly_rate,
+            overtime_multiplier=overtime_multiplier,
+            standard_hours_per_day=standard_hours_per_day,
+            currency=currency,
+            annual_leave_days=annual_leave_days,
+            tax_percent=tax_percent,
+            health_insurance_percent=health_insurance_percent,
+            has_tax_deduction=has_tax_deduction,
+            has_health_insurance=has_health_insurance
+        )
 
     update_data = {}
     if monthly_salary is not None: update_data["monthly_salary"] = monthly_salary
@@ -1036,129 +1052,79 @@ async def update_payroll_config(
         setattr(payroll_config, field, value)
     
     db.add(payroll_config)
+    
+    await log_audit_action(
+        db, admin_user_id, "UPDATE_USER_PAYROLL",
+        target_type="User", target_id=user_id,
+        details=f"Updated payroll fields: {', '.join(update_data.keys())}"
+    )
+    
     await db.flush()
     return payroll_config
 
 
-async def update_payroll_config(
-        db: AsyncSession,
-        user_id: int,
-        hourly_rate: float,
-        overtime_multiplier: float = 1.5,
-        standard_hours_per_day: int = 8,
-        monthly_salary: float = None,
-        currency: str = "EUR",
-        annual_leave_days: int = 20,
-        tax_percent: float = 10.0,
-        health_insurance_percent: float = 13.78,
-        has_tax_deduction: bool = True,
-        has_health_insurance: bool = True,
-        admin_user_id: Optional[int] = None
-):
-    # This updates specific USER config
-    stmt = select(Payroll).where(Payroll.user_id == user_id)
-    result = await db.execute(stmt)
-    config = result.scalars().first()
-
-    if config:
-        config.hourly_rate = hourly_rate
-        config.monthly_salary = monthly_salary
-        config.overtime_multiplier = overtime_multiplier
-        config.standard_hours_per_day = standard_hours_per_day
-        config.currency = currency
-        config.annual_leave_days = annual_leave_days
-
-        config.tax_percent = tax_percent
-        config.health_insurance_percent = health_insurance_percent
-        config.has_tax_deduction = has_tax_deduction
-        config.has_health_insurance = has_health_insurance
-
-        db.add(config)
-    else:
-        config = Payroll(
-            user_id=user_id,
-            hourly_rate=hourly_rate,
-            monthly_salary=monthly_salary,
-            overtime_multiplier=overtime_multiplier,
-            standard_hours_per_day=standard_hours_per_day,
-            currency=currency,
-            annual_leave_days=annual_leave_days,
-            tax_percent=tax_percent,
-            health_insurance_percent=health_insurance_percent,
-            has_tax_deduction=has_tax_deduction,
-            has_health_insurance=has_health_insurance
-        )
-        db.add(config)
-
-    await log_audit_action(
-        db, admin_user_id, "UPDATE_USER_PAYROLL",
-        target_type="User", target_id=user_id,
-        details=f"Rate: {hourly_rate}, Salary: {monthly_salary}, Currency: {currency}"
-    )
-
-    await db.commit()
-    await db.refresh(config)
-    return config
-
 
 async def update_position_payroll_config(
-        db: AsyncSession,
-        position_id: int,
-        hourly_rate: float,
-        overtime_multiplier: float = 1.5,
-        standard_hours_per_day: int = 8,
-        monthly_salary: float = None,
-        currency: str = "EUR",
-        annual_leave_days: int = 20,
-        tax_percent: float = 10.0,
-        health_insurance_percent: float = 13.78,
-        has_tax_deduction: bool = True,
-        has_health_insurance: bool = True,
-        admin_user_id: Optional[int] = None
+    db: AsyncSession, position_id: int,
+    monthly_salary: Optional[Decimal] = None,
+    hourly_rate: Optional[Decimal] = None,
+    overtime_multiplier: Optional[Decimal] = None,
+    standard_hours_per_day: Optional[int] = None,
+    currency: Optional[str] = None,
+    annual_leave_days: Optional[int] = None,
+    tax_percent: Optional[Decimal] = None,
+    health_insurance_percent: Optional[Decimal] = None,
+    has_tax_deduction: Optional[bool] = None,
+    has_health_insurance: Optional[bool] = None,
+    admin_user_id: Optional[int] = None
 ):
+    # This specifically updates POSITION-based payroll config
     stmt = select(Payroll).where(Payroll.position_id == position_id)
     result = await db.execute(stmt)
     config = result.scalars().first()
 
-    if config:
-        config.hourly_rate = hourly_rate
-        config.monthly_salary = monthly_salary
-        config.overtime_multiplier = overtime_multiplier
-        config.standard_hours_per_day = standard_hours_per_day
-        config.currency = currency
-        config.annual_leave_days = annual_leave_days
-
-        config.tax_percent = tax_percent
-        config.health_insurance_percent = health_insurance_percent
-        config.has_tax_deduction = has_tax_deduction
-        config.has_health_insurance = has_health_insurance
-
-        db.add(config)
-    else:
+    if not config:
         config = Payroll(
             position_id=position_id,
-            hourly_rate=hourly_rate,
-            monthly_salary=monthly_salary,
-            overtime_multiplier=overtime_multiplier,
-            standard_hours_per_day=standard_hours_per_day,
-            currency=currency,
-            annual_leave_days=annual_leave_days,
-            tax_percent=tax_percent,
-            health_insurance_percent=health_insurance_percent,
-            has_tax_deduction=has_tax_deduction,
-            has_health_insurance=has_health_insurance
+            monthly_salary=monthly_salary or Decimal("0.00"),
+            hourly_rate=hourly_rate or Decimal("0.00"),
+            overtime_multiplier=overtime_multiplier or Decimal("1.00"),
+            standard_hours_per_day=standard_hours_per_day or 8,
+            currency=currency or "EUR",
+            annual_leave_days=annual_leave_days or 20,
+            tax_percent=tax_percent or Decimal("10.00"),
+            health_insurance_percent=health_insurance_percent or Decimal("13.78"),
+            has_tax_deduction=has_tax_deduction if has_tax_deduction is not None else True,
+            has_health_insurance=has_health_insurance if has_health_insurance is not None else True
         )
+        db.add(config)
+    else:
+        update_data = {}
+        if monthly_salary is not None: update_data["monthly_salary"] = monthly_salary
+        if hourly_rate is not None: update_data["hourly_rate"] = hourly_rate
+        if overtime_multiplier is not None: update_data["overtime_multiplier"] = overtime_multiplier
+        if standard_hours_per_day is not None: update_data["standard_hours_per_day"] = standard_hours_per_day
+        if currency is not None: update_data["currency"] = currency
+        if annual_leave_days is not None: update_data["annual_leave_days"] = annual_leave_days
+        if tax_percent is not None: update_data["tax_percent"] = tax_percent
+        if health_insurance_percent is not None: update_data["health_insurance_percent"] = health_insurance_percent
+        if has_tax_deduction is not None: update_data["has_tax_deduction"] = has_tax_deduction
+        if has_health_insurance is not None: update_data["has_health_insurance"] = has_health_insurance
+
+        for field, value in update_data.items():
+            setattr(config, field, value)
+        
         db.add(config)
 
     await log_audit_action(
         db, admin_user_id, "UPDATE_POSITION_PAYROLL",
         target_type="Position", target_id=position_id,
-        details=f"Rate: {hourly_rate}, Salary: {monthly_salary}, Currency: {currency}"
+        details=f"Updated position payroll fields"
     )
 
-    await db.commit()
-    await db.refresh(config)
+    await db.flush()
     return config
+
 
 
 async def get_active_time_log(db: AsyncSession, user_id: int):
@@ -1174,7 +1140,7 @@ import math
 
 
 def calculate_distance(lat1, lon1, lat2, lon2):
-    R = 6371000  # Earth radius in meters
+    r = 6371000  # Earth radius in meters
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
     delta_phi = math.radians(lat2 - lat1)
@@ -1185,7 +1151,7 @@ def calculate_distance(lat1, lon1, lat2, lon2):
         math.sin(delta_lambda / 2.0) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-    return R * c
+    return r * c
 
 
 async def start_time_log(db: AsyncSession, user_id: int, latitude: float = None, longitude: float = None,

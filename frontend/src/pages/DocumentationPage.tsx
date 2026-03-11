@@ -1,29 +1,21 @@
 import React from 'react';
-import { Container, Typography, Paper, Box, Divider, List, ListItem, ListItemIcon, ListItemText, Accordion, AccordionSummary, AccordionDetails, CircularProgress } from '@mui/material';
+import { Container, Typography, Paper, Box, Divider, List, ListItem, ListItemText, Accordion, AccordionSummary, AccordionDetails, CircularProgress } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SecurityIcon from '@mui/icons-material/Security';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
-import ViewModuleIcon from '@mui/icons-material/ViewModule';
-import BusinessIcon from '@mui/icons-material/Business';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
-import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
-import LocalPrintshopIcon from '@mui/icons-material/LocalPrintshop';
-import FactoryIcon from '@mui/icons-material/Factory';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import { useQuery } from '@apollo/client';
 import { ME_QUERY } from '../graphql/queries';
 
 const DocumentationPage: React.FC = () => {
-  const { data, loading } = useQuery(ME_QUERY);
+  const { loading } = useQuery(ME_QUERY);
   
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
-  
-  const user = data?.me;
-  const isSuperAdmin = user?.role?.name === 'super_admin';
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 8 }}>

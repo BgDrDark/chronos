@@ -1,0 +1,113 @@
+# Chronos Gateway Configuration
+# Copy this file as config.yaml and edit as needed
+
+# ===================
+# BACKEND CONNECTION
+# ===================
+backend:
+  # Backend URL (with HTTPS for production)
+  url: https://dev.chronos.org
+  
+  # API Key from backend (get from admin panel)
+  api_key: ""
+  
+  # SSL verification (set to false for self-signed certificates)
+  ssl_verify_disabled: true
+
+# ===================
+# GATEWAY SETTINGS
+# ===================
+gateway:
+  # Gateway name (shown in admin panel)
+  alias: "Chronos Gateway"
+  
+  # Hardware UUID (auto-generated on first run)
+  # hardware_uuid: ""
+  
+  # Gateway ID in backend (get from admin panel)
+  id: "1"
+  
+  # Mode: production, development
+  mode: production
+
+# ===================
+# NETWORK SETTINGS
+# ===================
+network:
+  # IP address to bind to (0.0.0.0 = all interfaces)
+  ip: 0.0.0.0
+  
+  # Port for terminal connections
+  terminal_port: 1424
+  
+  # Port for web dashboard
+  web_port: 8889
+
+# ===================
+# ACCESS CONTROL
+# ===================
+access_control:
+  # Enable access control module
+  enabled: true
+  
+  # Anti-passback settings
+  anti_passback:
+    enabled: false
+    default_type: soft
+    timeout_minutes: 5
+  
+  # Auto-reset access daily at set time
+  auto_reset_enabled: true
+  auto_reset_time: "23:00"
+  
+  # One-time access codes
+  one_time_codes:
+    enabled: true
+    prefix: "G"
+
+# ===================
+# HARDWARE DEVICES
+# ===================
+access_control:
+  hardware:
+    # SR201 Relay Board
+    # Format: device_id: serial_port
+    # Example: sr201_1: COM3
+    devices: []
+
+# ===================
+# ACTIVITY & MONITORING
+# ===================
+activity:
+  # Heartbeat interval in seconds
+  heartbeat_interval: 30
+  
+  # Timeout in seconds (no heartbeat = offline)
+  timeout: 120
+
+# ===================
+# LOGGING
+# ===================
+logging:
+  # Log level: DEBUG, INFO,  level: INFO WARNING, ERROR
+
+  
+  # Log file path
+  file: logs/gateway.log
+  
+  # Max log file size (e.g., 10MB)
+  max_size: 10MB
+  
+  # Number of backup log files to keep
+  backup_count: 5
+
+# ===================
+# PRINTERS (Optional)
+# ===================
+printers: []
+
+# ===================
+# CLUSTER MODE (Optional)
+# ===================
+cluster:
+  enabled: false

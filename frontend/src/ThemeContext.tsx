@@ -1,25 +1,7 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { useContext, useState, useMemo } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
-
-interface DashboardConfig {
-  showChart: boolean;
-  showWeeklyTable: boolean;
-}
-
-interface ThemeContextType {
-  mode: 'light' | 'dark';
-  toggleTheme: () => void;
-  dashboardConfig: DashboardConfig;
-  toggleDashboardWidget: (widget: keyof DashboardConfig) => void;
-}
-
-const ThemeContext = createContext<ThemeContextType>({
-  mode: 'light',
-  toggleTheme: () => {},
-  dashboardConfig: { showChart: true, showWeeklyTable: true },
-  toggleDashboardWidget: () => {},
-});
+import { ThemeContext, type DashboardConfig } from './themeContext';
 
 export const useAppTheme = () => useContext(ThemeContext);
 
@@ -42,7 +24,7 @@ export const AppThemeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const toggleDashboardWidget = (widget: keyof DashboardConfig) => {
-    setDashboardConfig(prev => {
+    setDashboardConfig((prev) => {
       const next = { ...prev, [widget]: !prev[widget] };
       localStorage.setItem('dashboardConfig', JSON.stringify(next));
       return next;
@@ -61,8 +43,10 @@ export const AppThemeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             main: '#f50057',
           },
           background: {
-            default: mode === 'light' ? '#f5f5f5' : '#121212',
-            paper: mode === 'light' ? '#ffffff' : '#1e1e1e',
+            default: mode === 'light' 
+              ? '#f5f5f5' 
+              : 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+            paper: mode === 'light' ? '#ffffff' : '#1e293b',
           },
         },
         typography: {
@@ -82,19 +66,19 @@ export const AppThemeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             styleOverrides: {
               root: { padding: '4.8px 12.8px' },
               sizeLarge: { padding: '6.4px 17.6px' },
-              sizeSmall: { padding: '3.2px 8px' }
+              sizeSmall: { padding: '3.2px 8px' },
             },
           },
           MuiPaper: {
             styleOverrides: {
               root: {
-                backgroundImage: 'none', // Премахваме сивите нюанси в тъмен режим за по-чист вид
-              }
-            }
+                backgroundImage: 'none',
+              },
+            },
           },
           MuiTextField: { defaultProps: { size: 'small' } },
           MuiSelect: { defaultProps: { size: 'small' } },
-          MuiFormControl: { defaultProps: { size: 'small' } }
+          MuiFormControl: { defaultProps: { size: 'small' } },
         },
         spacing: 6.4,
       }),

@@ -76,8 +76,8 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
       
       refetch();
       onClose();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Възникна грешка');
     }
   };
 

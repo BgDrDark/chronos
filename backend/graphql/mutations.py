@@ -324,7 +324,7 @@ class Mutation:
                     user_id=userInput.id,
                     company_id=userInput.company_id or (db_user.company_id if db_user else None),
                     contract_type=userInput.contract_type or 'full_time',
-                    start_date=userInput.contract_start_date or date.today(),
+                    start_date=userInput.contract_start_date or datetime.date.today(),
                     base_salary=userInput.base_salary,
                     is_active=True,
                     salary_installments_count=userInput.salary_installments_count or 1,

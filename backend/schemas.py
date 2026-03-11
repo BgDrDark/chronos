@@ -96,6 +96,13 @@ class UserCreate(UserBase):
     insurance_contributor: Optional[bool] = None
     has_income_tax: Optional[bool] = None
 
+    # ТРЗ разширение
+    night_work_rate: Optional[Decimal] = Decimal("0.50")
+    overtime_rate: Optional[Decimal] = Decimal("1.50")
+    holiday_rate: Optional[Decimal] = Decimal("2.00")
+    work_class: Optional[str] = None
+    dangerous_work: Optional[bool] = False
+
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username: Optional[str] = None

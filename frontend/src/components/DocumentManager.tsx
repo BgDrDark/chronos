@@ -64,7 +64,7 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
             document.body.appendChild(a);
             a.click();
             a.remove();
-        } catch (e) { alert("Download failed"); }
+        } catch { alert("Download failed"); }
     };
 
     const handleDelete = async (docId: number) => {
@@ -76,7 +76,7 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             fetchDocs();
-        } catch (e) { alert("Delete failed"); }
+        } catch { alert("Delete failed"); }
     };
 
     const handleToggleLock = async (docId: number) => {
@@ -87,7 +87,7 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             fetchDocs();
-        } catch (e) { alert("Lock toggle failed"); }
+        } catch { alert("Lock toggle failed"); }
     };
 
     const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {

@@ -15,8 +15,8 @@ const createUserSchema = z.object({
   email: z.string().email('Невалиден имейл адрес').optional().or(z.literal('')),
   username: z.string().min(3, 'Потребителското име трябва да е поне 3 символа').optional().or(z.literal('')),
   password: z.string().min(8, 'Паролата трябва да е поне 8 символа'),
-  firstName: z.string().optional().or(z.literal('')),
-  lastName: z.string().optional().or(z.literal('')),
+  firstName: z.string().min(1, 'Полето е задължително'),
+  lastName: z.string().min(1, 'Полето е задължително'),
   phoneNumber: z.string().optional().or(z.literal('')),
   address: z.string().optional().or(z.literal('')),
   egn: z.string().max(10).optional().or(z.literal('')),
@@ -26,22 +26,33 @@ const createUserSchema = z.object({
   companyId: z.number().nullable().optional(),
   departmentId: z.number().nullable().optional(),
   positionId: z.number().nullable().optional(),
+  passwordForceChange: z.boolean().optional(),
   contractType: z.string().optional().or(z.literal('')),
   contractStartDate: z.string().optional().or(z.literal('')),
   contractEndDate: z.string().nullable().optional().or(z.literal('')),
   baseSalary: z.number().nullable().optional(),
+  workHoursPerWeek: z.number().min(1).max(168).optional(),
+  probationMonths: z.number().min(0).max(12).optional(),
+  salaryCalculationType: z.string().optional(),
   hasIncomeTax: z.boolean().optional(),
+  insuranceContributor: z.boolean().optional(),
   salaryInstallmentsCount: z.number().min(1),
   monthlyAdvanceAmount: z.number().min(0),
   taxResident: z.boolean(),
+  // TRZ Extension
+  nightWorkRate: z.number().min(0).optional(),
+  overtimeRate: z.number().min(0).optional(),
+  holidayRate: z.number().min(0).optional(),
+  workClass: z.string().optional().or(z.literal('')),
+  dangerousWork: z.boolean().optional(),
 });
 
 interface CreateUserFormData {
   email?: string;
   username?: string;
   password: string;
-  firstName?: string;
-  lastName?: string;
+  firstName: string;
+  lastName: string;
   phoneNumber?: string;
   address?: string;
   egn?: string;
@@ -51,14 +62,25 @@ interface CreateUserFormData {
   companyId?: number | null;
   departmentId?: number | null;
   positionId?: number | null;
+  passwordForceChange?: boolean;
   contractType?: string;
   contractStartDate?: string;
   contractEndDate?: string | null;
   baseSalary?: number | null;
+  workHoursPerWeek?: number;
+  probationMonths?: number;
+  salaryCalculationType?: string;
   hasIncomeTax?: boolean;
+  insuranceContributor?: boolean;
   salaryInstallmentsCount: number;
   monthlyAdvanceAmount: number;
   taxResident: boolean;
+  // TRZ Extension
+  nightWorkRate?: number;
+  overtimeRate?: number;
+  holidayRate?: number;
+  workClass?: string;
+  dangerousWork?: boolean;
 }
 
 // GraphQL Mutations & Queries
@@ -78,14 +100,24 @@ const CREATE_USER_MUTATION = gql`
     $companyId: Int
     $departmentId: Int
     $positionId: Int
+    $passwordForceChange: Boolean
     $contractType: String
     $contractStartDate: Date
     $contractEndDate: Date
     $baseSalary: Decimal
+    $workHoursPerWeek: Int
+    $probationMonths: Int
+    $salaryCalculationType: String
     $hasIncomeTax: Boolean
+    $insuranceContributor: Boolean
     $salaryInstallmentsCount: Int
     $monthlyAdvanceAmount: Decimal
     $taxResident: Boolean
+    $nightWorkRate: Decimal
+    $overtimeRate: Decimal
+    $holidayRate: Decimal
+    $workClass: String
+    $dangerousWork: Boolean
   ) {
     createUser(
       userInput: { 
@@ -103,14 +135,24 @@ const CREATE_USER_MUTATION = gql`
         companyId: $companyId
         departmentId: $departmentId
         positionId: $positionId
+        passwordForceChange: $passwordForceChange
         contractType: $contractType
         contractStartDate: $contractStartDate
         contractEndDate: $contractEndDate
         baseSalary: $baseSalary
+        workHoursPerWeek: $workHoursPerWeek
+        probationMonths: $probationMonths
+        salaryCalculationType: $salaryCalculationType
         hasIncomeTax: $hasIncomeTax
+        insuranceContributor: $insuranceContributor
         salaryInstallmentsCount: $salaryInstallmentsCount
         monthlyAdvanceAmount: $monthlyAdvanceAmount
         taxResident: $taxResident
+        nightWorkRate: $nightWorkRate
+        overtimeRate: $overtimeRate
+        holidayRate: $holidayRate
+        workClass: $workClass
+        dangerousWork: $dangerousWork
       }
     ) {
       id
@@ -132,11 +174,18 @@ interface CreateUserFormProps {
   onCreated?: () => void;
 }
 
+interface OrgData {
+  companies: Array<{ id: number; name: string }>;
+  departments: Array<{ id: number; name: string; companyId: number }>;
+  positions: Array<{ id: number; title: string; departmentId: number }>;
+  roles: Array<{ id: number; name: string; description?: string }>;
+}
+
 const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
   const [apiError, setApiError] = useState('');
   const [apiSuccess, setApiSuccess] = useState('');
 
-  const { data: orgData, loading: orgLoading } = useQuery(GET_ORG_DATA);
+  const { data: orgData, loading: orgLoading } = useQuery<OrgData>(GET_ORG_DATA);
 
   const {
     register,
@@ -162,25 +211,36 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
       companyId: null,
       departmentId: null,
       positionId: null,
+      passwordForceChange: false,
       contractType: 'full_time',
       contractStartDate: new Date().toISOString().split('T')[0],
       contractEndDate: '',
       baseSalary: null,
+      workHoursPerWeek: 40,
+      probationMonths: 6,
+      salaryCalculationType: 'gross',
       hasIncomeTax: true,
+      insuranceContributor: true,
       salaryInstallmentsCount: 1,
       monthlyAdvanceAmount: 0,
       taxResident: true,
+      // TRZ Defaults
+      nightWorkRate: 0.50,
+      overtimeRate: 1.50,
+      holidayRate: 2.00,
+      workClass: '',
+      dangerousWork: false,
     },
   });
 
   const selectedCompanyId = watch('companyId');
   const selectedDepartmentId = watch('departmentId');
 
-  const filteredDepartments = orgData?.departments.filter((d: any) => 
+  const filteredDepartments = orgData?.departments.filter((d) => 
     selectedCompanyId ? d.companyId === selectedCompanyId : true
   ) || [];
 
-  const filteredPositions = orgData?.positions.filter((p: any) => 
+  const filteredPositions = orgData?.positions.filter((p) => 
     selectedDepartmentId ? p.departmentId === selectedDepartmentId : true
   ) || [];
 
@@ -206,21 +266,32 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
           companyId: data.companyId || null,
           departmentId: data.departmentId || null,
           positionId: data.positionId || null,
+          passwordForceChange: !!data.passwordForceChange,
           contractType: data.contractType || null,
           contractStartDate: data.contractStartDate || null,
           contractEndDate: data.contractEndDate || null,
           baseSalary: data.baseSalary || null,
+          workHoursPerWeek: data.workHoursPerWeek ? parseInt(data.workHoursPerWeek.toString()) : 40,
+          probationMonths: data.probationMonths ? parseInt(data.probationMonths.toString()) : 0,
+          salaryCalculationType: data.salaryCalculationType || 'gross',
           hasIncomeTax: data.hasIncomeTax ?? true,
+          insuranceContributor: data.insuranceContributor ?? true,
           salaryInstallmentsCount: parseInt(data.salaryInstallmentsCount.toString()),
           monthlyAdvanceAmount: parseFloat(data.monthlyAdvanceAmount.toString()),
           taxResident: data.taxResident ?? true,
+          // TRZ fields
+          nightWorkRate: data.nightWorkRate ? parseFloat(data.nightWorkRate.toString()) : 0.50,
+          overtimeRate: data.overtimeRate ? parseFloat(data.overtimeRate.toString()) : 1.50,
+          holidayRate: data.holidayRate ? parseFloat(data.holidayRate.toString()) : 2.00,
+          workClass: data.workClass || null,
+          dangerousWork: !!data.dangerousWork,
         },
       });
       setApiSuccess('Потребителят е създаден успешно!');
       reset();
       if (onCreated) onCreated();
-    } catch (err: any) {
-      setApiError(err.message);
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Възникна грешка');
     }
   };
 
@@ -238,16 +309,20 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
         
         <Grid size={{ xs: 12, sm: 6 }}>
           <TextField
-            fullWidth label="Първо име"
+            fullWidth label="Първо име *"
             {...register('firstName')}
-            error={!!errors.firstName} size="small"
+            error={!!errors.firstName}
+            helperText={errors.firstName?.message}
+            size="small"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
           <TextField
-            fullWidth label="Фамилия"
+            fullWidth label="Фамилия *"
             {...register('lastName')}
-            error={!!errors.lastName} size="small"
+            error={!!errors.lastName}
+            helperText={errors.lastName?.message}
+            size="small"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
@@ -308,7 +383,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
           />
         </Grid>
 
-        <Grid size={{ xs: 12 }}>
+        <Grid size={{ xs: 12, sm: 8 }}>
           <FormControl fullWidth size="small">
             <InputLabel id="role-label">Роля в системата</InputLabel>
             <Controller
@@ -322,7 +397,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
                   value={field.value || ''}
                   onChange={(e) => field.onChange(e.target.value)}
                 >
-                  {orgData?.roles.map((role: any) => {
+                  {orgData?.roles.map((role) => {
                     const roleTranslations: Record<string, string> = {
                       'admin': 'Администратор',
                       'super_admin': 'Главен Администратор',
@@ -331,7 +406,6 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
                       'manager': 'Мениджър',
                       'kiosk': 'Терминал (Kiosk)'
                     };
-                    // Priority: Translation -> Description -> Uppercase Name
                     const displayName = roleTranslations[role.name.toLowerCase()] || role.description || role.name.toUpperCase();
                     
                     return (
@@ -345,6 +419,12 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
             />
           </FormControl>
         </Grid>
+        <Grid size={{ xs: 12, sm: 4 }} display="flex" alignItems="center">
+          <FormControlLabel
+            control={<Controller name="passwordForceChange" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+            label="Задължителна смяна на парола"
+          />
+        </Grid>
 
         {/* --- СЕКЦИЯ 3: ОРГАНИЗАЦИОННИ --- */}
         <Grid size={{ xs: 12, sm: 4 }}>
@@ -356,7 +436,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
               render={({ field }) => (
                 <Select {...field} label="Фирма" value={field.value ?? ''}>
                   <MenuItem value=""><em>Няма</em></MenuItem>
-                  {orgData?.companies.map((c: any) => (
+                  {orgData?.companies.map((c) => (
                     <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
                   ))}
                 </Select>
@@ -373,7 +453,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
               render={({ field }) => (
                 <Select {...field} label="Отдел" value={field.value ?? ''}>
                   <MenuItem value=""><em>Няма</em></MenuItem>
-                  {filteredDepartments.map((d: any) => (
+                  {filteredDepartments.map((d) => (
                     <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>
                   ))}
                 </Select>
@@ -390,7 +470,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
               render={({ field }) => (
                 <Select {...field} label="Длъжност" value={field.value ?? ''}>
                   <MenuItem value=""><em>Няма</em></MenuItem>
-                  {filteredPositions.map((p: any) => (
+                  {filteredPositions.map((p) => (
                     <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>
                   ))}
                 </Select>
@@ -404,7 +484,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
           <Alert severity="warning" variant="outlined" icon={false}>Договор и Финансови параметри</Alert>
         </Grid>
 
-        <Grid size={{ xs: 12, sm: 6 }}>
+        <Grid size={{ xs: 12, sm: 4 }}>
           <FormControl fullWidth size="small">
             <InputLabel>Тип договор</InputLabel>
             <Controller
@@ -421,7 +501,22 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
             />
           </FormControl>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <FormControl fullWidth size="small">
+            <InputLabel>Вид изчисление</InputLabel>
+            <Controller
+              name="salaryCalculationType"
+              control={control}
+              render={({ field }) => (
+                <Select {...field} label="Вид изчисление">
+                  <MenuItem value="gross">Бруто</MenuItem>
+                  <MenuItem value="net">Нето</MenuItem>
+                </Select>
+              )}
+            />
+          </FormControl>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
             fullWidth label="Основна заплата" type="number"
             {...register('baseSalary', { valueAsNumber: true })}
@@ -430,14 +525,29 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
             size="small"
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
+
+        <Grid size={{ xs: 12, sm: 3 }}>
+          <TextField
+            fullWidth label="Часове/седмица" type="number"
+            {...register('workHoursPerWeek', { valueAsNumber: true })}
+            size="small"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 3 }}>
+          <TextField
+            fullWidth label="Изпитателен срок (мес.)" type="number"
+            {...register('probationMonths', { valueAsNumber: true })}
+            size="small"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 3 }}>
           <TextField
             fullWidth label="Дата на започване" type="date"
             InputLabelProps={{ shrink: true }}
             {...register('contractStartDate')} size="small"
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
+        <Grid size={{ xs: 12, sm: 3 }}>
           <TextField
             fullWidth label="Дата на изтичане" type="date"
             InputLabelProps={{ shrink: true }}
@@ -465,10 +575,62 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
             label="Данъчен резидент"
           />
         </Grid>
-        <Grid size={{ xs: 12 }}>
+        
+        <Grid size={{ xs: 12, sm: 6 }}>
           <FormControlLabel
             control={<Controller name="hasIncomeTax" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
             label="Удържай ДОД (10%)"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <FormControlLabel
+            control={<Controller name="insuranceContributor" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+            label="Осигурено лице"
+          />
+        </Grid>
+
+        {/* --- СЕКЦИЯ 5: ТРЗ СПЕЦИФИЧНИ (НАДБАВКИ) --- */}
+        <Grid size={{ xs: 12 }} sx={{ mt: 2 }}>
+          <Alert severity="info" variant="outlined" icon={false}>ТРЗ Настройки (Ставки и Надбавки)</Alert>
+        </Grid>
+
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <TextField
+            fullWidth label="Множител Нощен труд" type="number"
+            {...register('nightWorkRate', { valueAsNumber: true })}
+            size="small"
+            helperText="Напр. 0.50 за +50%"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <TextField
+            fullWidth label="Множител Извънреден" type="number"
+            {...register('overtimeRate', { valueAsNumber: true })}
+            size="small"
+            helperText="Напр. 1.50 за +50%"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <TextField
+            fullWidth label="Множител Празник" type="number"
+            {...register('holidayRate', { valueAsNumber: true })}
+            size="small"
+            helperText="Напр. 2.00 за +100%"
+          />
+        </Grid>
+
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField
+            fullWidth label="Трудов клас / Категория"
+            {...register('workClass')}
+            size="small"
+            placeholder="Напр. I, II, III"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
+          <FormControlLabel
+            control={<Controller name="dangerousWork" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+            label="Вредни условия на труд"
           />
         </Grid>
       </Grid>

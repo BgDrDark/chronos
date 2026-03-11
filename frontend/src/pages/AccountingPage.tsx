@@ -518,16 +518,7 @@ const GENERATE_SAFT_FILE = gql`
       }
     }
   }
-`;
-
-const CREATE_PROFORMA_INVOICE = gql`
-  mutation CreateProformaInvoice($invoiceData: InvoiceInput!) {
-    createProformaInvoice(invoiceData: $invoiceData) {
-      id
-      number
-    }
-  }
-`;
+ `;
 
 /*
 const CREATE_CASH_RECEIPT = gql`...
@@ -618,37 +609,6 @@ interface Invoice {
   items: InvoiceItem[];
 }
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div role="tabpanel" hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
-}
-
-const statusColors: Record<string, "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning"> = {
-  draft: 'default',
-  sent: 'info',
-  paid: 'success',
-  overdue: 'error',
-  cancelled: 'secondary',
-};
-
-const statusLabels: Record<string, string> = {
-  draft: 'Чернова',
-  sent: 'Изпратена',
-  paid: 'Платена',
-  overdue: 'Просрочена',
-  cancelled: 'Анулирана',
-};
-
 interface Props {
   tab?: string;
 }
@@ -708,26 +668,16 @@ export default function AccountingPage({ tab }: Props) {
 
   const invoiceType = tabValue === 0 ? 'incoming' : 'outgoing';
 
-  const { data, loading, error, refetch } = useQuery(GET_INVOICES, {
+  const { refetch } = useQuery(GET_INVOICES, {
     variables: { type: invoiceType, search: search || undefined },
   });
 
   const { data: suppliersData } = useQuery(GET_SUPPLIERS);
   const { data: ingredientsData } = useQuery(GET_INGREDIENTS);
 
-  const [createInvoice, { loading: creating }] = useMutation(CREATE_INVOICE);
-  const [updateInvoice, { loading: updating }] = useMutation(UPDATE_INVOICE);
+  const [createInvoice] = useMutation(CREATE_INVOICE);
+  const [updateInvoice] = useMutation(UPDATE_INVOICE);
   const [deleteInvoice] = useMutation(DELETE_INVOICE);
-
-  const invoices: Invoice[] = data?.invoices || [];
-
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-    setDialogOpen(false);
-    setDetailsDialogOpen(false);
-    setEditingInvoice(null);
-    setSelectedInvoice(null);
-  };
 
   const handleOpenDetailsDialog = (invoice: Invoice) => {
     setSelectedInvoice(invoice);
@@ -1379,8 +1329,6 @@ function ProformaTab() {
   const { data, loading } = useQuery(GET_PROFORMA_INVOICES, {
     variables: { search: search || undefined },
   });
-
-  const [createProforma] = useMutation(CREATE_PROFORMA_INVOICE);
 
   const proformas = data?.proformaInvoices || [];
 

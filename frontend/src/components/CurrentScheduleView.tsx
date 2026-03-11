@@ -180,7 +180,7 @@ const CurrentScheduleView: React.FC = () => {
       try {
         await navigator.clipboard.writeText(url);
         alert('Линкът е копиран в клипборда!');
-      } catch (err) {
+      } catch {
         alert('Неуспешно копиране на линка.');
       }
     }

@@ -1,0 +1,3 @@
+@echo off
+echo Starting Chronos Gateway...
+start "" "ChronosGateway"

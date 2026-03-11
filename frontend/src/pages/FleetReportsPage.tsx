@@ -25,7 +25,6 @@ import {
   ArrowBack as BackIcon,
   Download as DownloadIcon,
   Print as PrintIcon,
-  DateRange as DateIcon,
   DirectionsCar as CarIcon,
   LocalGasStation as FuelIcon,
   Build as RepairIcon,

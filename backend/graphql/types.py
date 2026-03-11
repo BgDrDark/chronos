@@ -303,11 +303,11 @@ class User:
     @strawberry.field
     async def employment_contract(self, info: strawberry.Info) -> Optional["EmploymentContract"]:
         from sqlalchemy import select
-        from backend.database.models import EmploymentContract
+        from backend.database.models import EmploymentContract as EmploymentContractModel
         db = info.context["db"]
-        stmt = select(EmploymentContract).where(
-            EmploymentContract.user_id == self.id,
-            EmploymentContract.is_active == True
+        stmt = select(EmploymentContractModel).where(
+            EmploymentContractModel.user_id == self.id,
+            EmploymentContractModel.is_active == True
         )
         result = await db.execute(stmt)
         contract = result.scalar_one_or_none()

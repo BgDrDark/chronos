@@ -46,6 +46,13 @@ class UserCreatePydantic(BaseModel):
     tax_resident: Optional[bool] = None
     insurance_contributor: Optional[bool] = None
     has_income_tax: Optional[bool] = None
+    
+    # TRZ extension
+    night_work_rate: Optional[Decimal] = Decimal("0.50")
+    overtime_rate: Optional[Decimal] = Decimal("1.50")
+    holiday_rate: Optional[Decimal] = Decimal("2.00")
+    work_class: Optional[str] = None
+    dangerous_work: Optional[bool] = False
 
 class LoginPydantic(BaseModel):
     email: str # Can be email or username
@@ -92,6 +99,13 @@ class UpdateUserPydantic(BaseModel):
     insurance_contributor: Optional[bool] = None
     has_income_tax: Optional[bool] = None
 
+    # TRZ fields
+    night_work_rate: Optional[float] = None
+    overtime_rate: Optional[float] = None
+    holiday_rate: Optional[float] = None
+    dangerous_work: Optional[bool] = None
+    work_class: Optional[str] = None
+
 # Strawberry input types
 @pydantic_input(model=UserCreatePydantic)
 class UserCreateInput:
@@ -122,6 +136,11 @@ class UserCreateInput:
     tax_resident: strawberry.auto
     insurance_contributor: strawberry.auto
     has_income_tax: strawberry.auto
+    night_work_rate: strawberry.auto
+    overtime_rate: strawberry.auto
+    holiday_rate: strawberry.auto
+    work_class: strawberry.auto
+    dangerous_work: strawberry.auto
 
 @strawberry.input
 class CompanyCreateInput:

@@ -30,8 +30,6 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
   DirectionsCar as CarIcon,
   LocalGasStation as FuelIcon,
   Build as RepairIcon,
@@ -70,13 +68,6 @@ const FleetPage: React.FC = () => {
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
-  };
-
-  const vehicleStatusColors: Record<string, string> = {
-    active: 'success',
-    in_repair: 'warning',
-    out_of_service: 'error',
-    sold: 'default',
   };
 
   return (

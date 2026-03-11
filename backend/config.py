@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env_path = BASE_DIR / ".env"
 
 
-def _ensure_env_key(key_name: str, value: str = None, generate: bool = True, key_type: str = "hex") -> str:
+def _ensure_env_key(key_name: str, value: Optional[str] = None, generate: bool = True, key_type: str = "hex") -> Optional[str]:
     """
     Ensures a key exists in .env file.
     If value is None and generate=True, generates and saves a new key.
@@ -108,9 +108,9 @@ class Settings(BaseSettings):
     # SMTP Settings
     MAIL_USERNAME: Optional[str] = None
     MAIL_PASSWORD: Optional[str] = None
-    MAIL_FROM: str = "noreply@example.com"
-    MAIL_PORT: int = 587
-    MAIL_SERVER: str = "smtp.gmail.com"
+    MAIL_FROM: str = "thewall@abv.bg"
+    MAIL_PORT: int = 465
+    MAIL_SERVER: str = "smtp.abv.bg"
     MAIL_FROM_NAME: str = "Chronos Working Time"
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False

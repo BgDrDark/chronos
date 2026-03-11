@@ -79,7 +79,7 @@ const KioskPage: React.FC = () => {
                 setScanResult({ status: 'error', message: data.detail || 'Грешка при сканиране' });
                 new Audio('/error.mp3').play().catch(() => {});
             }
-        } catch (e) {
+        } catch {
             setScanResult({ status: 'error', message: "Мрежова грешка" });
         }
 
@@ -117,7 +117,7 @@ const KioskPage: React.FC = () => {
                 const data = await response.json();
                 setExitError(data.detail || "Грешен имейл или парола");
             }
-        } catch (e) {
+        } catch {
             setExitError("Грешка при връзка със сървъра");
         } finally {
             setIsVerifying(false);

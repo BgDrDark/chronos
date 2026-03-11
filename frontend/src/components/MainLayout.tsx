@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  AppBar, Box, CssBaseline, Divider, Drawer, IconButton,
+  AppBar, Box, CssBaseline, Divider, Drawer as MuiDrawer, IconButton,
   List, ListItem, ListItemButton, ListItemIcon, ListItemText,
-  Toolbar, Typography, Alert, AlertTitle, Collapse
+  Toolbar, Typography, Alert, AlertTitle, Collapse, styled, type Theme, type CSSObject
 } from '@mui/material';
-// ... existing icons ...
 import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
@@ -30,18 +29,58 @@ import {
   LocalShipping as LogisticsIcon,
   DirectionsCar as FleetIcon,
   Assessment as ReportsIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useApolloClient } from '@apollo/client';
 import { ME_QUERY, MODULES_QUERY } from '../graphql/queries';
 import useSessionActivity from '../hooks/useSessionActivity';
 
-const drawerWidth = 240;
+const drawerWidth = 260;
+const collapsedDrawerWidth = 72;
+
+const openedMixin = (theme: Theme): CSSObject => ({
+  width: drawerWidth,
+  transition: theme.transitions.create('width', {
+    easing: theme.transitions.easing.sharp,
+    duration: theme.transitions.duration.enteringScreen,
+  }),
+  overflowX: 'hidden',
+  borderRight: `1px solid ${theme.palette.divider}`,
+});
+
+const closedMixin = (theme: Theme): CSSObject => ({
+  transition: theme.transitions.create('width', {
+    easing: theme.transitions.easing.sharp,
+    duration: theme.transitions.duration.leavingScreen,
+  }),
+  overflowX: 'hidden',
+  width: collapsedDrawerWidth,
+  borderRight: `1px solid ${theme.palette.divider}`,
+});
+
+const Drawer = styled(MuiDrawer, { shouldForwardProp: (prop) => prop !== 'open' })(
+  ({ theme, open }) => ({
+    width: drawerWidth,
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+    boxSizing: 'border-box',
+    ...(open && {
+      ...openedMixin(theme),
+      '& .MuiDrawer-paper': openedMixin(theme),
+    }),
+    ...(!open && {
+      ...closedMixin(theme),
+      '& .MuiDrawer-paper': closedMixin(theme),
+    }),
+  }),
+);
 
 const SessionTimer: React.FC = () => {
     const [seconds, setSeconds] = useState(0);
 
-    React.useEffect(() => {
+    useEffect(() => {
         const interval = setInterval(() => {
             setSeconds(s => s + 1);
         }, 1000);
@@ -75,13 +114,20 @@ interface MenuItem {
 }
 
 const MainLayout: React.FC<Props> = ({ children }) => {
-  const [mobileOpen, setDrawerOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return localStorage.getItem('sidebarCollapsed') === 'true';
+  });
   const [smtpAlertOpen, setSmtpAlertOpen] = useState(true);
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
   const client = useApolloClient();
   
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', isCollapsed.toString());
+  }, [isCollapsed]);
+
   // Session activity hook - auto refresh and idle timeout
   useSessionActivity({
     idleTimeoutMs: 15 * 60 * 1000,
@@ -101,7 +147,14 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   const user = data?.me;
 
   const handleDrawerToggle = () => {
-    setDrawerOpen(!mobileOpen);
+    setMobileOpen(!mobileOpen);
+  };
+
+  const handleCollapseToggle = () => {
+    setIsCollapsed(!isCollapsed);
+    if (!isCollapsed) {
+      setExpandedMenus([]);
+    }
   };
 
   // Read CSRF token from cookie
@@ -142,6 +195,11 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   };
 
   const toggleMenu = (text: string) => {
+    if (isCollapsed) {
+      setIsCollapsed(false);
+      setExpandedMenus([text]);
+      return;
+    }
     setExpandedMenus(prev =>
       prev.includes(text)
         ? prev.filter(t => t !== text)
@@ -150,13 +208,12 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   };
 
   const isMenuExpanded = (text: string, children?: MenuItem[]) => {
+    if (isCollapsed) return false;
     if (!children || children.length === 0) return false;
     if (expandedMenus.includes(text)) return true;
-    // Expand if current path matches child path OR expand all by default
     const hasMatchingChild = children.some(child => child.path && location.pathname.startsWith(child.path));
     if (hasMatchingChild) return true;
-    // Expand all menus by default
-    return true;
+    return false;
   };
 
   const isAdmin = user?.role && ['admin', 'super_admin'].includes(user.role.name);
@@ -285,15 +342,20 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Терминал за достъп', icon: <DoorIcon />, path: '/kiosk/terminal', visible: true },
   ];
 
-  const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Toolbar>
-        <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-          Работно Време
-        </Typography>
+  const drawerContent = (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.paper' }}>
+      <Toolbar sx={{ display: 'flex', alignItems: 'center', justifyContent: isCollapsed ? 'center' : 'space-between', px: [1] }}>
+        {!isCollapsed && (
+          <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold', color: 'primary.main', ml: 1 }}>
+            Работно Време
+          </Typography>
+        )}
+        <IconButton onClick={handleCollapseToggle} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
+          {isCollapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+        </IconButton>
       </Toolbar>
       <Divider />
-      <List sx={{ flexGrow: 1 }}>
+      <List sx={{ flexGrow: 1, pt: 1, overflowY: 'auto', overflowX: 'hidden' }}>
         {menuItems.filter(item => item.visible).map((item) => {
           const hasChildren = item.children && item.children.length > 0;
           const isExpanded = isMenuExpanded(item.text, item.children);
@@ -301,7 +363,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
 
           return (
             <Box key={item.text}>
-              <ListItem disablePadding>
+              <ListItem disablePadding sx={{ display: 'block' }}>
                 <ListItemButton
                   component={item.path && !hasChildren ? RouterLink : 'div'}
                   to={item.path && !hasChildren ? item.path : undefined}
@@ -309,84 +371,94 @@ const MainLayout: React.FC<Props> = ({ children }) => {
                     if (hasChildren) {
                       toggleMenu(item.text);
                     }
-                    if (mobileOpen) handleDrawerToggle();
+                    if (mobileOpen) setMobileOpen(false);
                   }}
                   selected={isActive}
                   sx={{
+                    minHeight: 48,
+                    justifyContent: isCollapsed ? 'center' : 'initial',
+                    px: 2.5,
+                    mx: isCollapsed ? 0.5 : 1,
+                    my: 0.25,
+                    borderRadius: isCollapsed ? '50%' : 2,
                     '&.Mui-selected': {
-                      backgroundColor: 'primary.light',
+                      backgroundColor: 'primary.main',
                       color: 'primary.contrastText',
-                      '& .MuiListItemIcon-root': { color: 'primary.contrastText' }
+                      '& .MuiListItemIcon-root': { color: 'primary.contrastText' },
+                      '&:hover': { backgroundColor: 'primary.dark' }
                     },
-                    '&:hover': {
-                      backgroundColor: 'action.hover',
-                    },
-                    m: 1,
-                    borderRadius: 2,
-                    justifyContent: 'flex-start',
-                    px: 2,
-                    py: 1.5
                   }}
                 >
-                  <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-                  <ListItemText 
-                    primary={item.text} 
-                    primaryTypographyProps={{ 
-                      variant: 'body2', 
-                      fontWeight: isActive ? 'bold' : 'medium' 
-                    }} 
-                  />
-                  {hasChildren && (
-                    <ListItemIcon sx={{ minWidth: 32 }}>
-                      <ExpandMoreIcon 
-                        sx={{ 
-                          transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                          transition: 'transform 0.2s',
-                        }} 
-                      />
-                    </ListItemIcon>
+                  <ListItemIcon
+                    sx={{
+                      minWidth: 0,
+                      mr: isCollapsed ? 'auto' : 2,
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {item.icon}
+                  </ListItemIcon>
+                  {!isCollapsed && (
+                    <ListItemText 
+                      primary={item.text} 
+                      primaryTypographyProps={{ 
+                        variant: 'body2', 
+                        fontWeight: isActive ? 'bold' : 'medium',
+                        noWrap: true
+                      }} 
+                    />
+                  )}
+                  {hasChildren && !isCollapsed && (
+                    <ExpandMoreIcon 
+                      sx={{ 
+                        fontSize: '1.2rem',
+                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s',
+                        ml: 1
+                      }} 
+                    />
                   )}
                 </ListItemButton>
               </ListItem>
               
-              {hasChildren && item.children && (
-                <Collapse in={isExpanded} timeout="auto">
-                  <List disablePadding>
+              {hasChildren && item.children && !isCollapsed && (
+                <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                  <List disablePadding sx={{ mb: 1 }}>
                     {item.children
                       .filter(child => child.visible)
                       .map((child) => {
                         const isChildActive = child.path ? location.pathname === child.path : false;
                         return (
-                          <ListItem key={child.text} disablePadding>
+                          <ListItem key={child.text} disablePadding sx={{ display: 'block' }}>
                             <ListItemButton
                               component={child.path ? RouterLink : 'div'}
                               to={child.path}
                               selected={isChildActive}
                               onClick={() => {
-                                if (mobileOpen) handleDrawerToggle();
+                                if (mobileOpen) setMobileOpen(false);
                               }}
                               sx={{
-                                pl: 4,
-                                py: 0.75,
-                                '&.Mui-selected': {
-                                  backgroundColor: 'primary.light',
-                                  color: 'primary.contrastText',
-                                  '& .MuiListItemIcon-root': { color: 'primary.contrastText' }
-                                },
-                                '&:hover': {
-                                  backgroundColor: 'action.hover',
-                                },
+                                minHeight: 36,
+                                pl: 6,
+                                pr: 2,
                                 mx: 1,
-                                mb: 0.5,
-                                borderRadius: 1,
+                                my: 0.25,
+                                borderRadius: 1.5,
+                                '&.Mui-selected': {
+                                  backgroundColor: 'action.selected',
+                                  color: 'primary.main',
+                                  fontWeight: 'bold',
+                                  '&:hover': { backgroundColor: 'action.hover' }
+                                },
                               }}
                             >
                               <ListItemText 
                                 primary={child.text} 
                                 primaryTypographyProps={{ 
                                   variant: 'body2', 
-                                  fontSize: '0.8125rem',
-                                  fontWeight: isChildActive ? 'bold' : 'regular' 
+                                  fontSize: '0.8rem',
+                                  fontWeight: isChildActive ? 'bold' : 'regular',
+                                  noWrap: true
                                 }} 
                               />
                             </ListItemButton>
@@ -402,9 +474,11 @@ const MainLayout: React.FC<Props> = ({ children }) => {
       </List>
       <Divider />
       <Box sx={{ p: 2, textAlign: 'center' }}>
-        <Typography variant="caption" display="block" sx={{ color: 'text.secondary' }}>
-          © Oblak24 Team © {new Date().getFullYear()}
-        </Typography>
+        {!isCollapsed && (
+          <Typography variant="caption" display="block" sx={{ color: 'text.secondary', mb: 1 }}>
+            © Oblak24 Team © {new Date().getFullYear()}
+          </Typography>
+        )}
         <SessionTimer />
       </Box>
     </Box>
@@ -416,14 +490,19 @@ const MainLayout: React.FC<Props> = ({ children }) => {
       <AppBar
         position="fixed"
         sx={{
-          width: { sm: isPublicPage ? '100%' : `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: isPublicPage ? 0 : `${drawerWidth}px` },
+          width: { sm: isPublicPage ? '100%' : `calc(100% - ${isCollapsed ? collapsedDrawerWidth : drawerWidth}px)` },
+          ml: { sm: isPublicPage ? 0 : `${isCollapsed ? collapsedDrawerWidth : drawerWidth}px` },
+          transition: (theme) => theme.transitions.create(['width', 'margin'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.enteringScreen,
+          }),
           boxShadow: 'none',
           backgroundColor: 'background.default',
           borderBottom: '1px solid',
           borderColor: 'divider',
           color: 'text.primary',
-          display: isPublicPage ? 'none' : 'flex'
+          display: isPublicPage ? 'none' : 'flex',
+          zIndex: (theme) => theme.zIndex.drawer + 1,
         }}
       >
         <Toolbar>
@@ -436,7 +515,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 'medium' }}>
             {(() => {
               const findMenuText = (items: MenuItem[]): string | null => {
                 for (const item of items) {
@@ -457,21 +536,27 @@ const MainLayout: React.FC<Props> = ({ children }) => {
           </Typography>
           {user && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Typography variant="body1" sx={{ fontWeight: 'medium', color: 'text.primary' }}>
-                {displayName}
-              </Typography>
-              <IconButton color="error" onClick={handleLogout} title="Изход">
+              <Box sx={{ display: { xs: 'none', md: 'block' }, textAlign: 'right' }}>
+                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{displayName}</Typography>
+                <Typography variant="caption" color="text.secondary">{user.role?.description || user.role?.name}</Typography>
+              </Box>
+              <IconButton color="error" onClick={handleLogout} title="Изход" sx={{ bgcolor: 'error.lighter' }}>
                 <LogoutIcon />
               </IconButton>
             </Box>
           )}
         </Toolbar>
       </AppBar>
+      
       <Box
         component="nav"
-        sx={{ width: { sm: isPublicPage ? 0 : drawerWidth }, flexShrink: { sm: 0 }, display: isPublicPage ? 'none' : 'block' }}
+        sx={{ 
+            width: { sm: isPublicPage ? 0 : (isCollapsed ? collapsedDrawerWidth : drawerWidth) }, 
+            flexShrink: { sm: 0 }, 
+            display: isPublicPage ? 'none' : 'block' 
+        }}
       >
-        <Drawer
+        <MuiDrawer
           variant="temporary"
           open={mobileOpen}
           onClose={handleDrawerToggle}
@@ -481,27 +566,29 @@ const MainLayout: React.FC<Props> = ({ children }) => {
             '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
           }}
         >
-          {drawer}
-        </Drawer>
+          {drawerContent}
+        </MuiDrawer>
         <Drawer
           variant="permanent"
-          sx={{
-            display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth, borderRight: '1px solid', borderColor: 'divider' },
-          }}
-          open
+          sx={{ display: { xs: 'none', sm: 'block' } }}
+          open={!isCollapsed}
         >
-          {drawer}
+          {drawerContent}
         </Drawer>
       </Box>
+
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
-          width: { sm: isPublicPage ? '100%' : `calc(100% - ${drawerWidth}px)` },
+          p: { xs: 2, sm: 3 },
+          width: { sm: isPublicPage ? '100%' : `calc(100% - ${isCollapsed ? collapsedDrawerWidth : drawerWidth}px)` },
           minHeight: '100vh',
-          backgroundColor: '#f5f7fa'
+          backgroundColor: (theme) => theme.palette.mode === 'light' ? '#f8fafc' : 'transparent',
+          transition: (theme) => theme.transitions.create(['width', 'margin'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.enteringScreen,
+          }),
         }}
       >
         <Toolbar />
@@ -510,16 +597,18 @@ const MainLayout: React.FC<Props> = ({ children }) => {
             <Alert 
                 severity="warning" 
                 onClose={() => setSmtpAlertOpen(false)}
-                sx={{ mb: 3, borderRadius: 2, border: '1px solid #ff9800' }}
+                sx={{ mb: 3, borderRadius: 2, border: '1px solid #ff9800', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}
                 icon={<ErrorIcon fontSize="inherit" />}
             >
                 <AlertTitle sx={{ fontWeight: 'bold' }}>Липсващи SMTP настройки</AlertTitle>
                 Системата няма въведени данни за имейл сървър. Потребителите няма да получават уведомления и писма за забравена парола. 
-                Моля, конфигурирайте ги в <RouterLink to="/admin/notifications" style={{ color: 'inherit', fontWeight: 'bold' }}>Уведомления</RouterLink>.
+                Моля, конфигурирайте ги в <RouterLink to="/admin/notifications/smtp" style={{ color: 'inherit', fontWeight: 'bold' }}>Уведомления</RouterLink>.
             </Alert>
         )}
 
-        {children}
+        <Box sx={{ maxWidth: '1600px', margin: '0 auto' }}>
+            {children}
+        </Box>
       </Box>
     </Box>
   );

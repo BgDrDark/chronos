@@ -61,7 +61,7 @@ const KioskTerminalPage: React.FC = () => {
                 if ('wakeLock' in navigator) {
                     wakeLock = await (navigator as any).wakeLock.request('screen');
                 }
-            } catch (err) {
+            } catch {
                 console.log('Wake Lock not available');
             }
         };
