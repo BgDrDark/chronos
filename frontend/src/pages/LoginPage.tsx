@@ -6,7 +6,6 @@ import {
 } from '@mui/material';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { Link as RouterLink } from 'react-router-dom';
-// @ts-ignore
 import { useApolloClient } from '@apollo/client';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';

@@ -2,7 +2,6 @@ import React from 'react';
 import { AppBar, Toolbar, Typography, Button, CircularProgress, Box } from '@mui/material';
 import HourglassFullIcon from '@mui/icons-material/HourglassFull';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-// @ts-ignore
 import { useQuery, gql, useApolloClient } from '@apollo/client';
 
 const ME_QUERY = gql`

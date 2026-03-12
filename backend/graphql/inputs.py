@@ -92,6 +92,7 @@ class UpdateUserPydantic(BaseModel):
     contract_end_date: Optional[datetime.date] = None
     base_salary: Optional[Decimal] = None
     work_hours_per_week: Optional[int] = None
+    probation_months: Optional[int] = None
     salary_calculation_type: Optional[str] = None
     salary_installments_count: Optional[int] = None
     monthly_advance_amount: Optional[Decimal] = None
@@ -316,6 +317,7 @@ class UpdateUserInput:
     contract_end_date: strawberry.auto
     base_salary: strawberry.auto
     work_hours_per_week: strawberry.auto
+    probation_months: strawberry.auto
     salary_calculation_type: strawberry.auto
     salary_installments_count: strawberry.auto
     monthly_advance_amount: strawberry.auto

@@ -7,7 +7,7 @@ import { ApolloProvider } from '@apollo/client';
 import client from './apolloClient';
 import { AppThemeProvider } from './ThemeContext';
 import { CurrencyProvider } from './CurrencyContext';
-// @ts-ignore
+// @ts-expect-error - virtual module from vite-plugin-pwa
 import { registerSW } from 'virtual:pwa-register';
 
 // Регистрираме Service Worker за автоматично обновяване

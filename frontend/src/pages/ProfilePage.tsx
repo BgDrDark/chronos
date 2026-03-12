@@ -16,7 +16,7 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import axios from 'axios';
-import { useCurrency } from '../CurrencyContext';
+import { useCurrency } from '../currencyContext';
 import { formatDate } from '../utils/dateUtils';
 import PushNotificationManager from '../components/PushNotificationManager';
 import MyQrCard from '../components/MyQrCard';

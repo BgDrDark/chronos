@@ -10,6 +10,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import { type ApiKey } from '../types';
 
 const GET_KEYS = gql`
   query GetApiKeys {
@@ -55,7 +56,10 @@ const ApiKeyManager: React.FC = () => {
             setGeneratedKey(res.data.createApiKey.rawKey);
             setNewName('');
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (err: unknown) { 
+            if (err instanceof Error) alert(err.message);
+            else alert('Възникна неочаквана грешка');
+        }
     };
 
     const handleDelete = async (id: number) => {
@@ -63,7 +67,10 @@ const ApiKeyManager: React.FC = () => {
         try {
             await deleteKey({ variables: { id } });
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (err: unknown) { 
+            if (err instanceof Error) alert(err.message);
+            else alert('Възникна неочаквана грешка');
+        }
     };
 
     const copyToClipboard = (text: string) => {
@@ -87,7 +94,7 @@ const ApiKeyManager: React.FC = () => {
                 </Typography>
 
                 <List>
-                    {data?.apiKeys.map((k: any) => (
+                    {data?.apiKeys.map((k: ApiKey) => (
                         <ListItem key={k.id} divider>
                             <ListItemText 
                                 primary={k.name} 

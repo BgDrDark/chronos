@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import {
-  Container, Typography, Box, Tabs, Tab, TextField, Button,
+  Container, Typography, Box, TextField, Button,
   Card, CardContent, Grid, Chip, Alert, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Select, InputLabel, FormControl,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Tooltip,
@@ -326,7 +326,7 @@ const MyLeavesTab: React.FC<{ user: any }> = ({ user }) => {
             }
           });
       }
-    } catch (e: any) {
+    } catch {
       // Handled by onError
     }
   };

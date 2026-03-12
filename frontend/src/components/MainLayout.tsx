@@ -219,8 +219,13 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   const isAdmin = user?.role && ['admin', 'super_admin'].includes(user.role.name);
   const modules = modulesData?.modules || [];
 
+  interface Module {
+    code: string;
+    isEnabled: boolean;
+  }
+
   const isEnabled = (code: string) => {
-    const mod = modules.find((m: any) => m.code === code);
+    const mod = modules.find((m: Module) => m.code === code);
     return mod ? mod.isEnabled : true;
   };
 
@@ -338,8 +343,8 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Логистика', icon: <LogisticsIcon />, path: '/admin/logistics', visible: isAdmin },
     { text: 'Автомобили', icon: <FleetIcon />, path: '/admin/fleet', visible: isAdmin },
     { text: 'Справки', icon: <ReportsIcon />, path: '/admin/fleet/reports', visible: isAdmin },
-    { text: 'Терминал за присъствие', icon: <QrCodeScannerIcon />, path: '/kiosk', visible: true },
-    { text: 'Терминал за достъп', icon: <DoorIcon />, path: '/kiosk/terminal', visible: true },
+    { text: 'Терминал за присъствие', icon: <QrCodeScannerIcon />, path: '/kiosk', visible: isAdmin },
+    { text: 'Терминал за достъп', icon: <DoorIcon />, path: '/kiosk/terminal', visible: isAdmin },
   ];
 
   const drawerContent = (

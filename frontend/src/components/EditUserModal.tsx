@@ -21,6 +21,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { gql, useMutation, useQuery } from '@apollo/client';
+import { type User, type Role, type Company, type Department, type Position } from '../types';
 
 // Zod schema for validation
 const updateUserSchema = z.object({
@@ -40,12 +41,17 @@ const updateUserSchema = z.object({
   positionId: z.number().optional().nullable(),
   roleId: z.number().optional().nullable(),
   isActive: z.boolean().optional(),
+  passwordForceChange: z.boolean().optional(),
   // Contract fields
   contractType: z.string().optional().or(z.literal('')),
   contractStartDate: z.string().optional().or(z.literal('')),
   contractEndDate: z.string().nullable().optional().or(z.literal('')),
   baseSalary: z.number().nullable().optional(),
+  workHoursPerWeek: z.number().min(1).max(168).optional(),
+  probationMonths: z.number().min(0).max(12).optional(),
+  salaryCalculationType: z.string().optional(),
   hasIncomeTax: z.boolean().optional(),
+  insuranceContributor: z.boolean().optional(),
   salaryInstallmentsCount: z.number().min(1),
   monthlyAdvanceAmount: z.number().min(0),
   taxResident: z.boolean(),
@@ -81,16 +87,23 @@ const GET_DATA_QUERY = gql`
 interface EditUserModalProps {
   open: boolean;
   onClose: () => void;
-  user: any;
+  user: User | null;
   refetchUsers: () => void;
 }
 
+interface OrgData {
+  roles: Role[];
+  companies: Company[];
+  departments: Department[];
+  positions: Position[];
+}
+
 const style = {
-  position: 'absolute' as 'absolute',
+  position: 'absolute' as const,
   top: '50%',
   left: '50%',
   transform: 'translate(-50%, -50%)',
-  width: { xs: '90%', sm: 600 },
+  width: { xs: '95%', sm: 800 },
   maxHeight: '90vh',
   overflowY: 'auto',
   bgcolor: 'background.paper',
@@ -114,10 +127,10 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
   });
 
   const [updateUser] = useMutation(UPDATE_USER_MUTATION);
-  const { data: orgData, loading: dataLoading } = useQuery(GET_DATA_QUERY);
+  const { data: orgData, loading: dataLoading } = useQuery<OrgData>(GET_DATA_QUERY);
 
   useEffect(() => {
-    if (user) {
+    if (user && open) {
       const contract = user.employmentContract;
       reset({
         id: parseInt(user.id),
@@ -130,43 +143,52 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         egn: user.egn || '',
         birthDate: user.birthDate || '',
         iban: user.iban || '',
-        companyId: user.company?.id || null,
-        departmentId: user.department?.id || null,
-        positionId: user.position?.id || null,
-        roleId: user.role?.id || null,
-        isActive: user.isActive,
+        companyId: user.company?.id ? parseInt(user.company.id) : null,
+        departmentId: user.department?.id ? parseInt(user.department.id) : null,
+        positionId: user.position?.id ? parseInt(user.position.id) : null,
+        roleId: user.role?.id ? parseInt(user.role.id) : null,
+        isActive: user.isActive ?? true,
+        passwordForceChange: user.passwordForceChange ?? false,
         password: '',
         // ТРЗ данни от employment contract
         contractType: contract?.contractType || 'full_time',
         contractStartDate: contract?.startDate || '',
         contractEndDate: contract?.endDate || '',
-        baseSalary: contract?.baseSalary || null,
+        baseSalary: contract?.baseSalary !== undefined && contract?.baseSalary !== null ? parseFloat(contract.baseSalary) : null,
+        workHoursPerWeek: contract?.workHoursPerWeek || 40,
+        probationMonths: contract?.probationMonths || 0,
+        salaryCalculationType: contract?.salaryCalculationType || 'gross',
         hasIncomeTax: contract?.hasIncomeTax ?? true,
+        insuranceContributor: contract?.insuranceContributor ?? true,
         salaryInstallmentsCount: contract?.salaryInstallmentsCount || 1,
-        monthlyAdvanceAmount: contract?.monthlyAdvanceAmount || 0,
+        monthlyAdvanceAmount: contract?.monthlyAdvanceAmount !== undefined && contract?.monthlyAdvanceAmount !== null ? parseFloat(contract.monthlyAdvanceAmount) : 0,
         taxResident: contract?.taxResident ?? true,
+        // ТРЗ Разширение
+        nightWorkRate: contract?.nightWorkRate !== undefined && contract?.nightWorkRate !== null ? parseFloat(contract.nightWorkRate) : 0.50,
+        overtimeRate: contract?.overtimeRate !== undefined && contract?.overtimeRate !== null ? parseFloat(contract.overtimeRate) : 1.50,
+        holidayRate: contract?.holidayRate !== undefined && contract?.holidayRate !== null ? parseFloat(contract.holidayRate) : 2.00,
+        workClass: contract?.workClass || '',
+        dangerousWork: contract?.dangerousWork ?? false,
       });
     }
-  }, [user, reset]);
+  }, [user, open, reset]);
 
   const selectedCompanyId = watch('companyId');
   const selectedDepartmentId = watch('departmentId');
 
-  const filteredDepartments = orgData?.departments.filter((d: any) => 
+  const filteredDepartments = orgData?.departments.filter((d) => 
     selectedCompanyId ? d.companyId === selectedCompanyId : true
   ) || [];
 
-  const filteredPositions = orgData?.positions.filter((p: any) => 
+  const filteredPositions = orgData?.positions.filter((p) => 
     selectedDepartmentId ? p.departmentId === selectedDepartmentId : true
   ) || [];
 
   const onSubmit = async (formData: UpdateUserFormData) => {
     setApiError('');
     try {
-      const input: any = {
+      const input: any = { // Keeping any for mutation input as it's dynamic
         id: formData.id,
-        email: formData.email || null,
-        username: formData.username || null,
         firstName: formData.firstName,
         lastName: formData.lastName,
         phoneNumber: formData.phoneNumber,
@@ -179,24 +201,32 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         positionId: formData.positionId,
         roleId: formData.roleId,
         isActive: formData.isActive,
+        passwordForceChange: formData.passwordForceChange,
         contractType: formData.contractType,
         contractStartDate: formData.contractStartDate || null,
         contractEndDate: formData.contractEndDate || null,
         baseSalary: formData.baseSalary,
+        workHoursPerWeek: formData.workHoursPerWeek,
+        probationMonths: formData.probationMonths,
+        salaryCalculationType: formData.salaryCalculationType,
         hasIncomeTax: formData.hasIncomeTax,
+        insuranceContributor: formData.insuranceContributor,
         salaryInstallmentsCount: formData.salaryInstallmentsCount,
         monthlyAdvanceAmount: formData.monthlyAdvanceAmount,
         taxResident: formData.taxResident,
         // ТРЗ разширение
-        nightWorkRate: formData.nightWorkRate || 0.5,
-        overtimeRate: formData.overtimeRate || 1.5,
-        holidayRate: formData.holidayRate || 2.0,
+        nightWorkRate: formData.nightWorkRate,
+        overtimeRate: formData.overtimeRate,
+        holidayRate: formData.holidayRate,
         workClass: formData.workClass || null,
-        dangerousWork: formData.dangerousWork || false,
+        dangerousWork: formData.dangerousWork,
       };
 
-      if (formData.email !== user?.email) {
+      if (formData.email !== user?.email && formData.email !== '') {
           input.email = formData.email;
+      }
+      if (formData.username !== user?.username && formData.username !== '') {
+          input.username = formData.username;
       }
       if (formData.password) {
           input.password = formData.password;
@@ -205,18 +235,22 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
       await updateUser({ variables: { userInput: input } });
       refetchUsers();
       onClose();
-    } catch (err: any) {
-      setApiError(err.message);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setApiError(err.message);
+      } else {
+        setApiError('Възникна неочаквана грешка');
+      }
     }
   };
 
-  if (dataLoading) return null;
+  if (dataLoading) return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>;
 
   return (
     <Modal open={open} onClose={onClose} aria-labelledby="edit-user-modal-title">
       <Box sx={style}>
-        <Typography id="edit-user-modal-title" variant="h6" sx={{ mb: 3, fontWeight: 'bold' }}>
-          Редактиране на служител: {user?.firstName} {user?.lastName}
+        <Typography id="edit-user-modal-title" variant="h6" sx={{ mb: 3, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PersonIcon color="primary" /> Редактиране на служител: {user?.firstName} {user?.lastName}
         </Typography>
 
         <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
@@ -224,26 +258,26 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
             
             {/* --- СЕКЦИЯ 1: ЛИЧНИ ДАННИ --- */}
             <Grid size={{ xs: 12 }}>
-              <Alert severity="success" variant="outlined" icon={<PersonIcon fontSize="small" />} sx={{ py: 0 }}>
-                Лични данни
+              <Alert severity="success" variant="outlined" icon={false} sx={{ py: 0, fontWeight: 'bold' }}>
+                ЛИЧНИ ДАННИ
               </Alert>
             </Grid>
-            <Grid size={{ xs: 6 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="Име" {...register('firstName')} size="small" />
             </Grid>
-            <Grid size={{ xs: 6 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="Фамилия" {...register('lastName')} size="small" />
             </Grid>
-            <Grid size={{ xs: 6 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="ЕГН" {...register('egn')} size="small" />
             </Grid>
-            <Grid size={{ xs: 6 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="Телефон" {...register('phoneNumber')} size="small" />
             </Grid>
-            <Grid size={{ xs: 6 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="Дата на раждане" type="date" {...register('birthDate')} InputLabelProps={{ shrink: true }} size="small" />
             </Grid>
-            <Grid size={{ xs: 6 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="IBAN" {...register('iban')} size="small" />
             </Grid>
             <Grid size={{ xs: 12 }}>
@@ -252,18 +286,18 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
 
             {/* --- СЕКЦИЯ 2: АКАУНТ --- */}
             <Grid size={{ xs: 12 }} sx={{ mt: 1 }}>
-              <Alert severity="info" variant="outlined" icon={false} sx={{ py: 0 }}>Акаунт и Роля</Alert>
+              <Alert severity="info" variant="outlined" icon={false} sx={{ py: 0, fontWeight: 'bold' }}>АКАУНТ И ДОСТЪП</Alert>
             </Grid>
-            <Grid size={{ xs: 4 }}>
+            <Grid size={{ xs: 12, sm: 4 }}>
               <TextField fullWidth label="Потребителско име" {...register('username')} size="small" />
             </Grid>
-            <Grid size={{ xs: 4 }}>
+            <Grid size={{ xs: 12, sm: 4 }}>
               <TextField fullWidth label="Имейл" {...register('email')} size="small" />
             </Grid>
-            <Grid size={{ xs: 4 }}>
+            <Grid size={{ xs: 12, sm: 4 }}>
               <TextField fullWidth label="Нова парола" type="password" {...register('password')} size="small" placeholder="Остави празно" />
             </Grid>
-            <Grid size={{ xs: 12 }}>
+            <Grid size={{ xs: 12, sm: 8 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Роля в системата</InputLabel>
                 <Controller
@@ -271,7 +305,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                   control={control}
                   render={({ field }) => (
                     <Select {...field} label="Роля в системата" value={field.value || ''}>
-                      {orgData?.roles.map((role: any) => {
+                      {orgData?.roles.map((role) => {
                         const roleTranslations: Record<string, string> = {
                           'admin': 'Администратор',
                           'super_admin': 'Главен Администратор',
@@ -280,24 +314,22 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                           'manager': 'Мениджър',
                           'kiosk': 'Терминал (Kiosk)'
                         };
-                        // Priority: Translation -> Description -> Uppercase Name
                         const displayName = roleTranslations[role.name.toLowerCase()] || role.description || role.name.toUpperCase();
-                        
-                        return (
-                          <MenuItem key={role.id} value={role.id}>
-                            {displayName}
-                          </MenuItem>
-                        );
+                        return <MenuItem key={role.id} value={role.id}>{displayName}</MenuItem>;
                       })}
                     </Select>
                   )}
                 />
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12 }}>
+            <Grid size={{ xs: 12, sm: 4 }} display="flex" flexDirection="column">
                 <FormControlLabel
-                    control={<Controller name="isActive" control={control} render={({ field }) => <Switch checked={!!field.value} onChange={e => field.onChange(e.target.checked)} />} />}
-                    label="Активен акаунт"
+                    control={<Controller name="isActive" control={control} render={({ field }) => <Switch checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                    label={<Typography variant="body2">Активен акаунт</Typography>}
+                />
+                <FormControlLabel
+                    control={<Controller name="passwordForceChange" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                    label={<Typography variant="body2">Смяна на парола</Typography>}
                 />
             </Grid>
 
@@ -311,7 +343,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                   render={({ field }) => (
                     <Select {...field} label="Фирма" value={field.value ?? ''}>
                       <MenuItem value=""><em>Няма</em></MenuItem>
-                      {orgData?.companies.map((c: any) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+                      {orgData?.companies.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
                     </Select>
                   )}
                 />
@@ -325,7 +357,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                   control={control}
                   render={({ field }) => (
                     <Select {...field} label="Отдел" value={field.value ?? ''}>
-                      {filteredDepartments.map((d: any) => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
+                      <MenuItem value=""><em>Няма</em></MenuItem>
+                      {filteredDepartments.map((d) => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
                     </Select>
                   )}
                 />
@@ -339,21 +372,20 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                   control={control}
                   render={({ field }) => (
                     <Select {...field} label="Длъжност" value={field.value ?? ''}>
-                      {filteredPositions.map((p: any) => <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>)}
+                      <MenuItem value=""><em>Няма</em></MenuItem>
+                      {filteredPositions.map((p) => <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>)}
                     </Select>
                   )}
                 />
               </FormControl>
             </Grid>
 
-            {/* --- СЕКЦИЯ 4: ДОГОВОР --- */}
+            {/* --- СЕКЦИЯ 4: ДОГОВОР И ФИНАНСИ --- */}
             <Grid size={{ xs: 12 }} sx={{ mt: 1 }}>
-              <Alert severity="warning" variant="outlined" icon={false} sx={{ py: 0 }}>Договор и Финанси</Alert>
+              <Alert severity="warning" variant="outlined" icon={false} sx={{ py: 0, fontWeight: 'bold' }}>ДОГОВОР И ФИНАНСИ</Alert>
             </Grid>
-            <Grid size={{ xs: 6 }}>
-              <TextField fullWidth label="Основна заплата" type="number" {...register('baseSalary', { valueAsNumber: true })} size="small" />
-            </Grid>
-            <Grid size={{ xs: 6 }}>
+            
+            <Grid size={{ xs: 12, sm: 4 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Тип договор</InputLabel>
                 <Controller
@@ -364,71 +396,89 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                       <MenuItem value="full_time">Пълно работно време</MenuItem>
                       <MenuItem value="part_time">Непълно работно време</MenuItem>
                       <MenuItem value="contractor">Граждански договор</MenuItem>
+                      <MenuItem value="internship">Стажант</MenuItem>
                     </Select>
                   )}
                 />
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 6 }}>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Вид изчисление</InputLabel>
+                <Controller
+                  name="salaryCalculationType"
+                  control={control}
+                  render={({ field }) => (
+                    <Select {...field} label="Вид изчисление">
+                      <MenuItem value="gross">Бруто</MenuItem>
+                      <MenuItem value="net">Нето</MenuItem>
+                    </Select>
+                  )}
+                />
+              </FormControl>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth label="Основна заплата" type="number" {...register('baseSalary', { valueAsNumber: true })} size="small" />
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <TextField fullWidth label="Часове/седмица" type="number" {...register('workHoursPerWeek', { valueAsNumber: true })} size="small" />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <TextField fullWidth label="Изпитателен срок" type="number" {...register('probationMonths', { valueAsNumber: true })} size="small" />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
               <TextField fullWidth label="Старт" type="date" {...register('contractStartDate')} InputLabelProps={{ shrink: true }} size="small" />
             </Grid>
-            <Grid size={{ xs: 6 }}>
+            <Grid size={{ xs: 12, sm: 3 }}>
               <TextField fullWidth label="Край" type="date" {...register('contractEndDate')} InputLabelProps={{ shrink: true }} size="small" />
             </Grid>
             
-            <Grid size={{ xs: 4 }}>
-              <TextField fullWidth label="Вноски" type="number" {...register('salaryInstallmentsCount', { valueAsNumber: true })} size="small" />
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth label="Брой вноски" type="number" {...register('salaryInstallmentsCount', { valueAsNumber: true })} size="small" />
             </Grid>
-            <Grid size={{ xs: 4 }}>
-              <TextField fullWidth label="Аванс" type="number" {...register('monthlyAdvanceAmount', { valueAsNumber: true })} size="small" />
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth label="Фиксиран аванс" type="number" {...register('monthlyAdvanceAmount', { valueAsNumber: true })} size="small" />
             </Grid>
-            <Grid size={{ xs: 4 }} display="flex" alignItems="center">
+            <Grid size={{ xs: 12, sm: 4 }} display="flex" alignItems="center">
               <FormControlLabel
-                control={<Controller name="taxResident" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} />} />}
-                label="Резидент"
+                control={<Controller name="taxResident" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                label={<Typography variant="body2">Данъчен резидент</Typography>}
               />
             </Grid>
-            <Grid size={{ xs: 12 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControlLabel
-                control={<Controller name="hasIncomeTax" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} />} />}
-                label="Удържай ДОД (10%)"
+                control={<Controller name="hasIncomeTax" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                label={<Typography variant="body2">Удържай ДОД (10%)</Typography>}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormControlLabel
+                control={<Controller name="insuranceContributor" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                label={<Typography variant="body2">Осигурено лице</Typography>}
               />
             </Grid>
 
-            {/* --- СЕКЦИЯ 4: ТРЗ --- */}
+            {/* --- СЕКЦИЯ 5: ТРЗ СПЕЦИФИЧНИ --- */}
             <Grid size={{ xs: 12 }} sx={{ mt: 1 }}>
-              <Alert severity="success" variant="outlined" icon={false} sx={{ py: 0 }}>ТРЗ - Трудови Права</Alert>
+              <Alert severity="info" variant="outlined" icon={false} sx={{ py: 0, fontWeight: 'bold' }}>ТРЗ ПАРАМЕТРИ (СТАВКИ)</Alert>
             </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <TextField fullWidth label="Нощен труд (%)" type="number" inputProps={{ step: 0.1, min: 0 }} {...register('nightWorkRate', { valueAsNumber: true })} size="small" />
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth label="Нощен труд (множ.)" type="number" inputProps={{ step: 0.1 }} {...register('nightWorkRate', { valueAsNumber: true })} size="small" />
             </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <TextField fullWidth label="Извънреден (множ.)" type="number" inputProps={{ step: 0.1, min: 1 }} {...register('overtimeRate', { valueAsNumber: true })} size="small" />
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth label="Извънреден (множ.)" type="number" inputProps={{ step: 0.1 }} {...register('overtimeRate', { valueAsNumber: true })} size="small" />
             </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <TextField fullWidth label="Празници (множ.)" type="number" inputProps={{ step: 0.1, min: 1 }} {...register('holidayRate', { valueAsNumber: true })} size="small" />
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth label="Празници (множ.)" type="number" inputProps={{ step: 0.1 }} {...register('holidayRate', { valueAsNumber: true })} size="small" />
             </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Клас</InputLabel>
-                <Controller
-                  name="workClass"
-                  control={control}
-                  render={({ field }) => (
-                    <Select {...field} label="Клас" value={field.value || ''}>
-                      <MenuItem value="I">Клас I</MenuItem>
-                      <MenuItem value="II">Клас II</MenuItem>
-                      <MenuItem value="III">Клас III</MenuItem>
-                      <MenuItem value="IV">Клас IV</MenuItem>
-                    </Select>
-                  )}
-                />
-              </FormControl>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField fullWidth label="Трудов клас / Категория" {...register('workClass')} size="small" placeholder="Напр. I, II, III" />
             </Grid>
-            <Grid size={{ xs: 12 }}>
+            <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
               <FormControlLabel
-                control={<Controller name="dangerousWork" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} />} />}
-                label="Вредни условия на труд"
+                control={<Controller name="dangerousWork" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                label={<Typography variant="body2">Вредни условия на труд</Typography>}
               />
             </Grid>
           </Grid>
@@ -436,7 +486,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
           {apiError && <Alert severity="error" sx={{ mt: 2 }}>{apiError}</Alert>}
 
           <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-            <Button type="submit" fullWidth variant="contained" disabled={isSubmitting}>
+            <Button type="submit" fullWidth variant="contained" disabled={isSubmitting} sx={{ py: 1.2 }}>
               {isSubmitting ? <CircularProgress size={24} /> : 'Запази промените'}
             </Button>
             <Button fullWidth variant="outlined" onClick={onClose} color="inherit">Отказ</Button>

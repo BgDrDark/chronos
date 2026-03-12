@@ -7,7 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   LineChart, Line
 } from 'recharts';
-import { useCurrency } from '../CurrencyContext';
+import { useCurrency } from '../currencyContext';
 
 const GET_STATS = gql`
   query GetManagementStats {

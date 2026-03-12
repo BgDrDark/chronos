@@ -2,12 +2,10 @@ import React, { useState } from 'react';
 import {
   Box,
   Typography,
-  Paper,
   Grid,
   Card,
   CardContent,
   Switch,
-  FormControlLabel,
   TextField,
   Button,
   Divider,
@@ -25,7 +23,6 @@ import {
   CardGiftcard as BenefitIcon,
   Save as SaveIcon,
 } from '@mui/icons-material';
-// @ts-ignore
 import { useMutation, gql } from '@apollo/client';
 
 const UPDATE_GLOBAL_SETTING = gql`

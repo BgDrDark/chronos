@@ -307,6 +307,14 @@ class Mutation:
                     contract.tax_resident = userInput.tax_resident
                 if userInput.has_income_tax is not None:
                     contract.has_income_tax = userInput.has_income_tax
+                if userInput.insurance_contributor is not None:
+                    contract.insurance_contributor = userInput.insurance_contributor
+                if userInput.work_hours_per_week is not None:
+                    contract.work_hours_per_week = userInput.work_hours_per_week
+                if userInput.probation_months is not None:
+                    contract.probation_months = userInput.probation_months
+                if userInput.salary_calculation_type:
+                    contract.salary_calculation_type = userInput.salary_calculation_type
                 # ТРЗ полета
                 if userInput.night_work_rate is not None:
                     contract.night_work_rate = userInput.night_work_rate
@@ -326,14 +334,20 @@ class Mutation:
                     contract_type=userInput.contract_type or 'full_time',
                     start_date=userInput.contract_start_date or datetime.date.today(),
                     base_salary=userInput.base_salary,
+                    work_hours_per_week=userInput.work_hours_per_week or 40,
+                    probation_months=userInput.probation_months or 0,
+                    salary_calculation_type=userInput.salary_calculation_type or 'gross',
                     is_active=True,
                     salary_installments_count=userInput.salary_installments_count or 1,
                     monthly_advance_amount=userInput.monthly_advance_amount or 0,
                     tax_resident=userInput.tax_resident if userInput.tax_resident is not None else True,
+                    insurance_contributor=userInput.insurance_contributor if userInput.insurance_contributor is not None else True,
                     has_income_tax=userInput.has_income_tax if userInput.has_income_tax is not None else True,
                     night_work_rate=userInput.night_work_rate or 0.5,
                     overtime_rate=userInput.overtime_rate or 1.5,
                     holiday_rate=userInput.holiday_rate or 2.0,
+                    work_class=userInput.work_class,
+                    dangerous_work=userInput.dangerous_work or False
                 )
                 db.add(contract)
             

@@ -162,7 +162,7 @@ export default function NotificationsPage({ tab }: Props) {
               ? JSON.parse(s.recipients) 
               : s.recipients;
           }
-        } catch (e) {
+        } catch {
           parsedRecipients = [];
         }
         return {
@@ -235,7 +235,7 @@ export default function NotificationsPage({ tab }: Props) {
       setMessage({ type: 'success', text: 'Настройките са запазени!' });
       refetch();
       setTimeout(() => setMessage(null), 3000);
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Грешка при запазване' });
     }
   };
@@ -249,7 +249,7 @@ export default function NotificationsPage({ tab }: Props) {
       });
       setMessage({ type: 'success', text: 'SMTP настройките са запазени!' });
       setTimeout(() => setMessage(null), 3000);
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Грешка при запазване на SMTP' });
     }
   };
@@ -259,7 +259,7 @@ export default function NotificationsPage({ tab }: Props) {
       await testNotification({ variables: { eventType } });
       setMessage({ type: 'success', text: 'Тестовият имейл е изпратен!' });
       setTimeout(() => setMessage(null), 3000);
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Грешка при изпращане на тест' });
     }
   };

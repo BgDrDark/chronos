@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import {
-  Container, Typography, Box, Tabs, Tab, TextField, Button,
+  Container, Typography, Box, TextField, Button,
   Dialog, DialogTitle, DialogContent, DialogActions,
   MenuItem, Card, CardContent, IconButton, Alert, CircularProgress,
   useTheme, useMediaQuery, Grid, Stack, Tooltip
 } from '@mui/material';
 import { useQuery, useMutation, gql } from '@apollo/client';
+import { type Shift, type User, type WorkSchedule, type TimeLog, type ScheduleTemplate, type PublicHoliday } from '../types';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -187,7 +188,7 @@ const ShiftManager: React.FC = () => {
       });
       setName('');
       refetch();
-    } catch (e: any) { alert(e.message); }
+    } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
   };
 
   const handleDelete = async (id: number) => {
@@ -195,7 +196,7 @@ const ShiftManager: React.FC = () => {
       try {
         await deleteShift({ variables: { id } });
         refetch();
-      } catch (e: any) { alert(e.message); }
+      } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
     }
   };
 
@@ -232,7 +233,7 @@ const ShiftManager: React.FC = () => {
 
       <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>Налични смени</Typography>
       <Grid container spacing={2}>
-        {data?.shifts.map((shift: any) => (
+        {data?.shifts.map((shift: Shift) => (
           <Grid size={{ xs: 12, sm: 6, md: 4 }} key={shift.id}>
             <Card variant="outlined" sx={{ borderRadius: 2 }}>
               <CardContent>
@@ -353,7 +354,7 @@ const CalendarView: React.FC = () => {
             setApplyTmplOpen(false);
             alert("Шаблонът е приложен успешно!");
             refetchSched();
-        } catch (e: any) { alert(e.message); }
+        } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
     };
 
     const handleDatesSet = (arg: any) => {
@@ -402,7 +403,7 @@ const CalendarView: React.FC = () => {
       setSelectedUser(userId);
       if (!isEventEdit && selectedDate && schedData?.workSchedules) {
           const existingSchedule = schedData.workSchedules.find(
-             (s: any) => s.user.id === parseInt(userId) && s.date === selectedDate
+             (s: WorkSchedule) => s.user.id === parseInt(userId) && s.date === selectedDate
          );
          
          if (existingSchedule) {
@@ -427,7 +428,7 @@ const CalendarView: React.FC = () => {
         });
         setOpen(false);
         refetchSched();
-      } catch (e: any) { alert(e.message); }
+      } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
     };
 
     const handleDeleteSchedule = async () => {
@@ -437,7 +438,7 @@ const CalendarView: React.FC = () => {
           await deleteSchedule({ variables: { id: editingScheduleId } });
           setOpen(false);
           refetchSched();
-        } catch (e: any) { alert(e.message); }
+        } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
       }
     };
 
@@ -450,8 +451,8 @@ const CalendarView: React.FC = () => {
                 await deleteTimeLog({ variables: { id: parseInt(selectedLog.logId) } });
                 setLogOpen(false);
                 await refetchLogs();
-            } catch (e: any) {
-                alert("Грешка при изтриване: " + e.message);
+            } catch (e: unknown) {
+                alert("Грешка при изтриване: " + (e as Error).message);
             }
         }
     };
@@ -477,13 +478,13 @@ const CalendarView: React.FC = () => {
             try {
                 await navigator.clipboard.writeText(url);
                 alert('Линкът е копиран в клипборда!');
-            } catch (err) {
+            } catch {
                 alert('Неуспешно копиране на линка.');
             }
         }
     };
 
-    const scheduleEvents = schedData?.workSchedules.map((s: any) => {
+    const scheduleEvents = schedData?.workSchedules.map((s: WorkSchedule) => {
       const shiftType = s.shift?.shiftType || 'regular';
       let bgColor = ShiftTypeColors[shiftType] || ShiftTypeColors.regular;
 
@@ -507,7 +508,7 @@ const CalendarView: React.FC = () => {
       };
     }) || [];
 
-    const logEvents = logsData?.timeLogs.map((l: any) => {
+    const logEvents = logsData?.timeLogs.map((l: TimeLog) => {
         const isManual = l.isManual;
         const color = isManual ? ShiftTypeColors.manual_log : ShiftTypeColors.auto_log;
         
@@ -526,7 +527,7 @@ const CalendarView: React.FC = () => {
         };
     }) || [];
 
-    const holidayEvents = holidaysData?.publicHolidays.map((h: any) => ({
+    const holidayEvents = holidaysData?.publicHolidays.map((h: PublicHoliday) => ({
       title: `${h.localName || h.name}`,
       date: h.date,
       display: 'background',
@@ -534,7 +535,7 @@ const CalendarView: React.FC = () => {
       allDay: true
     })) || [];
 
-    const orthodoxHolidayEvents = includeOrthodox ? (orthodoxHolidaysData?.orthodoxHolidays.map((h: any) => ({
+    const orthodoxHolidayEvents = includeOrthodox ? (orthodoxHolidaysData?.orthodoxHolidays.map((h: PublicHoliday) => ({
       title: `${h.localName || h.name} (Правосл.)`,
       date: h.date,
       display: 'background',
@@ -578,7 +579,7 @@ const CalendarView: React.FC = () => {
                     select fullWidth label="Изберете шаблон" margin="normal"
                     value={selectedTmpl} onChange={e => setSelectedTmpl(e.target.value)}
                 >
-                    {tmplData?.scheduleTemplates?.map((t: any) => (
+                    {tmplData?.scheduleTemplates?.map((t: ScheduleTemplate) => (
                         <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
                     )) || <MenuItem disabled value="">Зареждане...</MenuItem>}
                 </TextField>
@@ -586,7 +587,7 @@ const CalendarView: React.FC = () => {
                     select fullWidth label="Служител" margin="normal"
                     value={tmplUserId} onChange={e => setTmplUserId(e.target.value)}
                 >
-                    {usersData?.users?.users?.map((u: any) => (
+                    {usersData?.users?.users?.map((u: User) => (
                         <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>
                     )) || <MenuItem disabled value="">Зареждане...</MenuItem>}
                 </TextField>
@@ -639,7 +640,7 @@ const CalendarView: React.FC = () => {
         <Box className="printable-legend">
             <ShiftLegend 
                 showAdminItems={true} 
-                holidays={[...(holidaysData?.publicHolidays || []), ...(includeOrthodox ? (orthodoxHolidaysData?.orthodoxHolidays || []) : [])].filter((h: any) => {
+                holidays={[...(holidaysData?.publicHolidays || []), ...(includeOrthodox ? (orthodoxHolidaysData?.orthodoxHolidays || []) : [])].filter((h: PublicHoliday) => {
                     const d = new Date(h.date);
                     return d.getMonth() === currentViewDate.getMonth() && d.getFullYear() === currentViewDate.getFullYear();
                 })}
@@ -663,7 +664,7 @@ const CalendarView: React.FC = () => {
                 margin="normal"
                 disabled={isEventEdit}
                 >
-                {usersData?.users?.users?.map((u: any) => (
+                {usersData?.users?.users?.map((u: User) => (
                     <MenuItem key={u.id} value={u.id}>
                     {u.firstName} {u.lastName} ({u.email})
                     </MenuItem>
@@ -678,7 +679,7 @@ const CalendarView: React.FC = () => {
                 onChange={(e) => setSelectedShift(e.target.value)}
                 margin="normal"
                 >
-                {shiftsData?.shifts?.map((s: any) => (
+                {shiftsData?.shifts?.map((s: WorkSchedule) => (
                     <MenuItem key={s.id} value={s.id}>
                     {s.name} ({s.startTime.substring(0, 5)} - {s.endTime.substring(0, 5)})
                     </MenuItem>
@@ -713,9 +714,11 @@ const CalendarView: React.FC = () => {
         </DialogActions>
       </Dialog>
       
-      <ManualTimeLogModal 
-        open={manualLogOpen} 
+      <ManualTimeLogModal
+        key={`${selectedDate}-${selectedUser}`}
+        open={manualLogOpen}
         onClose={() => setManualLogOpen(false)}
+
         users={usersData?.users?.users || []}
         initialDate={selectedDate}
         initialUserId={selectedUser}
@@ -829,7 +832,7 @@ const BulkAssign: React.FC = () => {
       });
       alert('Графиците са генерирани успешно!');
       setSelectedUsers([]);
-    } catch (e: any) { alert(e.message); }
+    } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
   };
 
   const dayNames = ['Пон', 'Вт', 'Ср', 'Чет', 'Пет', 'Съб', 'Нед'];
@@ -849,17 +852,17 @@ const BulkAssign: React.FC = () => {
             SelectProps={{ 
               multiple: true, 
               value: selectedUsers, 
-              onChange: (e: any) => setSelectedUsers(e.target.value),
-              renderValue: (selected: any) => {
+              onChange: (e: React.ChangeEvent<{ value: unknown }>) => setSelectedUsers(e.target.value),
+              renderValue: (selected: number[]) => {
                 return usersData?.users?.users
-                  ?.filter((u: any) => selected.includes(u.id))
-                  .map((u: any) => u.firstName ? `${u.firstName} ${u.lastName || ''}` : u.email)
+                  ?.filter((u: User) => selected.includes(u.id))
+                  .map((u: User) => u.firstName ? `${u.firstName} ${u.lastName || ''}` : u.email)
                   .join(', ');
               }
             }}
             margin="normal"
           >
-            {usersData?.users?.users?.map((u: any) => (
+            {usersData?.users?.users?.map((u: User) => (
               <MenuItem key={u.id} value={u.id}>
                 {u.firstName ? `${u.firstName} ${u.lastName || ''}` : u.email}
               </MenuItem>
@@ -873,7 +876,7 @@ const BulkAssign: React.FC = () => {
             onChange={(e) => setSelectedShift(e.target.value)}
             margin="normal"
           >
-            {shiftsData?.shifts?.map((s: any) => (
+            {shiftsData?.shifts?.map((s: WorkSchedule) => (
               <MenuItem key={s.id} value={s.id}>{s.name} ({s.startTime.substring(0, 5)} - {s.endTime.substring(0, 5)})</MenuItem>
             )) || <MenuItem disabled value="">Зареждане...</MenuItem>}
           </TextField>

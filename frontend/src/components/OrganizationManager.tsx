@@ -6,11 +6,13 @@ import {
   MenuItem, Divider, CircularProgress, Alert
 } from '@mui/material';
 import { useQuery, useMutation, gql } from '@apollo/client';
+import { useForm, Controller } from 'react-hook-form';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import BusinessIcon from '@mui/icons-material/Business';
 import GroupsIcon from '@mui/icons-material/Groups';
 import BadgeIcon from '@mui/icons-material/Badge';
+import { type Company, type Department, type Position, type User } from '../types';
 
 // --- GraphQL ---
 const GET_STRUCTURE_QUERY = gql`
@@ -50,14 +52,12 @@ const GET_STRUCTURE_QUERY = gql`
         }
       }
     }
-    users { # To select department manager
+    users {
       users {
         id
         firstName
         lastName
         email
-        username
-        passwordForceChange
       }
     }
   }
@@ -65,84 +65,33 @@ const GET_STRUCTURE_QUERY = gql`
 
 const CREATE_COMPANY = gql`
   mutation CreateCompany($input: CompanyCreateInput!) {
-    createCompany(input: $input) {
-      id
-      name
-      eik
-      bulstat
-      vatNumber
-      address
-      molName
-    }
+    createCompany(input: $input) { id name }
   }
 `;
 
 const UPDATE_COMPANY = gql`
   mutation UpdateCompany($input: CompanyUpdateInput!) {
-    updateCompany(input: $input) {
-      id
-      name
-      eik
-      bulstat
-      vatNumber
-      address
-      molName
-    }
+    updateCompany(input: $input) { id name }
   }
 `;
 
 const CREATE_DEPARTMENT = gql`
   mutation CreateDepartment($input: DepartmentCreateInput!) {
-    createDepartment(input: $input) {
-      id
-      name
-      manager { id firstName lastName }
-    }
+    createDepartment(input: $input) { id name }
   }
 `;
 
 const UPDATE_DEPARTMENT = gql`
   mutation UpdateDepartment($input: DepartmentUpdateInput!) {
-    updateDepartment(input: $input) {
-      id
-      name
-      manager { id firstName lastName }
-    }
+    updateDepartment(input: $input) { id name }
   }
 `;
 
 const CREATE_POSITION = gql`
   mutation CreatePosition($title: String!, $departmentId: Int!) {
-    createPosition(title: $title, departmentId: $departmentId) {
-      id
-      title
-    }
+    createPosition(title: $title, departmentId: $departmentId) { id title }
   }
 `;
-
-interface CompanyData {
-    id: number;
-    name: string;
-    eik?: string;
-    bulstat?: string;
-    vatNumber?: string;
-    address?: string;
-    molName?: string;
-}
-
-interface DepartmentData {
-    id: number;
-    name: string;
-    company: { id: number; name: string; };
-    manager?: { id: number; firstName: string; lastName: string; email: string; };
-}
-
-interface UserData {
-    id: number;
-    firstName?: string;
-    lastName?: string;
-    email: string;
-}
 
 const OrganizationManager: React.FC = () => {
   const { data, loading, error, refetch } = useQuery(GET_STRUCTURE_QUERY);
@@ -162,141 +111,113 @@ const OrganizationManager: React.FC = () => {
   const [openEditDeptDialog, setOpenEditDeptDialog] = useState(false);
   const [openPosDialog, setOpenPosDialog] = useState(false);
 
-  // Company Form States
-  const [companyName, setCompanyName] = useState('');
-  const [companyEik, setCompanyEik] = useState('');
-  const [companyBulstat, setCompanyBulstat] = useState('');
-  const [companyVat, setCompanyVat] = useState('');
-  const [companyAddress, setCompanyAddress] = useState('');
-  const [companyMol, setCompanyMol] = useState('');
-  const [editingCompany, setEditingCompany] = useState<CompanyData | null>(null);
+  // Form Management
+  const companyForm = useForm({
+    defaultValues: { name: '', eik: '', bulstat: '', vatNumber: '', address: '', molName: '' }
+  });
 
-  // Department Form States
-  const [deptName, setDeptName] = useState('');
-  const [selectedCompanyForDept, setSelectedCompanyForDept] = useState<string>('');
-  const [selectedManagerForDept, setSelectedManagerForDept] = useState<string>('');
-  const [editingDepartment, setEditingDepartment] = useState<DepartmentData | null>(null);
+  const deptForm = useForm({
+    defaultValues: { name: '', companyId: '', managerId: '' }
+  });
 
-  // Position Form States
-  const [posTitle, setPosTitle] = useState('');
-  const [selectedDeptForPos, setSelectedDeptForPos] = useState<string>('');
+  const posForm = useForm({
+    defaultValues: { title: '', departmentId: '' }
+  });
 
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
+
+  // Reset/Initialize forms when editing state changes
   useEffect(() => {
     if (editingCompany) {
-      setCompanyName(editingCompany.name);
-      setCompanyEik(editingCompany.eik || '');
-      setCompanyBulstat(editingCompany.bulstat || '');
-      setCompanyVat(editingCompany.vatNumber || '');
-      setCompanyAddress(editingCompany.address || '');
-      setCompanyMol(editingCompany.molName || '');
+      companyForm.reset({
+        name: editingCompany.name,
+        eik: editingCompany.eik || '',
+        bulstat: editingCompany.bulstat || '',
+        vatNumber: editingCompany.vatNumber || '',
+        address: editingCompany.address || '',
+        molName: editingCompany.molName || ''
+      });
+    } else {
+      companyForm.reset({ name: '', eik: '', bulstat: '', vatNumber: '', address: '', molName: '' });
     }
-  }, [editingCompany]);
+  }, [editingCompany, companyForm]);
 
   useEffect(() => {
     if (editingDepartment) {
-      setDeptName(editingDepartment.name);
-      setSelectedCompanyForDept(String(editingDepartment.company.id));
-      setSelectedManagerForDept(String(editingDepartment.manager?.id || ''));
+      deptForm.reset({
+        name: editingDepartment.name,
+        companyId: String(editingDepartment.company?.id || ''),
+        managerId: String(editingDepartment.manager?.id || '')
+      });
+    } else {
+      deptForm.reset({ name: '', companyId: '', managerId: '' });
     }
-  }, [editingDepartment]);
+  }, [editingDepartment, deptForm]);
 
-  const resetCompanyForm = () => {
-    setCompanyName('');
-    setCompanyEik('');
-    setCompanyBulstat('');
-    setCompanyVat('');
-    setCompanyAddress('');
-    setCompanyMol('');
-    setEditingCompany(null);
-    setApiError(null);
-  };
-
-  const resetDeptForm = () => {
-    setDeptName('');
-    setSelectedCompanyForDept('');
-    setSelectedManagerForDept('');
-    setEditingDepartment(null);
-    setApiError(null);
-  };
-
-  const resetPosForm = () => {
-    setPosTitle('');
-    setSelectedDeptForPos('');
-    setApiError(null);
-  };
-
-  const handleCreateCompany = async () => {
+  const handleCompanySubmit = async (formData: { name: string, eik?: string, bulstat?: string, vatNumber?: string, address?: string, molName?: string }) => {
     setApiError(null);
     try {
-        await createCompany({ variables: { 
-            input: {
-                name: companyName, eik: companyEik || null, bulstat: companyBulstat || null, 
-                vatNumber: companyVat || null, address: companyAddress || null, molName: companyMol || null
-            }
-        }});
-        setOpenCompanyDialog(false);
-        resetCompanyForm();
+        const input = { ...formData, eik: formData.eik || null, bulstat: formData.bulstat || null, vatNumber: formData.vatNumber || null, address: formData.address || null, molName: formData.molName || null };
+        if (editingCompany) {
+            await updateCompany({ variables: { input: { id: editingCompany.id, ...input } } });
+            setOpenEditCompanyDialog(false);
+        } else {
+            await createCompany({ variables: { input } });
+            setOpenCompanyDialog(false);
+        }
+        setEditingCompany(null);
         refetch();
-    } catch (e: any) { setApiError(e.message); }
+    } catch (err: unknown) { 
+        if (err instanceof Error) setApiError(err.message);
+        else setApiError('Възникна неочаквана грешка');
+    }
   };
 
-  const handleUpdateCompany = async () => {
+  const handleDeptSubmit = async (formData: { name: string, companyId: string, managerId: string }) => {
     setApiError(null);
-    if (!editingCompany) return;
     try {
-        await updateCompany({ variables: { 
-            input: {
-                id: editingCompany.id, name: companyName, eik: companyEik || null, bulstat: companyBulstat || null, 
-                vatNumber: companyVat || null, address: companyAddress || null, molName: companyMol || null
-            }
-        }});
-        setOpenEditCompanyDialog(false);
-        resetCompanyForm();
+        if (editingDepartment) {
+            await updateDepartment({ variables: { 
+                input: { 
+                    id: editingDepartment.id, 
+                    name: formData.name, 
+                    managerId: formData.managerId ? parseInt(formData.managerId) : null 
+                } 
+            }});
+            setOpenEditDeptDialog(false);
+        } else {
+            await createDepartment({ variables: { 
+                input: { 
+                    name: formData.name, 
+                    companyId: parseInt(formData.companyId), 
+                    managerId: formData.managerId ? parseInt(formData.managerId) : null 
+                } 
+            }});
+            setOpenDeptDialog(false);
+        }
+        setEditingDepartment(null);
         refetch();
-    } catch (e: any) { setApiError(e.message); }
+    } catch (err: unknown) { 
+        if (err instanceof Error) setApiError(err.message);
+        else setApiError('Възникна неочаквана грешка');
+    }
   };
 
-  const handleCreateDept = async () => {
+  const handlePosSubmit = async (formData: { title: string, departmentId: string }) => {
     setApiError(null);
     try {
-        await createDepartment({ variables: { 
-            input: {
-                name: deptName, 
-                companyId: parseInt(selectedCompanyForDept), 
-                managerId: selectedManagerForDept ? parseInt(selectedManagerForDept) : null
-            }
+        await createPosition({ variables: { 
+            title: formData.title, 
+            departmentId: parseInt(formData.departmentId) 
         }});
-        setOpenDeptDialog(false);
-        resetDeptForm();
-        refetch();
-    } catch (e: any) { setApiError(e.message); }
-  };
-
-  const handleUpdateDept = async () => {
-    setApiError(null);
-    if (!editingDepartment) return;
-    try {
-        await updateDepartment({ variables: { 
-            input: {
-                id: editingDepartment.id, 
-                name: deptName, 
-                managerId: selectedManagerForDept ? parseInt(selectedManagerForDept) : null
-            }
-        }});
-        setOpenEditDeptDialog(false);
-        resetDeptForm();
-        refetch();
-    } catch (e: any) { setApiError(e.message); }
-  };
-
-  const handleCreatePos = async () => {
-    setApiError(null);
-    try {
-        await createPosition({ variables: { title: posTitle, departmentId: parseInt(selectedDeptForPos) } });
         setOpenPosDialog(false);
-        resetPosForm();
+        posForm.reset();
         refetch();
-    } catch (e: any) { setApiError(e.message); }
+    } catch (err: unknown) { 
+        if (err instanceof Error) setApiError(err.message);
+        else setApiError('Възникна неочаквана грешка');
+    }
   };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
@@ -313,7 +234,7 @@ const OrganizationManager: React.FC = () => {
 
       <Grid container spacing={3}>
         {/* COMPANIES */}
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid item xs={12} md={4}>
           <Card variant="outlined" sx={{ height: '100%' }}>
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -321,16 +242,16 @@ const OrganizationManager: React.FC = () => {
                     <BusinessIcon color="primary" />
                     <Typography variant="h6">Фирми</Typography>
                 </Box>
-                <IconButton color="primary" onClick={() => { resetCompanyForm(); setOpenCompanyDialog(true); }}>
+                <IconButton color="primary" onClick={() => { setEditingCompany(null); setOpenCompanyDialog(true); }}>
                   <AddIcon />
                 </IconButton>
               </Box>
               <Divider sx={{ mb: 2 }} />
               <List dense>
-                {data?.companies.map((c: CompanyData) => (
+                {data?.companies.map((c: Company) => (
                   <ListItem key={c.id} sx={{ bgcolor: 'background.paper', mb: 1, borderRadius: 1, border: '1px solid #eee' }}
                     secondaryAction={
-                        <IconButton edge="end" aria-label="edit" onClick={() => { setEditingCompany(c); setOpenEditCompanyDialog(true); }}>
+                        <IconButton edge="end" onClick={() => { setEditingCompany(c); setOpenEditCompanyDialog(true); }}>
                           <EditIcon />
                         </IconButton>
                       }
@@ -338,14 +259,13 @@ const OrganizationManager: React.FC = () => {
                     <ListItemText primary={c.name} secondary={`ЕИК: ${c.eik || 'N/A'}`} />
                   </ListItem>
                 ))}
-                {data?.companies.length === 0 && <Typography variant="caption" color="text.secondary">Няма добавени фирми.</Typography>}
               </List>
             </CardContent>
           </Card>
         </Grid>
 
         {/* DEPARTMENTS */}
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid item xs={12} md={4}>
           <Card variant="outlined" sx={{ height: '100%' }}>
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -353,39 +273,30 @@ const OrganizationManager: React.FC = () => {
                     <GroupsIcon color="secondary" />
                     <Typography variant="h6">Отдели</Typography>
                 </Box>
-                <IconButton color="secondary" onClick={() => { resetDeptForm(); setOpenDeptDialog(true); }}>
+                <IconButton color="secondary" onClick={() => { setEditingDepartment(null); setOpenDeptDialog(true); }}>
                   <AddIcon />
                 </IconButton>
               </Box>
               <Divider sx={{ mb: 2 }} />
               <List dense>
-                {data?.departments.map((d: DepartmentData) => (
+                {data?.departments.map((d: Department) => (
                   <ListItem key={d.id} sx={{ bgcolor: 'background.paper', mb: 1, borderRadius: 1, border: '1px solid #eee' }}
                     secondaryAction={
-                        <IconButton edge="end" aria-label="edit" onClick={() => { setEditingDepartment(d); setOpenEditDeptDialog(true); }}>
+                        <IconButton edge="end" onClick={() => { setEditingDepartment(d); setOpenEditDeptDialog(true); }}>
                           <EditIcon />
                         </IconButton>
                       }
                   >
-                    <ListItemText 
-                        primary={d.name} 
-                        secondary={
-                            <>
-                                {d.company ? `към ${d.company.name}` : 'Без фирма'}
-                                {d.manager && ` (Началник: ${d.manager.firstName} ${d.manager.lastName})`}
-                            </>
-                        } 
-                    />
+                    <ListItemText primary={d.name} secondary={d.company?.name || 'Без фирма'} />
                   </ListItem>
                 ))}
-                 {data?.departments.length === 0 && <Typography variant="caption" color="text.secondary">Няма добавени отдели.</Typography>}
               </List>
             </CardContent>
           </Card>
         </Grid>
 
         {/* POSITIONS */}
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid item xs={12} md={4}>
           <Card variant="outlined" sx={{ height: '100%' }}>
             <CardContent>
                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -393,187 +304,114 @@ const OrganizationManager: React.FC = () => {
                     <BadgeIcon color="success" />
                     <Typography variant="h6">Длъжности</Typography>
                 </Box>
-                <IconButton color="success" onClick={() => { resetPosForm(); setOpenPosDialog(true); }}>
+                <IconButton color="success" onClick={() => setOpenPosDialog(true)}>
                   <AddIcon />
                 </IconButton>
               </Box>
               <Divider sx={{ mb: 2 }} />
               <List dense>
-                {data?.positions.map((p: any) => (
+                {data?.positions.map((p: Position) => (
                   <ListItem key={p.id} sx={{ bgcolor: 'background.paper', mb: 1, borderRadius: 1, border: '1px solid #eee' }}>
-                    <ListItemText 
-                        primary={p.title} 
-                        secondary={p.department ? `${p.department.name} (${p.department.company?.name || ''})` : 'Без отдел'} 
-                    />
+                    <ListItemText primary={p.title} secondary={p.department?.name || 'Без отдел'} />
                   </ListItem>
                 ))}
-                 {data?.positions.length === 0 && <Typography variant="caption" color="text.secondary">Няма добавени длъжности.</Typography>}
               </List>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      <Divider sx={{ my: 4 }} />
-
       {/* --- DIALOGS --- */}
 
-      {/* Create Company Dialog */}
-      <Dialog open={openCompanyDialog} onClose={() => { setOpenCompanyDialog(false); resetCompanyForm(); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Нова Фирма</DialogTitle>
-        <DialogContent>
-            {apiError && <Alert severity="error" sx={{ mb: 2 }}>{apiError}</Alert>}
-            <TextField autoFocus margin="dense" label="Име на фирмата" fullWidth sx={{ mb: 2 }}
-                value={companyName} onChange={(e) => setCompanyName(e.target.value)} 
-            />
-            <TextField margin="dense" label="ЕИК" fullWidth sx={{ mb: 2 }}
-                value={companyEik} onChange={(e) => setCompanyEik(e.target.value)} 
-            />
-            <TextField margin="dense" label="БУЛСТАТ" fullWidth sx={{ mb: 2 }}
-                value={companyBulstat} onChange={(e) => setCompanyBulstat(e.target.value)} 
-            />
-            <TextField margin="dense" label="ДДС Номер" fullWidth sx={{ mb: 2 }}
-                value={companyVat} onChange={(e) => setCompanyVat(e.target.value)} 
-            />
-            <TextField margin="dense" label="Адрес на управление" fullWidth multiline rows={2} sx={{ mb: 2 }}
-                value={companyAddress} onChange={(e) => setCompanyAddress(e.target.value)} 
-            />
-            <TextField margin="dense" label="МОЛ (Материално отговорно лице)" fullWidth
-                value={companyMol} onChange={(e) => setCompanyMol(e.target.value)} 
-            />
-        </DialogContent>
-        <DialogActions>
-            <Button onClick={() => { setOpenCompanyDialog(false); resetCompanyForm(); }}>Отказ</Button>
-            <Button onClick={handleCreateCompany} variant="contained" disabled={!companyName}>Създай</Button>
-        </DialogActions>
+      {/* Company Dialog (Create/Edit) */}
+      <Dialog open={openCompanyDialog || openEditCompanyDialog} onClose={() => { setOpenCompanyDialog(false); setOpenEditCompanyDialog(false); setEditingCompany(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingCompany ? 'Редактиране на Фирма' : 'Нова Фирма'}</DialogTitle>
+        <Box component="form" onSubmit={companyForm.handleSubmit(handleCompanySubmit)}>
+            <DialogContent dividers>
+                <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                        <Controller name="name" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="Име на фирмата" size="small" required />} />
+                    </Grid>
+                    <Grid item xs={6}>
+                        <Controller name="eik" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="ЕИК" size="small" />} />
+                    </Grid>
+                    <Grid item xs={6}>
+                        <Controller name="bulstat" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="БУЛСТАТ" size="small" />} />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <Controller name="vatNumber" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="ДДС Номер" size="small" />} />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <Controller name="address" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="Адрес" size="small" multiline rows={2} />} />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <Controller name="molName" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="МОЛ" size="small" />} />
+                    </Grid>
+                </Grid>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={() => { setOpenCompanyDialog(false); setOpenEditCompanyDialog(false); setEditingCompany(null); }}>Отказ</Button>
+                <Button type="submit" variant="contained">{editingCompany ? 'Запази' : 'Създай'}</Button>
+            </DialogActions>
+        </Box>
       </Dialog>
 
-      {/* Edit Company Dialog */}
-      <Dialog open={openEditCompanyDialog} onClose={() => { setOpenEditCompanyDialog(false); resetCompanyForm(); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Редактиране на Фирма</DialogTitle>
-        <DialogContent>
-            {apiError && <Alert severity="error" sx={{ mb: 2 }}>{apiError}</Alert>}
-            <TextField autoFocus margin="dense" label="Име на фирмата" fullWidth sx={{ mb: 2 }}
-                value={companyName} onChange={(e) => setCompanyName(e.target.value)} 
-            />
-            <TextField margin="dense" label="ЕИК" fullWidth sx={{ mb: 2 }}
-                value={companyEik} onChange={(e) => setCompanyEik(e.target.value)} 
-            />
-            <TextField margin="dense" label="БУЛСТАТ" fullWidth sx={{ mb: 2 }}
-                value={companyBulstat} onChange={(e) => setCompanyBulstat(e.target.value)} 
-            />
-            <TextField margin="dense" label="ДДС Номер" fullWidth sx={{ mb: 2 }}
-                value={companyVat} onChange={(e) => setCompanyVat(e.target.value)} 
-            />
-            <TextField margin="dense" label="Адрес на управление" fullWidth multiline rows={2} sx={{ mb: 2 }}
-                value={companyAddress} onChange={(e) => setCompanyAddress(e.target.value)} 
-            />
-            <TextField margin="dense" label="МОЛ (Материално отговорно лице)" fullWidth
-                value={companyMol} onChange={(e) => setCompanyMol(e.target.value)} 
-            />
-        </DialogContent>
-        <DialogActions>
-            <Button onClick={() => { setOpenEditCompanyDialog(false); resetCompanyForm(); }}>Отказ</Button>
-            <Button onClick={handleUpdateCompany} variant="contained" disabled={!companyName}>Запази</Button>
-        </DialogActions>
+      {/* Department Dialog */}
+      <Dialog open={openDeptDialog || openEditDeptDialog} onClose={() => { setOpenDeptDialog(false); setOpenEditDeptDialog(false); setEditingDepartment(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingDepartment ? 'Редактиране на Отдел' : 'Нов Отдел'}</DialogTitle>
+        <Box component="form" onSubmit={deptForm.handleSubmit(handleDeptSubmit)}>
+            <DialogContent dividers>
+                <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                        <Controller name="name" control={deptForm.control} render={({ field }) => <TextField {...field} fullWidth label="Име на отдела" size="small" required />} />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <Controller name="companyId" control={deptForm.control} render={({ field }) => (
+                            <TextField {...field} select fullWidth label="Фирма" size="small" disabled={!!editingDepartment}>
+                                {data?.companies.map((c: Company) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+                            </TextField>
+                        )} />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <Controller name="managerId" control={deptForm.control} render={({ field }) => (
+                            <TextField {...field} select fullWidth label="Началник Отдел" size="small">
+                                <MenuItem value=""><em>Не е избран</em></MenuItem>
+                                {data?.users.users.map((u: User) => <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>)}
+                            </TextField>
+                        )} />
+                    </Grid>
+                </Grid>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={() => { setOpenDeptDialog(false); setOpenEditDeptDialog(false); setEditingDepartment(null); }}>Отказ</Button>
+                <Button type="submit" variant="contained">{editingDepartment ? 'Запази' : 'Създай'}</Button>
+            </DialogActions>
+        </Box>
       </Dialog>
 
-      {/* Create Department Dialog */}
-      <Dialog open={openDeptDialog} onClose={() => { setOpenDeptDialog(false); resetDeptForm(); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Нов Отдел</DialogTitle>
-        <DialogContent>
-            {apiError && <Alert severity="error" sx={{ mb: 2 }}>{apiError}</Alert>}
-            <TextField 
-                margin="dense" label="Име на отдела" fullWidth sx={{ mb: 2 }}
-                value={deptName} onChange={(e) => setDeptName(e.target.value)} 
-            />
-            <TextField
-                select fullWidth label="Към Фирма" sx={{ mb: 2 }}
-                value={selectedCompanyForDept} onChange={(e) => setSelectedCompanyForDept(e.target.value)}
-            >
-                {data?.companies?.length > 0 ? data.companies.map((c: CompanyData) => (
-                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-                )) : <MenuItem disabled value="">Няма налични фирми</MenuItem>}
-            </TextField>
-            <TextField
-                select fullWidth label="Началник Отдел"
-                value={selectedManagerForDept} onChange={(e) => setSelectedManagerForDept(e.target.value)}
-                helperText="Изберете служител, който да бъде назначен за началник на отдела."
-            >
-                <MenuItem value=""><em>Не е избран</em></MenuItem>
-                {data?.users?.users?.length > 0 ? data.users.users.map((u: UserData) => (
-                    <MenuItem key={u.id} value={u.id}>
-                        {u.firstName} {u.lastName} ({u.email})
-                    </MenuItem>
-                )) : <MenuItem disabled value="">Няма налични служители</MenuItem>}
-            </TextField>
-        </DialogContent>
-        <DialogActions>
-            <Button onClick={() => { setOpenDeptDialog(false); resetDeptForm(); }}>Отказ</Button>
-            <Button onClick={handleCreateDept} variant="contained" disabled={!deptName || !selectedCompanyForDept}>Създай</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Edit Department Dialog */}
-      <Dialog open={openEditDeptDialog} onClose={() => { setOpenEditDeptDialog(false); resetDeptForm(); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Редактиране на Отдел</DialogTitle>
-        <DialogContent>
-            {apiError && <Alert severity="error" sx={{ mb: 2 }}>{apiError}</Alert>}
-            <TextField 
-                margin="dense" label="Име на отдела" fullWidth sx={{ mb: 2 }}
-                value={deptName} onChange={(e) => setDeptName(e.target.value)} 
-            />
-            <TextField
-                select fullWidth label="Към Фирма" sx={{ mb: 2 }} disabled
-                value={selectedCompanyForDept}
-            >
-                 {data?.companies?.map((c: CompanyData) => (
-                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-                ))}
-            </TextField>
-            <TextField
-                select fullWidth label="Началник Отдел"
-                value={selectedManagerForDept} onChange={(e) => setSelectedManagerForDept(e.target.value)}
-                helperText="Изберете служител, който да бъде назначен за началник на отдела."
-            >
-                <MenuItem value=""><em>Не е избран</em></MenuItem>
-                {data?.users?.users?.length > 0 ? data.users.users.map((u: UserData) => (
-                    <MenuItem key={u.id} value={u.id}>
-                        {u.firstName} {u.lastName} ({u.email})
-                    </MenuItem>
-                )) : <MenuItem disabled value="">Няма налични служители</MenuItem>}
-            </TextField>
-        </DialogContent>
-        <DialogActions>
-            <Button onClick={() => { setOpenEditDeptDialog(false); resetDeptForm(); }}>Отказ</Button>
-            <Button onClick={handleUpdateDept} variant="contained" disabled={!deptName || !selectedCompanyForDept}>Запази</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Create Position Dialog */}
-      <Dialog open={openPosDialog} onClose={() => { setOpenPosDialog(false); resetPosForm(); }} maxWidth="xs" fullWidth>
+      {/* Position Dialog */}
+      <Dialog open={openPosDialog} onClose={() => setOpenPosDialog(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Нова Длъжност</DialogTitle>
-        <DialogContent>
-            {apiError && <Alert severity="error" sx={{ mb: 2 }}>{apiError}</Alert>}
-            <TextField 
-                margin="dense" label="Наименование на длъжността" fullWidth sx={{ mb: 2 }}
-                value={posTitle} onChange={(e) => setPosTitle(e.target.value)} 
-            />
-             <TextField
-                select fullWidth label="Към Отдел"
-                value={selectedDeptForPos} onChange={(e) => setSelectedDeptForPos(e.target.value)}
-            >
-                {data?.departments?.length > 0 ? data.departments.map((d: DepartmentData) => (
-                    <MenuItem key={d.id} value={d.id}>
-                        {d.name} {d.company ? `(${d.company.name})` : ''}
-                    </MenuItem>
-                )) : <MenuItem disabled value="">Няма налични отдели</MenuItem>}
-            </TextField>
-        </DialogContent>
-        <DialogActions>
-            <Button onClick={() => { setOpenPosDialog(false); resetPosForm(); }}>Отказ</Button>
-            <Button onClick={handleCreatePos} variant="contained" disabled={!posTitle || !selectedDeptForPos}>Създай</Button>
-        </DialogActions>
+        <Box component="form" onSubmit={posForm.handleSubmit(handlePosSubmit)}>
+            <DialogContent dividers>
+                <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                        <Controller name="title" control={posForm.control} render={({ field }) => <TextField {...field} fullWidth label="Наименование" size="small" required />} />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <Controller name="departmentId" control={posForm.control} render={({ field }) => (
+                            <TextField {...field} select fullWidth label="Към Отдел" size="small">
+                                {data?.departments.map((d: Department) => <MenuItem key={d.id} value={d.id}>{d.name} ({d.company?.name})</MenuItem>)}
+                            </TextField>
+                        )} />
+                    </Grid>
+                </Grid>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={() => setOpenPosDialog(false)}>Отказ</Button>
+                <Button type="submit" variant="contained">Създай</Button>
+            </DialogActions>
+        </Box>
       </Dialog>
 
     </Box>

@@ -77,7 +77,7 @@ const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
   }
   
   if (graphQLErrors) {
-    for (let err of graphQLErrors) {
+    for (const err of graphQLErrors) {
       const authErrors = [
         'Could not validate credentials',
         'Not authenticated',

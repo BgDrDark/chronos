@@ -64,7 +64,7 @@ const MyCardPage: React.FC = () => {
           navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 });
         });
         coords = `?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`;
-      } catch (e) {
+      } catch {
         console.warn('GPS access denied or timeout');
       }
 
@@ -101,7 +101,7 @@ const MyCardPage: React.FC = () => {
     if ('wakeLock' in navigator) {
       try {
         (navigator as any).wakeLock.request('screen');
-      } catch (err) {}
+      } catch { }
     }
   }, []);
 

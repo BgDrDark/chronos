@@ -1,4 +1,4 @@
-import { createContext } from 'react';
+import { createContext, useContext } from 'react';
 
 export interface CurrencyContextType {
   currency: string;
@@ -9,3 +9,5 @@ export const CurrencyContext = createContext<CurrencyContextType>({
   currency: 'EUR',
   refreshCurrency: () => {},
 });
+
+export const useCurrency = () => useContext(CurrencyContext);

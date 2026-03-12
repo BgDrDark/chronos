@@ -1,9 +1,7 @@
-import React, { useContext, useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
 import { ThemeContext, type DashboardConfig } from './themeContext';
-
-export const useAppTheme = () => useContext(ThemeContext);
 
 export const AppThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [mode, setMode] = useState<'light' | 'dark'>(() => {

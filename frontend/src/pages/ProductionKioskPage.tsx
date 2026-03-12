@@ -15,23 +15,9 @@ import {
   Logout as ExitIcon,
   Person as PersonIcon
 } from '@mui/icons-material';
-import { useQuery, useMutation, gql, useLazyQuery } from '@apollo/client';
-import { UPDATE_TASK_STATUS, SCRAP_TASK, MARK_TASK_SCRAP } from '../graphql/confectioneryMutations';
-
-const GENERATE_LABEL = gql`
-  query GenerateLabel($orderId: Int!) {
-    generateLabel(orderId: $orderId) {
-      productName
-      batchNumber
-      productionDate
-      expiryDate
-      allergens
-      storageConditions
-      qrCodeContent
-      quantity
-    }
-  }
-`;
+import { useQuery, useMutation, gql } from '@apollo/client';
+import { UPDATE_TASK_STATUS, SCRAP_TASK } from '../graphql/confectioneryMutations';
+import { type TerminalOrder, type ProductionTask, type Workstation } from '../types';
 
 const GET_WORKSTATIONS = gql`
   query GetWorkstations {
@@ -76,23 +62,14 @@ const ProductionKioskPage: React.FC = () => {
   const [qrError, setQrError] = useState('');
   const [identifying, setIdentifying] = useState(false);
   const [selectedStation, setSelectedStation] = useState<number | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<any>(null);
-  const [activeTask, setActiveTask] = useState<any>(null);
+  const [selectedOrder, setSelectedOrder] = useState<TerminalOrder | null>(null);
+  const [activeTask, setActiveTask] = useState<ProductionTask | null>(null);
   const [taskStartTime, setTaskStartTime] = useState<Date | null>(null);
-  const [labelData, setLabelData] = useState<any>(null);
   const [scrapDialog, setScrapDialog] = useState<{open: boolean, taskId: number | null, taskName: string, maxQuantity: number}>({
     open: false, taskId: null, taskName: '', maxQuantity: 0
   });
   const [scrapQuantity, setScrapQuantity] = useState<string>('');
   const [scrapReason, setScrapReason] = useState<string>('');
-  const [terminalId] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlTerminal = params.get('terminal');
-    if (urlTerminal) {
-      return `terminal_${urlTerminal}`;
-    }
-    return `terminal_${Math.random().toString(36).substr(2, 9)}`;
-  });
   
   const [terminalDisplayName, setTerminalDisplayName] = useState<string>('');
   
@@ -114,13 +91,9 @@ const ProductionKioskPage: React.FC = () => {
     pollInterval: 3000,
   });
   
-  const [fetchLabel] = useLazyQuery(GENERATE_LABEL, {
-    onCompleted: (data) => setLabelData(data.generateLabel)
-  });
-
   const [updateStatus] = useMutation(UPDATE_TASK_STATUS);
   const [scrapTask] = useMutation(SCRAP_TASK);
-  const [markScrap] = useMutation(MARK_TASK_SCRAP);
+
 
   useEffect(() => {
     if (inputRef.current) {
@@ -148,7 +121,7 @@ const ProductionKioskPage: React.FC = () => {
       }
       
       const data = await response.json();
-      setEmployee(data);
+      setEmployee(data as Employee);
       setQrInput('');
     } catch (err: any) {
       setQrError(err.message || 'Грешка при идентификация');
@@ -164,7 +137,7 @@ const ProductionKioskPage: React.FC = () => {
     setActiveTask(null);
   };
 
-  const handleStartTask = (task: any) => {
+  const handleStartTask = (task: ProductionTask) => {
     setActiveTask(task);
     setTaskStartTime(new Date());
   };
@@ -330,7 +303,7 @@ const ProductionKioskPage: React.FC = () => {
             <CircularProgress sx={{ mt: 4 }} />
           ) : (
             <Grid container spacing={3} sx={{ mt: 4 }}>
-              {wsData?.workstations.map((ws: any) => (
+              {wsData?.workstations.map((ws: Workstation) => (
                 <Grid size={{ xs: 12, sm: 6, md: 4 }} key={ws.id}>
                   <Card 
                     sx={{ 
@@ -361,8 +334,8 @@ const ProductionKioskPage: React.FC = () => {
     );
   }
 
-  const currentWorkstation = wsData?.workstations?.find((w: any) => w.id === selectedStation);
-  const orders = orderData?.terminalOrders || [];
+  const currentWorkstation = wsData?.workstations?.find((w: Workstation) => w.id === selectedStation);
+  const orders: TerminalOrder[] = orderData?.terminalOrders || [];
 
   if (activeTask) {
     return (
@@ -475,7 +448,7 @@ const ProductionKioskPage: React.FC = () => {
           </Typography>
         ) : (
           <Grid container spacing={3}>
-            {orders.map((order: any) => (
+            {orders.map((order: TerminalOrder) => (
               <Grid size={{ xs: 12, md: 6 }} key={order.id}>
                 <Card sx={{ borderRadius: 4 }}>
                   <CardContent>
@@ -494,7 +467,7 @@ const ProductionKioskPage: React.FC = () => {
                     )}
                     
                     <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>Задачи:</Typography>
-                    {order.tasks?.map((task: any) => (
+                    {order.tasks?.map((task: ProductionTask) => (
                       <Box key={task.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, bgcolor: '#f5f5f5', borderRadius: 1, mb: 1 }}>
                         <Box>
                           <Typography variant="body1"><b>{task.name}</b></Typography>

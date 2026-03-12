@@ -12,13 +12,11 @@ import {
   TableHead,
   TableRow,
   Button,
-  IconButton,
   TextField,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
-  Chip,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -26,8 +24,6 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
   LocalShipping as DeliveryIcon,
   ShoppingCart as OrderIcon,
   RequestQuote as RequestIcon,

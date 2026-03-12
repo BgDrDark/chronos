@@ -60,10 +60,12 @@ function App() {
 
   if (isKioskMode || isTerminalMode) {
     return (
-      <Routes>
-        <Route path="/kiosk" element={<UnifiedKiosk />} />
-        <Route path="/kiosk/terminal" element={<UnifiedKiosk />} />
-      </Routes>
+      <AdminRoute>
+        <Routes>
+          <Route path="/kiosk" element={<UnifiedKiosk />} />
+          <Route path="/kiosk/terminal" element={<UnifiedKiosk />} />
+        </Routes>
+      </AdminRoute>
     );
   }
 

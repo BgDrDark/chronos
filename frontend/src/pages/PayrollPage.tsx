@@ -1,19 +1,28 @@
 import React, { useState } from 'react';
 import {
-  Container, Typography, Box, Tabs, Tab, TextField, Button, MenuItem,
+  Container, Typography, Box, TextField, Button, MenuItem,
   Alert, CircularProgress, Card, CardContent, Divider, Grid, Link, FormControlLabel, Checkbox,
-  Tooltip, Switch
+  Tooltip, Switch, type SelectChangeEvent
 } from '@mui/material';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import PaidIcon from '@mui/icons-material/Paid';
 import ReceiptIcon from '@mui/icons-material/Receipt';
-import PublicIcon from '@mui/icons-material/Public';
 import AddIcon from '@mui/icons-material/Add';
 import AssessmentIcon from '@mui/icons-material/Assessment';
-// @ts-ignore
+// @ts-expect-error Apollo types conflict with local interfaces
 import { useQuery, useMutation, gql, useLazyQuery } from '@apollo/client';
 import { useForm, Controller } from 'react-hook-form';
-import { useCurrency } from '../CurrencyContext';
+import { useCurrency } from '../currencyContext';
+import { 
+  type PayrollLegalSettings, 
+  type UserWithPayroll, 
+  type PositionWithPayroll, 
+  type PayrollSummaryItem, 
+  type PayrollConfig,
+  type Bonus,
+  type User,
+  type Position
+} from '../types';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import SecurityIcon from '@mui/icons-material/Security';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -256,7 +265,7 @@ const PayrollLegalSettings: React.FC = () => {
         }
     }, [data, reset]);
 
-    const onSubmit = async (formData: any) => {
+    const onSubmit = async (formData: PayrollLegalSettings) => {
         setMessage(null);
         try {
             await updateLegal({
@@ -272,8 +281,8 @@ const PayrollLegalSettings: React.FC = () => {
             });
             setMessage({ type: 'success', text: 'Законовите настройки са обновени успешно!' });
             refetch();
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
+        } catch {
+            setMessage({ type: 'error', text: (err instanceof Error ? _err.message : "Грешка") });
         }
     };
 
@@ -371,7 +380,7 @@ const PayrollReports: React.FC = () => {
             a.href = url;
             a.download = `payslip_${userId}_${startDate}.pdf`;
             a.click();
-        } catch (e: any) { alert("Грешка при генериране на PDF: " + e.message); }
+        } catch { alert("Грешка при генериране на PDF: " + e.message); }
     };
 
     const exportToXLSX = async () => {
@@ -387,7 +396,7 @@ const PayrollReports: React.FC = () => {
             a.href = downloadUrl;
             a.download = `payroll_report_${startDate}_${endDate}.xlsx`;
             a.click();
-        } catch (e: any) { alert(e.message); }
+        } catch { if (_err instanceof Error) if (_err instanceof Error) if (_err instanceof Error) alert(__err.message); }
     };
 
     const handleGenerate = () => {
@@ -408,7 +417,7 @@ const PayrollReports: React.FC = () => {
         if (!data?.payrollSummary) return;
         
         const headers = ["Име", "Имейл", "Договор", "Бруто", "Осигуровки", "Данък", "Бонуси", "Удръжки", "НЕТО ЗА ПЛАЩАНЕ"];
-        const rows = data.payrollSummary.map((item: any) => [
+        const rows = data.payrollSummary.map((item: PayrollSummaryItem) => [
             item.fullName,
             item.email,
             item.contractType,
@@ -456,10 +465,14 @@ const PayrollReports: React.FC = () => {
                             <Tooltip title="Избери конкретни служители или остави празно за всички" arrow>
                                 <TextField 
                                     select fullWidth label="Служители (по избор)" 
-                                    SelectProps={{ multiple: true, value: selectedUserIds, onChange: (e: any) => setSelectedUserIds(e.target.value) }}
+                                    SelectProps={{ 
+                                        multiple: true, 
+                                        value: selectedUserIds, 
+                                        onChange: (e: SelectChangeEvent<unknown>) => setSelectedUserIds(e.target.value as number[]) 
+                                    }}
                                     size="small"
                                 >
-                                    {usersData?.users?.users.map((u: any) => (
+                                    {usersData?.users?.users.map((u: User) => (
                                         <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>
                                     ))}
                                 </TextField>
@@ -502,7 +515,7 @@ const PayrollReports: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {data.payrollSummary.map((item: any) => (
+                                    {data.payrollSummary.map((item: PayrollSummaryItem) => (
                                         <tr key={item.userId} style={{ borderBottom: '1px solid #eee' }}>
                                             <td style={{ padding: '12px' }}>
                                                 <Typography variant="body2" fontWeight="bold">{item.fullName}</Typography>
@@ -534,11 +547,11 @@ const PayrollReports: React.FC = () => {
                                 <tfoot style={{ backgroundColor: '#f5f5f5', fontWeight: 'bold' }}>
                                     <tr>
                                         <td style={{ padding: '12px' }}>ОБЩО:</td>
-                                        <td style={{ padding: '12px' }}>{data.payrollSummary.reduce((a:any, b:any) => a + b.grossAmount, 0).toFixed(2)}</td>
-                                        <td style={{ padding: '12px', color: '#d32f2f' }}>-{data.payrollSummary.reduce((a:any, b:any) => a + b.insuranceAmount, 0).toFixed(2)}</td>
-                                        <td style={{ padding: '12px', color: '#d32f2f' }}>-{data.payrollSummary.reduce((a:any, b:any) => a + b.taxAmount, 0).toFixed(2)}</td>
-                                        <td style={{ padding: '12px', color: '#2e7d32' }}>+{data.payrollSummary.reduce((a:any, b:any) => a + b.bonusAmount, 0).toFixed(2)}</td>
-                                        <td style={{ padding: '12px', color: '#1976d2', fontSize: '1.1rem' }}>{data.payrollSummary.reduce((a:any, b:any) => a + b.netPayable, 0).toFixed(2)} {currency}</td>
+                                        <td style={{ padding: '12px' }}>{data.payrollSummary.reduce((a: number, b: PayrollSummaryItem) => a + b.grossAmount, 0).toFixed(2)}</td>
+                                        <td style={{ padding: '12px', color: '#d32f2f' }}>-{data.payrollSummary.reduce((a: number, b: PayrollSummaryItem) => a + b.insuranceAmount, 0).toFixed(2)}</td>
+                                        <td style={{ padding: '12px', color: '#d32f2f' }}>-{data.payrollSummary.reduce((a: number, b: PayrollSummaryItem) => a + b.taxAmount, 0).toFixed(2)}</td>
+                                        <td style={{ padding: '12px', color: '#2e7d32' }}>+{data.payrollSummary.reduce((a: number, b: PayrollSummaryItem) => a + b.bonusAmount, 0).toFixed(2)}</td>
+                                        <td style={{ padding: '12px', color: '#1976d2', fontSize: '1.1rem' }}>{data.payrollSummary.reduce((a: number, b: PayrollSummaryItem) => a + b.netPayable, 0).toFixed(2)} {currency}</td>
                                         <td style={{ padding: '12px' }}></td>
                                     </tr>
                                 </tfoot>
@@ -578,8 +591,8 @@ const MonthlyWorkDaysSettings: React.FC = () => {
             setMessage('Запазено успешно!');
             refetch(); // Refetch to confirm save
             setTimeout(() => setMessage(null), 3000);
-        } catch (e: any) {
-            alert(e.message);
+        } catch {
+            if (_err instanceof Error) if (_err instanceof Error) if (_err instanceof Error) alert(__err.message);
         }
     };
 
@@ -649,7 +662,7 @@ const GlobalPayrollSettings: React.FC = () => {
     });
 
     const watchedSalary = watch('monthlySalary');
-    const autoSaveTimer = React.useRef<any>(null);
+    const autoSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     React.useEffect(() => {
         const workDays = workDaysData?.monthlyWorkDays?.daysCount || 22;
@@ -705,7 +718,7 @@ const GlobalPayrollSettings: React.FC = () => {
         }
     }, [data, reset]);
 
-    const onSubmit = async (formData: any) => {
+    const onSubmit = async (formData: PayrollLegalSettings) => {
         setMessage(null);
         try {
             await updateConfig({
@@ -724,8 +737,8 @@ const GlobalPayrollSettings: React.FC = () => {
             });
             setMessage({ type: 'success', text: 'Глобалните настройки са обновени!' });
             refreshCurrency(); // Refresh global currency context
-        } catch (e: any) {
-            setMessage({ type: 'error', text: e.message });
+        } catch {
+            setMessage({ type: 'error', text: (err instanceof Error ? _err.message : "Грешка") });
         }
     };
 
@@ -872,7 +885,7 @@ const AdvanceLoanManager: React.FC = () => {
             alert("Записано успешно!");
             setAmount('');
             setDesc('');
-        } catch (e: any) {
+        } catch {
             alert("Грешка: " + e.message);
         } finally {
             setLoading(false);
@@ -892,7 +905,7 @@ const AdvanceLoanManager: React.FC = () => {
                             select fullWidth label="Служител" size="small"
                             value={userId} onChange={e => setUserId(e.target.value)}
                         >
-                            {usersData?.users?.users.map((u: any) => (
+                            {usersData?.users?.users.map((u: User) => (
                                 <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>
                             ))}
                         </TextField>
@@ -900,7 +913,7 @@ const AdvanceLoanManager: React.FC = () => {
                     <Grid size={{ xs: 12, sm: 4 }}>
                         <TextField
                             select fullWidth label="Тип" size="small"
-                            value={mode} onChange={e => setMode(e.target.value as any)}
+                            value={mode} onChange={e => setMode(e.target.value as 'advance' | 'loan')}
                         >
                             <MenuItem value="advance">Еднократен аванс</MenuItem>
                             <MenuItem value="loan">Служебен аванс (на вноски)</MenuItem>
@@ -991,7 +1004,7 @@ const PayrollSettings: React.FC = () => {
 
   const selectedTargetId = watch('targetId');
   const watchedSalary = watch('monthlySalary');
-  const autoSaveTimer = React.useRef<any>(null);
+  const autoSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-calculate hourly rate when salary changes and auto-save
   React.useEffect(() => {
@@ -1062,8 +1075,8 @@ const PayrollSettings: React.FC = () => {
       setBonusAmount('');
       setBonusDescription('');
       await refetchBonuses();
-    } catch (err: any) {
-      alert(err.message);
+    } catch {
+      if (_err instanceof Error) if (_err instanceof Error) alert(__err.message);
     }
   };
 
@@ -1071,24 +1084,24 @@ const PayrollSettings: React.FC = () => {
     try {
       await removeBonus({ variables: { id } });
       await refetchBonuses();
-    } catch (err: any) {
-      alert(err.message);
+    } catch {
+      if (_err instanceof Error) if (_err instanceof Error) alert(__err.message);
     }
   };
 
   React.useEffect(() => {
     if (!selectedTargetId || !data) return;
 
-    let config = null;
+    let config: PayrollConfig | null = null;
     const targetIdInt = parseInt(selectedTargetId);
 
     if (mode === 'user') {
-        const user = data.users?.users.find((u: any) => u.id === targetIdInt);
+        const user = data.users?.users.find((u: UserWithPayroll) => u.id === targetIdInt);
         if (user && user.payrolls && user.payrolls.length > 0) {
             config = user.payrolls[0];
         }
     } else {
-        const position = data.positions?.find((p: any) => p.id === targetIdInt);
+        const position = data.positions?.find((p: PositionWithPayroll) => p.id === targetIdInt);
         if (position && position.payrolls && position.payrolls.length > 0) {
             config = position.payrolls[0];
         }
@@ -1147,7 +1160,7 @@ const PayrollSettings: React.FC = () => {
     }
   }, [selectedTargetId, mode, data, globalData, reset]);
 
-  const onSubmit = async (formData: any) => {
+  const onSubmit = async (formData: PayrollLegalSettings) => {
     setMessage(null);
     try {
       const dailyHours = formData.standardHoursWeekly / 5;
@@ -1181,8 +1194,8 @@ const PayrollSettings: React.FC = () => {
         });
       }
       setMessage({ type: 'success', text: 'Настройките са актуализирани успешно!' });
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message });
+    } catch {
+      setMessage({ type: 'error', text: (err instanceof Error ? _err.message : "Грешка") });
     }
   };
 
@@ -1227,12 +1240,12 @@ const PayrollSettings: React.FC = () => {
                   required
                 >
                   {mode === 'user' 
-                    ? data?.users?.users.map((u: any) => (
+                    ? data?.users?.users.map((u: User) => (
                         <MenuItem key={u.id} value={u.id}>
                           {u.firstName} {u.lastName} ({u.email}) - {u.position?.title || 'Без длъжност'}
                         </MenuItem>
                       ))
-                    : data?.positions.map((p: any) => (
+                    : data?.positions.map((p: Position) => (
                         <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>
                       ))
                   }
@@ -1385,7 +1398,7 @@ const PayrollSettings: React.FC = () => {
                                 Няма добавени бонуси за този потребител.
                             </Typography>
                         ) : (
-                            bonusData.user.bonuses.map((b: any) => (
+                            bonusData.user.bonuses.map((b: Bonus) => (
                                 <Box key={b.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1.5, borderBottom: '1px solid #e0e0e0', bgcolor: 'white', mb: 1, borderRadius: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                                     <Box>
                                         <Typography variant="body1" fontWeight="bold" color="success.main">
@@ -1445,7 +1458,7 @@ const HolidaySettings: React.FC = () => {
     try {
       const res = await syncHolidays({ variables: { year } });
       setResult(`Успешно добавени ${res.data.syncHolidays} нови официални празници за ${year}г.`);
-    } catch (e: any) {
+    } catch {
       setResult(`Грешка: ${e.message}`);
     }
   };
@@ -1454,7 +1467,7 @@ const HolidaySettings: React.FC = () => {
     try {
       const res = await syncOrthodoxHolidays({ variables: { year } });
       setResult(`Успешно добавени ${res.data.syncOrthodoxHolidays} нови православни празници за ${year}г.`);
-    } catch (e: any) {
+    } catch {
       setResult(`Грешка: ${e.message}`);
     }
   };
@@ -1553,10 +1566,6 @@ const HolidaySettings: React.FC = () => {
       const newTab = tab ? (PayrollPageTabMap[tab] ?? 0) : 0;
       setTabValue(newTab);
     }, [tab]);
-
-  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-  };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4 }}>

@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import { useQuery, gql } from '@apollo/client';
 import { format } from 'date-fns';
+import { type AuditLog } from '../types';
 
 const GET_AUDIT_LOGS = gql`
   query GetAuditLogs($skip: Int, $limit: Int, $action: String) {
@@ -32,7 +33,7 @@ const AuditLogViewer: React.FC = () => {
         fetchPolicy: 'network-only'
     });
 
-    const getActionColor = (action: string) => {
+    const getActionColor = (action: string): 'error' | 'warning' | 'success' | 'default' => {
         if (action.includes('DELETE')) return 'error';
         if (action.includes('UPDATE')) return 'warning';
         if (action.includes('APPROVE')) return 'success';
@@ -76,7 +77,7 @@ const AuditLogViewer: React.FC = () => {
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {data?.auditLogs.map((log: any) => (
+                        {data?.auditLogs.map((log: AuditLog) => (
                             <TableRow key={log.id} hover>
                                 <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                     {format(new Date(log.createdAt), 'dd.MM.yyyy HH:mm')}
@@ -91,7 +92,7 @@ const AuditLogViewer: React.FC = () => {
                                     <Chip 
                                         label={log.action} 
                                         size="small" 
-                                        color={getActionColor(log.action) as any} 
+                                        color={getActionColor(log.action)} 
                                         variant="outlined" 
                                     />
                                 </TableCell>

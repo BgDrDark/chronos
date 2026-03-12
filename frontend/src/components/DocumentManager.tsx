@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Box, Typography, List, ListItem, ListItemText, ListItemSecondaryAction, 
   IconButton, Button, Card, CardContent, Chip, CircularProgress, Alert, ListItemIcon
@@ -9,14 +9,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
-
-interface Document {
-    id: number;
-    filename: string;
-    file_type: string;
-    is_locked: boolean;
-    created_at: string;
-}
+import { type UserDocument } from '../types';
 
 interface Props {
     userId: number;
@@ -24,12 +17,12 @@ interface Props {
 }
 
 const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
-    const [docs, setDocs] = useState<Document[]>([]);
+    const [docs, setDocs] = useState<UserDocument[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
 
-    const fetchDocs = async () => {
+    const fetchDocs = useCallback(async () => {
         setLoading(true);
         try {
             const token = localStorage.getItem('token');
@@ -39,16 +32,17 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
             if (!res.ok) throw new Error("Failed to load documents");
             const data = await res.json();
             setDocs(data);
-        } catch (e: any) {
-            setError(e.message);
+        } catch (err: unknown) {
+            if (err instanceof Error) setError(err.message);
+            else setError('Възникна неочаквана грешка');
         } finally {
             setLoading(false);
         }
-    };
+    }, [userId]);
 
     useEffect(() => {
         fetchDocs();
-    }, [userId]);
+    }, [fetchDocs]);
 
     const handleDownload = async (docId: number, filename: string) => {
         try {
@@ -107,7 +101,10 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
             });
             if (!res.ok) throw new Error("Upload failed");
             fetchDocs();
-        } catch (e: any) { alert(e.message); }
+        } catch (err: unknown) { 
+            if (err instanceof Error) alert(err.message);
+            else alert('Възникна грешка при качване');
+        }
         finally { setUploading(false); }
     };
 

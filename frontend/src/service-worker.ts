@@ -7,7 +7,7 @@ declare let self: ServiceWorkerGlobalScope;
 precacheAndRoute(self.__WB_MANIFEST);
 
 // Force immediate update - skip waiting phase
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 

@@ -21,6 +21,7 @@ import {
 } from 'date-fns';
 import { bg } from 'date-fns/locale';
 import { ShiftTypeColors } from '../utils/shiftUtils';
+import { type User, type Shift, type WorkSchedule, type PublicHoliday } from '../types';
 
 // --- QUERIES ---
 const GET_SCHEDULES_QUERY = gql`
@@ -123,31 +124,31 @@ const CurrentScheduleView: React.FC = () => {
     };
   });
 
-  const schedulesMap = new Map<string, any>();
+  const schedulesMap = new Map<string, Shift>();
   if (schedData?.workSchedules) {
-    schedData.workSchedules.forEach((s: any) => {
+    schedData.workSchedules.forEach((s: WorkSchedule) => {
       const key = `${s.user.id}-${s.date}`;
-      schedulesMap.set(key, s.shift);
+      if (s.shift) schedulesMap.set(key, s.shift);
     });
   }
 
-  const holidaysMap = new Map<string, any>();
+  const holidaysMap = new Map<string, PublicHoliday>();
   if (holidaysData?.publicHolidays) {
-    holidaysData.publicHolidays.forEach((h: any) => {
+    holidaysData.publicHolidays.forEach((h: PublicHoliday) => {
         holidaysMap.set(h.date, h);
     });
   }
 
   if (includeOrthodox && orthodoxHolidaysData?.orthodoxHolidays) {
-    orthodoxHolidaysData.orthodoxHolidays.forEach((h: any) => {
+    orthodoxHolidaysData.orthodoxHolidays.forEach((h: PublicHoliday) => {
         holidaysMap.set(h.date, { ...h, isOrthodox: true });
     });
   }
 
   // Derived Legend Data
-  const uniqueShifts = new Map<number, any>();
+  const uniqueShifts = new Map<number, Shift>();
   if (schedData?.workSchedules) {
-    schedData.workSchedules.forEach((s: any) => {
+    schedData.workSchedules.forEach((s: WorkSchedule) => {
       if (s.shift && !uniqueShifts.has(s.shift.id)) {
         uniqueShifts.set(s.shift.id, s.shift);
       }
@@ -258,7 +259,7 @@ const CurrentScheduleView: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {usersData?.users?.users.map((user: any) => (
+            {usersData?.users?.users.map((user: User) => (
               <TableRow key={user.id} hover>
                 <TableCell 
                   component="th" 
@@ -350,7 +351,7 @@ const CurrentScheduleView: React.FC = () => {
       <Box sx={{ mt: 3, p: 2, borderTop: '1px solid #eee' }} className="print-legend">
         <Typography variant="subtitle2" gutterBottom>Легенда на смените:</Typography>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-          {Array.from(uniqueShifts.values()).map((shift: any) => (
+          {Array.from(uniqueShifts.values()).map((shift: Shift) => (
             <Box key={shift.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Box
                 sx={{

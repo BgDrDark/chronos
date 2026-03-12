@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import {
   Container,
@@ -44,8 +44,10 @@ import {
   Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, gql } from '@apollo/client';
-import { CREATE_INGREDIENT, UPDATE_INGREDIENT, ADD_BATCH, UPDATE_BATCH, CREATE_SUPPLIER, UPDATE_SUPPLIER, CREATE_STORAGE_ZONE, UPDATE_STORAGE_ZONE, UPDATE_BATCH_STATUS, START_INVENTORY_SESSION, ADD_INVENTORY_ITEM, COMPLETE_INVENTORY_SESSION, CREATE_INVOICE_FROM_BATCH, BULK_ADD_BATCHES } from '../graphql/confectioneryMutations';
+import { CREATE_INGREDIENT, UPDATE_INGREDIENT, UPDATE_BATCH, CREATE_SUPPLIER, UPDATE_SUPPLIER, CREATE_STORAGE_ZONE, UPDATE_STORAGE_ZONE, UPDATE_BATCH_STATUS, START_INVENTORY_SESSION, ADD_INVENTORY_ITEM, COMPLETE_INVENTORY_SESSION, BULK_ADD_BATCHES } from '../graphql/confectioneryMutations';
 import { ME_QUERY, INVENTORY_SESSIONS_QUERY, INVENTORY_SESSION_ITEMS_QUERY, INVENTORY_BY_BARCODE_QUERY, INGREDIENTS_QUERY } from '../graphql/queries';
+import { type Ingredient, type Batch, type Supplier, type StorageZone, type InventorySession, type InventorySessionItem } from '../types';
+import { type SxProps, type Theme } from '@mui/material';
 
 interface BatchItem {
   ingredientId: string;
@@ -72,8 +74,8 @@ interface ValidatedTextFieldProps {
   disabled?: boolean;
   multiline?: boolean;
   rows?: number;
-  InputProps?: any;
-  sx?: any;
+  InputProps?: unknown; // MUI InputProps are complex, keeping simple or could use Partial<InputProps>
+  sx?: SxProps<Theme>;
 }
 
 const ValidatedTextField: React.FC<ValidatedTextFieldProps> = ({
@@ -398,7 +400,7 @@ const WarehousePage: React.FC = () => {
   // Auto-select ingredient when barcode is entered in current batch item form
   useEffect(() => {
     if (currentBatchItem.barcode && data?.ingredients) {
-      const found = data.ingredients.find((i: any) => i.barcode === currentBatchItem.barcode);
+      const found = data.ingredients.find((i: Ingredient) => i.barcode === currentBatchItem.barcode);
       if (found) {
         setCurrentBatchItem(prev => ({ ...prev, ingredientId: found.id.toString(), storageZoneId: found.storageZone?.id?.toString() || prev.storageZoneId }));
       }
@@ -407,21 +409,19 @@ const WarehousePage: React.FC = () => {
   
   const { data: ingredientsData } = useQuery(INGREDIENTS_QUERY);
   const [createIngredient] = useMutation(CREATE_INGREDIENT);
-  const [addBatch] = useMutation(ADD_BATCH);
   const [createSupplier] = useMutation(CREATE_SUPPLIER);
   const [updateSupplier] = useMutation(UPDATE_SUPPLIER);
   const [createZone] = useMutation(CREATE_STORAGE_ZONE);
   const [updateZone] = useMutation(UPDATE_STORAGE_ZONE);
   
   // Edit states
-  const [editingSupplier, setEditingSupplier] = useState<any>(null);
-  const [editingZone, setEditingZone] = useState<any>(null);
-  const [editingIngredient, setEditingIngredient] = useState<any>(null);
-  const [editingBatch, setEditingBatch] = useState<any>(null);
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [editingZone, setEditingZone] = useState<StorageZone | null>(null);
+  const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
+  const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
   const [updateBatchStatus] = useMutation(UPDATE_BATCH_STATUS);
   const [updateBatch] = useMutation(UPDATE_BATCH);
   const [updateIngredient] = useMutation(UPDATE_INGREDIENT);
-  const [createInvoiceFromBatch] = useMutation(CREATE_INVOICE_FROM_BATCH);
   const [bulkAddBatches] = useMutation(BULK_ADD_BATCHES);
   
   // Edit batch form
@@ -460,7 +460,7 @@ const WarehousePage: React.FC = () => {
   const [updatingBatchId, setUpdatingBatchId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
-  const [foundIngredient, setFoundIngredient] = useState<any>(null);
+  const [foundIngredient, setFoundIngredient] = useState<Ingredient | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
   // Start scanner when dialog opens
@@ -487,9 +487,9 @@ const WarehousePage: React.FC = () => {
         }).catch(console.error);
       }
     };
-  }, [scannerOpen]);
+  }, [scannerOpen, handleBarcodeFound, stopScanner]);
 
-  const stopScanner = async () => {
+  const stopScanner = useCallback(async () => {
     if (scannerRef.current) {
       try {
         await scannerRef.current.stop();
@@ -500,9 +500,9 @@ const WarehousePage: React.FC = () => {
     }
     setScannerOpen(false);
     setScannerTarget(null);
-  };
+  }, []);
 
-  const handleBarcodeFound = (barcode: string) => {
+  const handleBarcodeFound = useCallback((barcode: string) => {
     setSearchQuery(barcode);
     setScannerOpen(false);
     
@@ -511,7 +511,7 @@ const WarehousePage: React.FC = () => {
       setIngredientForm({ ...ingredientForm, barcode });
     } else if (scannerTarget === 'batch') {
       // Find ingredient by barcode and set it
-      const ingredient = data?.ingredients?.find((i: any) => i.barcode === barcode);
+      const ingredient = data?.ingredients?.find((i: Ingredient) => i.barcode === barcode);
       if (ingredient) {
         setCurrentBatchItem({ ...currentBatchItem, ingredientId: ingredient.id.toString(), barcode, storageZoneId: ingredient.storageZone?.id?.toString() || '' });
       } else {
@@ -519,14 +519,14 @@ const WarehousePage: React.FC = () => {
       }
     }
     setScannerTarget(null);
-  };
+  }, [ingredientForm, scannerTarget, data, currentBatchItem]);
 
   const openScannerFor = (target: 'ingredient' | 'batch') => {
     setScannerTarget(target);
     setScannerOpen(true);
   };
 
-  const filteredIngredients = data?.ingredients?.filter((i: any) => 
+  const filteredIngredients = data?.ingredients?.filter((i: Ingredient) => 
     !searchQuery || 
     i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     i.barcode === searchQuery
@@ -598,7 +598,7 @@ const WarehousePage: React.FC = () => {
     if (Object.keys(errors).length > 0) return;
     
     try {
-      const result = await bulkAddBatches({
+      await bulkAddBatches({
         variables: {
           invoiceNumber: batchForm.invoiceNumber,
           supplierId: parseInt(batchForm.supplierId),
@@ -962,7 +962,7 @@ const WarehousePage: React.FC = () => {
         <Grid size={{ xs: 6, sm: 3 }}>
           <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#fff3e0' }}>
             <Typography variant="h4" color="warning.main">
-              {data?.ingredients?.filter((i: any) => parseFloat(i.currentStock) <= parseFloat(i.baselineMinStock)).length || 0}
+              {data?.ingredients?.filter((i: Ingredient) => parseFloat(i.currentStock.toString()) <= parseFloat(i.baselineMinStock.toString())).length || 0}
             </Typography>
             <Typography variant="body2">Ниска наличност</Typography>
           </Paper>
@@ -970,7 +970,7 @@ const WarehousePage: React.FC = () => {
         <Grid size={{ xs: 6, sm: 3 }}>
           <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#fce4ec' }}>
             <Typography variant="h4" color="error.main">
-              {data?.batches?.filter((b: any) => new Date(b.expiryDate) < new Date()).length || 0}
+              {data?.batches?.filter((b: Batch) => b.expiryDate && new Date(b.expiryDate) < new Date()).length || 0}
             </Typography>
             <Typography variant="body2">Изтекли партиди</Typography>
           </Paper>
@@ -1013,7 +1013,7 @@ const WarehousePage: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredIngredients.map((item: any) => (
+                {filteredIngredients.map((item: Ingredient) => (
                   <TableRow key={item.id}>
                     <TableCell>
                       <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
@@ -1066,7 +1066,7 @@ const WarehousePage: React.FC = () => {
                 label="Филтрирай по продукт"
               >
                 <MenuItem value="">Всички продукти</MenuItem>
-                {data?.ingredients.map((ing: any) => (
+                {data?.ingredients.map((ing: Ingredient) => (
                   <MenuItem key={ing.id} value={ing.id}>{ing.name}</MenuItem>
                 ))}
               </Select>
@@ -1102,9 +1102,9 @@ const WarehousePage: React.FC = () => {
               </TableHead>
               <TableBody>
                 {data?.batches
-                  .filter((b: any) => !selectedIngredientId || b.ingredientId === selectedIngredientId)
-                  .filter((b: any) => b.status === batchFilterStatus)
-                  .map((batch: any) => {
+                  .filter((b: Batch) => !selectedIngredientId || b.ingredientId === selectedIngredientId)
+                  .filter((b: Batch) => b.status === batchFilterStatus)
+                  .map((batch: Batch) => {
                     const isExpired = new Date(batch.expiryDate) < new Date();
                     return (
                       <TableRow key={batch.id} sx={isExpired ? { backgroundColor: '#fff3e0' } : {}}>
@@ -1160,7 +1160,7 @@ const WarehousePage: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {data?.suppliers.map((s: any) => (
+                {data?.suppliers.map((s: Supplier) => (
                   <TableRow key={s.id}>
                     <TableCell>{s.name}</TableCell>
                     <TableCell>{s.contactPerson}</TableCell>
@@ -1191,7 +1191,7 @@ const WarehousePage: React.FC = () => {
         {/* Зони за съхранение */}
         <TabPanel value={tabValue} index={3}>
           <Grid container spacing={2}>
-            {data?.storageZones.map((z: any) => (
+            {data?.storageZones.map((z: StorageZone) => (
               <Grid size={{ xs: 12, sm: 4 }} key={z.id}>
                 <Paper variant="outlined" sx={{ p: 2, position: 'relative' }}>
                   <Box sx={{ position: 'absolute', top: 8, right: 8 }}>
@@ -1290,7 +1290,7 @@ const WarehousePage: React.FC = () => {
                       onChange={(e) => setInventorySearch(e.target.value)}
                       onKeyDown={async (e) => {
                         if (e.key === 'Enter' && inventorySearch && inventoryQuantity) {
-                          const ingredient = ingredientsData?.ingredients?.find((i: any) => i.barcode === inventorySearch);
+                          const ingredient = ingredientsData?.ingredients?.find((i: Ingredient) => i.barcode === inventorySearch);
                           if (ingredient) {
                             await addInventoryItem({
                               variables: {
@@ -1319,7 +1319,7 @@ const WarehousePage: React.FC = () => {
                       variant="contained"
                       fullWidth
                       onClick={async () => {
-                        const ingredient = ingredientsData?.ingredients?.find((i: any) => i.barcode === inventorySearch);
+                        const ingredient = ingredientsData?.ingredients?.find((i: Ingredient) => i.barcode === inventorySearch);
                         if (ingredient && inventoryQuantity) {
                           await addInventoryItem({
                             variables: {
@@ -1360,7 +1360,7 @@ const WarehousePage: React.FC = () => {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {sessionItemsData?.inventorySessionItems?.map((item: any) => (
+                        {sessionItemsData?.inventorySessionItems?.map((item: InventorySessionItem) => (
                           <TableRow key={item.id} sx={{ 
                             backgroundColor: item.difference > 0 ? '#e8f5e9' : item.difference < 0 ? '#ffebee' : 'inherit'
                           }}>
@@ -1392,7 +1392,7 @@ const WarehousePage: React.FC = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {inventorySessionsData?.inventorySessions?.map((session: any) => (
+                      {inventorySessionsData?.inventorySessions?.map((session: InventorySession) => (
                         <TableRow 
                           key={session.id} 
                           hover 
@@ -1442,7 +1442,7 @@ const WarehousePage: React.FC = () => {
                       helperText={validationErrors.supplierId}
                       required
                     >
-                      {data?.suppliers.map((s: any) => (
+                      {data?.suppliers.map((s: Supplier) => (
                         <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                       ))}
                     </TextField>
@@ -1501,7 +1501,7 @@ const WarehousePage: React.FC = () => {
                         value={currentBatchItem.ingredientId}
                         onChange={(e) => {
                           const id = e.target.value;
-                          const ing = data?.ingredients.find((i: any) => i.id.toString() === id);
+                          const ing = data?.ingredients.find((i: Ingredient) => i.id.toString() === id);
                           setCurrentBatchItem({ 
                             ...currentBatchItem, 
                             ingredientId: id, 
@@ -1509,7 +1509,7 @@ const WarehousePage: React.FC = () => {
                           });
                         }}
                       >
-                        {data?.ingredients.map((i: any) => (
+                        {data?.ingredients.map((i: Ingredient) => (
                           <MenuItem key={i.id} value={i.id}>{i.name}</MenuItem>
                         ))}
                       </TextField>
@@ -1572,7 +1572,7 @@ const WarehousePage: React.FC = () => {
                       value={currentBatchItem.storageZoneId}
                       onChange={(e) => setCurrentBatchItem({ ...currentBatchItem, storageZoneId: e.target.value })}
                     >
-                      {data?.storageZones?.map((z: any) => (
+                      {data?.storageZones?.map((z: StorageZone) => (
                         <MenuItem key={z.id} value={z.id}>{z.name} ({z.tempMin}°C - {z.tempMax}°C)</MenuItem>
                       ))}
                     </TextField>
@@ -1597,7 +1597,7 @@ const WarehousePage: React.FC = () => {
                   </TableHead>
                   <TableBody>
                     {batchForm.items.map((item, index) => {
-                      const ing = data?.ingredients.find((i: any) => i.id.toString() === item.ingredientId);
+                      const ing = data?.ingredients.find((i: Ingredient) => i.id.toString() === item.ingredientId);
                       return (
                         <TableRow key={index}>
                           <TableCell>{ing?.name}</TableCell>
@@ -1985,7 +1985,7 @@ const WarehousePage: React.FC = () => {
                 onChange={(e) => setEditIngredientForm({ ...editIngredientForm, storageZoneId: e.target.value })}
               >
                 <MenuItem value="">Няма зона</MenuItem>
-                {data?.storageZones.map((z: any) => (
+                {data?.storageZones.map((z: StorageZone) => (
                   <MenuItem key={z.id} value={z.id}>{z.name}</MenuItem>
                 ))}
               </TextField>
@@ -2052,7 +2052,7 @@ const WarehousePage: React.FC = () => {
                 value={editBatchForm.ingredientId}
                 onChange={(e) => setEditBatchForm({ ...editBatchForm, ingredientId: e.target.value })}
               >
-                {data?.ingredients.map((i: any) => (
+                {data?.ingredients.map((i: Ingredient) => (
                   <MenuItem key={i.id} value={i.id}>{i.name}</MenuItem>
                 ))}
               </TextField>
@@ -2085,7 +2085,7 @@ const WarehousePage: React.FC = () => {
                 onChange={(e) => setEditBatchForm({ ...editBatchForm, supplierId: e.target.value })}
               >
                 <MenuItem value="">Няма</MenuItem>
-                {data?.suppliers.map((s: any) => (
+                {data?.suppliers.map((s: Supplier) => (
                   <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                 ))}
               </TextField>
@@ -2115,13 +2115,17 @@ const WarehousePage: React.FC = () => {
                 onChange={(e) => setEditBatchForm({ ...editBatchForm, storageZoneId: e.target.value })}
               >
                 <MenuItem value="">Няма зона</MenuItem>
-                {data?.storageZones.map((z: any) => (
+                {data?.storageZones.map((z: StorageZone) => (
                   <MenuItem key={z.id} value={z.id}>{z.name}</MenuItem>
                 ))}
               </TextField>
             </Grid>
           </Grid>
         </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditingBatch(null)}>Отказ</Button>
+          <Button onClick={handleUpdateBatch} variant="contained" color="primary">Запази</Button>
+        </DialogActions>
       </Dialog>
 
       {/* Modal: Нов продукт */}
@@ -2173,7 +2177,7 @@ const WarehousePage: React.FC = () => {
                 value={ingredientForm.storageZoneId}
                 onChange={(e) => setIngredientForm({ ...ingredientForm, storageZoneId: e.target.value })}
               >
-                {data?.storageZones?.map((z: any) => (
+                {data?.storageZones?.map((z: StorageZone) => (
                   <MenuItem key={z.id} value={z.id}>{z.name}</MenuItem>
                 ))}
               </TextField>

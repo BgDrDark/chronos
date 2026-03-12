@@ -1,4 +1,4 @@
-import { createContext } from 'react';
+import { createContext, useContext } from 'react';
 
 export interface DashboardConfig {
   showChart: boolean;
@@ -18,3 +18,5 @@ export const ThemeContext = createContext<ThemeContextType>({
   dashboardConfig: { showChart: true, showWeeklyTable: true },
   toggleDashboardWidget: () => {},
 });
+
+export const useAppTheme = () => useContext(ThemeContext);

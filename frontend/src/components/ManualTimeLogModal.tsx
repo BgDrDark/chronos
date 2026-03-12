@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -11,6 +11,10 @@ import {
   Grid
 } from '@mui/material';
 import { useMutation, gql } from '@apollo/client';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { type User } from '../types';
 
 const CREATE_MANUAL_TIME_LOG_MUTATION = gql`
   mutation CreateManualTimeLog($userId: Int!, $startTime: DateTime!, $endTime: DateTime!, $breakDurationMinutes: Int) {
@@ -22,10 +26,20 @@ const CREATE_MANUAL_TIME_LOG_MUTATION = gql`
   }
 `;
 
+const manualLogSchema = z.object({
+  userId: z.string().min(1, 'Изберете служител'),
+  date: z.string().min(1, 'Изберете дата'),
+  startTime: z.string().min(1, 'Изберете начален час'),
+  endTime: z.string().min(1, 'Изберете краен час'),
+  breakDuration: z.string().optional(),
+});
+
+type ManualLogFormData = z.infer<typeof manualLogSchema>;
+
 interface ManualTimeLogModalProps {
   open: boolean;
   onClose: () => void;
-  users: any[];
+  users: User[];
   initialDate?: string | null;
   initialUserId?: string | number | null;
   refetch: () => void;
@@ -34,121 +48,164 @@ interface ManualTimeLogModalProps {
 const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({ 
   open, onClose, users, initialDate, initialUserId, refetch 
 }) => {
-  const [userId, setUserId] = useState<string>('');
-  const [date, setDate] = useState<string>('');
-  const [startTime, setStartTime] = useState<string>('09:00');
-  const [endTime, setEndTime] = useState<string>('17:00');
-  const [breakDuration, setBreakDuration] = useState<string>('60');
-  const [error, setError] = useState<string | null>(null);
-
   const [createLog, { loading }] = useMutation(CREATE_MANUAL_TIME_LOG_MUTATION);
+  const [apiError, setApiError] = React.useState<string | null>(null);
 
-  useEffect(() => {
+  const { control, handleSubmit, reset, formState: { errors } } = useForm<ManualLogFormData>({
+    resolver: zodResolver(manualLogSchema),
+    defaultValues: {
+      userId: initialUserId?.toString() || '',
+      date: initialDate || new Date().toISOString().split('T')[0],
+      startTime: '09:00',
+      endTime: '17:00',
+      breakDuration: '60'
+    }
+  });
+
+  // Reset form when initial values change or modal opens
+  React.useEffect(() => {
     if (open) {
-      if (initialUserId) setUserId(initialUserId.toString());
-      if (initialDate) setDate(initialDate);
-      else setDate(new Date().toISOString().split('T')[0]);
-      setBreakDuration('60');
-      setError(null);
+      reset({
+        userId: initialUserId?.toString() || '',
+        date: initialDate || new Date().toISOString().split('T')[0],
+        startTime: '09:00',
+        endTime: '17:00',
+        breakDuration: '60'
+      });
+      setApiError(null);
     }
-  }, [open, initialDate, initialUserId]);
+  }, [open, initialUserId, initialDate, reset]);
 
-  const handleSubmit = async () => {
-    setError(null);
-    if (!userId || !date || !startTime || !endTime) {
-      setError('Моля попълнете всички полета.');
-      return;
-    }
-
+  const onSubmit = async (data: ManualLogFormData) => {
+    setApiError(null);
     try {
-      // Combine date and time to ISO DateTime string
-      const startDateTime = new Date(`${date}T${startTime}:00`).toISOString();
-      const endDateTime = new Date(`${date}T${endTime}:00`).toISOString();
+      const startDateTime = new Date(`${data.date}T${data.startTime}:00`).toISOString();
+      const endDateTime = new Date(`${data.date}T${data.endTime}:00`).toISOString();
 
       await createLog({
         variables: {
-          userId: parseInt(userId),
+          userId: parseInt(data.userId),
           startTime: startDateTime,
           endTime: endDateTime,
-          breakDurationMinutes: parseInt(breakDuration) || 0
+          breakDurationMinutes: parseInt(data.breakDuration || '0') || 0
         }
       });
       
       refetch();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Възникна грешка');
+      setApiError(err instanceof Error ? err.message : 'Възникна грешка');
     }
   };
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle>Ръчно добавяне на часове</DialogTitle>
-      <DialogContent>
-        <Grid container spacing={2} sx={{ mt: 0.5 }}>
-          <Grid size={{ xs: 12 }}>
-            <TextField
-              select
-              fullWidth
-              label="Служител"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-            >
-              {users?.length > 0 ? users.map((u: any) => (
-                <MenuItem key={u.id} value={u.id}>
-                  {u.firstName} {u.lastName} ({u.email})
-                </MenuItem>
-              )) : <MenuItem disabled value="">Зареждане...</MenuItem>}
-            </TextField>
+      <Box component="form" onSubmit={handleSubmit(onSubmit)}>
+        <DialogContent dividers>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <Controller
+                name="userId"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    select
+                    fullWidth
+                    label="Служител"
+                    error={!!errors.userId}
+                    helperText={errors.userId?.message}
+                    size="small"
+                  >
+                    {users?.length > 0 ? users.map((u: User) => (
+                      <MenuItem key={u.id} value={u.id}>
+                        {u.firstName} {u.lastName} ({u.email})
+                      </MenuItem>
+                    )) : <MenuItem disabled value="">Зареждане...</MenuItem>}
+                  </TextField>
+                )}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Controller
+                name="date"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    type="date"
+                    fullWidth
+                    label="Дата"
+                    InputLabelProps={{ shrink: true }}
+                    error={!!errors.date}
+                    helperText={errors.date?.message}
+                    size="small"
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <Controller
+                name="startTime"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    type="time"
+                    fullWidth
+                    label="Начало"
+                    InputLabelProps={{ shrink: true }}
+                    error={!!errors.startTime}
+                    helperText={errors.startTime?.message}
+                    size="small"
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <Controller
+                name="endTime"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    type="time"
+                    fullWidth
+                    label="Край"
+                    InputLabelProps={{ shrink: true }}
+                    error={!!errors.endTime}
+                    helperText={errors.endTime?.message}
+                    size="small"
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Controller
+                name="breakDuration"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    type="number"
+                    fullWidth
+                    label="Почивка (минути)"
+                    size="small"
+                  />
+                )}
+              />
+            </Grid>
           </Grid>
-          <Grid size={{ xs: 12 }}>
-            <TextField
-              type="date"
-              fullWidth
-              label="Дата"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-          <Grid size={{ xs: 6 }}>
-            <TextField
-              type="time"
-              fullWidth
-              label="Начало"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-          <Grid size={{ xs: 6 }}>
-            <TextField
-              type="time"
-              fullWidth
-              label="Край"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-          <Grid size={{ xs: 12 }}>
-            <TextField
-              type="number"
-              fullWidth
-              label="Почивка (минути)"
-              value={breakDuration}
-              onChange={(e) => setBreakDuration(e.target.value)}
-            />
-          </Grid>
-        </Grid>
-        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} color="inherit">Отказ</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={loading}>
-          Запази
-        </Button>
-      </DialogActions>
+          {apiError && <Alert severity="error" sx={{ mt: 2 }}>{apiError}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose} color="inherit">Отказ</Button>
+          <Button type="submit" variant="contained" disabled={loading}>
+            {loading ? 'Запис...' : 'Запази'}
+          </Button>
+        </DialogActions>
+      </Box>
     </Dialog>
   );
 };

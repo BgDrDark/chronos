@@ -3,7 +3,7 @@ import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { 
     Box, Typography, Paper, Button, Container, Dialog, 
     DialogTitle, DialogContent, DialogActions, TextField, Alert, Avatar, 
-    CircularProgress, Divider, Stack, IconButton, Chip
+    CircularProgress, Stack, IconButton, Chip
 } from '@mui/material';
 import {
     AccessTime as AccessTimeIcon,
@@ -54,7 +54,7 @@ const UnifiedKiosk: React.FC = () => {
     const [entryMode, setEntryMode] = useState<'qr' | 'keyboard'>('qr');
     const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
     const [offlineQueue, setOfflineQueue] = useState<OfflineLog[]>([]);
-    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [isOnline] = useState(navigator.onLine);
     const [syncing, setSyncing] = useState(false);
     
     // Exit Lock State
@@ -122,14 +122,14 @@ const UnifiedKiosk: React.FC = () => {
             if (saved) setOfflineQueue(JSON.parse(saved));
 
             // Request Fullscreen
-            try { document.documentElement.requestFullscreen(); } catch(e){}
+            try { document.documentElement.requestFullscreen(); } catch { }
 
             // Fetch Config
             try {
                 const response = await fetch(getApiUrl(`kiosk/terminal/${hwid}/config`));
                 const data = await response.json();
                 setConfig(data);
-            } catch (err) {
+            } catch {
                 setConfig({ mode: 'both', registered: false, terminal_id: null, alias: null });
             }
 
@@ -140,7 +140,7 @@ const UnifiedKiosk: React.FC = () => {
                 if (bgData.background_image) {
                     setBackgroundImage(getApiUrl(`uploads/${bgData.background_image}`));
                 }
-            } catch (e) {}
+            } catch { }
 
             setLoading(false);
         };
@@ -219,7 +219,7 @@ const UnifiedKiosk: React.FC = () => {
                 setScanResult({ status: 'success', message: 'Записано офлайн (БЕЗ ДОСТЪП)' });
                 playSound('success');
             }
-        } catch (e) {
+        } catch {
             setScanResult({ status: 'error', message: 'Мрежова грешка' });
             playSound('error');
         }
@@ -244,7 +244,7 @@ const UnifiedKiosk: React.FC = () => {
             });
             if (response.ok) navigate('/');
             else setExitError('Невалиден имейл или парола');
-        } catch (e) { setExitError('Грешка при свързване'); }
+        } catch { setExitError('Грешка при свързване'); }
         finally { setIsVerifying(false); }
     };
 

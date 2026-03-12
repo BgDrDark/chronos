@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Box, Typography, Card, CardContent, Grid, Button, 
   MenuItem, TextField, Chip, List, Paper,
@@ -7,6 +7,7 @@ import {
 import { useQuery, useMutation, gql } from '@apollo/client';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import SendIcon from '@mui/icons-material/Send';
+import { type User, type WorkSchedule, type SwapRequest } from '../types';
 
 const GET_SWAP_DATA = gql`
   query GetSwapData {
@@ -98,8 +99,14 @@ const ShiftSwapCenter: React.FC = () => {
     const [targetUserId, setTargetUserId] = useState('');
     const [targetSchedId, setTargetSchedId] = useState('');
 
-    const today = new Date().toISOString().split('T')[0];
-    const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const { today, nextMonth } = useMemo(() => {
+        const now = new Date();
+        const future = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        return {
+            today: now.toISOString().split('T')[0],
+            nextMonth: future.toISOString().split('T')[0]
+        };
+    }, []);
 
     const { data: myScheds } = useQuery(MY_FUTURE_SCHEDULES, {
         variables: { startDate: today, endDate: nextMonth }
@@ -122,28 +129,37 @@ const ShiftSwapCenter: React.FC = () => {
             alert("Заявката е изпратена!");
             setMySchedId(''); setTargetUserId(''); setTargetSchedId('');
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (err: unknown) { 
+            if (err instanceof Error) alert(err.message);
+            else alert('Възникна грешка');
+        }
     };
 
     const handleRespond = async (id: number, accept: boolean) => {
         try {
             await respondSwap({ variables: { swapId: id, accept } });
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (err: unknown) { 
+            if (err instanceof Error) alert(err.message);
+            else alert('Възникна грешка');
+        }
     };
 
     const handleApprove = async (id: number, approve: boolean) => {
         try {
             await approveSwap({ variables: { swapId: id, approve } });
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (err: unknown) { 
+            if (err instanceof Error) alert(err.message);
+            else alert('Възникна грешка');
+        }
     };
 
-    if (loading) return <CircularProgress />;
+    if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>;
 
     const isAdmin = data?.me?.role?.name === 'admin';
-    const myRequests = data?.mySwapRequests || [];
-    const adminPending = data?.pendingAdminSwaps || [];
+    const myRequests: SwapRequest[] = data?.mySwapRequests || [];
+    const adminPending: SwapRequest[] = data?.pendingAdminSwaps || [];
 
     return (
         <Box sx={{ mt: 3 }}>
@@ -153,7 +169,7 @@ const ShiftSwapCenter: React.FC = () => {
 
             <Grid container spacing={3}>
                 {/* 1. Create Request */}
-                <Grid size={{ xs: 12, md: 4 }}>
+                <Grid item xs={12} md={4}>
                     <Card variant="outlined" sx={{ height: '100%' }}>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Нова заявка</Typography>
@@ -161,8 +177,8 @@ const ShiftSwapCenter: React.FC = () => {
                                 select fullWidth label="Моя смяна" margin="normal" size="small"
                                 value={mySchedId} onChange={(e) => setMySchedId(e.target.value)}
                             >
-                                {myScheds?.mySchedules?.length > 0 ? myScheds.mySchedules.map((s: any) => (
-                                    <MenuItem key={s.id} value={s.id}>{s.date} - {s.shift.name}</MenuItem>
+                                {myScheds?.mySchedules?.length > 0 ? myScheds.mySchedules.map((s: WorkSchedule) => (
+                                    <MenuItem key={s.id} value={s.id}>{s.date} - {s.shift?.name}</MenuItem>
                                 )) : <MenuItem disabled value="">Няма налични смени</MenuItem>}
                             </TextField>
 
@@ -170,7 +186,7 @@ const ShiftSwapCenter: React.FC = () => {
                                 select fullWidth label="Колега" margin="normal" size="small"
                                 value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)}
                             >
-                                {data?.users?.users?.filter((u: any) => u.id !== data.me.id).length > 0 ? data.users.users.filter((u: any) => u.id !== data.me.id).map((u: any) => (
+                                {data?.users?.users?.filter((u: User) => String(u.id) !== String(data.me.id)).length > 0 ? data.users.users.filter((u: User) => String(u.id) !== String(data.me.id)).map((u: User) => (
                                     <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>
                                 )) : <MenuItem disabled value="">Няма налични колеги</MenuItem>}
                             </TextField>
@@ -180,10 +196,10 @@ const ShiftSwapCenter: React.FC = () => {
                                 value={targetSchedId} onChange={(e) => setTargetSchedId(e.target.value)}
                                 disabled={!targetUserId}
                             >
-                                {allScheds?.workSchedules?.filter((s: any) => s.user.id === parseInt(targetUserId)).length > 0 ? allScheds.workSchedules
-                                    .filter((s: any) => s.user.id === parseInt(targetUserId))
-                                    .map((s: any) => (
-                                        <MenuItem key={s.id} value={s.id}>{s.date} - {s.shift.name}</MenuItem>
+                                {allScheds?.workSchedules?.filter((s: WorkSchedule) => String(s.user.id) === String(targetUserId)).length > 0 ? allScheds.workSchedules
+                                    .filter((s: WorkSchedule) => String(s.user.id) === String(targetUserId))
+                                    .map((s: WorkSchedule) => (
+                                        <MenuItem key={s.id} value={s.id}>{s.date} - {s.shift?.name}</MenuItem>
                                     )) : <MenuItem disabled value="">Няма налични смени</MenuItem>
                                 }
                             </TextField>
@@ -200,23 +216,23 @@ const ShiftSwapCenter: React.FC = () => {
                 </Grid>
 
                 {/* 2. My Requests List */}
-                <Grid size={{ xs: 12, md: 8 }}>
+                <Grid item xs={12} md={8}>
                     <Card variant="outlined" sx={{ height: '100%' }}>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Моите размени</Typography>
                             <List>
-                                {myRequests.map((req: any) => {
-                                    const isIncoming = req.targetUser.id === data.me.id;
+                                {myRequests.map((req: SwapRequest) => {
+                                    const isIncoming = String(req.targetUser.id) === String(data.me.id);
                                     return (
                                         <Paper key={req.id} variant="outlined" sx={{ mb: 2, p: 2 }}>
                                             <Grid container alignItems="center" spacing={2}>
-                                                <Grid size={{ xs: 12, sm: 8 }}>
+                                                <Grid item xs={12} sm={8}>
                                                     <Typography variant="subtitle2">
                                                         {isIncoming ? `Покана от ${req.requestor.firstName}` : `Покана до ${req.targetUser.firstName}`}
                                                     </Typography>
                                                     <Typography variant="body2" color="text.secondary">
-                                                        Размяна: <strong>{req.requestorSchedule.date}</strong> ({req.requestorSchedule.shift.name}) 
-                                                        ↔ <strong>{req.targetSchedule.date}</strong> ({req.targetSchedule.shift.name})
+                                                        Размяна: <strong>{req.requestorSchedule.date}</strong> ({req.requestorSchedule.shift?.name}) 
+                                                        ↔ <strong>{req.targetSchedule.date}</strong> ({req.targetSchedule.shift?.name})
                                                     </Typography>
                                                     <Box sx={{ mt: 1 }}>
                                                         <Chip 
@@ -226,7 +242,7 @@ const ShiftSwapCenter: React.FC = () => {
                                                         />
                                                     </Box>
                                                 </Grid>
-                                                <Grid size={{ xs: 12, sm: 4 }} sx={{ textAlign: 'right' }}>
+                                                <Grid item xs={12} sm={4} sx={{ textAlign: 'right' }}>
                                                     {isIncoming && req.status === 'pending' && (
                                                         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
                                                             <Button size="small" variant="contained" color="success" onClick={() => handleRespond(req.id, true)}>Приеми</Button>
@@ -246,15 +262,15 @@ const ShiftSwapCenter: React.FC = () => {
 
                 {/* 3. Admin Approval Section */}
                 {isAdmin && adminPending.length > 0 && (
-                    <Grid size={{ xs: 12 }}>
+                    <Grid item xs={12}>
                         <Card variant="outlined" sx={{ border: '2px solid #2196f3' }}>
                             <CardContent>
                                 <Typography variant="h6" color="primary" gutterBottom sx={{ fontWeight: 'bold' }}>
                                     Администратор: Чакащи одобрение размени ({adminPending.length})
                                 </Typography>
                                 <Grid container spacing={2}>
-                                    {adminPending.map((p: any) => (
-                                        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={p.id}>
+                                    {adminPending.map((p: SwapRequest) => (
+                                        <Grid item xs={12} sm={6} md={4} key={p.id}>
                                             <Paper sx={{ p: 2, bgcolor: '#e3f2fd' }}>
                                                 <Typography variant="body2">
                                                     <strong>{p.requestor.firstName}</strong> <SwapHorizIcon sx={{ verticalAlign: 'middle', fontSize: '1rem' }} /> <strong>{p.targetUser.firstName}</strong>

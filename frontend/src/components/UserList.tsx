@@ -31,9 +31,9 @@ import SearchIcon from '@mui/icons-material/Search';
 import CorporateFareIcon from '@mui/icons-material/CorporateFare';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useNavigate } from 'react-router-dom';
-// @ts-ignore
 import { useQuery, gql, useMutation } from '@apollo/client';
 import EditUserModal from './EditUserModal';
+import { type User } from '../types';
 
 const GET_USERS_QUERY = gql`
   query GetUsers($skip: Int, $limit: Int, $search: String, $sortBy: String, $sortOrder: String) {
@@ -41,6 +41,7 @@ const GET_USERS_QUERY = gql`
       users {
         id
         email
+        username
         firstName
         lastName
         phoneNumber
@@ -49,6 +50,7 @@ const GET_USERS_QUERY = gql`
         birthDate
         iban
         isActive
+        passwordForceChange
         createdAt
         lastLogin
         company { id name }
@@ -62,9 +64,12 @@ const GET_USERS_QUERY = gql`
           endDate
           baseSalary
           workHoursPerWeek
+          probationMonths
+          salaryCalculationType
           salaryInstallmentsCount
           monthlyAdvanceAmount
           taxResident
+          insuranceContributor
           hasIncomeTax
           nightWorkRate
           overtimeRate
@@ -83,20 +88,6 @@ const DELETE_USER_MUTATION = gql`
     deleteUser(id: $id)
   }
 `;
-
-interface UserData {
-  id: number;
-  email: string;
-  firstName?: string | null;
-  lastName?: string | null;
-  isActive: boolean;
-  company?: { id: number; name: string } | null;
-  department?: { id: number; name: string } | null;
-  position?: { id: number; title: string } | null;
-  createdAt: string;
-  lastLogin?: string | null;
-  role: { id: number; name: string };
-}
 
 const UserList: React.FC = () => {
   const theme = useTheme();
@@ -126,7 +117,7 @@ const UserList: React.FC = () => {
   });
 
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserData | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const handleDeleteUser = async (userId: number) => {
     if (window.confirm('Сигурни ли сте, че искате да изтриете този потребител?')) {
@@ -138,7 +129,7 @@ const UserList: React.FC = () => {
     }
   };
 
-  const handleEditUser = (user: UserData) => {
+  const handleEditUser = (user: User) => {
     setCurrentUser(user);
     setEditModalOpen(true);
   };
@@ -187,7 +178,7 @@ const UserList: React.FC = () => {
 
   const renderMobileView = () => (
     <Stack spacing={2}>
-      {users.map((user: UserData) => (
+      {users.map((user: User) => (
         <Card key={user.id} variant="outlined" sx={{ borderRadius: 2 }}>
           <CardContent>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
@@ -269,7 +260,7 @@ const UserList: React.FC = () => {
           </TableRow>
         </TableHead>
         <TableBody>
-          {users.map((user: UserData) => (
+          {users.map((user: User) => (
             <TableRow key={user.id} hover>
               <TableCell>{user.id}</TableCell>
               <TableCell>{user.firstName} {user.lastName}</TableCell>
@@ -348,6 +339,7 @@ const UserList: React.FC = () => {
       
       {currentUser && (
         <EditUserModal
+          key={currentUser.id}
           open={editModalOpen}
           onClose={handleCloseEditModal}
           user={currentUser}

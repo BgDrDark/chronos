@@ -16,7 +16,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip as MuiChip, Chip
 } from '@mui/material';
 import { formatDuration, formatDurationHHMM } from '../utils/formatUtils';
-import { useAppTheme } from '../ThemeContext';
+import { useAppTheme } from '../themeContext';
 import ShiftSwapCenter from '../components/ShiftSwapCenter';
 import MyQrCard from '../components/MyQrCard';
 

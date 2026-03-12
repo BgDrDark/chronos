@@ -35,7 +35,7 @@ const ResetPasswordPage: React.FC = () => {
                 const data = await response.json();
                 setError(data.detail || 'Невалиден или изтекъл линк.');
             }
-        } catch (err) {
+        } catch {
             setIsTokenValid(false);
             setError('Грешка при проверка на линка.');
         } finally {

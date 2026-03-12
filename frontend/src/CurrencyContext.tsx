@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery, gql } from '@apollo/client';
 import { CurrencyContext } from './currencyContext';
 
@@ -9,8 +9,6 @@ const GET_GLOBAL_CURRENCY = gql`
     }
   }
 `;
-
-export const useCurrency = () => useContext(CurrencyContext);
 
 export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currency, setCurrency] = useState('EUR');

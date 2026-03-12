@@ -7,7 +7,7 @@ import { useQuery, gql } from '@apollo/client';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
-import { useCurrency } from '../CurrencyContext';
+import { useCurrency } from '../currencyContext';
 
 const GET_FORECAST = gql`
   query GetForecast($year: Int!, $month: Int!) {

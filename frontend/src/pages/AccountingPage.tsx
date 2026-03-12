@@ -39,6 +39,11 @@ import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import { useQuery, useMutation, gql } from '@apollo/client';
+import { type SxProps, type Theme } from '@mui/material';
+import { 
+  type Invoice, type CashJournalEntry, type Supplier,
+  type InvoiceItem 
+} from '../types';
 
 interface ValidatedTextFieldProps {
   label: string;
@@ -56,9 +61,9 @@ interface ValidatedTextFieldProps {
   disabled?: boolean;
   multiline?: boolean;
   rows?: number;
-  InputProps?: any;
-  InputLabelProps?: any;
-  sx?: any;
+  InputProps?: unknown;
+  InputLabelProps?: unknown;
+  sx?: SxProps<Theme>;
 }
 
 const ValidatedTextField: React.FC<ValidatedTextFieldProps> = ({
@@ -764,9 +769,9 @@ function CashJournalTab() {
   const allInvoices = invoicesData?.invoices || [];
   
   // Филтриране на платените фактури
-  const paidInvoices = allInvoices.filter((inv: any) => inv.status === 'paid');
-  const incomingInvoices = paidInvoices.filter((inv: any) => inv.type === 'incoming');
-  const outgoingInvoices = paidInvoices.filter((inv: any) => inv.type === 'outgoing');
+  const paidInvoices = allInvoices.filter((inv: Invoice) => inv.status === 'paid');
+  const incomingInvoices = paidInvoices.filter((inv: Invoice) => inv.type === 'incoming');
+  const outgoingInvoices = paidInvoices.filter((inv: Invoice) => inv.type === 'outgoing');
 
   // Общи суми
   // Входящи фактури = Разход (плащаме на доставчик)
@@ -808,7 +813,7 @@ function CashJournalTab() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {incomingInvoices.map((inv: any) => (
+                {incomingInvoices.map((inv: Invoice) => (
                   <TableRow key={inv.id}>
                     <TableCell>{inv.number}</TableCell>
                     <TableCell>{new Date(inv.date).toLocaleDateString('bg-BG')}</TableCell>
@@ -837,7 +842,7 @@ function CashJournalTab() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {outgoingInvoices.map((inv: any) => (
+                {outgoingInvoices.map((inv: Invoice) => (
                   <TableRow key={inv.id}>
                     <TableCell>{inv.number}</TableCell>
                     <TableCell>{new Date(inv.date).toLocaleDateString('bg-BG')}</TableCell>
@@ -866,7 +871,7 @@ function CashJournalTab() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {outgoingInvoices.map((inv: any) => (
+                {outgoingInvoices.map((inv: Invoice) => (
                   <TableRow key={inv.id}>
                     <TableCell>{inv.number}</TableCell>
                     <TableCell>{new Date(inv.date).toLocaleDateString('bg-BG')}</TableCell>
@@ -929,7 +934,7 @@ function CashJournalTab() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {entries.map((entry: any) => (
+              {entries.map((entry: CashJournalEntry) => (
                 <TableRow key={entry.id} sx={{ backgroundColor: entry.operationType === 'income' ? '#e8f5e9' : '#ffebee' }}>
                   <TableCell>{new Date(entry.date).toLocaleDateString('bg-BG')}</TableCell>
                   <TableCell>
@@ -1361,7 +1366,7 @@ function ProformaTab() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {proformas.map((inv: any) => (
+              {proformas.map((inv: Invoice) => (
                 <TableRow key={inv.id}>
                   <TableCell>{inv.number}</TableCell>
                   <TableCell>{new Date(inv.date).toLocaleDateString('bg-BG')}</TableCell>
@@ -1430,7 +1435,7 @@ function CorrectionsTab() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {corrections.map((corr: any) => (
+              {corrections.map((corr: Invoice) => (
                 <TableRow key={corr.id}>
                   <TableCell>{corr.number}</TableCell>
                   <TableCell>
@@ -2302,8 +2307,8 @@ function SAFTTab() {
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Paper sx={{ width: '100%', mb: 2, p: 2 }}>
-        {tabValue === 0 && <IncomingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} handleOpenDetailsDialog={handleOpenDetailsDialog} />}
-        {tabValue === 1 && <OutgoingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} />}
+        {tabValue === 0 && <IncomingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} handleOpenDetailsDialog={handleOpenDetailsDialog} handleDelete={handleDelete} />}
+        {tabValue === 1 && <OutgoingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} handleDelete={handleDelete} />}
         {tabValue === 2 && <CashJournalTab />}
         {tabValue === 3 && <OperationLogsTab />}
         {tabValue === 4 && <DailySummaryTab />}
@@ -2438,7 +2443,7 @@ function SAFTTab() {
                 <FormControl fullWidth>
                   <InputLabel>Доставчик</InputLabel>
                   <Select value={formData.supplierId || ''} label="Доставчик" onChange={(e) => setFormData({...formData, supplierId: e.target.value as number})}>
-                    {suppliersData?.suppliers?.map((s: any) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+                    {suppliersData?.suppliers?.map((s: Supplier) => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
@@ -2462,7 +2467,26 @@ function SAFTTab() {
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <Typography variant="h6">Сума: {total.toFixed(2)} лв. (ДДС: {vatAmount.toFixed(2)} лв.)</Typography>
+              <Box sx={{ mt: 1, p: 2, bgcolor: 'primary.light', color: 'primary.contrastText', borderRadius: 1 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={6} sm={3}>
+                    <Typography variant="caption" display="block">Сума без ДДС</Typography>
+                    <Typography variant="h6">{subtotal.toFixed(2)} лв.</Typography>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <Typography variant="caption" display="block">Отстъпка</Typography>
+                    <Typography variant="h6">{discountAmount.toFixed(2)} лв.</Typography>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <Typography variant="caption" display="block">ДДС ({formData.vatRate}%)</Typography>
+                    <Typography variant="h6">{vatAmount.toFixed(2)} лв.</Typography>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <Typography variant="caption" display="block">ОБЩО</Typography>
+                    <Typography variant="h5" fontWeight="bold">{total.toFixed(2)} лв.</Typography>
+                  </Grid>
+                </Grid>
+              </Box>
             </Grid>
 
             {/* Артикули */}
@@ -2638,7 +2662,7 @@ function SAFTTab() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {selectedInvoice.items?.map((item: any, index: number) => {
+                      {selectedInvoice.items?.map((item: InvoiceItem, index: number) => {
                         const itemTotal = Number(item.quantity) * Number(item.unitPrice);
                         const itemDiscount = itemTotal * (Number(item.discountPercent) / 100);
                         const itemSubtotal = itemTotal - itemDiscount;
@@ -2708,24 +2732,18 @@ function SAFTTab() {
 
 // Wrapper components for sub-menu pages that need props from main component
 
-function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDetailsDialog }: { search: string; setSearch: (s: string) => void; handleOpenDialog: (invoice?: any) => void; handleOpenDetailsDialog: (invoice: any) => void }) {
-  const { data, loading, error, refetch } = useQuery(GET_INVOICES, {
+function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDetailsDialog, handleDelete }: { 
+  search: string; 
+  setSearch: (s: string) => void; 
+  handleOpenDialog: (invoice?: Invoice) => void; 
+  handleOpenDetailsDialog: (invoice: Invoice) => void;
+  handleDelete: (id: number) => void;
+}) {
+  const { data, loading, error } = useQuery(GET_INVOICES, {
     variables: { type: 'incoming', search: search || undefined },
   });
-  const [deleteInvoice] = useMutation(DELETE_INVOICE);
   const invoices: Invoice[] = data?.invoices || [];
   
-  const handleDelete = async (id: number) => {
-    if (window.confirm('Сигурен ли сте, че искате да изтриете тази фактура?')) {
-      try {
-        await deleteInvoice({ variables: { id } });
-        refetch();
-      } catch (err) {
-        console.error('Error deleting invoice:', err);
-      }
-    }
-  };
-
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -2743,8 +2761,8 @@ function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
                   <TableCell>{invoice.number}</TableCell>
                   <TableCell>{new Date(invoice.date).toLocaleDateString('bg-BG')}</TableCell>
                   <TableCell>{invoice.supplier?.name || '-'}</TableCell>
-                  <TableCell>{(invoice as any).batch?.batchNumber || '-'}</TableCell>
-                  <TableCell>{(invoice as any).batch?.expiryDate ? new Date((invoice as any).batch.expiryDate).toLocaleDateString('bg-BG') : '-'}</TableCell>
+                  <TableCell>{invoice.batch?.batchNumber || '-'}</TableCell>
+                  <TableCell>{invoice.batch?.expiryDate ? new Date(invoice.batch.expiryDate).toLocaleDateString('bg-BG') : '-'}</TableCell>
                   <TableCell align="right">{Number(invoice.total).toFixed(2)} лв.</TableCell>
                   <TableCell>{Number(invoice.vatRate)}%</TableCell>
                   <TableCell><Chip label={invoice.status} size="small" /></TableCell>
@@ -2762,24 +2780,17 @@ function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
   );
 }
 
-function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog }: { search: string; setSearch: (s: string) => void; handleOpenDialog: (invoice?: any) => void }) {
-  const { data, loading, error, refetch } = useQuery(GET_INVOICES, {
+function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog, handleDelete }: { 
+  search: string; 
+  setSearch: (s: string) => void; 
+  handleOpenDialog: (invoice?: Invoice) => void;
+  handleDelete: (id: number) => void;
+}) {
+  const { data, loading, error } = useQuery(GET_INVOICES, {
     variables: { type: 'outgoing', search: search || undefined },
   });
-  const [deleteInvoice] = useMutation(DELETE_INVOICE);
   const invoices: Invoice[] = data?.invoices || [];
   
-  const handleDelete = async (id: number) => {
-    if (window.confirm('Сигурен ли сте, че искате да изтриете тази фактура?')) {
-      try {
-        await deleteInvoice({ variables: { id } });
-        refetch();
-      } catch (err) {
-        console.error('Error deleting invoice:', err);
-      }
-    }
-  };
-
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -2797,8 +2808,8 @@ function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog }: { search: 
                   <TableCell>{invoice.number}</TableCell>
                   <TableCell>{new Date(invoice.date).toLocaleDateString('bg-BG')}</TableCell>
                   <TableCell>{invoice.clientName || '-'}</TableCell>
-                  <TableCell>{(invoice as any).batch?.batchNumber || '-'}</TableCell>
-                  <TableCell>{(invoice as any).batch?.expiryDate ? new Date((invoice as any).batch.expiryDate).toLocaleDateString('bg-BG') : '-'}</TableCell>
+                  <TableCell>{invoice.batch?.batchNumber || '-'}</TableCell>
+                  <TableCell>{invoice.batch?.expiryDate ? new Date(invoice.batch.expiryDate).toLocaleDateString('bg-BG') : '-'}</TableCell>
                   <TableCell align="right">{Number(invoice.total).toFixed(2)} лв.</TableCell>
                   <TableCell>{Number(invoice.vatRate)}%</TableCell>
                   <TableCell><Chip label={invoice.status} size="small" /></TableCell>

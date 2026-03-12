@@ -14,8 +14,8 @@ import FingerprintIcon from '@mui/icons-material/Fingerprint';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { formatHours } from '../utils/formatUtils';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAppTheme } from '../ThemeContext';
-import { useCurrency } from '../CurrencyContext';
+import { useAppTheme } from '../themeContext';
+import { useCurrency } from '../currencyContext';
 import { biometricService } from '../services/biometricService';
 import AuditLogViewer from '../components/AuditLogViewer';
 import PushNotificationManager from '../components/PushNotificationManager';
@@ -23,6 +23,8 @@ import ApiKeyManager from '../components/ApiKeyManager';
 import WebhookManager from '../components/WebhookManager';
 import ModuleManager from '../components/ModuleManager';
 import PasswordComplexitySettings from '../components/PasswordComplexitySettings';
+import { type SxProps, type Theme } from '@mui/material';
+import { type ActiveSession, type Payslip } from '../types';
 
 interface ValidatedTextFieldProps {
   label: string;
@@ -34,7 +36,7 @@ interface ValidatedTextFieldProps {
   success?: boolean;
   required?: boolean;
   type?: 'text' | 'number' | 'email' | 'password' | 'date';
-  sx?: any;
+  sx?: SxProps<Theme>;
   size?: 'small' | 'medium';
   fullWidth?: boolean;
   disabled?: boolean;
@@ -236,7 +238,7 @@ const ActiveSessions: React.FC = () => {
         try {
             await invalidate({ variables: { sessionId: id } });
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (_err: unknown) { if (err instanceof Error) if (err instanceof Error) if (_err instanceof Error) alert(_err.message); }
     };
 
     if (loading) return <CircularProgress />;
@@ -256,7 +258,7 @@ const ActiveSessions: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {data?.activeSessions.map((s: any) => (
+                            {data?.activeSessions.map((s: ActiveSession) => (
                                 <tr key={s.id} style={{ borderBottom: '1px solid #eee' }}>
                                     <td style={{ padding: 8 }}>{s.user.email}</td>
                                     <td style={{ padding: 8 }}>{s.ipAddress || '-'}</td>
@@ -285,7 +287,7 @@ const GoogleCalendarSettings: React.FC = () => {
     const [disconnect, { loading: disconnecting }] = useMutation(DISCONNECT_GOOGLE_MUTATION);
     const [msg, setMsg] = useState('');
 
-    const handleToggle = async (field: string, value: any) => {
+    const handleToggle = async (field: string, value: boolean) => {
         if (!data?.googleCalendarAccount?.syncSettings) return;
         
         const s = data.googleCalendarAccount.syncSettings;
@@ -302,7 +304,7 @@ const GoogleCalendarSettings: React.FC = () => {
             setMsg('Настройките са запазени.');
             refetch();
             setTimeout(() => setMsg(''), 3000);
-        } catch (e: any) { alert(e.message); }
+        } catch (_err: unknown) { if (err instanceof Error) if (err instanceof Error) if (_err instanceof Error) alert(_err.message); }
     };
 
     const handleConnect = () => {
@@ -315,7 +317,7 @@ const GoogleCalendarSettings: React.FC = () => {
         try {
             await disconnect();
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (_err: unknown) { if (err instanceof Error) if (err instanceof Error) if (_err instanceof Error) alert(_err.message); }
     };
 
     if (loading) return <CircularProgress size={24} />;
@@ -421,7 +423,7 @@ const SecuritySettings: React.FC = () => {
         try {
             await updateSecurity({ variables: { maxLoginAttempts: parseInt(String(maxAttempts)), lockoutMinutes: parseInt(String(lockoutMins)) } });
             setMsg('Настройките за сигурност са запазени.');
-        } catch (e: any) { alert(e.message); }
+        } catch (_err: unknown) { if (err instanceof Error) if (err instanceof Error) if (_err instanceof Error) alert(_err.message); }
     };
 
     return (
@@ -506,8 +508,8 @@ const OfficeLocationSettings: React.FC = () => {
                 } 
             });
             setMsg({ type: 'success', text: 'Офис локацията е запазена.' });
-        } catch (e: any) {
-            setMsg({ type: 'error', text: e.message });
+        } catch (_err: unknown) {
+            setMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") });
         }
     };
 
@@ -601,7 +603,7 @@ const SystemSettings: React.FC = () => {
             a.href = url;
             a.download = `chronos_backup_${new Date().toISOString()}.json`;
             a.click();
-        } catch (e: any) { alert(e.message); }
+        } catch (_err: unknown) { if (err instanceof Error) if (err instanceof Error) if (_err instanceof Error) alert(_err.message); }
     };
 
     const handleRestore = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -632,8 +634,8 @@ const SystemSettings: React.FC = () => {
             
             setMsg({ type: 'success', text: 'Базата данни е възстановена успешно!' });
             alert("Възстановяването успешно! Препоръчително е да излезете и влезете отново.");
-        } catch (e: any) {
-            setMsg({ type: 'error', text: e.message });
+        } catch (_err: unknown) {
+            setMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") });
         } finally {
             setUploading(false);
             event.target.value = '';
@@ -662,8 +664,8 @@ const SystemSettings: React.FC = () => {
             a.click();
             
             setMsg({ type: 'success', text: 'Архивирането успешно! Данните са изтрити и свалени локално.' });
-        } catch (e: any) {
-            setMsg({ type: 'error', text: e.message });
+        } catch (_err: unknown) {
+            setMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") });
         } finally {
             setArchiving(false);
         }
@@ -793,8 +795,8 @@ const SettingsPage: React.FC = () => {
     try {
       await biometricService.registerBiometrics("Моят телефон");
       setBiometricMsg({ type: 'success', text: 'Биометрията е регистрирана успешно!' });
-    } catch (err: any) {
-      setBiometricMsg({ type: 'error', text: err.message || 'Грешка при регистрация' });
+    } catch (_err: unknown) {
+      setBiometricMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") || 'Грешка при регистрация' });
     } finally {
       setBiometricLoading(false);
     }
@@ -803,7 +805,7 @@ const SettingsPage: React.FC = () => {
   // Payslip State
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [payslipResult, setPayslipResult] = useState<any>(null);
+  const [payslipResult, setPayslipResult] = useState<Payslip | null>(null);
   const [generatePayslip] = useMutation(GENERATE_PAYSLIP_MUTATION);
 
   const handlePasswordChange = async () => {
@@ -815,8 +817,8 @@ const SettingsPage: React.FC = () => {
       await changePassword({ variables: { oldPassword, newPassword } });
       setPasswordMsg({ type: 'success', text: 'Паролата е променена успешно' });
       setOldPassword(''); setNewPassword(''); setConfirmPassword('');
-    } catch (err: any) {
-      setPasswordMsg({ type: 'error', text: err.message });
+    } catch (_err: unknown) {
+      setPasswordMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") });
     }
   };
 
@@ -824,8 +826,8 @@ const SettingsPage: React.FC = () => {
     try {
       const res = await generatePayslip({ variables: { startDate, endDate } });
       setPayslipResult(res.data.generateMyPayslip);
-    } catch (err: any) {
-      alert(err.message);
+    } catch (_err: unknown) {
+      if (err instanceof Error) if (_err instanceof Error) alert(_err.message);
     }
   };
 
@@ -1071,7 +1073,7 @@ const SettingsPage: React.FC = () => {
                                 a.href = url;
                                 a.download = `payslip_${payslipResult.id}.pdf`;
                                 a.click();
-                            } catch (e) { alert('Грешка при сваляне'); }
+                            } catch { alert('Грешка при сваляне'); }
                         }}
                     >
                         Изтегли PDF

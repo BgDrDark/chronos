@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { 
     Box, Typography, Paper, Button, Container, 
@@ -55,11 +55,19 @@ const KioskTerminalPage: React.FC = () => {
         }
         
         // Prevent screen sleep using Wake Lock API
-        let wakeLock: any = null;
+        interface NavigatorWithWakeLock extends Navigator {
+            wakeLock: {
+                request: (type: 'screen') => Promise<{ release: () => Promise<void> }>;
+            };
+        }
+
+        let wakeLock: { release: () => Promise<void> } | null = null;
+        const nav = navigator as NavigatorWithWakeLock;
+
         const requestWakeLock = async () => {
             try {
-                if ('wakeLock' in navigator) {
-                    wakeLock = await (navigator as any).wakeLock.request('screen');
+                if ('wakeLock' in nav) {
+                    wakeLock = await nav.wakeLock.request('screen');
                 }
             } catch {
                 console.log('Wake Lock not available');
@@ -92,14 +100,14 @@ const KioskTerminalPage: React.FC = () => {
                 if (data.background_image) {
                     setBackgroundImage(getApiUrl(`uploads/${data.background_image}`));
                 }
-            } catch (e) {
+            } catch {
                 console.error("Failed to fetch kiosk config", e);
             }
         };
         fetchConfig();
     }, []);
 
-    const handleAccessRequest = async (payload: { qr_token?: string, code?: string }) => {
+    const handleAccessRequest = useCallback(async (payload: { qr_token?: string, code?: string }) => {
         if (!isScanning && mode === 'qr') return;
         
         if (mode === 'qr' && scannerRef.current) {
@@ -144,7 +152,7 @@ const KioskTerminalPage: React.FC = () => {
                 speak(errorMsg);
                 new Audio('/error.mp3').play().catch(() => {});
             }
-        } catch (e) {
+        } catch {
             setScanResult({ status: 'error', message: "Мрежова грешка" });
             speak("Мрежова грешка");
         }
@@ -156,11 +164,11 @@ const KioskTerminalPage: React.FC = () => {
                 scannerRef.current.resume();
             }
         }, 4000);
-    };
+    }, [isScanning, mode, terminalId]);
 
-    const onScanSuccess = (decodedText: string) => {
+    const onScanSuccess = useCallback((decodedText: string) => {
         handleAccessRequest({ qr_token: decodedText });
-    };
+    }, [handleAccessRequest]);
 
     useEffect(() => {
         if (mode === 'qr') {
@@ -188,7 +196,7 @@ const KioskTerminalPage: React.FC = () => {
                 scannerRef.current = null;
             }
         }
-    }, [mode]);
+    }, [mode, onScanSuccess]);
 
     const handleExitAttempt = () => {
         setExitDialogOpen(true);
@@ -211,7 +219,7 @@ const KioskTerminalPage: React.FC = () => {
                 const data = await response.json();
                 setExitError(data.detail || "Грешен имейл или парола");
             }
-        } catch (e) {
+        } catch {
             setExitError("Грешка при връзка със сървъра");
         } finally {
             setIsVerifying(false);

@@ -18,6 +18,8 @@ import {
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { CREATE_RECIPE, CREATE_WORKSTATION, DELETE_RECIPE } from '../graphql/confectioneryMutations';
 import { ME_QUERY } from '../graphql/queries';
+import { type FullRecipe, type Workstation, type Ingredient, type RecipeSection, type RecipeStep, type RecipeIngredient } from '../types';
+import { type SxProps, type Theme } from '@mui/material';
 
 interface ValidatedTextFieldProps {
   label: string;
@@ -35,8 +37,8 @@ interface ValidatedTextFieldProps {
   disabled?: boolean;
   multiline?: boolean;
   rows?: number;
-  InputProps?: any;
-  sx?: any;
+  InputProps?: unknown;
+  sx?: SxProps<Theme>;
 }
 
 const ValidatedTextField: React.FC<ValidatedTextFieldProps> = ({
@@ -171,7 +173,7 @@ const RecipesPage: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const [openRecipeModal, setOpenRecipeModal] = useState(false);
   const [openStationModal, setOpenStationModal] = useState(false);
-  const [selectedRecipe, setSelectedRecipe] = useState<any>(null);
+  const [selectedRecipe, setSelectedRecipe] = useState<FullRecipe | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { data, loading, error, refetch } = useQuery(GET_RECIPES_AND_DATA);
@@ -181,19 +183,19 @@ const RecipesPage: React.FC = () => {
 
   // Export recipes to JSON
   const handleExportRecipes = () => {
-    const recipesData = data?.recipes?.map((r: any) => ({
+    const recipesData = data?.recipes?.map((r: FullRecipe) => ({
       name: r.name,
       yieldQuantity: r.yieldQuantity,
       yieldUnit: r.yieldUnit,
       shelfLifeDays: r.shelfLifeDays,
       instructions: r.instructions,
-      ingredients: r.ingredients?.map((i: any) => ({
+      ingredients: r.ingredients?.map((i: RecipeIngredient) => ({
         ingredientName: i.ingredient?.name,
         quantityGross: i.quantityGross,
         quantityNet: i.quantityNet,
         wastePercentage: i.wastePercentage,
       })),
-      steps: r.steps?.map((s: any) => ({
+      steps: r.steps?.map((s: RecipeStep) => ({
         name: s.name,
         estimatedDurationMinutes: s.estimatedDurationMinutes,
       })),
@@ -209,17 +211,17 @@ const RecipesPage: React.FC = () => {
   };
 
   // Copy recipe
-  const handleCopyRecipe = (recipe: any) => {
-    const copiedSections = recipe.sections?.map((section: any) => ({
+  const handleCopyRecipe = (recipe: FullRecipe) => {
+    const copiedSections = recipe.sections?.map((section: RecipeSection) => ({
       type: section.sectionType || 'dough',
       name: section.name || '',
       shelfLifeDays: section.shelfLifeDays || null,
       wastePercentage: section.wastePercentage || 0,
-      ingredients: section.ingredients?.map((i: any) => ({
+      ingredients: section.ingredients?.map((i: RecipeIngredient) => ({
         ingredientId: i.ingredient?.id?.toString() || '',
         quantityGross: i.quantityGross?.toString() || '',
       })) || [],
-      steps: section.steps?.map((s: any) => ({
+      steps: section.steps?.map((s: RecipeStep) => ({
         workstationId: s.workstation?.id?.toString() || '',
         name: s.name || '',
         stepOrder: s.stepOrder || 1,
@@ -271,10 +273,10 @@ const RecipesPage: React.FC = () => {
     standardQuantity: '1',
     instructions: '',
     sections: [
-      { type: 'dough', name: 'Блат - ', shelfLifeDays: null, wastePercentage: 10, ingredients: [], steps: [] },
-      { type: 'cream', name: 'Крем - ', shelfLifeDays: null, wastePercentage: 5, ingredients: [], steps: [] },
-      { type: 'decoration', name: 'Декор - ', shelfLifeDays: null, wastePercentage: 15, ingredients: [], steps: [] }
-    ] as any[]
+      { type: 'dough', name: 'Блат - ', shelfLifeDays: null, wastePercentage: 10, ingredients: [] as RecipeIngredient[], steps: [] as RecipeStep[] },
+      { type: 'cream', name: 'Крем - ', shelfLifeDays: null, wastePercentage: 5, ingredients: [] as RecipeIngredient[], steps: [] as RecipeStep[] },
+      { type: 'decoration', name: 'Декор - ', shelfLifeDays: null, wastePercentage: 15, ingredients: [] as RecipeIngredient[], steps: [] as RecipeStep[] }
+    ]
   });
 
   // Validation
@@ -301,13 +303,13 @@ const RecipesPage: React.FC = () => {
       errors.productionDeadlineDays = 'Срокът за производство трябва да е между 0 и 30 дни';
     }
     
-    recipeForm.sections.forEach((section: any, idx: number) => {
+    recipeForm.sections.forEach((section: RecipeSection, idx: number) => {
       if (section.name && section.name.trim().length < 2) {
         errors[`section_${idx}_name`] = 'Името трябва да е поне 2 символа';
       }
       
       if (section.ingredients && section.ingredients.length > 0) {
-        section.ingredients.forEach((ing: any, ingIdx: number) => {
+        section.ingredients.forEach((ing: RecipeIngredient, ingIdx: number) => {
           if (!ing.ingredientId) {
             errors[`section_${idx}_ing_${ingIdx}`] = 'Избери съставка';
           }
@@ -329,9 +331,9 @@ const RecipesPage: React.FC = () => {
     const oldPieces = recipeForm.currentPieces;
     const ratio = newPieces / oldPieces;
     
-    const updatedSections = recipeForm.sections.map((section: any) => ({
+    const updatedSections = recipeForm.sections.map((section: RecipeSection) => ({
       ...section,
-      ingredients: section.ingredients.map((ing: any) => ({
+      ingredients: section.ingredients.map((ing: RecipeIngredient) => ({
         ...ing,
         quantityGross: ing.originalQuantity 
           ? Math.round(ing.originalQuantity * ratio * 1000) / 1000
@@ -353,7 +355,7 @@ const RecipesPage: React.FC = () => {
 
   // Update section name when recipe name changes
   const handleNameChange = (newName: string) => {
-    const updatedSections = recipeForm.sections.map((section: any) => ({
+    const updatedSections = recipeForm.sections.map((section: RecipeSection) => ({
       ...section,
       name: `${section.type === 'dough' ? 'Блат' : section.type === 'cream' ? 'Крем' : 'Декор'} - ${newName}`
     }));
@@ -402,9 +404,10 @@ const RecipesPage: React.FC = () => {
   };
 
   // Calculate totals for a section
-  const calculateSectionTotals = (section: any) => {
-    const totalGross = section.ingredients.reduce((sum: number, ing: any) => 
-      sum + (parseFloat(ing.quantityGross) || 0), 0);
+  const calculateSectionTotals = (section: RecipeSection) => {
+    const totalGross = section.ingredients.reduce((sum: number, ing: RecipeIngredient) => 
+      sum + (parseFloat(ing.quantityGross?.toString() || '0') || 0), 0);
+
     const wastePct = section.wastePercentage || 0;
     const totalNet = totalGross - (totalGross * wastePct / 100);
     return { totalGross, totalNet };
@@ -456,21 +459,21 @@ const RecipesPage: React.FC = () => {
     
     if (!user?.companyId) return;
     try {
-      const sections = recipeForm.sections.map((section: any, idx: number) => ({
+      const sections = recipeForm.sections.map((section: RecipeSection, idx: number) => ({
         sectionType: section.type,
         name: section.name || `${section.type === 'dough' ? 'Блат' : section.type === 'cream' ? 'Крем' : 'Декор'} - ${recipeForm.name}`,
         shelfLifeDays: section.shelfLifeDays ? parseInt(section.shelfLifeDays) : null,
         wastePercentage: parseFloat(section.wastePercentage) || 0,
         sectionOrder: idx + 1,
         ingredients: section.ingredients
-          .filter((i: any) => i.ingredientId && i.quantityGross)
-          .map((i: any) => ({
+          .filter((i: RecipeIngredient) => i.ingredientId && i.quantityGross)
+          .map((i: RecipeIngredient) => ({
             ingredientId: parseInt(i.ingredientId),
             quantityGross: parseFloat(i.quantityGross)
           })),
         steps: section.steps
-          .filter((s: any) => s.workstationId && s.name)
-          .map((s: any, sIdx: number) => ({
+          .filter((s: RecipeStep) => s.workstationId && s.name)
+          .map((s: RecipeStep, sIdx: number) => ({
             workstationId: parseInt(s.workstationId),
             name: s.name,
             stepOrder: s.stepOrder || sIdx + 1,
@@ -587,7 +590,7 @@ const RecipesPage: React.FC = () => {
         {/* ТАБ: РЕЦЕПТИ */}
         <TabPanel value={tabValue} index={0}>
           <Grid container spacing={3}>
-            {data?.recipes.map((recipe: any) => (
+            {data?.recipes.map((recipe: FullRecipe) => (
               <Grid size={{ xs: 12, md: 6 }} key={recipe.id}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -606,7 +609,7 @@ const RecipesPage: React.FC = () => {
                   <Divider sx={{ my: 1 }} />
                   <Typography variant="subtitle2">Съставки:</Typography>
                   <List>
-                    {recipe.ingredients.slice(0, 3).map((ri: any, idx: number) => (
+                    {recipe.ingredients.slice(0, 3).map((ri: RecipeIngredient, idx: number) => (
                       <ListItem key={idx} sx={{ py: 0, px: 1 }}>
                         <ListItemText 
                           primary={`${ri.ingredient.name}: ${ri.quantityGross} ${ri.ingredient.unit}`} 
@@ -627,7 +630,7 @@ const RecipesPage: React.FC = () => {
         {/* ТАБ: РАБОТНИ СТАНЦИИ */}
         <TabPanel value={tabValue} index={1}>
           <Grid container spacing={2}>
-            {data?.workstations.map((ws: any) => (
+            {data?.workstations.map((ws: Workstation) => (
               <Grid size={{ xs: 12, sm: 4 }} key={ws.id}>
                 <Paper variant="outlined" sx={{ p: 3, textAlign: 'center', borderRadius: 4 }}>
                   <FactoryIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
@@ -752,7 +755,7 @@ const RecipesPage: React.FC = () => {
           </Paper>
 
           {/* 3 Sections with Accordion */}
-          {recipeForm.sections.map((section: any, sectionIdx: number) => {
+          {recipeForm.sections.map((section: RecipeSection, sectionIdx: number) => {
             const totals = calculateSectionTotals(section);
             const sectionTitle = section.type === 'dough' ? 'ПЕКАРНА' : section.type === 'cream' ? 'КРЕМОВЕ' : 'ДЕКОРАЦИЯ';
             return (
@@ -811,13 +814,13 @@ const RecipesPage: React.FC = () => {
                       <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
                         СЪСТАВКИ:
                       </Typography>
-                      {section.ingredients.map((ing: any, ingIdx: number) => (
+                      {section.ingredients.map((ing: RecipeIngredient, ingIdx: number) => (
                         <Box key={ingIdx} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
                           <Autocomplete
                             size="small"
                             options={data?.ingredients || []}
-                            getOptionLabel={(option: any) => `${option.name} (${option.unit})`}
-                            value={data?.ingredients?.find((i: any) => i.id === parseInt(ing.ingredientId)) || null}
+                            getOptionLabel={(option: Ingredient) => `${option.name} (${option.unit})`}
+                            value={data?.ingredients?.find((i: RecipeIngredient) => i.id === parseInt(ing.ingredientId)) || null}
                             onChange={(_, newValue) => {
                               const newSections = [...recipeForm.sections];
                               newSections[sectionIdx].ingredients[ingIdx].ingredientId = newValue ? newValue.id.toString() : '';
@@ -872,7 +875,7 @@ const RecipesPage: React.FC = () => {
                       <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
                         СТЪПКИ:
                       </Typography>
-                      {section.steps.map((step: any, stepIdx: number) => (
+                      {section.steps.map((step: RecipeStep, stepIdx: number) => (
                         <Box key={stepIdx} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
                           <TextField
                             size="small"
@@ -897,7 +900,7 @@ const RecipesPage: React.FC = () => {
                                 setRecipeForm({ ...recipeForm, sections: newSections });
                               }}
                             >
-                              {data?.workstations?.map((w: any) => (
+                              {data?.workstations?.map((w: Workstation) => (
                                 <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>
                               ))}
                             </Select>
@@ -953,7 +956,7 @@ const RecipesPage: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {selectedRecipe?.ingredients?.map((ing: any, idx: number) => {
+                  {selectedRecipe?.ingredients?.map((ing: RecipeIngredient, idx: number) => {
                     const waste = ing.quantityGross > 0 ? ((ing.quantityGross - ing.quantityNet) / ing.quantityGross * 100).toFixed(1) : '0';
                     return (
                       <TableRow key={idx}>
@@ -972,7 +975,7 @@ const RecipesPage: React.FC = () => {
               <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, mt: 2 }}>Стъпки</Typography>
               {selectedRecipe?.steps?.length > 0 ? (
                 <List>
-                  {selectedRecipe.steps.map((step: any, idx: number) => (
+                  {selectedRecipe.steps.map((step: RecipeStep, idx: number) => (
                     <ListItem key={idx} sx={{ borderBottom: '1px solid #eee' }}>
                       <ListItemText 
                         primary={`${idx + 1}. ${step.name}`} 
@@ -1018,7 +1021,7 @@ const RecipesPage: React.FC = () => {
             onChange={(e) => setScannedBarcode(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && scannedBarcode) {
-                const found = data?.ingredients?.find((i: any) => i.barcode === scannedBarcode);
+                const found = data?.ingredients?.find((i: RecipeIngredient) => i.barcode === scannedBarcode);
                 if (found) {
                   const newSections = [...recipeForm.sections];
                   newSections[0].ingredients = [...(newSections[0].ingredients || []), { 

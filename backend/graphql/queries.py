@@ -45,7 +45,9 @@ class Query:
     ) -> types.PaginatedUsers:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+        # Allow admin, super_admin, accountant, and manager
+        allowed_roles = ["admin", "super_admin", "accountant", "manager"]
+        if current_user is None or current_user.role.name not in allowed_roles:
             raise Exception("Operation not permitted for this user role")
         
         # Isolation: Non-super_admin sees only their company
@@ -82,7 +84,8 @@ class Query:
     async def roles(self, info: strawberry.Info) -> List[types.Role]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+        allowed_roles = ["admin", "super_admin", "accountant", "manager"]
+        if current_user is None or current_user.role.name not in allowed_roles:
             raise Exception("Operation not permitted for this user role")
         db_roles = await crud.get_roles(db)
         return [types.Role.from_instance(role) for role in db_roles]

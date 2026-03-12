@@ -3,10 +3,9 @@ import {
   Container, Typography, Box, Paper, Grid, Button, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, CircularProgress,
-  Alert, IconButton, Autocomplete
+  Alert, IconButton
 } from '@mui/material';
 import {
-  AddShoppingCart as OrderIcon,
   SwapVert as SwapIcon,
   Warning as WarningIcon,
   CheckCircle as CheckIcon,
@@ -14,7 +13,8 @@ import {
   Edit as EditIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, gql } from '@apollo/client';
-import { ME_QUERY } from '../graphql/queries';
+import { type ProductionOrder, type ProductionTask, type Workstation } from '../types';
+
 
 const GET_PRODUCTION_ORDERS_FOR_DAY = gql`
   query GetProductionOrdersForDay($date: String) {
@@ -113,15 +113,15 @@ const ProductionControlPage: React.FC = () => {
   const [reassignTask, { loading: reassignLoading }] = useMutation(REASSIGN_TASK_WORKSTATION);
   const [updateQuantity, { loading: updateQuantityLoading }] = useMutation(UPDATE_ORDER_QUANTITY);
 
-  const allOrders = showOverdue ? data?.overdueProductionOrders : data?.productionOrdersForDay;
-  const workstations = data?.workstations || [];
+  const allOrders: ProductionOrder[] = showOverdue ? data?.overdueProductionOrders : data?.productionOrdersForDay;
+  const workstations: Workstation[] = data?.workstations || [];
 
   // Filter orders by workstation
   const orders = useMemo(() => {
     if (!allOrders) return [];
     if (!selectedWorkstation) return allOrders;
-    return allOrders.filter((order: any) => 
-      order.tasks?.some((task: any) => task.workstation.id === selectedWorkstation)
+    return allOrders.filter((order: ProductionOrder) => 
+      order.tasks?.some((task: ProductionTask) => task.workstation.id === selectedWorkstation)
     );
   }, [allOrders, selectedWorkstation]);
 
@@ -205,7 +205,7 @@ const ProductionControlPage: React.FC = () => {
                 onChange={(e) => setSelectedWorkstation(e.target.value as number || null)}
               >
                 <MenuItem value="">Всички</MenuItem>
-                {workstations.map((ws: any) => (
+                {workstations.map((ws: Workstation) => (
                   <MenuItem key={ws.id} value={ws.id}>{ws.name}</MenuItem>
                 ))}
               </Select>
@@ -265,7 +265,7 @@ const ProductionControlPage: React.FC = () => {
                 </TableCell>
               </TableRow>
             )}
-            {orders?.map((order: any) => (
+            {orders?.map((order: ProductionOrder) => (
               <TableRow 
                 key={order.id}
                 sx={{ 
@@ -295,7 +295,7 @@ const ProductionControlPage: React.FC = () => {
                   />
                 </TableCell>
                 <TableCell>
-                  {order.tasks?.map((task: any) => (
+                  {order.tasks?.map((task: ProductionTask) => (
                     <Box key={task.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                       <Chip 
                         label={task.workstation.name}
@@ -360,7 +360,7 @@ const ProductionControlPage: React.FC = () => {
               label="Нова станция"
               onChange={(e) => setNewWorkstationId(e.target.value as number)}
             >
-              {workstations.map((ws: any) => (
+              {workstations.map((ws: Workstation) => (
                 <MenuItem key={ws.id} value={ws.id}>{ws.name}</MenuItem>
               ))}
             </Select>
