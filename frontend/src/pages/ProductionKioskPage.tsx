@@ -123,8 +123,9 @@ const ProductionKioskPage: React.FC = () => {
       const data = await response.json();
       setEmployee(data as Employee);
       setQrInput('');
-    } catch (err: any) {
-      setQrError(err.message || 'Грешка при идентификация');
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      setQrError(error.message || 'Грешка при идентификация');
     } finally {
       setIdentifying(false);
     }
@@ -378,7 +379,7 @@ const ProductionKioskPage: React.FC = () => {
                 open: true, 
                 taskId: activeTask.id, 
                 taskName: activeTask.name, 
-                maxQuantity: activeTask.quantity 
+                maxQuantity: activeTask.quantity ?? 0 
               })}
               sx={{ height: 80, fontSize: '1.5rem', borderRadius: 3 }}
             >

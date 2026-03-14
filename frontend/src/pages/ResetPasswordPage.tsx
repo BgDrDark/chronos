@@ -75,8 +75,9 @@ const ResetPasswordPage: React.FC = () => {
 
       setMessage('Паролата е променена успешно! Пренасочване към вход...');
       setTimeout(() => navigate('/login'), 3000);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      setError(error.message || 'Грешка');
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getErrorMessage, User } from '../types';
 import {
   Table,
   TableBody,
@@ -33,7 +34,6 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, gql, useMutation } from '@apollo/client';
 import EditUserModal from './EditUserModal';
-import { type User } from '../types';
 
 const GET_USERS_QUERY = gql`
   query GetUsers($skip: Int, $limit: Int, $search: String, $sortBy: String, $sortOrder: String) {
@@ -113,7 +113,7 @@ const UserList: React.FC = () => {
 
   const [deleteUser] = useMutation(DELETE_USER_MUTATION, {
     onCompleted: () => refetch(),
-    onError: (err: any) => console.error("Error deleting user:", err.message),
+    onError: (err) => console.error("Error deleting user:", getErrorMessage(err)),
   });
 
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -122,9 +122,16 @@ const UserList: React.FC = () => {
   const handleDeleteUser = async (userId: number) => {
     if (window.confirm('Сигурни ли сте, че искате да изтриете този потребител?')) {
       try {
-        await deleteUser({ variables: { id: userId } });
-      } catch (err: any) {
-        alert(`Грешка при изтриване: ${err.message}`);
+        const result = await deleteUser({ variables: { id: userId } });
+        if (result.data?.deleteUser) {
+          alert('Потребителят е изтрит успешно!');
+          refetch();
+        } else {
+          alert('Грешка при изтриване на потребител.');
+        }
+      } catch (err: unknown) {
+        const error = err as { message?: string };
+        alert(`Грешка при изтриване: ${error.message || ' неизвестна грешка'}`);
       }
     }
   };

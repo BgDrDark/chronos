@@ -20,10 +20,10 @@ if ('serviceWorker' in navigator) {
         window.location.reload();
       }
     },
-    onRegistered(r: any) {
+    onRegistered(r: unknown) {
       console.log('SW Registered: ', r);
     },
-    onRegisterError(error: any) {
+    onRegisterError(error: unknown) {
       console.error('SW Registration error: ', error);
     }
   });

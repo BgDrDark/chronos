@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getErrorMessage } from '../types';
 import { 
   Box, Typography, Button, Card, CardContent, TextField, 
   List, ListItem, ListItemText, ListItemSecondaryAction, IconButton, 
@@ -49,7 +50,7 @@ const WebhookManager: React.FC = () => {
             await createWebhook({ variables: { url, description: desc } });
             setOpen(false); setUrl(''); setDesc('');
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (e) { alert(getErrorMessage(e)); }
     };
 
     const handleDelete = async (id: number) => {
@@ -57,7 +58,7 @@ const WebhookManager: React.FC = () => {
         try {
             await deleteWebhook({ variables: { id } });
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (e) { alert(getErrorMessage(e)); }
     };
 
     return (

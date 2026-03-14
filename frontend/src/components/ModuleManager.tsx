@@ -90,11 +90,12 @@ const ModuleManager: React.FC = () => {
       setMsg({ type: 'success', text: `Модулът '${code}' е актуализиран.` });
       await refetch();
       setTimeout(() => setMsg(null), 3000);
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.detail;
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string | { message?: string } } }; message?: string };
+      const errorMsg = error.response?.data?.detail;
       setMsg({ 
         type: 'error', 
-        text: typeof errorMsg === 'string' ? errorMsg : (errorMsg?.message || err.message) 
+        text: typeof errorMsg === 'string' ? errorMsg : (errorMsg?.message || error.message || 'Грешка') 
       });
     } finally {
       setUpdating(null);

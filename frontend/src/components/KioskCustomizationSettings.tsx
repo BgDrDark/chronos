@@ -32,8 +32,9 @@ const KioskCustomizationSettings: React.FC = () => {
       });
       
       setMsg({ type: 'success', text: 'Фоновото изображение на терминала е обновено успешно.' });
-    } catch (err: any) {
-      setMsg({ type: 'error', text: err.response?.data?.detail || err.message });
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
+      setMsg({ type: 'error', text: error.response?.data?.detail || error.message || 'Грешка' });
     } finally {
       setUploading(false);
       event.target.value = ''; // Reset input

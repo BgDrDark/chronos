@@ -31,9 +31,10 @@ export const biometricService = {
       });
 
       return verification;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } }; message?: string };
       console.error('Biometric registration failed:', error);
-      throw new Error(error.response?.data?.detail || error.message || 'Registration failed');
+      throw new Error(err.response?.data?.detail || err.message || 'Registration failed');
     }
   },
 
@@ -60,10 +61,11 @@ export const biometricService = {
       }
 
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } }; message?: string };
       console.error('Biometric login failed:', error);
-      const errorMessage = error.response?.data?.detail || error.message || 'Login failed';
-      console.log('Error details:', error.response?.data);
+      const errorMessage = err.response?.data?.detail || err.message || 'Login failed';
+      console.log('Error details:', err.response?.data);
       throw new Error(errorMessage);
     }
   }

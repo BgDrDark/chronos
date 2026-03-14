@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Container, Typography, CircularProgress, Box, Alert, Button, Card, CardContent, Grid } from '@mui/material';
 import { useQuery, gql, useMutation } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
+import { UserDailyStat } from '../types';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import WarningIcon from '@mui/icons-material/Warning';
@@ -112,13 +113,14 @@ const DashboardPage: React.FC = () => {
       navigate('/login');
     }
     if (data?.me?.role?.name) {
+      // eslint-disable-next-line
       setIsAdmin(['admin', 'super_admin'].includes(data.me.role.name));
     }
   }, [data, loading, navigate]);
 
   // Timer logic for active session
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (data?.activeTimeLog) {
       interval = setInterval(() => {
         const rawStartTime = data.activeTimeLog.startTime;
@@ -140,13 +142,14 @@ const DashboardPage: React.FC = () => {
         setTimer(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
       }, 1000);
     } else {
+      // eslint-disable-next-line
       setTimer('00:00:00');
     }
     return () => clearInterval(interval);
   }, [data?.activeTimeLog]);
 
   // Use backend stats directly
-  const chartData = data?.myDailyStats?.map((stat: any) => ({
+  const chartData = data?.myDailyStats?.map((stat: UserDailyStat) => ({
     name: new Date(stat.date).toLocaleDateString('bg-BG', { weekday: 'short' }),
     regular: stat.regularHours,
     overtime: stat.overtimeHours,
@@ -163,8 +166,9 @@ const DashboardPage: React.FC = () => {
         await clockIn();
       }
       await refetch();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      alert(error.message || 'Грешка');
     }
   };
 
@@ -176,7 +180,16 @@ const DashboardPage: React.FC = () => {
   const isActive = !!data.activeTimeLog;
   const summary = data.weeklySummary;
   
-  const currentSchedule = chartData.find((d: any) => d.fullDate === new Date().toISOString().split('T')[0]);
+  interface ChartDataItem {
+    name: string;
+    regular: number;
+    overtime: number;
+    total: number;
+    fullDate: string;
+    shiftName?: string;
+  }
+  
+  const currentSchedule = chartData.find((d: ChartDataItem) => d.fullDate === new Date().toISOString().split('T')[0]);
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -264,8 +277,8 @@ const DashboardPage: React.FC = () => {
                       <Tooltip 
                         contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                         cursor={{ fill: 'rgba(0,0,0,0.04)' }}
-                        formatter={(value: any) => [
-                          formatDuration(Math.round(parseFloat(value) * 60)), 
+                        formatter={(value) => [
+                          formatDuration(Math.round(parseFloat(String(value ?? 0)) * 60)), 
                           'Отработено'
                         ]}
                       />
@@ -365,10 +378,10 @@ const DashboardPage: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {[...chartData].reverse().map((day: any) => {
+                  {[...chartData].reverse().map((day) => {
                     const dayLogs = data.me.timelogs
-                        .filter((l: any) => l.startTime.startsWith(day.fullDate))
-                        .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+                        .filter((l: { startTime: string }) => l.startTime.startsWith(day.fullDate))
+                        .sort((a: { startTime: string }, b: { startTime: string }) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
                     
                     const firstStart = dayLogs.length > 0 ? dayLogs[0].startTime : null;
                     const lastLog = dayLogs.length > 0 ? dayLogs[dayLogs.length - 1] : null;
@@ -413,6 +426,28 @@ const DashboardPage: React.FC = () => {
             </TableContainer>
           </CardContent>
         </Card>
+      )}
+
+      {/* АВТОПАРК КАРТИЧКА */}
+      {dashboardConfig.showFleetCard && (
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Card sx={{ height: '100%', borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.08)', cursor: 'pointer', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)' } }} onClick={() => navigate('/fleet')}>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <DirectionsCarIcon color="primary" />
+                  <Typography variant="h6" fontWeight="bold">Автопарк</Typography>
+                </Box>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                Управление на автомобили, горива, ремонти и документи
+              </Typography>
+              <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                <Chip label="Преглед" size="small" color="primary" variant="outlined" />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
       )}
 
       {/* ЦЕНТЪР ЗА РАЗМЯНА НА СМЕНИ */}

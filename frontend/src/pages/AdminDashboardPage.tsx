@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { UserDailyStat } from '../types';
 import {
   Box,
   Typography,
@@ -142,7 +143,7 @@ const UserStatsDialog: React.FC<{ open: boolean; onClose: () => void; userId: nu
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {data?.userDailyStats.map((stat: any) => (
+                        {data?.userDailyStats.map((stat: UserDailyStat) => (
                             <TableRow key={stat.date} sx={{ bgcolor: stat.isWorkDay ? 'transparent' : 'action.hover' }}>
                                 <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
                                     {new Date(stat.date).toLocaleDateString('bg-BG', { day: '2-digit', month: '2-digit' })}
@@ -238,7 +239,10 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
           if (clockDialogMode === 'IN') await adminClockIn({ variables: { userId: actionUserId, customTime } });
           else await adminClockOut({ variables: { userId: actionUserId, customTime } });
           refetch();
-      } catch (err: any) { alert(err.message); }
+      } catch (err: unknown) {
+        const error = err as { message?: string };
+        alert(error.message || 'Грешка');
+      }
   };
 
   const getStatusChip = (status: string) => {

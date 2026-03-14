@@ -177,8 +177,9 @@ const ProfilePage: React.FC = () => {
                 withCredentials: true
             });
             refetch();
-        } catch (err: any) {
-            alert(err.response?.data?.detail || "Грешка при качване");
+        } catch (err: unknown) {
+            const error = err as { response?: { data?: { detail?: string } } };
+            alert(error.response?.data?.detail || "Грешка при качване");
         } finally {
             setUploading(false);
         }

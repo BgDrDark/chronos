@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getErrorMessage } from '../types';
 import { 
   Box, Typography, Button, Card, CardContent, Grid, 
   TextField, Dialog, DialogTitle, DialogContent, DialogActions, 
@@ -76,7 +77,7 @@ const ScheduleTemplatesManager: React.FC = () => {
             setOpen(false);
             setName(''); setDesc(''); setItems([{ dayIndex: 0, shiftId: null }]);
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (e) { alert(getErrorMessage(e)); }
     };
 
     const handleDelete = async (id: number) => {
@@ -84,7 +85,7 @@ const ScheduleTemplatesManager: React.FC = () => {
         try {
             await deleteTemplate({ variables: { id } });
             refetch();
-        } catch (e: any) { alert(e.message); }
+        } catch (e) { alert(getErrorMessage(e)); }
     };
 
     if (loading) return null;

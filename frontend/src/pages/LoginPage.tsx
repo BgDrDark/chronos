@@ -99,8 +99,9 @@ const LoginPage: React.FC = () => {
       } else {
         navigate('/');
       }
-    } catch (err: any) {
-      setApiError(err.message);
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      setApiError(error.message || 'Грешка при вход');
       setShake(true);
       setTimeout(() => setShake(false), 500);
     } finally {
@@ -123,8 +124,9 @@ const LoginPage: React.FC = () => {
       } else {
         navigate('/');
       }
-    } catch (err: any) {
-      setApiError(err.message);
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      setApiError(error.message || 'Грешка при вход');
       setShake(true);
       setTimeout(() => setShake(false), 500);
     } finally {

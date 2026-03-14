@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
+import { getErrorMessage, Terminal, Gateway, AccessZone, User } from '../types';
 import { 
-  Container, Typography, Card, CardContent, Button, 
+  Typography, Card, CardContent, Button, 
   Box, CircularProgress, Switch, FormControlLabel,
-  Tabs, Tab, Grid, Table, TableBody, TableCell, 
+  Tabs, Tab, Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, Paper, Chip,
   IconButton, Dialog, DialogTitle, DialogContent, 
   DialogActions, TextField, Select, MenuItem, InputLabel,
@@ -21,11 +22,8 @@ import {
   Delete as DeleteIcon,
   Add as AddIcon,
   Refresh as RefreshIcon,
-  CheckCircle as CheckIcon,
   Cancel as CancelIcon,
-  Group as GroupIcon,
   People as PeopleIcon,
-  Sync as SyncIcon,
   CloudDownload as DownloadIcon,
   CloudUpload as UploadIcon
 } from '@mui/icons-material';
@@ -35,8 +33,6 @@ import { useNavigate } from 'react-router-dom';
 import { 
   GATEWAYS_QUERY, 
   TERMINALS_QUERY, 
-  PRINTERS_QUERY, 
-  GATEWAY_STATS_QUERY,
   ACCESS_ZONES_QUERY,
   ACCESS_DOORS_QUERY,
   ACCESS_CODES_QUERY,
@@ -97,7 +93,10 @@ const KioskSecuritySettings: React.FC = () => {
             setMsg('Настройките за Kiosk са обновени.');
             refetch();
             setTimeout(() => setMsg(''), 3000);
-        } catch (e: any) { alert(e.message); }
+        } catch (e: unknown) {
+            const error = e as { message?: string };
+            alert(error.message || 'Грешка');
+        }
     };
 
     return (
@@ -153,8 +152,8 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     
     const activeTab = tab ? tabMap[tab] || 0 : 0;
 
-    const handleTabChange = (_: any, newValue: number) => {
-        const reverseMap = Object.entries(tabMap).find(([_, v]) => v === newValue);
+    const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+        const reverseMap = Object.entries(tabMap).find(([, v]) => v === newValue);
         if (reverseMap) {
             const pathSuffix = reverseMap[0] === 'kiosk' ? '' : `/${reverseMap[0]}`;
             navigate(`/admin/kiosk${pathSuffix}`);
@@ -173,10 +172,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const { data: usersData, loading: usersLoading } = useQuery(USERS_QUERY);
 
     // Mutations
-    const [createZone] = useMutation(CREATE_ACCESS_ZONE);
-    const [updateZone] = useMutation(UPDATE_ACCESS_ZONE);
     const [deleteZone] = useMutation(DELETE_ACCESS_ZONE);
-    const [createDoor] = useMutation(CREATE_ACCESS_DOOR);
     const [deleteDoor] = useMutation(DELETE_ACCESS_DOOR);
     const [openDoor] = useMutation(OPEN_DOOR);
 
@@ -184,15 +180,13 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
         try {
             const { data } = await openDoor({ variables: { id } });
             if (data.openDoor) alert('Вратата е отворена успешно!');
-        } catch (e: any) {
-            alert(`Грешка: ${e.message}`);
+        } catch (e: unknown) {
+            const error = e as { message?: string };
+            alert(`Грешка: ${error.message || 'неизвестна'}`);
         }
     };
-    const [updateDoorTerminal] = useMutation(UPDATE_DOOR_TERMINAL);
-    const [createCode] = useMutation(CREATE_ACCESS_CODE);
     const [revokeCode] = useMutation(REVOKE_ACCESS_CODE);
     const [deleteCode] = useMutation(DELETE_ACCESS_CODE);
-    const [updateGateway] = useMutation(UPDATE_GATEWAY);
     const [deleteTerminal] = useMutation(DELETE_TERMINAL);
 
     const handleDeleteTerminal = async (id: number) => {
@@ -200,8 +194,8 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             try {
                 await deleteTerminal({ variables: { id } });
                 refetchTerminals();
-            } catch (e: any) {
-                alert(e.message);
+            } catch (e) {
+                alert(getErrorMessage(e));
             }
         }
     };
@@ -211,15 +205,15 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const [zoneEditOpen, setZoneEditOpen] = useState(false);
     const [doorDialogOpen, setDoorDialogOpen] = useState(false);
     const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
-    const [selectedTerminal, setSelectedTerminal] = useState<any>(null);
+    const [selectedTerminal, setSelectedTerminal] = useState<Terminal | null>(null);
+    const [selectedUserForAccess, setSelectedUserForAccess] = useState<User | null>(null);
+    const [selectedZone, setSelectedZone] = useState<AccessZone | null>(null);
+    const [selectedGateway, setSelectedGateway] = useState<Gateway | null>(null);
     const [codeDialogOpen, setCodeDialogOpen] = useState(false);
     const [gatewayEditOpen, setGatewayEditOpen] = useState(false);
-    const [usersDialogOpen, setUsersDialogOpen] = useState(false);
     const [accessDialogOpen, setAccessDialogOpen] = useState(false);
+    const [usersDialogOpen, setUsersDialogOpen] = useState(false);
     const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
-    const [selectedUserForAccess, setSelectedUserForAccess] = useState<any>(null);
-    const [selectedZone, setSelectedZone] = useState<any>(null);
-    const [selectedGateway, setSelectedGateway] = useState<any>(null);
     const [syncingGateway, setSyncingGateway] = useState<number | null>(null);
     const [syncingStatus, setSyncingStatus] = useState<string>('');
 
@@ -234,8 +228,8 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             refetchGateways();
             refetchZones();
             refetchDoors();
-        } catch (err: any) {
-            setSyncingStatus(`Грешка: ${err.message || 'Грешка при свързване'}`);
+        } catch (err) {
+            setSyncingStatus(`Грешка: ${getErrorMessage(err)}`);
         }
         setTimeout(() => { setSyncingGateway(null); setSyncingStatus(''); }, 3000);
     };
@@ -257,7 +251,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             try {
                 await deleteZone({ variables: { id } });
                 refetchZones();
-            } catch (e: any) { alert(e.message); }
+            } catch (e) { alert(getErrorMessage(e)); }
         }
     };
 
@@ -266,7 +260,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             try {
                 await deleteDoor({ variables: { id } });
                 refetchDoors();
-            } catch (e: any) { alert(e.message); }
+            } catch (e) { alert(getErrorMessage(e)); }
         }
     };
 
@@ -645,7 +639,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             <ZoneEditDialog open={zoneEditOpen} onClose={() => setZoneEditOpen(false)} onSuccess={() => { setZoneEditOpen(false); refetchZones(); }} zones={zonesData?.accessZones || []} zone={selectedZone} />
             <DoorCreateDialog open={doorDialogOpen} onClose={() => setDoorDialogOpen(false)} onSuccess={() => { setDoorDialogOpen(false); refetchDoors(); }} gateways={gatewaysData?.gateways || []} zones={zonesData?.accessZones || []} />
             <CodeCreateDialog open={codeDialogOpen} onClose={() => setCodeDialogOpen(false)} onSuccess={() => { setCodeDialogOpen(false); refetchCodes(); }} />
-            <ZoneUsersDialog open={usersDialogOpen} onClose={() => setUsersDialogOpen(false)} zone={selectedZone} usersData={usersData} />
+            <ZoneUsersDialog open={usersDialogOpen} onClose={() => setUsersDialogOpen(false)} zone={selectedZone || {}} usersData={usersData} />
             <UserAccessDialog open={accessDialogOpen} onClose={() => { setAccessDialogOpen(false); setSelectedUsers([]); }} user={selectedUserForAccess} bulkUsers={selectedUsers} zones={zonesData?.accessZones || []} onSuccess={() => { setAccessDialogOpen(false); setSelectedUsers([]); refetchZones(); }} />
             <TerminalUpdateDialog 
                 open={terminalDialogOpen} 
@@ -725,8 +719,8 @@ const TerminalUpdateDialog: React.FC<{
                 }
             }
             onSuccess();
-        } catch (e: any) {
-            alert(e.message);
+        } catch (e) {
+            alert(getErrorMessage(e));
         } finally {
             setLoading(false);
         }
@@ -808,7 +802,7 @@ const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess:
             await createZone({ variables: { input: formData } });
             onSuccess();
             setFormData({ zoneId: '', name: '', level: 1, dependsOn: [], requiredHoursStart: '00:00', requiredHoursEnd: '23:59', antiPassbackEnabled: false, antiPassbackType: 'soft', antiPassbackTimeout: 5 });
-        } catch (e: any) { alert(e.message); } finally { setLoading(false); }
+        } catch (e) { alert(getErrorMessage(e)); } finally { setLoading(false); }
     };
 
     return (
@@ -894,20 +888,51 @@ const CodeCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess:
     );
 };
 
-const ZoneUsersDialog: React.FC<{open: boolean, onClose: () => void, zone: any, usersData: any}> = ({ open, onClose, zone, usersData }) => {
+const ZoneUsersDialog: React.FC<{open: boolean, onClose: () => void, zone: unknown, usersData: unknown}> = ({ open, onClose, zone, usersData }) => {
     const [assignZone] = useMutation(ASSIGN_ZONE_TO_USER, { refetchQueries: [{ query: ACCESS_ZONES_QUERY }] });
     const [removeZone] = useMutation(REMOVE_ZONE_FROM_USER, { refetchQueries: [{ query: ACCESS_ZONES_QUERY }] });
-    const [selectedUser, setSelectedUser] = useState<any>(null);
+    const [selectedUser, setSelectedUser] = useState<unknown>(null);
     if (!zone) return null;
     return (
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>Потребители в {zone.name}</DialogTitle>
+            <DialogTitle>Потребители в {(zone as { name?: string }).name}</DialogTitle>
             <DialogContent sx={{ pt: 2 }}>
                 <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
-                    <Autocomplete fullWidth options={usersData?.users.users || []} getOptionLabel={(option: any) => `${option.firstName} ${option.lastName}`} value={selectedUser} onChange={(_, v) => setSelectedUser(v)} renderInput={(p) => <TextField {...p} label="Добави" size="small" />} />
-                    <Button variant="contained" onClick={async () => { await assignZone({ variables: { userId: parseInt(selectedUser.id), zoneId: zone.id } }); setSelectedUser(null); }}>Добави</Button>
+                    <Autocomplete 
+                        fullWidth 
+                        options={(usersData as { users: { users: unknown[] } })?.users?.users || []} 
+                        getOptionLabel={(option) => `${(option as { firstName?: string }).firstName || ''} ${(option as { lastName?: string }).lastName || ''}`} 
+                        value={selectedUser} 
+                        onChange={(_, v) => setSelectedUser(v)} 
+                        renderInput={(p) => <TextField {...p} label="Добави" size="small" />} 
+                    />
+                    <Button variant="contained" onClick={async () => { 
+                        const userId = (selectedUser as { id?: number })?.id;
+                        const zoneId = (zone as { id?: number })?.id;
+                        if (userId && zoneId) { 
+                            await assignZone({ variables: { userId: Number(userId), zoneId: Number(zoneId) } }); 
+                            setSelectedUser(null); 
+                        } 
+                    }}>Добави</Button>
                 </Box>
-                <List>{zone.authorizedUsers?.map((u: any) => (<ListItem key={u.id} secondaryAction={<IconButton edge="end" color="error" onClick={async () => await removeZone({ variables: { userId: parseInt(u.id), zoneId: zone.id } })}><DeleteIcon /></IconButton>}><ListItemText primary={`${u.firstName} ${u.lastName}`} /></ListItem>))}</List>
+                <List>{(zone as { authorizedUsers?: unknown[] })?.authorizedUsers?.map((u: unknown) => (
+                    <ListItem 
+                        key={(u as { id: number }).id} 
+                        secondaryAction={
+                            <IconButton edge="end" color="error" onClick={async () => {
+                                const userId = (u as { id: number }).id;
+                                const zoneId = (zone as { id: number }).id;
+                                if (userId && zoneId) {
+                                    await removeZone({ variables: { userId: Number(userId), zoneId: Number(zoneId) } });
+                                }
+                            }}>
+                                <DeleteIcon />
+                            </IconButton>
+                        }
+                    >
+                        <ListItemText primary={`${(u as { firstName?: string }).firstName || ''} ${(u as { lastName?: string }).lastName || ''}`} />
+                    </ListItem>
+                ))}</List>
             </DialogContent>
             <DialogActions><Button onClick={onClose}>Затвори</Button></DialogActions>
         </Dialog>
@@ -944,7 +969,7 @@ const UserAccessDialog: React.FC<{open: boolean, onClose: () => void, user: any,
                 await bulkUpdate({ variables: { userIds: uids, zoneIds: checkedZones, action: 'add' } });
             }
             onSuccess();
-        } catch (e: any) { alert(e.message); } finally { setLoading(false); }
+        } catch (e) { alert(getErrorMessage(e)); } finally { setLoading(false); }
     };
 
     return (
@@ -960,11 +985,11 @@ const UserAccessDialog: React.FC<{open: boolean, onClose: () => void, user: any,
 
 const EmergencyControl: React.FC<{currentMode: string, onAction: () => void}> = ({ currentMode, onAction }) => {
     const [bulkAction] = useMutation(BULK_EMERGENCY_ACTION);
-    const [loading, setLoading] = useState(false);
+    const [, setLoading] = useState(false);
     const handleAction = async (action: string) => {
         if (!confirm(`Сигурни ли сте?`)) return;
         setLoading(true);
-        try { await bulkAction({ variables: { action } }); onAction(); } catch (e: any) { alert(e.message); } finally { setLoading(false); }
+        try { await bulkAction({ variables: { action } }); onAction(); } catch (e) { alert(getErrorMessage(e)); } finally { setLoading(false); }
     };
     const getProps = () => {
         if (currentMode === 'emergency_unlock') return { color: '#d32f2f', text: 'АВАРИЙНО ОТКЛЮЧЕНО' };
@@ -1037,7 +1062,7 @@ const ZoneEditDialog: React.FC<{
                 } 
             });
             onSuccess();
-        } catch (e: any) { alert(e.message); } finally { setLoading(false); }
+        } catch (e) { alert(getErrorMessage(e)); } finally { setLoading(false); }
     };
 
     return (
@@ -1122,8 +1147,8 @@ const GatewayEditDialog: React.FC<{
                 }
             });
             onSuccess();
-        } catch (e: any) {
-            alert(e.message);
+        } catch (e) {
+            alert(getErrorMessage(e));
         } finally {
             setLoading(false);
         }

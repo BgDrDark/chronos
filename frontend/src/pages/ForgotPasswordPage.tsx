@@ -30,8 +30,9 @@ const ForgotPasswordPage: React.FC = () => {
       }
 
       setMessage('Ако имейлът съществува в системата, ще получите инструкции за смяна на парола.');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      setError(error.message || 'Грешка');
     } finally {
       setLoading(false);
     }

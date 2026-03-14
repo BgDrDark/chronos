@@ -1,3 +1,19 @@
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  
+  if (typeof error === 'object' && error !== null) {
+    const err = error as { response?: { data?: { detail?: string | { message?: string } } }; message?: string };
+    if (err.response?.data?.detail) {
+      if (typeof err.response.data.detail === 'string') return err.response.data.detail;
+      if (err.response.data.detail.message) return err.response.data.detail.message;
+    }
+    if (err.message) return err.message;
+  }
+  
+  return 'Неизвестна грешка';
+}
+
 export interface Role {
   id: number;
   name: string;
@@ -80,7 +96,7 @@ export interface Shift {
   toleranceMinutes: number;
   breakDurationMinutes: number;
   payMultiplier: number;
-  shiftType: 'regular' | 'night' | 'weekend' | 'holiday' | 'missing';
+  shiftType: 'regular' | 'night' | 'weekend' | 'holiday' | 'missing' | 'public_holiday' | 'paid_leave' | 'day_off';
 }
 
 export interface WorkSchedule {
@@ -88,6 +104,9 @@ export interface WorkSchedule {
   date: string;
   user: User;
   shift?: Shift | null;
+  name?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
 }
 
 export interface PaginatedUsers {
@@ -109,7 +128,12 @@ export interface Recipe {
 export interface RecipeIngredient {
   id: number;
   ingredient: Ingredient;
+  ingredientId?: number | string | null;
   quantityGross: number;
+  quantityNet?: number | null;
+  wastePercentage?: number | null;
+  originalQuantity?: number | null;
+  barcode?: string | null;
   workstation?: Workstation | null;
 }
 
@@ -119,11 +143,14 @@ export interface RecipeStep {
   stepOrder: number;
   estimatedDurationMinutes?: number | null;
   workstation: Workstation;
+  workstationId?: number;
 }
 
 export interface RecipeSection {
   id: number;
   name: string;
+  type?: string | null;
+  sectionType?: string | null;
   shelfLifeDays?: number | null;
   wastePercentage: number;
   sectionOrder: number;
@@ -135,6 +162,16 @@ export interface FullRecipe extends Recipe {
   description?: string | null;
   category?: string | null;
   isBase: boolean;
+  yieldQuantity?: number | null;
+  yieldUnit?: string | null;
+  shelfLifeDays?: number | null;
+  shelfLifeFrozenDays?: number | null;
+  productionDeadlineDays?: number | null;
+  defaultPieces?: number | null;
+  standardQuantity?: number | null;
+  instructions?: string | null;
+  ingredients?: RecipeIngredient[];
+  steps?: RecipeStep[];
   sections: RecipeSection[];
 }
 
@@ -146,6 +183,18 @@ export interface PayrollLegalSettings {
   noiCompensationPercent: number;
   employerPaidSickDays: number;
   defaultTaxResident: boolean;
+  targetId?: string | null;
+  hourlyRate?: number | null;
+  monthlySalary?: number | null;
+  currency?: string | null;
+  annualLeaveDays?: number | null;
+  overtimeMultiplier?: number | null;
+  standardHoursWeekly?: number | null;
+  standardHoursPerDay?: number | null;
+  taxPercent?: number | null;
+  healthInsurancePercent?: number | null;
+  hasTaxDeduction?: boolean | null;
+  hasHealthInsurance?: boolean | null;
 }
 
 export interface PayrollSummaryInstallment {
@@ -293,7 +342,106 @@ export interface Invoice {
   status: string;
   isCorrected?: boolean;
   batch?: Batch | null;
+  originalInvoiceId?: number | null;
   items?: InvoiceItem[];
+}
+
+export interface AccountingSummary {
+  period: string;
+  totalIncome: number;
+  totalExpense: number;
+  netProfit: number;
+  vatCollected: number;
+  vatPaid: number;
+  cashIncome: number;
+  cashExpense: number;
+  cashBalance: number;
+  year?: number;
+  month?: number;
+  invoicesCount?: number;
+  incomingInvoicesCount?: number;
+  outgoingInvoicesCount?: number;
+  invoicesTotal?: number;
+  date?: string;
+  id?: number;
+}
+
+export interface Account {
+  id: number;
+  name: string;
+  code: string;
+  balance: number;
+  type?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  iban?: string;
+  bankName?: string;
+  bic?: string;
+  accountType?: string;
+  currency?: string;
+}
+
+export interface Transaction {
+  id: number;
+  date: string;
+  description: string;
+  amount: number;
+  accountId: number;
+  type?: string;
+  reference?: string;
+  matched?: boolean;
+}
+
+export interface Register {
+  id: number;
+  name: string;
+  balance: number;
+  periodMonth: number;
+  periodYear: number;
+  vatDue: number;
+  vatCredit: number;
+  vatCollected20?: number;
+  vatCollected9?: number;
+  vatPaid20?: number;
+  vatPaid9?: number;
+}
+
+export interface AccountingLog {
+  id: number;
+  action: string;
+  user: { firstName?: string; lastName?: string } | string;
+  timestamp: string;
+  details?: string;
+  operation?: string;
+  entityType?: string;
+  entityId?: number;
+  changes?: string;
+}
+
+export interface Account {
+  id: number;
+  name: string;
+  code: string;
+  balance: number;
+  type?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  iban?: string;
+  bankName?: string;
+  bic?: string;
+  accountType?: string;
+  currency?: string;
+}
+
+export interface Transaction {
+  id: number;
+  date: string;
+  description: string;
+  amount: number;
+  accountId: number;
+  type?: string;
+  reference?: string;
+  matched?: boolean;
 }
 
 export interface ChartOfAccount {
@@ -323,6 +471,11 @@ export interface CashJournalEntry {
   amount: number;
   description?: string | null;
   personName?: string | null;
+  operationType?: string | null;
+  creator?: {
+    firstName: string;
+    lastName: string;
+  } | null;
 }
 
 export interface AccountingOperation {
@@ -369,6 +522,7 @@ export interface ProductionTask {
   startedAt?: string | null;
   completedAt?: string | null;
   quantity?: number;
+  instructions?: string | null;
 }
 
 export interface ProductionOrder {
@@ -419,6 +573,11 @@ export interface StorageZone {
   id: number;
   name: string;
   description?: string | null;
+  tempMin?: number | null;
+  tempMax?: number | null;
+  isActive?: boolean | null;
+  assetType?: string | null;
+  zoneType?: string | null;
 }
 
 export interface Supplier {
@@ -439,11 +598,13 @@ export interface Batch {
   quantity: number;
   originalQuantity: number;
   batchNumber?: string | null;
+  invoiceNumber?: string | null;
   expiryDate?: string | null;
   receivedDate: string;
   cost?: number | null;
   status: string;
   storageZone?: StorageZone | null;
+  storageZoneId?: number | null;
   ingredient?: Ingredient | null;
   supplier?: Supplier | null;
 }
@@ -488,6 +649,7 @@ export interface ActiveSession {
   ipAddress?: string | null;
   userAgent?: string | null;
   expiresAt: string;
+  lastUsedAt?: string | null;
 }
 
 export interface OfficeLocation {
@@ -496,4 +658,140 @@ export interface OfficeLocation {
   radius: number;
   entryEnabled: boolean;
   exitEnabled: boolean;
+}
+
+export interface UserDailyStat {
+  date: string;
+  shiftName?: string | null;
+  actualArrival?: string | null;
+  actualDeparture?: string | null;
+  regularHours: number;
+  overtimeHours: number;
+  totalWorkedHours: number;
+  isWorkDay: boolean;
+}
+
+export interface PayrollForecastItem {
+  departmentName: string;
+  amount: number;
+}
+
+export interface LabelData {
+  barcode: string;
+  productName: string;
+  quantity?: number;
+}
+
+export interface CalendarEvent {
+  title: string;
+  start: string | Date;
+  end?: string | Date;
+  allDay?: boolean;
+  extendedProps?: {
+    isHoliday?: boolean;
+    isLog?: boolean;
+    isManual?: boolean;
+    shiftName?: string;
+    userId?: number;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface ActiveTimeLog {
+  id: number;
+  startTime: string;
+  endTime?: string | null;
+  userId: number;
+}
+
+export interface WebAuthnCredential {
+  id: string;
+  type: string;
+  transports?: string[];
+}
+
+export interface WebAuthnOptions {
+  challenge: string;
+  rpId?: string;
+  allowCredentials?: WebAuthnCredential[];
+  timeout?: number;
+  userVerification?: 'required' | 'preferred' | 'discouraged';
+}
+
+export interface BiometricError {
+  message: string;
+  code?: string;
+}
+
+export interface OrderStatus {
+  id: number;
+  name: string;
+  color?: string;
+}
+
+export interface Order {
+  id: number;
+  dueDate?: string;
+  notes?: string;
+  quantity?: number;
+  tasks?: { id: number; name: string }[];
+  status?: string;
+  clientName?: string;
+  clientPhone?: string;
+  total?: number;
+  createdAt?: string;
+  recipe?: { id: number; name: string };
+  productionRecordByOrder?: {
+    workers?: { id: number; name: string }[];
+    ingredients?: { id: number; name: string; quantity: number }[];
+  };
+}
+
+export interface ScheduleLog {
+  id: number;
+  logId?: number;
+  userId: number;
+  date: string;
+  shiftName?: string;
+  startTime?: string;
+  endTime?: string;
+  start?: string | Date;
+  end?: string | Date;
+  isManual?: boolean;
+}
+
+export interface SaftResult {
+  xmlContent?: string;
+  fileName?: string;
+  validationResult?: unknown;
+}
+
+export interface Terminal {
+  id: number;
+  hardwareUuid: string;
+  alias?: string;
+  mode?: string;
+  isActive?: boolean;
+}
+
+export interface Gateway {
+  id: number;
+  name: string;
+  ipAddress?: string;
+}
+
+export interface AccessZone {
+  id: number;
+  name: string;
+  authorizedUsers?: { id: number; firstName?: string; lastName?: string }[];
+}
+
+export interface LabelData {
+  barcode: string;
+  productName: string;
+  quantity?: number;
+  expiryDate?: string;
+  qrCodeContent?: string;
+  batchNumber?: string;
 }

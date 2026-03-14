@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getErrorMessage } from '../types';
 import { 
   Box, Typography, Alert, CircularProgress, Card, CardContent, 
   FormControlLabel, FormGroup, Checkbox, Divider, Button
@@ -153,9 +154,9 @@ const PushNotificationManager: React.FC = () => {
             } else {
                 throw new Error("Сървърът отказа да запише абонамента.");
             }
-        } catch (e: any) {
+        } catch (e) {
             console.error("Push Subscription Error:", e);
-            setError(e.message || "Възникна неочаквана грешка.");
+            setError(getErrorMessage(e) || "Възникна неочаквана грешка.");
         } finally {
             setLoading(false);
         }
@@ -171,8 +172,8 @@ const PushNotificationManager: React.FC = () => {
                 setIsSubscribed(false);
                 setSuccessMsg("Абонаментът е прекратен.");
             }
-        } catch (e: any) {
-            setError("Грешка при прекратяване: " + e.message);
+        } catch (e) {
+            setError("Грешка при прекратяване: " + getErrorMessage(e));
         } finally {
             setLoading(false);
         }

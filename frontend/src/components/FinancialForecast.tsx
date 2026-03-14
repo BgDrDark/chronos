@@ -8,6 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import { useCurrency } from '../currencyContext';
+import { PayrollForecastItem } from '../types';
 
 const GET_FORECAST = gql`
   query GetForecast($year: Int!, $month: Int!) {
@@ -99,9 +100,9 @@ const FinancialForecast: React.FC = () => {
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                             <XAxis dataKey="departmentName" />
                                             <YAxis />
-                                            <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
+                                            <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
                                             <Bar dataKey="amount" fill="#3f51b5" radius={[4, 4, 0, 0]}>
-                                                {data.payrollForecast.byDepartment.map((_: any, index: number) => (
+                                                {data.payrollForecast.byDepartment.map((_item: PayrollForecastItem, index: number) => (
                                                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                                 ))}
                                             </Bar>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getErrorMessage } from '../types';
 import { 
   Container, Typography, Box, CircularProgress, Alert, Paper, Dialog, 
   DialogTitle, DialogContent, Button, DialogActions, Stack,
@@ -187,7 +188,7 @@ const MySchedulePage: React.FC = () => {
       });
       setRequestOpen(false);
       alert('Заявката е изпратена успешно!');
-    } catch (e: any) { alert(e.message); }
+    } catch (e) { alert(getErrorMessage(e)); }
   };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;

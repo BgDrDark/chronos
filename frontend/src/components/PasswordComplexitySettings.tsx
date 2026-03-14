@@ -73,8 +73,9 @@ const PasswordComplexitySettings: React.FC = () => {
       setMsg({ type: 'success', text: 'Настройките за сложност на паролите са запазени.' });
       refetch();
       setTimeout(() => setMsg(null), 3000);
-    } catch (e: any) {
-      setMsg({ type: 'error', text: e.message });
+    } catch (e: unknown) {
+      const error = e as { message?: string };
+      setMsg({ type: 'error', text: error.message || 'Грешка' });
     }
   };
 

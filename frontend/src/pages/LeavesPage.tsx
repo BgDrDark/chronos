@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { getErrorMessage } from '../types';
 import {
   Container, Typography, Box, TextField, Button,
   Card, CardContent, Grid, Chip, Alert, CircularProgress,
@@ -234,9 +235,9 @@ const MyLeavesTab: React.FC<{ user: any }> = ({ user }) => {
             setUploading(true);
             try {
                 await uploadFile(data.requestLeave.id, selectedFile);
-            } catch (e: any) {
+            } catch (e) {
                 console.error(e);
-                alert("Заявката е създадена, но качването на файла неуспешно: " + e.message);
+                alert("Заявката е създадена, но качването на файла неуспешно: " + getErrorMessage(e));
             } finally {
                 setUploading(false);
                 handleClose();
@@ -253,10 +254,10 @@ const MyLeavesTab: React.FC<{ user: any }> = ({ user }) => {
         if (selectedFile && selectedReqId) {
              setUploading(true);
              try {
-                 await uploadFile(selectedReqId, selectedFile);
-             } catch (e: any) {
-                 alert("Качването на файла неуспешно: " + e.message);
-             } finally {
+                  await uploadFile(selectedReqId, selectedFile);
+              } catch (e) {
+                  alert("Качването на файла неуспешно: " + getErrorMessage(e));
+              } finally {
                  setUploading(false);
                  handleClose();
                  refetch();
@@ -362,7 +363,7 @@ const MyLeavesTab: React.FC<{ user: any }> = ({ user }) => {
         document.body.appendChild(a);
         a.click();
         a.remove();
-    } catch (e: any) { alert(e.message); }
+    } catch (e) { alert(getErrorMessage(e)); }
   };
 
   if (loading || balanceLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
@@ -582,8 +583,8 @@ const ApprovalsTab: React.FC = () => {
           refetch();
           setComment(''); 
           setTopUpMap({});
-      } catch (e: any) {
-          alert(e.message);
+      } catch (e) {
+          alert(getErrorMessage(e));
       }
   };
 
