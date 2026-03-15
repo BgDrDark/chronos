@@ -5210,3 +5210,78 @@ class Mutation:
         await db.refresh(annex)
         return types.ContractAnnex.from_instance(annex)
 
+    # === NAP Reports (Фаза 7) ===
+    
+    @strawberry.mutation
+    async def generate_annual_insurance_report(
+        self,
+        company_id: int,
+        year: int,
+        info: strawberry.Info = None
+    ) -> dict:
+        """Генерира годишна справка за осигурени лица"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        
+        from backend.services.nap_reports import NAPReportsGenerator
+        
+        generator = NAPReportsGenerator(db, company_id, year)
+        return await generator.generate_annual_insurance_report()
+    
+    @strawberry.mutation
+    async def generate_income_report_by_type(
+        self,
+        company_id: int,
+        year: int,
+        info: strawberry.Info = None
+    ) -> dict:
+        """Генерира справка по чл. 73, ал. 6 ЗДДФЛ"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        
+        from backend.services.nap_reports import NAPReportsGenerator
+        
+        generator = NAPReportsGenerator(db, company_id, year)
+        return await generator.generate_income_report_by_type()
+    
+    @strawberry.mutation
+    async def generate_service_book_export(
+        self,
+        company_id: int,
+        year: int,
+        info: strawberry.Info = None
+    ) -> dict:
+        """Генерира експорт за електронната трудова книжка"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        
+        from backend.services.nap_reports import NAPReportsGenerator
+        
+        generator = NAPReportsGenerator(db, company_id, year)
+        return await generator.generate_service_book_export()
+    
+    @strawberry.mutation
+    async def generate_monthly_declaration(
+        self,
+        company_id: int,
+        year: int,
+        month: int,
+        info: strawberry.Info = None
+    ) -> dict:
+        """Генерира месечна декларация за НАП"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        
+        from backend.services.nap_reports import NAPReportsGenerator
+        
+        generator = NAPReportsGenerator(db, company_id, year)
+        return await generator.generate_monthly_declaration(month)
+
