@@ -1064,3 +1064,133 @@ def calculate_sick_leave_payment_by_law(
             'segments': segments,
             'has_changes': True
         }
+    
+    # --- Отпуски и болнични (Фаза 5) ---
+    
+    async def calculate_maternity_leave(
+        self, 
+        leave_request: "LeaveRequest"
+    ) -> dict:
+        """
+        Изчислява обезщетението за майчинство (чл. 163 КТ).
+        410 дни - 135 дни преди раждане, 275 дни след раждане.
+        Обезщетение: 90% от среднодневния брутен осигурителен доход.
+        """
+        from backend import crud
+        
+        maternity_days_str = await crud.get_global_setting(self.db, "payroll_maternity_days")
+        maternity_days = int(maternity_days_str) if maternity_days_str else 410
+        
+        # Изчисли среднодневния брутен осигурителен доход
+        daily_gross = await self._get_daily_gross_salary()
+        if not daily_gross:
+            return {
+                'total_days': maternity_days,
+                'daily_amount': 0,
+                'total_amount': 0,
+                'type': 'maternity'
+            }
+        
+        # 90% от среднодневния доход
+        daily_amount = daily_gross * Decimal("0.90")
+        total_amount = daily_amount * Decimal(str(maternity_days))
+        
+        return {
+            'total_days': maternity_days,
+            'daily_amount': float(daily_amount),
+            'total_amount': float(total_amount),
+            'type': 'maternity',
+            'start_date': leave_request.start_date if leave_request else None,
+            'end_date': leave_request.end_date if leave_request else None
+        }
+    
+    async def calculate_paternity_leave(
+        self, 
+        leave_request: "LeaveRequest"
+    ) -> dict:
+        """
+        Изчислява обезщетението за бащинство.
+        15 дни - платени от работодателя.
+        """
+        from backend import crud
+        
+        paternity_days_str = await crud.get_global_setting(self.db, "payroll_paternity_days")
+        paternity_days = int(paternity_days_str) if paternity_days_str else 15
+        
+        # Бащинството е 100% платено от работодателя
+        daily_gross = await self._get_daily_gross_salary()
+        if not daily_gross:
+            return {
+                'total_days': paternity_days,
+                'daily_amount': 0,
+                'total_amount': 0,
+                'type': 'paternity'
+            }
+        
+        total_amount = daily_gross * Decimal(str(paternity_days))
+        
+        return {
+            'total_days': paternity_days,
+            'daily_amount': float(daily_gross),
+            'total_amount': float(total_amount),
+            'type': 'paternity',
+            'employer_paid': True
+        }
+    
+    async def calculate_leave_details(
+        self, 
+        leave_requests: List["LeaveRequest"]
+    ) -> dict:
+        """
+        Изчислява всички отпуски за периода.
+        """
+        annual_leave = Decimal("0")
+        sick_leave = Decimal("0")
+        maternity_leave = Decimal("0")
+        paternity_leave = Decimal("0")
+        unpaid_leave = Decimal("0")
+        
+        annual_days = 0
+        sick_days = 0
+        
+        for leave in leave_requests:
+            if leave.leave_type == "annual_paid":
+                # Заплаща се от работодателя
+                annual_days += (leave.end_date - leave.start_date).days + 1
+                
+            elif leave.leave_type == "sick":
+                sick_days += (leave.end_date - leave.start_date).days + 1
+                payment = await self._calculate_single_sick_leave_payment(
+                    SickLeaveRecord(
+                        start_date=leave.start_date,
+                        end_date=leave.end_date,
+                        sick_leave_type="general",
+                        total_days=(leave.end_date - leave.start_date).days + 1
+                    )
+                )
+                sick_leave += payment
+                
+            elif leave.leave_type == "maternity":
+                details = await self.calculate_maternity_leave(leave)
+                maternity_leave += Decimal(str(details['total_amount']))
+                
+            elif leave.leave_type == "paternity":
+                details = await self.calculate_paternity_leave(leave)
+                paternity_leave += Decimal(str(details['total_amount']))
+                
+            elif leave.leave_type == "unpaid":
+                unpaid_days = (leave.end_date - leave.start_date).days + 1
+                unpaid_leave += Decimal(str(unpaid_days)) * (await self._get_daily_gross_salary() or Decimal("0"))
+        
+        return {
+            'annual_leave_days': annual_days,
+            'annual_leave_amount': float(annual_leave),
+            'sick_leave_days': sick_days,
+            'sick_leave_amount': float(sick_leave),
+            'maternity_leave_amount': float(maternity_leave),
+            'paternity_leave_amount': float(paternity_leave),
+            'unpaid_leave_days': unpaid_leave,
+            'total_leave_amount': float(
+                annual_leave + sick_leave + maternity_leave + paternity_leave
+            )
+        }

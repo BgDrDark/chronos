@@ -667,7 +667,16 @@ class LeaveRequest(Base):
     user_id:Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
     start_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     end_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
-    leave_type: Mapped[str] = mapped_column(String, nullable=False)  # paid_leave, sick_leave, unpaid_leave
+    leave_type: Mapped[str] = mapped_column(String, nullable=False)  
+    # leave_type values:
+    # - annual_paid: Годишен платен отпуск
+    # - sick: Болничен
+    # - unpaid: Неплатен отпуск
+    # - maternity: Майчинство (чл. 163 КТ - 410 дни)
+    # - paternity: Бащинство (15 дни)
+    # - parental: Родителски отпуск
+    # - child_care: Отпуск за грижа за дете
+    # - study: Ученически
     reason: Mapped[str] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="pending")  # pending, approved, rejected
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
@@ -675,6 +684,11 @@ class LeaveRequest(Base):
     # Optional: admin comment upon rejection
     admin_comment: Mapped[str] = mapped_column(String, nullable=True)
     employer_top_up: Mapped[bool] = mapped_column(Boolean, default=False) # Работодателят плаща разликата до 100%
+    
+    # За майчинство и родителски
+    maternity_start_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)
+    expected_birth_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)
+    child_birth_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)
 
     user = relationship("User", back_populates="leave_requests")
 

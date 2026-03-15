@@ -143,6 +143,13 @@ async def init_db():
         await crud.set_global_setting(session, "payroll_overtime_rate", "50")
         await crud.set_global_setting(session, "payroll_holiday_rate", "100")
         
+        # Отпуски и болнични (Фаза 5)
+        await crud.set_global_setting(session, "payroll_annual_leave_days", "20")  # Годишен отпуск
+        await crud.set_global_setting(session, "payroll_sick_day_1_rate", "70")  # Първи ден болничен 70%
+        await crud.set_global_setting(session, "payroll_sick_days_covered_by_employer", "2")  # 2 дни от работодател
+        await crud.set_global_setting(session, "payroll_maternity_days", "410")  # Майчинство 410 дни
+        await crud.set_global_setting(session, "payroll_paternity_days", "15")  # Бащинство 15 дни
+        
         # Настройки за Аванси (Сигурност)
         await crud.set_global_setting(session, "qr_token_regen_minutes", "15")
         
