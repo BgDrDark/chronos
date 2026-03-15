@@ -2,7 +2,9 @@ import datetime
 import enum
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from decimal import Decimal
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from zoneinfo import ZoneInfo
 from sqlalchemy import (
@@ -21,7 +23,7 @@ from sqlalchemy import (
     LargeBinary,
     Table
 )
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship, declarative_base, Mapped, mapped_column
 
 try:
     from backend.config import settings
@@ -51,30 +53,30 @@ class ShiftType(str, enum.Enum):
 class Role(Base):
     __tablename__ = "roles"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
-    description = Column(String)
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String, unique=True, index=True)
+    description: Mapped[str] = mapped_column(String)
     
     # RBAC enhancements
-    is_system_role = Column(Boolean, default=False)  # System vs user-defined roles
-    priority = Column(Integer, default=0)  # Role hierarchy priority
-    created_at = Column(DateTime, default=sofia_now)
-    updated_at = Column(DateTime, nullable=True)
+    is_system_role: Mapped[bool] = mapped_column(Boolean, default=False)  # System vs user-defined roles
+    priority: Mapped[int] = mapped_column(Integer, default=0)  # Role hierarchy priority
+    created_at: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
 
-    users = relationship("User", back_populates="role")
-    role_permissions = relationship("RolePermission", back_populates="role", cascade="all, delete-orphan")
-    company_assignments = relationship("CompanyRoleAssignment", back_populates="role", cascade="all, delete-orphan")
+    users: Mapped[list["User"]]= relationship("User", back_populates="role")
+    role_permissions: Mapped[list["RolePermission"]] = relationship("RolePermission", back_populates="role", cascade="all, delete-orphan")
+    company_assignments: Mapped[list["CompanyRoleAssignment"]] = relationship("CompanyRoleAssignment", back_populates="role", cascade="all, delete-orphan")
 
 
 class Permission(Base):
     __tablename__ = "permissions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), unique=True, nullable=False, index=True)  # "users:read", "payroll:create"
-    resource = Column(String(50), nullable=False, index=True)  # "users", "payroll", "schedules"
-    action = Column(String(50), nullable=False, index=True)  # "read", "create", "update", "delete"
-    description = Column(String, nullable=True)
-    created_at = Column(DateTime, default=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)  # "users:read", "payroll:create"
+    resource: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # "users", "payroll", "schedules"
+    action: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # "read", "create", "update", "delete"
+    description: Mapped[str] = mapped_column(String, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
     
     # Ensure unique resource-action combinations
     __table_args__ = (
@@ -215,7 +217,7 @@ class Gateway(Base):
     
     alias = Column(String(100), nullable=True)  # User-defined alias
     
-    api_key = Column(String(64), unique=True, nullable=True)  # API key for authentication
+    api_key:Mapped[str] = mapped_column(String(64), unique=True, nullable=True)  # API key for authentication
     
     ip_address = Column(String(50), nullable=True)
     local_hostname = Column(String(100), nullable=True)
@@ -223,7 +225,8 @@ class Gateway(Base):
     terminal_port = Column(Integer, default=8080)
     web_port = Column(Integer, default=8888)
     
-    is_active = Column(Boolean, default=True)
+    is_active:Mapped[bool] = mapped_column(Boolean, default=True)
+    is_online:Mapped[bool] = mapped_column(Boolean, default=True)
     system_mode = Column(String(30), default="normal") # normal, emergency_unlock, lockdown
     last_heartbeat = Column(DateTime, nullable=True)
     registered_at = Column(DateTime, default=sofia_now)
@@ -341,45 +344,45 @@ class ProductionTaskLog(Base):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True, nullable=True) # Now optional
-    username = Column(String, unique=True, index=True, nullable=True) # Added for non-email login
-    hashed_password = Column(String, nullable=False)
-    first_name = Column(String, nullable=True)
-    last_name = Column(String, nullable=True)
-    phone_number = Column(String(20), nullable=True)
-    address = Column(String(255), nullable=True)
-    egn = Column(Text, nullable=True) # Encrypted
-    birth_date = Column(Date, nullable=True)
-    iban = Column(Text, nullable=True) # Encrypted
-    is_active = Column(Boolean, default=True)
-    qr_secret = Column(String(64), nullable=True) # Secret for dynamic QR generation
-    
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    username: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=True) # Now optional
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    first_name: Mapped[str] = mapped_column(String, nullable=True)
+    last_name: Mapped[str] = mapped_column(String, nullable=True)
+    phone_number: Mapped[str] = mapped_column(String(20), nullable=True)
+    address: Mapped[str] = mapped_column(String(255), nullable=True)
+    egn: Mapped[str] = mapped_column(Text, nullable=True) # Encrypted
+    birth_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)
+    iban: Mapped[str] = mapped_column(Text, nullable=True) # Encrypted
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    qr_secret: Mapped[str] = mapped_column(String(64), nullable=True) # Secret for dynamic QR generation
+    is_qr_enabled: Mapped[bool] = mapped_column(Boolean, default=False) # Enable QR code access
     # Old String Fields (To be deprecated after migration)
-    job_title = Column(String, nullable=True)
-    department = Column(String, nullable=True)
-    company = Column(String, nullable=True)
+    job_title: Mapped[str] = mapped_column(String, nullable=True)
+    department: Mapped[str] = mapped_column(String, nullable=True)
+    company: Mapped[str] = mapped_column(String, nullable=True)
 
     # New Relations
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
-    department_id = Column(Integer, ForeignKey("departments.id", name="fk_user_department", use_alter=True), nullable=True)
-    position_id = Column(Integer, ForeignKey("positions.id"), nullable=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=True)
+    department_id: Mapped[int] = mapped_column(Integer, ForeignKey("departments.id", name="fk_user_department", use_alter=True), nullable=True)
+    position_id: Mapped[int] = mapped_column(Integer, ForeignKey("positions.id"), nullable=True)
     
     company_rel = relationship("Company", back_populates="users")
     department_rel = relationship("Department", back_populates="users", foreign_keys=[department_id])
     position_rel = relationship("Position", back_populates="users")
 
-    created_at = Column(DateTime, default=sofia_now)
-    last_login = Column(DateTime, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    last_login: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
     
     # Security Fields
-    failed_login_attempts = Column(Integer, default=0)
-    locked_until = Column(DateTime, nullable=True)
-    qr_token = Column(String, unique=True, index=True, nullable=True)
-    password_force_change = Column(Boolean, default=False)
-    profile_picture = Column(String, nullable=True) # Filename of the profile picture
-    
-    role_id = Column(Integer, ForeignKey("roles.id"))
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    qr_token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=True)
+    password_force_change: Mapped[bool] = mapped_column(Boolean, default=False)
+    profile_picture: Mapped[str] = mapped_column(String, nullable=True) # Filename of the profile picture
+
+    role_id: Mapped[int] = mapped_column(Integer, ForeignKey("roles.id"))
     role = relationship("Role", back_populates="users")
 
     timelogs = relationship("TimeLog", back_populates="user", cascade="all, delete-orphan")
@@ -494,11 +497,73 @@ class Payslip(Base):
     sick_days = Column(Integer, default=0)
     leave_days = Column(Integer, default=0)
     
+    # Осигуровки - детайлни полета (Фаза 1)
+    doo_employee = Column(Numeric(10, 2), default=0)  # ДОО служител
+    doo_employer = Column(Numeric(10, 2), default=0)  # ДОО работодател
+    zo_employee = Column(Numeric(10, 2), default=0)  # ЗО служител
+    zo_employer = Column(Numeric(10, 2), default=0)  # ЗО работодател
+    dzpo_employee = Column(Numeric(10, 2), default=0)  # ДЗПО служител
+    dzpo_employer = Column(Numeric(10, 2), default=0)  # ДЗПО работодател
+    tzpb_employer = Column(Numeric(10, 2), default=0)  # ТЗПБ само работодател
+    
+    # Данъци - детайлни полета (Фаза 2)
+    gross_salary = Column(Numeric(10, 2), default=0)  # Брутна заплата
+    taxable_base = Column(Numeric(10, 2), default=0)  # Данъчна база
+    income_tax = Column(Numeric(10, 2), default=0)  # ДДФЛ
+    standard_deduction = Column(Numeric(10, 2), default=0)  # Стандартно подобрения
+    
     total_amount = Column(Numeric(10, 2), default=0)
+
+    # Статус на плащане
+    payment_status = Column(String(20), default='pending')  # pending, paid, cancelled, sent_to_bank
+    actual_payment_date = Column(DateTime, nullable=True)  # Реална дата на превод
+    payment_method = Column(String(20), default='bank')  # bank, cash
 
     generated_at = Column(DateTime, default=sofia_now)
 
     user = relationship("User", back_populates="payslips")
+
+
+class InsuranceRateHistory(Base):
+    """История на осигурителните ставки"""
+    __tablename__ = "insurance_rate_history"
+    
+    id = Column(Integer, primary_key=True)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=True)  # null = цяла година
+    category = Column(String(20), nullable=False)  # "doo", "zo", "dzpo", "tzpb"
+    employee_rate = Column(Numeric(5, 2), nullable=False)
+    employer_rate = Column(Numeric(5, 2), nullable=False)
+    effective_from = Column(Date, nullable=False)
+    effective_to = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+
+class TaxRateHistory(Base):
+    """История на данъчните ставки (ДДФЛ)"""
+    __tablename__ = "tax_rate_history"
+    
+    id = Column(Integer, primary_key=True)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=True)  # null = цяла година
+    rate = Column(Numeric(5, 2), nullable=False)  # % напр. 10.00
+    effective_from = Column(Date, nullable=False)
+    effective_to = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
+
+
+class TaxDeductionHistory(Base):
+    """История на данъчните подобрения"""
+    __tablename__ = "tax_deduction_history"
+    
+    id = Column(Integer, primary_key=True)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=True)
+    deduction_type = Column(String(50))  # "standard", "professional"
+    amount = Column(Numeric(10, 2), nullable=False)
+    effective_from = Column(Date, nullable=False)
+    effective_to = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=sofia_now)
 
 
 class Shift(Base):
@@ -521,8 +586,8 @@ class Shift(Base):
 class WorkSchedule(Base):
     __tablename__ = "work_schedules"
 
-    id = Column(Integer, primary_key=True, index=True)
-    date = Column(Date, nullable=False)
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    date:Mapped[datetime.date] = mapped_column(Date, nullable=False)
     
     user_id = Column(Integer, ForeignKey("users.id"))
     shift_id = Column(Integer, ForeignKey("shifts.id"))
@@ -534,46 +599,46 @@ class WorkSchedule(Base):
 class GlobalSetting(Base):
     __tablename__ = "global_settings"
 
-    id = Column(Integer, primary_key=True, index=True)
-    key = Column(String, unique=True, index=True)
-    value = Column(String)
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    key:Mapped[str] = mapped_column(String, unique=True, index=True)
+    value:Mapped[str] = mapped_column(String)
 
 class Module(Base):
     __tablename__ = "modules"
 
-    id = Column(Integer, primary_key=True, index=True)
-    code = Column(String(50), unique=True, nullable=False, index=True) # 'shifts', 'salaries', 'kiosk', 'integrations'
-    is_enabled = Column(Boolean, default=True)
-    name = Column(String(100), nullable=False)
-    description = Column(String, nullable=True)
-    updated_at = Column(DateTime, default=sofia_now, onupdate=sofia_now)
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code:Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True) # 'shifts', 'salaries', 'kiosk', 'integrations'
+    is_enabled:Mapped[bool] = mapped_column(Boolean, default=True)
+    name:Mapped[str] = mapped_column(String(100), nullable=False)
+    description:Mapped[str] = mapped_column(String, nullable=True)
+    updated_at:Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
 
 class PublicHoliday(Base):
     __tablename__ = "public_holidays"
 
-    id = Column(Integer, primary_key=True, index=True)
-    date = Column(Date, unique=True, nullable=False, index=True)
-    name = Column(String, nullable=False)
-    local_name = Column(String, nullable=True) # Името на български
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    date: Mapped[datetime.date] = mapped_column(Date, unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    local_name: Mapped[str] = mapped_column(String, nullable=True) # Името на български
 
 class OrthodoxHoliday(Base):
     __tablename__ = "orthodox_holidays"
 
-    id = Column(Integer, primary_key=True, index=True)
-    date = Column(Date, unique=True, nullable=False, index=True)
-    name = Column(String, nullable=False)
-    local_name = Column(String, nullable=True)
-    is_fixed = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=sofia_now)
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    date: Mapped[datetime.date] = mapped_column(Date, unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    local_name: Mapped[str] = mapped_column(String, nullable=True)
+    is_fixed: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
 class Notification(Base):
     __tablename__ = "notifications"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id")) # Recipient
-    message = Column(String, nullable=False)
-    is_read = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id")) # Recipient
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     user = relationship("User", back_populates="notifications")
 
@@ -581,35 +646,35 @@ class Notification(Base):
 class NotificationSetting(Base):
     __tablename__ = "notification_settings"
 
-    id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
-    event_type = Column(String, nullable=False)  # shift_swap, leave_approved, etc.
-    email_enabled = Column(Boolean, default=True)
-    push_enabled = Column(Boolean, default=True)
-    email_template = Column(Text, nullable=True)  # HTML template
-    recipients = Column(JSON, nullable=True)  # [{"type": "role", "value": "employee"}]
-    interval_minutes = Column(Integer, default=60)
-    enabled = Column(Boolean, default=True)
-    last_sent_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=sofia_now)
-    updated_at = Column(DateTime, default=sofia_now, onupdate=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)  # shift_swap, leave_approved, etc.
+    email_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    push_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_template: Mapped[str] = mapped_column(Text, nullable=True)  # HTML template
+    recipients: Mapped[list] = mapped_column(JSON, nullable=True)  # [{"type": "role", "value": "employee"}]
+    interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_sent_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
 
 
 class LeaveRequest(Base):
     __tablename__ = "leave_requests"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=False)
-    leave_type = Column(String, nullable=False)  # paid_leave, sick_leave, unpaid_leave
-    reason = Column(String, nullable=True)
-    status = Column(String, default="pending")  # pending, approved, rejected
-    created_at = Column(DateTime, default=sofia_now)
-    
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id:Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    start_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    leave_type: Mapped[str] = mapped_column(String, nullable=False)  # paid_leave, sick_leave, unpaid_leave
+    reason: Mapped[str] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="pending")  # pending, approved, rejected
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+
     # Optional: admin comment upon rejection
-    admin_comment = Column(String, nullable=True)
-    employer_top_up = Column(Boolean, default=False) # Работодателят плаща разликата до 100%
+    admin_comment: Mapped[str] = mapped_column(String, nullable=True)
+    employer_top_up: Mapped[bool] = mapped_column(Boolean, default=False) # Работодателят плаща разликата до 100%
 
     user = relationship("User", back_populates="leave_requests")
 
@@ -617,23 +682,23 @@ class LeaveRequest(Base):
 class LeaveBalance(Base):
     __tablename__ = "leave_balances"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    year = Column(Integer, nullable=False)
-    total_days = Column(Integer, default=20)
-    used_days = Column(Integer, default=0)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_days: Mapped[int] = mapped_column(Integer, default=20)
+    used_days: Mapped[int] = mapped_column(Integer, default=0)
 
     user = relationship("User", back_populates="leave_balance")
 
 class Bonus(Base):
     __tablename__ = "bonuses"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    amount = Column(Numeric(10, 2), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     # We use a date to represent the month (e.g., 2023-10-01 for Oct 2023)
-    date = Column(Date, nullable=False) 
-    description = Column(String, nullable=True)
+    date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=True)
 
     user = relationship("User", back_populates="bonuses")
 
@@ -641,39 +706,39 @@ class Bonus(Base):
 class MonthlyWorkDays(Base):
     __tablename__ = "monthly_work_days"
 
-    id = Column(Integer, primary_key=True, index=True)
-    year = Column(Integer, nullable=False)
-    month = Column(Integer, nullable=False)
-    days_count = Column(Integer, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    days_count: Mapped[int] = mapped_column(Integer, nullable=False)
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Who performed it (null for system)
-    action = Column(String, nullable=False) # e.g. "UPDATE_PAYROLL", "DELETE_USER"
-    target_type = Column(String, nullable=True) # e.g. "User", "Shift", "Payroll"
-    target_id = Column(Integer, nullable=True) # ID of the affected resource
-    details = Column(String, nullable=True) # Detailed message or JSON string
-    created_at = Column(DateTime, default=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=True) # Who performed it (null for system)
+    action: Mapped[str] = mapped_column(String, nullable=False) # e.g. "UPDATE_PAYROLL", "DELETE_USER"
+    target_type: Mapped[str] = mapped_column(String, nullable=True) # e.g. "User", "Shift", "Payroll"
+    target_id: Mapped[int] = mapped_column(Integer, nullable=True) # ID of the affected resource
+    details: Mapped[str] = mapped_column(String, nullable=True) # Detailed message or JSON string
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     user = relationship("User")
 
 class ShiftSwapRequest(Base):
     __tablename__ = "shift_swap_requests"
 
-    id = Column(Integer, primary_key=True, index=True)
-    requestor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    target_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    
-    requestor_schedule_id = Column(Integer, ForeignKey("work_schedules.id"), nullable=False)
-    target_schedule_id = Column(Integer, ForeignKey("work_schedules.id"), nullable=False)
-    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    requestor_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    target_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+
+    requestor_schedule_id: Mapped[int] = mapped_column(Integer, ForeignKey("work_schedules.id"), nullable=False)
+    target_schedule_id: Mapped[int] = mapped_column(Integer, ForeignKey("work_schedules.id"), nullable=False)
+
     # status: pending, accepted, rejected, approved, cancelled
-    status = Column(String, default="pending")
-    
-    created_at = Column(DateTime, default=sofia_now)
-    updated_at = Column(DateTime, default=sofia_now, onupdate=sofia_now)
+    status: Mapped[str] = mapped_column(String, default="pending")
+
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
 
     requestor = relationship("User", foreign_keys=[requestor_id])
     target_user = relationship("User", foreign_keys=[target_user_id])
@@ -683,20 +748,20 @@ class ShiftSwapRequest(Base):
 class ScheduleTemplate(Base):
     __tablename__ = "schedule_templates"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    description = Column(String, nullable=True)
-    created_at = Column(DateTime, default=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     items = relationship("ScheduleTemplateItem", back_populates="template", cascade="all, delete-orphan")
 
 class ScheduleTemplateItem(Base):
     __tablename__ = "schedule_template_items"
 
-    id = Column(Integer, primary_key=True, index=True)
-    template_id = Column(Integer, ForeignKey("schedule_templates.id"), nullable=False)
-    day_index = Column(Integer, nullable=False) # 0, 1, 2... for the rotation
-    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=True) # Null means a day off
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    template_id: Mapped[int] = mapped_column(Integer, ForeignKey("schedule_templates.id"), nullable=False)
+    day_index: Mapped[int] = mapped_column(Integer, nullable=False) # 0, 1, 2... for the rotation
+    shift_id: Mapped[int] = mapped_column(Integer, ForeignKey("shifts.id"), nullable=True) # Null means a day off
 
     template = relationship("ScheduleTemplate", back_populates="items")
     shift = relationship("Shift")
@@ -704,27 +769,27 @@ class ScheduleTemplateItem(Base):
 class PushSubscription(Base):
     __tablename__ = "push_subscriptions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    endpoint = Column(String, unique=True, nullable=False)
-    p256dh = Column(String, nullable=False)
-    auth = Column(String, nullable=False)
-    preferences = Column(JSON, default={}) # Stores settings like {"leaves": true, "swaps": true}
-    created_at = Column(DateTime, default=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    endpoint: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    p256dh: Mapped[str] = mapped_column(String, nullable=False)
+    auth: Mapped[str] = mapped_column(String, nullable=False)
+    preferences: Mapped[dict] = mapped_column(JSON, default={}) # Stores settings like {"leaves": true, "swaps": true}
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     user = relationship("User", backref="push_subscriptions")
 
 class UserDocument(Base):
     __tablename__ = "user_documents"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    filename = Column(String, nullable=False)
-    file_path = Column(String, nullable=False)
-    file_type = Column(String, nullable=True) # e.g. 'contract', 'medical', 'other'
-    is_locked = Column(Boolean, default=False) # If true, user cannot download, only see
-    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime, default=sofia_now)
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String, nullable=False)
+    file_path: Mapped[str] = mapped_column(String, nullable=False)
+    file_type: Mapped[str] = mapped_column(String, nullable=True) # e.g. 'contract', 'medical', 'other'
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False) # If true, user cannot download, only see
+    uploaded_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     user = relationship("User", foreign_keys=[user_id], backref="documents")
     uploader = relationship("User", foreign_keys=[uploaded_by])
@@ -732,41 +797,41 @@ class UserDocument(Base):
 class APIKey(Base):
     __tablename__ = "api_keys"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False) # The admin who owns/created the key
-    name = Column(String, nullable=False) # e.g. "Microinvest Integration"
-    key_prefix = Column(String, nullable=False) # First 8 chars to identify it
-    hashed_key = Column(String, nullable=False)
-    permissions = Column(JSON, default=["read:all"]) # e.g. ["read:payroll", "write:logs"]
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=sofia_now)
-    last_used_at = Column(DateTime, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False) # The admin who owns/created the key
+    name: Mapped[str] = mapped_column(String, nullable=False) # e.g. "Microinvest Integration"
+    key_prefix: Mapped[str] = mapped_column(String, nullable=False) # First 8 chars to identify it
+    hashed_key: Mapped[str] = mapped_column(String, nullable=False)
+    permissions: Mapped[list] = mapped_column(JSON, default=["read:all"]) # e.g. ["read:payroll", "write:logs"]
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    last_used_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
 
     owner = relationship("User", backref="api_keys")
 
 class Webhook(Base):
     __tablename__ = "webhooks"
 
-    id = Column(Integer, primary_key=True, index=True)
-    url = Column(String, nullable=False)
-    description = Column(String, nullable=True)
-    events = Column(JSON, default=["*"]) # List of events like ["clock_in", "leave_approved"]
-    secret = Column(String, nullable=True) # To sign payload
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    url: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=True)
+    events: Mapped[list] = mapped_column(JSON, default=["*"]) # List of events like ["clock_in", "leave_approved"]
+    secret: Mapped[str] = mapped_column(String, nullable=True) # To sign payload
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
 class WorkplaceLocation(Base):
     __tablename__ = "workplace_locations"
 
-    id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
-    name = Column(String, nullable=False)
-    address = Column(String, nullable=False)
-    latitude = Column(Numeric(10, 8), nullable=False)
-    longitude = Column(Numeric(11, 8), nullable=False)
-    radius_meters = Column(Integer, nullable=False)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    address: Mapped[str] = mapped_column(String, nullable=False)
+    latitude: Mapped[float] = mapped_column(Numeric(10, 8), nullable=False)
+    longitude: Mapped[float] = mapped_column(Numeric(11, 8), nullable=False)
+    radius_meters: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     company = relationship("Company", backref="workplace_locations")
 
@@ -775,67 +840,67 @@ class WorkplaceLocation(Base):
 
 class StorageZone(Base):
     __tablename__ = "storage_zones"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)
-    temp_min = Column(Numeric(5, 2), nullable=True)
-    temp_max = Column(Numeric(5, 2), nullable=True)
-    description = Column(String, nullable=True)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    temp_min: Mapped[float] = mapped_column(Numeric(5, 2), nullable=True)
+    temp_max: Mapped[float] = mapped_column(Numeric(5, 2), nullable=True)
+    description: Mapped[str] = mapped_column(String, nullable=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+
     # Phase 7 additions
-    is_active = Column(Boolean, default=True) # Field 'active'
-    asset_type = Column(String(20), default="KMA") # 'ДМА' или 'КМА'
-    zone_type = Column(String(20), default="food") # 'хранителен' или 'не хранителен'
-    
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True) # Field 'active'
+    asset_type: Mapped[str] = mapped_column(String(20), default="KMA") # 'ДМА' или 'КМА'
+    zone_type: Mapped[str] = mapped_column(String(20), default="food") # 'хранителен' или 'не хранителен'
+
     company = relationship("Company", backref="storage_zones")
 
 class Supplier(Base):
     __tablename__ = "suppliers"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    eik = Column(String(20), unique=True, nullable=True)
-    vat_number = Column(String(20), unique=True, nullable=True)
-    address = Column(String, nullable=True)
-    contact_person = Column(String, nullable=True)
-    phone = Column(String(20), nullable=True)
-    email = Column(String, nullable=True)
-    mol = Column(String(255), nullable=True)
-    is_active = Column(Boolean, default=True)
-    notes = Column(Text, nullable=True)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    created_at = Column(DateTime, default=sofia_now)
-    updated_at = Column(DateTime, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    eik: Mapped[str] = mapped_column(String(20), unique=True, nullable=True)
+    vat_number: Mapped[str] = mapped_column(String(20), unique=True, nullable=True)
+    address: Mapped[str] = mapped_column(String, nullable=True)
+    contact_person: Mapped[str] = mapped_column(String, nullable=True)
+    phone: Mapped[str] = mapped_column(String(20), nullable=True)
+    email: Mapped[str] = mapped_column(String, nullable=True)
+    mol: Mapped[str] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
 
     company = relationship("Company", backref="suppliers")
 
 
 class Ingredient(Base):
     __tablename__ = "ingredients"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False, index=True)
-    unit = Column(String(20), default="kg") # kg, g, l, ml, br
-    barcode = Column(String(100), unique=True, index=True, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    unit: Mapped[str] = mapped_column(String(20), default="kg") # kg, g, l, ml, br
+    barcode: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=True)
     
     # Type: raw (суровина), semi_finished (заготовка), finished (готов продукт)
-    product_type = Column(String(20), default="raw")
+    product_type: Mapped[str] = mapped_column(String(20), default="raw")
     
     # Stock levels
-    baseline_min_stock = Column(Numeric(12, 3), default=0)
-    current_price = Column(Numeric(12, 2), nullable=True) # Last purchase price
+    baseline_min_stock: Mapped[float] = mapped_column(Numeric(12, 3), default=0)
+    current_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True) # Last purchase price
     
     # Auto-reorder fields
-    min_quantity = Column(Numeric(12, 3), nullable=True)
-    reorder_quantity = Column(Numeric(12, 3), nullable=True)
-    is_auto_reorder = Column(Boolean, default=False)
-    preferred_supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    min_quantity: Mapped[float] = mapped_column(Numeric(12, 3), nullable=True)
+    reorder_quantity: Mapped[float] = mapped_column(Numeric(12, 3), nullable=True)
+    is_auto_reorder: Mapped[bool] = mapped_column(Boolean, default=False)
+    preferred_supplier_id: Mapped[int] = mapped_column(Integer, ForeignKey("suppliers.id"), nullable=True)
     
     # Food safety
-    storage_zone_id = Column(Integer, ForeignKey("storage_zones.id"), nullable=True)
-    is_perishable = Column(Boolean, default=True)
-    expiry_warning_days = Column(Integer, default=3)
-    allergens = Column(JSON, default=[]) # List of allergens
+    storage_zone_id: Mapped[int] = mapped_column(Integer, ForeignKey("storage_zones.id"), nullable=True)
+    is_perishable: Mapped[bool] = mapped_column(Boolean, default=True)
+    expiry_warning_days: Mapped[int] = mapped_column(Integer, default=3)
+    allergens: Mapped[list] = mapped_column(JSON, default=[]) # List of allergens
     
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
 
     storage_zone = relationship("StorageZone")
     company = relationship("Company", backref="ingredients")
@@ -843,27 +908,27 @@ class Ingredient(Base):
 
 class Batch(Base):
     __tablename__ = "batches"
-    id = Column(Integer, primary_key=True, index=True)
-    ingredient_id = Column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=False)
-    batch_number = Column(String(100), index=True)
-    quantity = Column(Numeric(12, 3), nullable=False)
-    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    ingredient_id: Mapped[int] = mapped_column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=False)
+    batch_number: Mapped[str] = mapped_column(String(100), index=True)
+    quantity: Mapped[float] = mapped_column(Numeric(12, 3), nullable=False)
+
     # Phase 7 additions
-    unit_value = Column(Numeric(12, 3), nullable=True) # e.g., 1.0 for 1L if unit is 'br'
-    production_date = Column(Date, nullable=True)
-    expiry_date = Column(Date, nullable=False, index=True)
-    
-    price_no_vat = Column(Numeric(12, 2), nullable=True)
-    vat_percent = Column(Numeric(5, 2), default=20.0)
-    price_with_vat = Column(Numeric(12, 2), nullable=True)
-    
-    is_stock_receipt = Column(Boolean, default=False) # стокова разписка
-    invoice_number = Column(String(100), nullable=True)
-    invoice_date = Column(Date, nullable=True)
-    
-    received_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    status = Column(String(50), default="active") # active, quarantined, expired, depleted, scrap
-    
+    unit_value: Mapped[float] = mapped_column(Numeric(12, 3), nullable=True) # e.g., 1.0 for 1L if unit is 'br'
+    production_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)
+    expiry_date: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
+
+    price_no_vat: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
+    vat_percent: Mapped[float] = mapped_column(Numeric(5, 2), default=20.0)
+    price_with_vat: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
+
+    is_stock_receipt: Mapped[bool] = mapped_column(Boolean, default=False) # стокова разписка
+    invoice_number: Mapped[str] = mapped_column(String(100), nullable=True)
+    invoice_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)
+
+    received_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="active") # active, quarantined, expired, depleted, scrap
+
     received_at = Column(DateTime, default=sofia_now)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     storage_zone_id = Column(Integer, ForeignKey("storage_zones.id"), nullable=True)
@@ -1116,17 +1181,17 @@ class AdvancePayment(Base):
 class ServiceLoan(Base):
     """Служебен аванс (заем), удържан на месечни вноски"""
     __tablename__ = "service_loans"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    total_amount = Column(Numeric(10, 2), nullable=False)
-    installment_amount = Column(Numeric(10, 2), nullable=False)
-    remaining_amount = Column(Numeric(10, 2), nullable=False)
-    installments_count = Column(Integer, nullable=False) 
-    installments_paid = Column(Integer, default=0) 
-    start_date = Column(Date, nullable=False)
-    description = Column(String(255), nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=sofia_now)
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    installment_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    remaining_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    installments_count: Mapped[int] = mapped_column (Integer, nullable=False) 
+    installments_paid: Mapped[int] = mapped_column(Integer, default=0) 
+    start_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    description: Mapped[str] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[Boolean] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     user = relationship("User")
 
@@ -1135,17 +1200,17 @@ class ServiceLoan(Base):
 class GoogleCalendarAccount(Base):
     __tablename__ = "google_calendar_accounts"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    google_user_id = Column(String(255), nullable=False, index=True)
-    email = Column(String(255), nullable=False)
-    access_token = Column(String, nullable=True)
-    refresh_token = Column(String, nullable=False)
-    token_expires_at = Column(DateTime, nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=sofia_now)
-    updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
-    
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    google_user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    access_token: Mapped[str] = mapped_column(String, nullable=True)
+    refresh_token: Mapped[str] = mapped_column(String, nullable=False)
+    token_expires_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[Boolean] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
+
     user = relationship("User", backref="google_calendar_accounts")
     sync_settings = relationship("GoogleCalendarSyncSettings", back_populates="account", cascade="all, delete-orphan", uselist=False)
     events = relationship("GoogleCalendarEvent", back_populates="account", cascade="all, delete-orphan")
@@ -1154,20 +1219,20 @@ class GoogleCalendarAccount(Base):
 class GoogleCalendarSyncSettings(Base):
     __tablename__ = "google_calendar_sync_settings"
 
-    id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("google_calendar_accounts.id", ondelete="CASCADE"), nullable=False)
-    calendar_id = Column(String(255), nullable=False, default='primary')
-    sync_work_schedules = Column(Boolean, default=True)
-    sync_time_logs = Column(Boolean, default=False)
-    sync_leave_requests = Column(Boolean, default=True)
-    sync_public_holidays = Column(Boolean, default=True)
-    sync_direction = Column(String(20), default='to_google')  # 'to_google', 'from_google', 'bidirectional'
-    sync_frequency_minutes = Column(Integer, default=15)
-    privacy_level = Column(String(20), default='title_only')  # 'full', 'title_only', 'busy_only'
-    default_event_visibility = Column(String(20), default='default')  # 'default', 'public', 'private'
-    timezone = Column(String(50), default='Europe/Sofia')
-    created_at = Column(DateTime, default=sofia_now)
-    updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("google_calendar_accounts.id", ondelete="CASCADE"), nullable=False)
+    calendar_id: Mapped[str] = mapped_column(String(255), nullable=False, default='primary')
+    sync_work_schedules: Mapped[Boolean] = mapped_column(Boolean, default=True)
+    sync_time_logs: Mapped[Boolean] = mapped_column(Boolean, default=False)
+    sync_leave_requests: Mapped[Boolean] = mapped_column(Boolean, default=True)
+    sync_public_holidays: Mapped[Boolean] = mapped_column(Boolean, default=True)
+    sync_direction: Mapped[str] = mapped_column(String(20), default='to_google')  # 'to_google', 'from_google', 'bidirectional'
+    sync_frequency_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    privacy_level: Mapped[str] = mapped_column(String(20), default='title_only')  # 'full', 'title_only', 'busy_only'
+    default_event_visibility: Mapped[str] = mapped_column(String(20), default='default')  # 'default', 'public', 'private'
+    timezone: Mapped[str] = mapped_column(String(50), default='Europe/Sofia')
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
     
     account = relationship("GoogleCalendarAccount", back_populates="sync_settings")
 
@@ -1175,42 +1240,42 @@ class GoogleCalendarSyncSettings(Base):
 class GoogleCalendarEvent(Base):
     __tablename__ = "google_calendar_events"
 
-    id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("google_calendar_accounts.id", ondelete="CASCADE"), nullable=False)
-    google_event_id = Column(String(255), nullable=False)
-    google_calendar_id = Column(String(255), nullable=False)
-    source_type = Column(String(50), nullable=False)  # 'work_schedule', 'time_log', 'leave_request', 'holiday'
-    source_id = Column(Integer, nullable=False)
-    title = Column(String(500), nullable=False)
-    description = Column(String, nullable=True)
-    start_time = Column(DateTime, nullable=False)
-    end_time = Column(DateTime, nullable=False)
-    is_all_day = Column(Boolean, default=False)
-    google_updated_at = Column(DateTime, nullable=True)
-    last_sync_at = Column(DateTime, default=sofia_now)
-    sync_status = Column(String(20), default='synced')  # 'synced', 'pending', 'error', 'deleted'
-    sync_error = Column(String, nullable=True)
-    created_at = Column(DateTime, default=sofia_now)
-    
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("google_calendar_accounts.id", ondelete="CASCADE"), nullable=False)
+    google_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    google_calendar_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)  # 'work_schedule', 'time_log', 'leave_request', 'holiday'
+    source_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=True)
+    start_time: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    end_time: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    is_all_day: Mapped[Boolean] = mapped_column(Boolean, default=False)
+    google_updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    last_sync_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    sync_status: Mapped[str] = mapped_column(String(20), default='synced')  # 'synced', 'pending', 'error', 'deleted'
+    sync_error: Mapped[str] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+
     account = relationship("GoogleCalendarAccount", back_populates="events")
 
 
 class GoogleSyncLog(Base):
     __tablename__ = "google_sync_log"
 
-    id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("google_calendar_accounts.id", ondelete="CASCADE"), nullable=False)
-    sync_type = Column(String(50), nullable=False)  # 'full_sync', 'incremental', 'error_retry'
-    events_processed = Column(Integer, default=0)
-    events_created = Column(Integer, default=0)
-    events_updated = Column(Integer, default=0)
-    events_deleted = Column(Integer, default=0)
-    errors_count = Column(Integer, default=0)
-    started_at = Column(DateTime, nullable=False)
-    completed_at = Column(DateTime, nullable=True)
-    status = Column(String(20), default='running')  # 'running', 'completed', 'failed'
-    error_details = Column(String, nullable=True)
-    created_at = Column(DateTime, default=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("google_calendar_accounts.id", ondelete="CASCADE"), nullable=False)
+    sync_type: Mapped[str]= mapped_column(String(50), nullable=False)  # 'full_sync', 'incremental', 'error_retry'
+    events_processed: Mapped[int] = mapped_column(Integer, default=0)
+    events_created: Mapped[int] = mapped_column(Integer, default=0)
+    events_updated: Mapped[int] = mapped_column(Integer, default=0)
+    events_deleted: Mapped[int] = mapped_column(Integer, default=0)
+    errors_count: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    completed_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default='running')  # 'running', 'completed', 'failed'
+    error_details: Mapped[str] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     
     account = relationship("GoogleCalendarAccount")
 
@@ -1219,8 +1284,8 @@ class GoogleSyncLog(Base):
 class PayrollPaymentSchedule(Base):
     __tablename__ = "payroll_payment_schedules"
 
-    id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     payment_day = Column(Integer, nullable=False)  # 25-то число например
     payment_month_offset = Column(Integer, default=0)  # 0 за текущия месец, 1 за следващия
     active = Column(Boolean, default=True)
@@ -1317,29 +1382,32 @@ class WebAuthnCredential(Base):
 class EmploymentContract(Base):
     __tablename__ = "employment_contracts"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    contract_type = Column(String(50), nullable=False)  # "full_time", "part_time", "contractor", "internship"
-    start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=True)  # For fixed-term contracts
-    base_salary = Column(Numeric(10, 2), nullable=True)
-    work_hours_per_week = Column(Integer, default=40)
-    probation_months = Column(Integer, default=0)
-    is_active = Column(Boolean, default=True)
-    salary_calculation_type = Column(String(20), default='gross')  # 'gross', 'net'
-    salary_installments_count = Column(Integer, default=1)  # Брой плащания (вноски) на заплатата
-    monthly_advance_amount = Column(Numeric(10, 2), default=0) # Фиксиран месечен аванс
-    tax_resident = Column(Boolean, default=True)
-    insurance_contributor = Column(Boolean, default=True)  # Whether employee pays insurance
-    has_income_tax = Column(Boolean, default=True) # Whether to withhold income tax
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    company_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    contract_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "full_time", "part_time", "contractor", "internship"
+    start_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)  # For fixed-term contracts
+    base_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=True)
+    work_hours_per_week: Mapped[int] = mapped_column(Integer, default=40)
+    probation_months: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    salary_calculation_type: Mapped[str] = mapped_column(String(20), default='gross')  # 'gross', 'net'
+    salary_installments_count: Mapped[int] = mapped_column(Integer, default=1)  # Брой плащания (вноски) на заплатата
+    monthly_advance_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0) # Фиксиран месечен аванс
+    tax_resident: Mapped[bool] = mapped_column(Boolean, default=True)
+    insurance_contributor: Mapped[bool] = mapped_column(Boolean, default=True)  # Whether employee pays insurance
+    has_income_tax: Mapped[bool] = mapped_column(Boolean, default=True) # Whether to withhold income tax
     
     # ТРЗ разширение - ставки за надбавки
-    night_work_rate = Column(Numeric(4, 2), default=0.5)  # 50% надбавка за нощен труд
-    overtime_rate = Column(Numeric(4, 2), default=1.5)  # 50% множител за извънреден
-    holiday_rate = Column(Numeric(4, 2), default=2.0)  # 100% множител за празници
-    work_class = Column(String(10), nullable=True)  # Трудов клас (I, II, III, IV)
-    dangerous_work = Column(Boolean, default=False)  # Вредни условия на труд
+    payment_day: Mapped[int] = mapped_column(Integer, default=25)  # Ден от месеца за изплащане
+    experience_start_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)  # Начало на трудов стаж за "клас"
+    night_work_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=0.5)  # 50% надбавка за нощен труд
+    overtime_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=1.5)  # 50% множител за извънреден
+    holiday_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=2.0)  # 100% множител за празници
+    work_class: Mapped[str] = mapped_column(String(10), nullable=True)  # Трудов клас (I, II, III, IV)
+    dangerous_work: Mapped[bool] = mapped_column(Boolean, default=False)  # Вредни условия на труд
     
     created_at = Column(DateTime, default=sofia_now)
     updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
@@ -1348,19 +1416,49 @@ class EmploymentContract(Base):
     company = relationship("Company", backref="employment_contracts")
 
 
+class ContractAnnex(Base):
+    """Допълнително споразумение (чл. 119 КТ)"""
+    __tablename__ = "contract_annexes"
+
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    contract_id: Mapped[int] = mapped_column(Integer, ForeignKey("employment_contracts.id", ondelete="CASCADE"), nullable=False)
+    annex_number: Mapped[str] = mapped_column(String(50), nullable=True)
+    effective_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+
+    # Промени (всички са незадължителни, ако не се променят)
+    base_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=True)
+    position_id: Mapped[int] = mapped_column(Integer, ForeignKey("positions.id", ondelete="SET NULL"), nullable=True)
+    work_hours_per_week: Mapped[int] = mapped_column(Integer, nullable=True)
+    probation_months: Mapped[int] = mapped_column(Integer, nullable=True)
+    # Нови ТРЗ ставки
+    night_work_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=True)
+    overtime_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=True)
+    holiday_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=True)
+
+    # Статус
+    is_signed: Mapped[bool] = mapped_column(Boolean, default=False)
+    signed_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
+
+    contract = relationship("EmploymentContract", backref="annexes")
+    position = relationship("Position")
+
+
 class PayrollPeriod(Base):
     __tablename__ = "payroll_periods"
 
-    id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=False)
-    status = Column(String(20), default='open')  # 'open', 'processing', 'closed'
-    period_type = Column(String(20), default='monthly')  # 'monthly', 'quarterly', 'annual'
-    year_bonus_month = Column(Integer, nullable=True)  # Месец за 13-а заплата
-    processing_date = Column(DateTime, nullable=True)
-    payment_date = Column(Date, nullable=True)
-    created_at = Column(DateTime, default=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    start_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default='open')  # 'open', 'processing', 'closed'
+    period_type: Mapped[str] = mapped_column(String(20), default='monthly')  # 'monthly', 'quarterly', 'annual'
+    year_bonus_month: Mapped[int] = mapped_column(Integer, nullable=True)  # Месец за 13-а заплата
+    processing_date: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    payment_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     
     company = relationship("Company", backref="payroll_periods")
 
@@ -1369,17 +1467,17 @@ class NightWorkBonus(Base):
     """Нощен труд"""
     __tablename__ = "night_work_bonuses"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    period_id = Column(Integer, ForeignKey("payroll_periods.id", ondelete="SET NULL"), nullable=True)
-    date = Column(Date, nullable=False)
-    hours = Column(Numeric(5, 2), nullable=False)
-    hourly_rate = Column(Numeric(10, 2), nullable=False)
-    amount = Column(Numeric(10, 2), nullable=False)
-    is_paid = Column(Boolean, default=False)
-    notes = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=sofia_now)
-    updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    period_id: Mapped[int] = mapped_column(Integer, ForeignKey("payroll_periods.id", ondelete="SET NULL"), nullable=True)
+    date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    hours: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    hourly_rate: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
+    notes: Mapped[str] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
 
     user = relationship("User", backref="night_work_bonuses")
     period = relationship("PayrollPeriod", backref="night_work_bonuses")
@@ -1389,18 +1487,18 @@ class OvertimeWork(Base):
     """Извънреден труд"""
     __tablename__ = "overtime_works"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    period_id = Column(Integer, ForeignKey("payroll_periods.id", ondelete="SET NULL"), nullable=True)
-    date = Column(Date, nullable=False)
-    hours = Column(Numeric(5, 2), nullable=False)
-    hourly_rate = Column(Numeric(10, 2), nullable=False)
-    multiplier = Column(Numeric(4, 2), default=1.5)  # 1.5 за първи 2 часа, 2.0 за над 2 часа
-    amount = Column(Numeric(10, 2), nullable=False)
-    is_paid = Column(Boolean, default=False)
-    notes = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=sofia_now)
-    updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    period_id: Mapped[int] = mapped_column(Integer, ForeignKey("payroll_periods.id", ondelete="SET NULL"), nullable=True)
+    date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    hours: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    hourly_rate: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    multiplier: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=1.5)  # 1.5 за първи 2 часа, 2.0 за над 2 часа
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
+    notes: Mapped[str] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
 
     user = relationship("User", backref="overtime_works")
     period = relationship("PayrollPeriod", backref="overtime_works")
@@ -1410,18 +1508,18 @@ class WorkOnHoliday(Base):
     """Труд по празници"""
     __tablename__ = "work_on_holidays"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    period_id = Column(Integer, ForeignKey("payroll_periods.id", ondelete="SET NULL"), nullable=True)
-    date = Column(Date, nullable=False)
-    hours = Column(Numeric(5, 2), nullable=False)
-    hourly_rate = Column(Numeric(10, 2), nullable=False)
-    multiplier = Column(Numeric(4, 2), default=2.0)  # 100% надбавка
-    amount = Column(Numeric(10, 2), nullable=False)
-    is_paid = Column(Boolean, default=False)
-    notes = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=sofia_now)
-    updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    period_id: Mapped[int] = mapped_column(Integer, ForeignKey("payroll_periods.id", ondelete="SET NULL"), nullable=True)
+    date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    hours: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    hourly_rate: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    multiplier: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=2.0)  # 100% надбавка
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
+    notes: Mapped[str] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
 
     user = relationship("User", backref="work_on_holidays")
     period = relationship("PayrollPeriod", backref="work_on_holidays")

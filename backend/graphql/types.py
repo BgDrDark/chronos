@@ -179,6 +179,8 @@ class EmploymentContract:
     insurance_contributor: bool
     has_income_tax: bool
     # ТРЗ разширение
+    payment_day: int
+    experience_start_date: Optional[datetime.date]
     night_work_rate: Optional[float]
     overtime_rate: Optional[float]
     holiday_rate: Optional[float]
@@ -205,11 +207,53 @@ class EmploymentContract:
             insurance_contributor=instance.insurance_contributor if instance.insurance_contributor is not None else True,
             has_income_tax=instance.has_income_tax if instance.has_income_tax is not None else True,
             # ТРЗ разширение
+            payment_day=instance.payment_day if hasattr(instance, "payment_day") and instance.payment_day is not None else 25,
+            experience_start_date=instance.experience_start_date if hasattr(instance, "experience_start_date") else None,
             night_work_rate=float(instance.night_work_rate) if instance.night_work_rate else None,
             overtime_rate=float(instance.overtime_rate) if instance.overtime_rate else None,
             holiday_rate=float(instance.holiday_rate) if instance.holiday_rate else None,
             work_class=instance.work_class,
             dangerous_work=instance.dangerous_work if instance.dangerous_work is not None else False,
+        )
+
+@strawberry.type
+class ContractAnnex:
+    id: int
+    contract_id: int
+    annex_number: Optional[str]
+    effective_date: datetime.date
+    base_salary: Optional[Decimal]
+    position_id: Optional[int]
+    work_hours_per_week: Optional[int]
+    night_work_rate: Optional[float]
+    overtime_rate: Optional[float]
+    holiday_rate: Optional[float]
+    is_signed: bool
+    signed_at: Optional[datetime.datetime]
+    created_at: datetime.datetime
+
+    @strawberry.field
+    async def position(self, info: strawberry.Info) -> Optional["Position"]:
+        if not self.position_id:
+            return None
+        return await info.context["dataloaders"]["position_by_id"].load(self.position_id)
+
+    @classmethod
+    def from_instance(cls, instance: models.ContractAnnex) -> "ContractAnnex":
+        return cls(
+            id=instance.id,
+            contract_id=instance.contract_id,
+            annex_number=instance.annex_number,
+            effective_date=instance.effective_date,
+            base_salary=instance.base_salary,
+            position_id=instance.position_id,
+            work_hours_per_week=instance.work_hours_per_week,
+            night_work_rate=float(instance.night_work_rate) if instance.night_work_rate else None,
+            overtime_rate=float(instance.overtime_rate) if instance.overtime_rate else None,
+            holiday_rate=float(instance.holiday_rate) if instance.holiday_rate else None,
+            is_signed=instance.is_signed,
+            signed_at=instance.signed_at,
+            created_at=instance.created_at
         )
 
 @strawberry.type
@@ -221,6 +265,7 @@ class PayrollLegalSettings:
     noi_compensation_percent: float
     employer_paid_sick_days: int
     default_tax_resident: bool
+    trz_compliance_strict_mode: bool
 
 @strawberry.type
 class User:
@@ -590,7 +635,28 @@ class Payslip:
     sick_days: int
     leave_days: int
     
+    # Оссигуровки (Фаза 1)
+    doo_employee: Decimal
+    doo_employer: Decimal
+    zo_employee: Decimal
+    zo_employer: Decimal
+    dzpo_employee: Decimal
+    dzpo_employer: Decimal
+    tzpb_employer: Decimal
+    
+    # Данъци (Фаза 2)
+    gross_salary: Decimal
+    taxable_base: Decimal
+    income_tax: Decimal
+    standard_deduction: Decimal
+    
     total_amount: Decimal
+    
+    # Плащане
+    payment_status: str
+    actual_payment_date: Optional[datetime.datetime]
+    payment_method: str
+
     generated_at: datetime.datetime
 
     @strawberry.field
@@ -618,7 +684,23 @@ class Payslip:
             insurance_amount=instance.insurance_amount if hasattr(instance, "insurance_amount") and instance.insurance_amount is not None else Decimal("0"),
             sick_days=instance.sick_days if hasattr(instance, "sick_days") and instance.sick_days is not None else 0,
             leave_days=instance.leave_days if hasattr(instance, "leave_days") and instance.leave_days is not None else 0,
+            # Оссигуровки (Фаза 1)
+            doo_employee=instance.doo_employee if hasattr(instance, "doo_employee") and instance.doo_employee is not None else Decimal("0"),
+            doo_employer=instance.doo_employer if hasattr(instance, "doo_employer") and instance.doo_employer is not None else Decimal("0"),
+            zo_employee=instance.zo_employee if hasattr(instance, "zo_employee") and instance.zo_employee is not None else Decimal("0"),
+            zo_employer=instance.zo_employer if hasattr(instance, "zo_employer") and instance.zo_employer is not None else Decimal("0"),
+            dzpo_employee=instance.dzpo_employee if hasattr(instance, "dzpo_employee") and instance.dzpo_employee is not None else Decimal("0"),
+            dzpo_employer=instance.dzpo_employer if hasattr(instance, "dzpo_employer") and instance.dzpo_employer is not None else Decimal("0"),
+            tzpb_employer=instance.tzpb_employer if hasattr(instance, "tzpb_employer") and instance.tzpb_employer is not None else Decimal("0"),
+            # Данъци (Фаза 2)
+            gross_salary=instance.gross_salary if hasattr(instance, "gross_salary") and instance.gross_salary is not None else Decimal("0"),
+            taxable_base=instance.taxable_base if hasattr(instance, "taxable_base") and instance.taxable_base is not None else Decimal("0"),
+            income_tax=instance.income_tax if hasattr(instance, "income_tax") and instance.income_tax is not None else Decimal("0"),
+            standard_deduction=instance.standard_deduction if hasattr(instance, "standard_deduction") and instance.standard_deduction is not None else Decimal("0"),
             total_amount=instance.total_amount,
+            payment_status=instance.payment_status if hasattr(instance, "payment_status") and instance.payment_status else "pending",
+            actual_payment_date=instance.actual_payment_date if hasattr(instance, "actual_payment_date") else None,
+            payment_method=instance.payment_method if hasattr(instance, "payment_method") and instance.payment_method else "bank",
             generated_at=instance.generated_at,
         )
 

@@ -107,8 +107,41 @@ async def init_db():
         from backend import crud
         # Болнични правила
         await crud.set_global_setting(session, "payroll_noi_compensation_percent", "80.0")
-        await crud.set_global_setting(session, "payroll_employer_paid_sick_days", "3")
+        await crud.set_global_setting(session, "payroll_employer_paid_sick_days", "2")
         await crud.set_global_setting(session, "payroll_default_tax_resident", "true")
+        await crud.set_global_setting(session, "trz_compliance_strict_mode", "false")
+        
+        # Осигуровки (Фаза 1) - начални ставки 2026
+        # ДОО - Пенсия (за родени след 1959)
+        await crud.set_global_setting(session, "payroll_doo_employee_rate", "14.3")
+        await crud.set_global_setting(session, "payroll_doo_employer_rate", "14.3")
+        # ДОО - Пенсия (за родени преди 1960)
+        await crud.set_global_setting(session, "payroll_doo_older_employee_rate", "19.3")
+        await crud.set_global_setting(session, "payroll_doo_older_employer_rate", "19.3")
+        # ЗО - Здравно
+        await crud.set_global_setting(session, "payroll_zo_employee_rate", "3.2")
+        await crud.set_global_setting(session, "payroll_zo_employer_rate", "4.8")
+        # ДЗПО - Допълнително пенсионно
+        await crud.set_global_setting(session, "payroll_dzpo_employee_rate", "2.2")
+        await crud.set_global_setting(session, "payroll_dzpo_employer_rate", "2.8")
+        # ТЗПБ - Трудова злополука
+        await crud.set_global_setting(session, "payroll_tzpb_rate", "0.4")
+        
+        # Данъци (Фаза 2)
+        await crud.set_global_setting(session, "payroll_income_tax_rate", "10")
+        await crud.set_global_setting(session, "payroll_standard_deduction", "500")
+        
+        # Максимална осигурителна база и минимална заплата
+        await crud.set_global_setting(session, "payroll_max_insurable_base", "4100")
+        await crud.set_global_setting(session, "payroll_min_wage", "1213")
+        
+        # Автоматизация (Фаза 3)
+        await crud.set_global_setting(session, "payroll_auto_night_work", "false")
+        await crud.set_global_setting(session, "payroll_auto_overtime", "false")
+        await crud.set_global_setting(session, "payroll_auto_holiday", "false")
+        await crud.set_global_setting(session, "payroll_night_hourly_supplement", "0.15")
+        await crud.set_global_setting(session, "payroll_overtime_rate", "50")
+        await crud.set_global_setting(session, "payroll_holiday_rate", "100")
         
         # Настройки за Аванси (Сигурност)
         await crud.set_global_setting(session, "qr_token_regen_minutes", "15")

@@ -517,6 +517,13 @@ async def notify_admins(db: AsyncSession, message: str):
 
 
 async def create_or_update_schedule(db: AsyncSession, user_id: int, shift_id: int, date: datetime.date):
+    from backend.services.compliance_service import ComplianceService
+    
+    # ТРЗ Валидация спрямо КТ
+    is_valid, error_msg = await ComplianceService.validate_schedule_change(db, user_id, date, shift_id)
+    if not is_valid:
+        raise ValueError(error_msg)
+
     result = await db.execute(
         select(WorkSchedule)
         .where(WorkSchedule.user_id == user_id)
@@ -553,6 +560,7 @@ async def create_bulk_schedules(
         days_of_week: list[int]  # 0=Mon, 6=Sun
 ):
     from datetime import timedelta
+    from backend.services.compliance_service import ComplianceService
 
     shift = await get_shift_by_id(db, shift_id)
     shift_name = shift.name if shift else "Неизвестна смяна"
@@ -560,9 +568,16 @@ async def create_bulk_schedules(
     schedules = []
     current_date = start_date
     count = 0
+    skipped_count = 0
     while current_date <= end_date:
         if current_date.weekday() in days_of_week:
             for user_id in user_ids:
+                # ТРЗ Валидация спрямо КТ
+                is_valid, _ = await ComplianceService.validate_schedule_change(db, user_id, current_date, shift_id)
+                if not is_valid:
+                    skipped_count += 1
+                    continue
+
                 result = await db.execute(
                     select(WorkSchedule)
                     .where(WorkSchedule.user_id == user_id)
@@ -693,7 +708,15 @@ async def create_user(db: AsyncSession, user: schemas.UserCreate, role_name: str
             monthly_advance_amount=float(user.monthly_advance_amount) if getattr(user, "monthly_advance_amount", None) else 0,
             tax_resident=user.tax_resident if user.tax_resident is not None else True,
             insurance_contributor=user.insurance_contributor if user.insurance_contributor is not None else True,
-            has_income_tax=getattr(user, "has_income_tax", True)
+            has_income_tax=getattr(user, "has_income_tax", True),
+            # TRZ extension
+            payment_day=getattr(user, "payment_day", 25),
+            experience_start_date=getattr(user, "experience_start_date", None),
+            night_work_rate=float(user.night_work_rate) if getattr(user, "night_work_rate", None) else 0.5,
+            overtime_rate=float(user.overtime_rate) if getattr(user, "overtime_rate", None) else 1.5,
+            holiday_rate=float(user.holiday_rate) if getattr(user, "holiday_rate", None) else 2.0,
+            work_class=getattr(user, "work_class", None),
+            dangerous_work=getattr(user, "dangerous_work", False)
         )
     
     # If base_salary is provided, create a payroll configuration
@@ -751,6 +774,14 @@ async def delete_user(db: AsyncSession, user_id: int, admin_user_id: Optional[in
     if not db_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # Delete related records that don't have cascade delete
+    from backend.database.models import EmploymentContract
+    
+    # Delete employment contracts
+    await db.execute(
+        delete(EmploymentContract).where(EmploymentContract.user_id == user_id)
+    )
+    
     email = db_user.email
     await db.delete(db_user)
 
@@ -761,7 +792,7 @@ async def delete_user(db: AsyncSession, user_id: int, admin_user_id: Optional[in
     )
 
     await db.commit()
-    return {"message": "User deleted successfully"}
+    return True
 
 
 async def get_role_by_name(db: AsyncSession, role_name: str):
@@ -1993,6 +2024,293 @@ async def is_smtp_configured(db: AsyncSession) -> bool:
     return bool(server and port and sender)
 
 
+# --- Insurance Rates (Фаза 1: Осигуровки) ---
+
+async def get_insurance_rate(
+    db: AsyncSession, 
+    year: int, 
+    month: int, 
+    category: str
+) -> dict:
+    """
+    Връща осигурителната ставка за даден период.
+    Първо търси в History таблицата, после в GlobalSettings.
+    
+    Args:
+        db: Database session
+        year: Година
+        month: Месец  
+        category: "doo", "zo", "dzpo", "tzpb"
+    
+    Returns:
+        dict с employee_rate и employer_rate
+    """
+    from backend.database.models import InsuranceRateHistory
+    from datetime import date
+    
+    # 1. Търси в историческа таблица
+    target_date = date(year, month, 1)
+    
+    result = await db.execute(
+        select(InsuranceRateHistory).where(
+            InsuranceRateHistory.category == category,
+            InsuranceRateHistory.effective_from <= target_date,
+            or_(
+                InsuranceRateHistory.effective_to == None,
+                InsuranceRateHistory.effective_to >= target_date
+            )
+        ).order_by(InsuranceRateHistory.effective_from.desc())
+    )
+    history_rate = result.scalars().first()
+    
+    if history_rate:
+        return {
+            "employee_rate": float(history_rate.employee_rate),
+            "employer_rate": float(history_rate.employer_rate),
+            "source": "history"
+        }
+    
+    # 2. Ако нема, вземи от GlobalSettings
+    employee_key = f"payroll_{category}_employee_rate"
+    employer_key = f"payroll_{category}_employer_rate"
+    
+    employee_rate = await get_global_setting(db, employee_key)
+    employer_rate = await get_global_setting(db, employer_key)
+    
+    return {
+        "employee_rate": float(employee_rate) if employee_rate else 0.0,
+        "employer_rate": float(employer_rate) if employer_rate else 0.0,
+        "source": "settings"
+    }
+
+
+async def set_insurance_rate(
+    db: AsyncSession,
+    year: int,
+    month: int,
+    category: str,
+    employee_rate: float,
+    employer_rate: float,
+    effective_from: date,
+    effective_to: date = None
+):
+    """Записва нова осигурителна ставка в историята"""
+    from backend.database.models import InsuranceRateHistory
+    from datetime import date
+    
+    # Обнови или създай нов запис
+    existing = await db.execute(
+        select(InsuranceRateHistory).where(
+            InsuranceRateHistory.year == year,
+            InsuranceRateHistory.month == month,
+            InsuranceRateHistory.category == category
+        )
+    )
+    existing_rate = existing.scalars().first()
+    
+    if existing_rate:
+        existing_rate.employee_rate = employee_rate
+        existing_rate.employer_rate = employer_rate
+        existing_rate.effective_from = effective_from
+        existing_rate.effective_to = effective_to
+    else:
+        new_rate = InsuranceRateHistory(
+            year=year,
+            month=month,
+            category=category,
+            employee_rate=employee_rate,
+            employer_rate=employer_rate,
+            effective_from=effective_from,
+            effective_to=effective_to
+        )
+        db.add(new_rate)
+    
+    await db.commit()
+
+
+async def get_insurance_rates_for_period(
+    db: AsyncSession,
+    year: int,
+    month: int
+) -> dict:
+    """Връща всички осигурителни ставки за период"""
+    categories = ["doo", "zo", "dzpo", "tzpb"]
+    rates = {}
+    
+    for category in categories:
+        rates[category] = await get_insurance_rate(db, year, month, category)
+    
+    return rates
+
+
+# --- Tax Rates (Фаза 2: Данъци) ---
+
+async def get_tax_rate(
+    db: AsyncSession,
+    year: int,
+    month: int
+) -> dict:
+    """
+    Връща данъчната ставка (ДДФЛ) за даден период.
+    Първо търси в History таблицата, после в GlobalSettings.
+    """
+    from backend.database.models import TaxRateHistory
+    from datetime import date
+    
+    target_date = date(year, month, 1)
+    
+    # 1. Търси в историческа таблица
+    result = await db.execute(
+        select(TaxRateHistory).where(
+            TaxRateHistory.effective_from <= target_date,
+            or_(
+                TaxRateHistory.effective_to == None,
+                TaxRateHistory.effective_to >= target_date
+            )
+        ).order_by(TaxRateHistory.effective_from.desc())
+    )
+    history_rate = result.scalars().first()
+    
+    if history_rate:
+        return {
+            "rate": float(history_rate.rate),
+            "source": "history"
+        }
+    
+    # 2. Ако нема, вземи от GlobalSettings
+    rate = await get_global_setting(db, "payroll_income_tax_rate")
+    
+    return {
+        "rate": float(rate) if rate else 10.0,
+        "source": "settings"
+    }
+
+
+async def get_tax_deduction(
+    db: AsyncSession,
+    year: int,
+    month: int,
+    deduction_type: str = "standard"
+) -> dict:
+    """
+    Връща данъчното подобрения за даден период.
+    """
+    from backend.database.models import TaxDeductionHistory
+    from datetime import date
+    
+    target_date = date(year, month, 1)
+    
+    # 1. Търси в историческа таблица
+    result = await db.execute(
+        select(TaxDeductionHistory).where(
+            TaxDeductionHistory.deduction_type == deduction_type,
+            TaxDeductionHistory.effective_from <= target_date,
+            or_(
+                TaxDeductionHistory.effective_to == None,
+                TaxDeductionHistory.effective_to >= target_date
+            )
+        ).order_by(TaxDeductionHistory.effective_from.desc())
+    )
+    history_deduction = result.scalars().first()
+    
+    if history_deduction:
+        return {
+            "amount": float(history_deduction.amount),
+            "type": history_deduction.deduction_type,
+            "source": "history"
+        }
+    
+    # 2. Ако нема, вземи от GlobalSettings
+    if deduction_type == "standard":
+        amount = await get_global_setting(db, "payroll_standard_deduction")
+        return {
+            "amount": float(amount) if amount else 500.0,
+            "type": "standard",
+            "source": "settings"
+        }
+    
+    return {
+        "amount": 0.0,
+        "type": deduction_type,
+        "source": "settings"
+    }
+
+
+async def set_tax_rate(
+    db: AsyncSession,
+    year: int,
+    month: int,
+    rate: float,
+    effective_from: date,
+    effective_to: date = None
+):
+    """Записва нова данъчна ставка в историята"""
+    from backend.database.models import TaxRateHistory
+    
+    existing = await db.execute(
+        select(TaxRateHistory).where(
+            TaxRateHistory.year == year,
+            TaxRateHistory.month == month
+        )
+    )
+    existing_rate = existing.scalars().first()
+    
+    if existing_rate:
+        existing_rate.rate = rate
+        existing_rate.effective_from = effective_from
+        existing_rate.effective_to = effective_to
+    else:
+        new_rate = TaxRateHistory(
+            year=year,
+            month=month,
+            rate=rate,
+            effective_from=effective_from,
+            effective_to=effective_to
+        )
+        db.add(new_rate)
+    
+    await db.commit()
+
+
+async def set_tax_deduction(
+    db: AsyncSession,
+    year: int,
+    month: int,
+    deduction_type: str,
+    amount: float,
+    effective_from: date,
+    effective_to: date = None
+):
+    """Записва ново данъчно подобрения в историята"""
+    from backend.database.models import TaxDeductionHistory
+    
+    existing = await db.execute(
+        select(TaxDeductionHistory).where(
+            TaxDeductionHistory.year == year,
+            TaxDeductionHistory.month == month,
+            TaxDeductionHistory.deduction_type == deduction_type
+        )
+    )
+    existing_deduction = existing.scalars().first()
+    
+    if existing_deduction:
+        existing_deduction.amount = amount
+        existing_deduction.effective_from = effective_from
+        existing_deduction.effective_to = effective_to
+    else:
+        new_deduction = TaxDeductionHistory(
+            year=year,
+            month=month,
+            deduction_type=deduction_type,
+            amount=amount,
+            effective_from=effective_from,
+            effective_to=effective_to
+        )
+        db.add(new_deduction)
+    
+    await db.commit()
+
+
 # --- Bonus & Monthly Config ---
 
 async def create_bonus(db: AsyncSession, user_id: int, amount: float, date: datetime.date, description: str = None):
@@ -2252,7 +2570,14 @@ async def create_employment_contract(
         monthly_advance_amount: float = 0,
         tax_resident: bool = True,
         insurance_contributor: bool = True,
-        has_income_tax: bool = True
+        has_income_tax: bool = True,
+        payment_day: int = 25,
+        experience_start_date: Optional[date] = None,
+        night_work_rate: float = 0.5,
+        overtime_rate: float = 1.5,
+        holiday_rate: float = 2.0,
+        work_class: Optional[str] = None,
+        dangerous_work: bool = False
 ) -> EmploymentContract:
     contract = EmploymentContract(
         user_id=user_id,
@@ -2269,7 +2594,14 @@ async def create_employment_contract(
         monthly_advance_amount=monthly_advance_amount,
         tax_resident=tax_resident,
         insurance_contributor=insurance_contributor,
-        has_income_tax=has_income_tax
+        has_income_tax=has_income_tax,
+        payment_day=payment_day,
+        experience_start_date=experience_start_date,
+        night_work_rate=night_work_rate,
+        overtime_rate=overtime_rate,
+        holiday_rate=holiday_rate,
+        work_class=work_class,
+        dangerous_work=dangerous_work
     )
     db.add(contract)
     await db.commit()

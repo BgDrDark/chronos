@@ -4,6 +4,7 @@ from typing import Optional, List
 import datetime
 from decimal import Decimal
 from sqlalchemy import select
+from datetime import time as dt_time
 
 from fastapi import HTTPException, status
 
@@ -18,9 +19,138 @@ from backend.graphql.inputs import (
 )
 from backend.services.holiday_service import fetch_and_store_holidays
 from backend.services.orthodox_holiday_service import fetch_and_store_orthodox_holidays
-from backend.database.models import LeaveRequest, AccessZone, AccessDoor, AccessCode, Gateway
+from backend.database.models import LeaveRequest, AccessZone, AccessDoor, AccessCode, Gateway, NightWorkBonus, OvertimeWork, WorkOnHoliday, PublicHoliday, Shift
 from backend.auth.security import verify_password, hash_password, validate_password_complexity
 from backend.auth.module_guard import verify_module_enabled
+
+
+async def create_trz_records_on_clock_out(
+    db,
+    user_id: int,
+    clock_in: datetime.datetime,
+    clock_out: datetime.datetime,
+    shift_id: int
+):
+    """
+    Автоматично създава NightWorkBonus, OvertimeWork и WorkOnHoliday записи при clock-out.
+    
+    Логика:
+    1. Ако работата е в нощен период (22:00 - 06:00) -> NightWorkBonus
+    2. Ако работеното време е над 8 часа -> OvertimeWork
+    3. Ако денят е празничен -> WorkOnHoliday
+    """
+    from backend import crud
+    
+    # Провери дали автоматизацията е активирана
+    auto_night = await crud.get_global_setting(db, "payroll_auto_night_work")
+    auto_overtime = await crud.get_global_setting(db, "payroll_auto_overtime")
+    auto_holiday = await crud.get_global_setting(db, "payroll_auto_holiday")
+    
+    auto_night = auto_night.lower() == "true" if auto_night else False
+    auto_overtime = auto_overtime.lower() == "true" if auto_overtime else False
+    auto_holiday = auto_holiday.lower() == "true" if auto_holiday else False
+    
+    if not (auto_night or auto_overtime or auto_holiday):
+        return  # Автоматизацията е изключена
+    
+    # Вземи настройките
+    night_supplement_str = await crud.get_global_setting(db, "payroll_night_hourly_supplement")
+    overtime_rate_str = await crud.get_global_setting(db, "payroll_overtime_rate")
+    holiday_rate_str = await crud.get_global_setting(db, "payroll_holiday_rate")
+    
+    night_supplement = Decimal(night_supplement_str) if night_supplement_str else Decimal("0.15")
+    overtime_rate = Decimal(overtime_rate_str) if overtime_rate_str else Decimal("50")
+    holiday_rate = Decimal(holiday_rate_str) if holiday_rate_str else Decimal("100")
+    
+    # Провери за празничен ден
+    work_date = clock_in.date()
+    result = await db.execute(
+        select(PublicHoliday).where(PublicHoliday.date == work_date)
+    )
+    holiday = result.scalars().first()
+    is_holiday = holiday is not None
+    
+    # Вземи смяната
+    shift = await db.get(Shift, shift_id)
+    
+    # Изчисли работеното време
+    duration = clock_out - clock_in
+    total_hours = Decimal(str(duration.total_seconds() / 3600))
+    
+    # Вземи заплатата на служителя (за опростенение - използваме мин заплата)
+    # В реална имплементация - от employment_contract
+    min_wage_str = await crud.get_global_setting(db, "payroll_min_wage")
+    hourly_rate = Decimal(min_wage_str) if min_wage_str else Decimal("1213")
+    hourly_rate = hourly_rate / Decimal("8")  # Дневна / 8 часа
+    
+    created_records = []
+    
+    # 1. Нощен труд (22:00 - 06:00)
+    if auto_night:
+        night_hours = Decimal("0")
+        
+        # Провери дали clock-in е в нощен период
+        if clock_in.time() >= dt_time(22, 0) or clock_in.time() < dt_time(6, 0):
+            # Цялата смяна е нощна
+            night_hours = total_hours
+        elif clock_out.time() >= dt_time(22, 0):
+            # Частично нощна работа
+            night_start = datetime.datetime.combine(work_date, dt_time(22, 0))
+            if clock_in.time() < dt_time(22, 0):
+                night_hours = Decimal(str((clock_out - night_start).total_seconds() / 3600))
+        
+        if night_hours > 0:
+            night_amount = night_hours * night_supplement
+            night_bonus = NightWorkBonus(
+                user_id=user_id,
+                date=work_date,
+                hours=night_hours,
+                hourly_rate=night_supplement,
+                amount=night_amount,
+                is_paid=False,
+                notes="Автоматично създаден при clock-out"
+            )
+            db.add(night_bonus)
+            created_records.append(f"NightWorkBonus: {night_hours}h")
+    
+    # 2. Извънреден труд (над 8 часа)
+    if auto_overtime and total_hours > Decimal("8"):
+        overtime_hours = total_hours - Decimal("8")
+        base_hourly = hourly_rate
+        overtime_amount = overtime_hours * base_hourly * (overtime_rate / Decimal("100"))
+        
+        overtime = OvertimeWork(
+            user_id=user_id,
+            date=work_date,
+            hours=overtime_hours,
+            hourly_rate=base_hourly,
+            multiplier=overtime_rate / Decimal("100"),
+            amount=overtime_amount,
+            is_paid=False,
+            notes="Автоматично създаден при clock-out"
+        )
+        db.add(overtime)
+        created_records.append(f"OvertimeWork: {overtime_hours}h")
+    
+    # 3. Празничен труд
+    if auto_holiday and is_holiday:
+        base_hourly = hourly_rate
+        holiday_amount = total_hours * base_hourly * (holiday_rate / Decimal("100"))
+        
+        holiday_work = WorkOnHoliday(
+            user_id=user_id,
+            date=work_date,
+            hours=total_hours,
+            hourly_rate=base_hourly,
+            multiplier=holiday_rate / Decimal("100"),
+            amount=holiday_amount,
+            is_paid=False,
+            notes="Автоматично създаден при clock-out"
+        )
+        db.add(holiday_work)
+        created_records.append(f"WorkOnHoliday: {total_hours}h")
+    
+    return created_records
 
 
 @strawberry.type
@@ -182,12 +312,17 @@ class Mutation:
             noi_compensation_percent: float,
             employer_paid_sick_days: int,
             default_tax_resident: bool,
+            trz_compliance_strict_mode: bool,
             info: strawberry.Info
     ) -> types.PayrollLegalSettings:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+
+        # Само super_admin може да променя строгия режим на съответствие
+        if trz_compliance_strict_mode is not None and current_user.role.name == "super_admin":
+            await crud.set_global_setting(db, "trz_compliance_strict_mode", str(trz_compliance_strict_mode).lower())
 
         await crud.set_global_setting(db, "payroll_max_insurance_base", str(max_insurance_base))
         await crud.set_global_setting(db, "payroll_employee_insurance_rate", str(employee_insurance_rate))
@@ -204,7 +339,8 @@ class Mutation:
             civil_contract_costs_rate=civil_contract_costs_rate,
             noi_compensation_percent=noi_compensation_percent,
             employer_paid_sick_days=employer_paid_sick_days,
-            default_tax_resident=default_tax_resident
+            default_tax_resident=default_tax_resident,
+            trz_compliance_strict_mode=trz_compliance_strict_mode
         )
 
     @strawberry.mutation
@@ -241,6 +377,14 @@ class Mutation:
             tax_resident=userInput.tax_resident,
             insurance_contributor=userInput.insurance_contributor,
             has_income_tax=userInput.has_income_tax,
+            # ТРЗ разширение
+            payment_day=userInput.payment_day,
+            experience_start_date=userInput.experience_start_date,
+            night_work_rate=userInput.night_work_rate,
+            overtime_rate=userInput.overtime_rate,
+            holiday_rate=userInput.holiday_rate,
+            work_class=userInput.work_class,
+            dangerous_work=userInput.dangerous_work,
         )
 
         db_user = await crud.create_user(db=db, user=user_data, role_id=userInput.role_id)
@@ -274,6 +418,24 @@ class Mutation:
             department_id=userInput.department_id,
             position_id=userInput.position_id,
             base_salary=userInput.base_salary,
+            contract_type=userInput.contract_type,
+            contract_start_date=userInput.contract_start_date,
+            contract_end_date=userInput.contract_end_date,
+            work_hours_per_week=userInput.work_hours_per_week,
+            probation_months=userInput.probation_months,
+            salary_calculation_type=userInput.salary_calculation_type,
+            salary_installments_count=userInput.salary_installments_count,
+            monthly_advance_amount=userInput.monthly_advance_amount,
+            tax_resident=userInput.tax_resident,
+            insurance_contributor=userInput.insurance_contributor,
+            has_income_tax=userInput.has_income_tax,
+            payment_day=userInput.payment_day,
+            experience_start_date=userInput.experience_start_date,
+            night_work_rate=userInput.night_work_rate,
+            overtime_rate=userInput.overtime_rate,
+            holiday_rate=userInput.holiday_rate,
+            work_class=userInput.work_class,
+            dangerous_work=userInput.dangerous_work,
         )
         db_user = await crud.update_user(db, user_id=userInput.id, user_in=update_data)
         
@@ -316,6 +478,10 @@ class Mutation:
                 if userInput.salary_calculation_type:
                     contract.salary_calculation_type = userInput.salary_calculation_type
                 # ТРЗ полета
+                if userInput.payment_day is not None:
+                    contract.payment_day = userInput.payment_day
+                if userInput.experience_start_date:
+                    contract.experience_start_date = userInput.experience_start_date
                 if userInput.night_work_rate is not None:
                     contract.night_work_rate = userInput.night_work_rate
                 if userInput.overtime_rate is not None:
@@ -343,6 +509,9 @@ class Mutation:
                     tax_resident=userInput.tax_resident if userInput.tax_resident is not None else True,
                     insurance_contributor=userInput.insurance_contributor if userInput.insurance_contributor is not None else True,
                     has_income_tax=userInput.has_income_tax if userInput.has_income_tax is not None else True,
+                    # ТРЗ разширение
+                    payment_day=userInput.payment_day or 25,
+                    experience_start_date=userInput.experience_start_date,
                     night_work_rate=userInput.night_work_rate or 0.5,
                     overtime_rate=userInput.overtime_rate or 1.5,
                     holiday_rate=userInput.holiday_rate or 2.0,
@@ -933,6 +1102,16 @@ class Mutation:
             raise Exception("No active time log found")
 
         log = await crud.end_time_log(db, current_user.id, notes=notes)
+        
+        # Автоматично създаване на TRZ записи (Фаза 3)
+        await create_trz_records_on_clock_out(
+            db=db,
+            user_id=current_user.id,
+            clock_in=active_log.start_time,
+            clock_out=log.end_time,
+            shift_id=active_log.shift_id
+        )
+        
         await db.commit()
         return types.TimeLog.from_instance(log)
 
@@ -977,6 +1156,17 @@ class Mutation:
             raise Exception("No active time log found")
 
         log = await crud.end_time_log(db, user_id, notes=notes, end_time=custom_time)
+        
+        # Автоматично създаване на TRZ записи (Фаза 3)
+        await create_trz_records_on_clock_out(
+            db=db,
+            user_id=user_id,
+            clock_in=active_log.start_time,
+            clock_out=log.end_time,
+            shift_id=active_log.shift_id
+        )
+        
+        await db.commit()
         return types.TimeLog.from_instance(log)
 
     @strawberry.mutation
@@ -4791,4 +4981,120 @@ class Mutation:
         await db.commit()
         await db.refresh(experience)
         return types.WorkExperience.from_instance(experience)
+
+    @strawberry.mutation
+    async def mark_payslip_as_paid(
+        self,
+        payslip_id: int,
+        payment_date: Optional[datetime.datetime] = None,
+        payment_method: str = "bank",
+        info: strawberry.Info = None
+    ) -> types.Payslip:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import Payslip, sofia_now
+        
+        payslip = await db.get(Payslip, payslip_id)
+        if not payslip:
+            raise Exception("Payslip not found")
+            
+        payslip.payment_status = "paid"
+        payslip.actual_payment_date = payment_date or sofia_now()
+        payslip.payment_method = payment_method
+        
+        await db.commit()
+        await db.refresh(payslip)
+        
+        # Notify user
+        from backend import crud
+        await crud.create_notification(
+            db, 
+            user_id=payslip.user_id, 
+            message=f"Заплата за период {payslip.period_start.strftime('%d.%m.%Y')} - {payslip.period_end.strftime('%d.%m.%Y')} е маркирана като платена."
+        )
+        await db.commit()
+        
+        return types.Payslip.from_instance(payslip)
+
+    @strawberry.mutation
+    async def create_contract_annex(
+        self,
+        contract_id: int,
+        effective_date: datetime.date,
+        annex_number: Optional[str] = None,
+        base_salary: Optional[Decimal] = None,
+        position_id: Optional[int] = None,
+        work_hours_per_week: Optional[int] = None,
+        night_work_rate: Optional[float] = None,
+        overtime_rate: Optional[float] = None,
+        holiday_rate: Optional[float] = None,
+        info: strawberry.Info = None
+    ) -> types.ContractAnnex:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ContractAnnex
+        
+        annex = ContractAnnex(
+            contract_id=contract_id,
+            annex_number=annex_number,
+            effective_date=effective_date,
+            base_salary=base_salary,
+            position_id=position_id,
+            work_hours_per_week=work_hours_per_week,
+            night_work_rate=Decimal(str(night_work_rate)) if night_work_rate is not None else None,
+            overtime_rate=Decimal(str(overtime_rate)) if overtime_rate is not None else None,
+            holiday_rate=Decimal(str(holiday_rate)) if holiday_rate is not None else None,
+            is_signed=False
+        )
+        db.add(annex)
+        await db.commit()
+        await db.refresh(annex)
+        return types.ContractAnnex.from_instance(annex)
+
+    @strawberry.mutation
+    async def sign_contract_annex(
+        self,
+        annex_id: int,
+        info: strawberry.Info = None
+    ) -> types.ContractAnnex:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ContractAnnex, EmploymentContract, sofia_now
+        
+        annex = await db.get(ContractAnnex, annex_id)
+        if not annex:
+            raise Exception("Annex not found")
+            
+        annex.is_signed = True
+        annex.signed_at = sofia_now()
+        
+        # Ако анексът влиза в сила веднага или в миналото, обновяваме основния договор
+        if annex.effective_date <= datetime.date.today():
+            contract = await db.get(EmploymentContract, annex.contract_id)
+            if contract:
+                if annex.base_salary is not None:
+                    contract.base_salary = annex.base_salary
+                if annex.position_id is not None:
+                    contract.position_id = annex.position_id
+                if annex.work_hours_per_week is not None:
+                    contract.work_hours_per_week = annex.work_hours_per_week
+                if annex.night_work_rate is not None:
+                    contract.night_work_rate = annex.night_work_rate
+                if annex.overtime_rate is not None:
+                    contract.overtime_rate = annex.overtime_rate
+                if annex.holiday_rate is not None:
+                    contract.holiday_rate = annex.holiday_rate
+        
+        await db.commit()
+        await db.refresh(annex)
+        return types.ContractAnnex.from_instance(annex)
 

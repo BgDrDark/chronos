@@ -94,9 +94,12 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         # Calculate base salary from contract
         base_salary = await self._get_base_salary()
         
-        # Calculate gross/net based on contract settings
+        # Calculate experience bonus (Class)
+        experience_bonus = await self._calculate_experience_bonus(base_salary)
+        
+        # Calculate gross/net based on contract settings (include class bonus in gross)
         gross_amount, net_amount = await self._calculate_gross_net(
-            base_salary, base_calculation
+            base_salary + experience_bonus, base_calculation
         )
         
         # Final calculations
@@ -146,6 +149,7 @@ class EnhancedPayrollCalculator(PayrollCalculator):
             },
             'contract_type': self.employment_contract.contract_type if self.employment_contract else 'unknown',
             # ТРЗ компоненти
+            'experience_bonus': float(experience_bonus),
             'night_work_amount': float(night_work_amount),
             'overtime_amount': float(overtime_amount),
             'holiday_amount': float(holiday_amount),
@@ -293,19 +297,30 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         self.business_trips = trip_res.scalars().all()
     
     async def _get_payment_date(self) -> date:
-        """Determine payment date according to company settings"""
-        if not self.payment_schedule:
+        """Determine payment date according to company/contract settings"""
+        # Приоритет 1: Ден в индивидуалния договор
+        if self.employment_contract and self.employment_contract.payment_day:
+            target_day = self.employment_contract.payment_day
+            target_month = self.calculation_period['end_date'].month + 1
+        elif self.payment_schedule:
+            # Приоритет 2: Фирмен график
+            target_day = self.payment_schedule.payment_day
+            target_month = self.calculation_period['end_date'].month + self.payment_schedule.payment_month_offset
+        else:
             # Default: 25-то число на следващия месец
-            next_month = self.calculation_period['end_date'].replace(day=1) + timedelta(days=32)
-            return next_month.replace(day=25)
-        
-        target_day = self.payment_schedule.payment_day
-        target_month = self.calculation_period['end_date'].month + self.payment_schedule.payment_month_offset
+            target_day = 25
+            target_month = self.calculation_period['end_date'].month + 1
+            
         target_year = self.calculation_period['end_date'].year
         
         if target_month > 12:
             target_month -= 12
             target_year += 1
+        
+        # Предпазване от невалидни дати (напр. 31 февруари)
+        import calendar
+        last_day = calendar.monthrange(target_year, target_month)[1]
+        target_day = min(target_day, last_day)
         
         return date(target_year, target_month, target_day)
     
@@ -396,6 +411,176 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         
         return Decimal('0')
     
+    # --- Осигуровки (Фаза 1) ---
+    
+    async def _get_insurance_base(self, gross_amount: Decimal) -> Decimal:
+        """
+        Изчислява осигурителната база (минимум/максимум).
+        """
+        # Вземи лимитите от GlobalSettings или подразбиране
+        from backend import crud
+        
+        max_insurable_base_str = await crud.get_global_setting(self.db, "payroll_max_insurable_base")
+        min_insurable_base_str = await crud.get_global_setting(self.db, "payroll_min_wage")
+        
+        max_base = Decimal(max_insurable_base_str) if max_insurable_base_str else Decimal('4100')
+        min_base = Decimal(min_insurable_base_str) if min_insurable_base_str else Decimal('1213')
+        
+        # Осигурителната база е между мин и макс
+        return max(min(gross_amount, max_base), min_base)
+    
+    async def _calculate_doo(self, gross_amount: Decimal) -> dict:
+        """
+        Изчислява ДОО (Държавно обществено осигуряване).
+        Зависи от годината на раждане на служителя.
+        """
+        from backend import crud
+        from datetime import datetime
+        
+        insurance_base = await self._get_insurance_base(gross_amount)
+        
+        # Вземи годината на раждане от employment contract
+        birth_year = None
+        if self.employment_contract and self.employment_contract.user:
+            if hasattr(self.employment_contract.user, 'birth_date') and self.employment_contract.user.birth_date:
+                birth_year = self.employment_contract.user.birth_date.year
+        
+        # Ако е роден преди 1960 - по-висока ставка
+        if birth_year and birth_year < 1960:
+            rates = await crud.get_insurance_rate(self.db, 
+                self.calculation_period['start_date'].year, 
+                self.calculation_period['start_date'].month, 
+                "doo_older"
+            )
+        else:
+            rates = await crud.get_insurance_rate(self.db,
+                self.calculation_period['start_date'].year,
+                self.calculation_period['start_date'].month,
+                "doo"
+            )
+        
+        employee_rate = Decimal(str(rates.get('employee_rate', 14.3)))
+        employer_rate = Decimal(str(rates.get('employer_rate', 14.3)))
+        
+        employee_contribution = insurance_base * employee_rate / Decimal('100')
+        employer_contribution = insurance_base * employer_rate / Decimal('100')
+        
+        return {
+            "base": float(insurance_base),
+            "employee_rate": float(employee_rate),
+            "employer_rate": float(employer_rate),
+            "employee_amount": float(employee_contribution),
+            "employer_amount": float(employer_contribution)
+        }
+    
+    async def _calculate_zo(self, gross_amount: Decimal) -> dict:
+        """Изчислява ЗО (Здравно осигуряване)."""
+        from backend import crud
+        
+        insurance_base = await self._get_insurance_base(gross_amount)
+        
+        rates = await crud.get_insurance_rate(self.db,
+            self.calculation_period['start_date'].year,
+            self.calculation_period['start_date'].month,
+            "zo"
+        )
+        
+        employee_rate = Decimal(str(rates.get('employee_rate', 3.2)))
+        employer_rate = Decimal(str(rates.get('employer_rate', 4.8)))
+        
+        employee_contribution = insurance_base * employee_rate / Decimal('100')
+        employer_contribution = insurance_base * employer_rate / Decimal('100')
+        
+        return {
+            "base": float(insurance_base),
+            "employee_rate": float(employee_rate),
+            "employer_rate": float(employer_rate),
+            "employee_amount": float(employee_contribution),
+            "employer_amount": float(employer_contribution)
+        }
+    
+    async def _calculate_dzpo(self, gross_amount: Decimal) -> dict:
+        """Изчислява ДЗПО (Допълнително пенсионно осигуряване)."""
+        from backend import crud
+        
+        # ДЗПО е само за родени след 1959
+        birth_year = None
+        if self.employment_contract and self.employment_contract.user:
+            if hasattr(self.employment_contract.user, 'birth_date') and self.employment_contract.user.birth_date:
+                birth_year = self.employment_contract.user.birth_date.year
+        
+        if birth_year and birth_year >= 1960:
+            insurance_base = await self._get_insurance_base(gross_amount)
+            
+            rates = await crud.get_insurance_rate(self.db,
+                self.calculation_period['start_date'].year,
+                self.calculation_period['start_date'].month,
+                "dzpo"
+            )
+            
+            employee_rate = Decimal(str(rates.get('employee_rate', 2.2)))
+            employer_rate = Decimal(str(rates.get('employer_rate', 2.8)))
+            
+            employee_contribution = insurance_base * employee_rate / Decimal('100')
+            employer_contribution = insurance_base * employer_rate / Decimal('100')
+        else:
+            # За родени преди 1960 - няма ДЗПО
+            return {
+                "base": 0,
+                "employee_rate": 0,
+                "employer_rate": 0,
+                "employee_amount": 0,
+                "employer_amount": 0
+            }
+        
+        return {
+            "base": float(insurance_base),
+            "employee_rate": float(employee_rate),
+            "employer_rate": float(employer_rate),
+            "employee_amount": float(employee_contribution),
+            "employer_amount": float(employer_contribution)
+        }
+    
+    async def _calculate_tzpb(self, gross_amount: Decimal) -> dict:
+        """Изчислява ТЗПБ (Трудова злополука и професионална болест) - само за работодател."""
+        from backend import crud
+        
+        insurance_base = await self._get_insurance_base(gross_amount)
+        
+        rates = await crud.get_insurance_rate(self.db,
+            self.calculation_period['start_date'].year,
+            self.calculation_period['start_date'].month,
+            "tzpb"
+        )
+        
+        employer_rate = Decimal(str(rates.get('employer_rate', 0.4)))
+        
+        employer_contribution = insurance_base * employer_rate / Decimal('100')
+        
+        return {
+            "base": float(insurance_base),
+            "employer_rate": float(employer_rate),
+            "employer_amount": float(employer_contribution)
+        }
+    
+    async def calculate_all_insurances(self, gross_amount: Decimal) -> dict:
+        """
+        Изчислява всички осигуровки.
+        """
+        doo = await self._calculate_doo(gross_amount)
+        zo = await self._calculate_zo(gross_amount)
+        dzpo = await self._calculate_dzpo(gross_amount)
+        tzpb = await self._calculate_tzpb(gross_amount)
+        
+        return {
+            "doo": doo,
+            "zo": zo,
+            "dzpo": dzpo,
+            "tzpb": tzpb,
+            "total_employee": doo["employee_amount"] + zo["employee_amount"] + dzpo["employee_amount"],
+            "total_employer": doo["employer_amount"] + zo["employer_amount"] + dzpo["employer_amount"] + tzpb["employer_amount"]
+        }
+    
     async def _get_base_salary(self) -> Optional[Decimal]:
         """Get base salary from employment contract or payroll"""
         if self.employment_contract:
@@ -436,76 +621,82 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         if not base_salary:
             return Decimal('0'), Decimal('0')
         
-        # Извличане на настройките от базата с дефолтни стойности по закон
+        # Използвай новите функции за данъци (Фаза 2)
+        tax_rate_data = await crud.get_tax_rate(
+            self.db,
+            self.calculation_period['start_date'].year,
+            self.calculation_period['start_date'].month
+        )
+        tax_rate = Decimal(str(tax_rate_data.get('rate', 10.0))) / Decimal('100')
+        
+        # Вземи стандартното подобрения
+        deduction_data = await crud.get_tax_deduction(
+            self.db,
+            self.calculation_period['start_date'].year,
+            self.calculation_period['start_date'].month,
+            "standard"
+        )
+        standard_deduction = Decimal(str(deduction_data.get('amount', 500.0)))
+        
+        # Вземи осигуровките
+        insurances = await self.calculate_all_insurances(base_salary)
+        total_insurance_employee = Decimal(str(insurances.get('total_employee', 0)))
+        
+        # Изчисление на ДДФЛ
+        # Данъчна база = Бруто - Осигуровки - Стандартно подобрения
+        taxable_base = max(Decimal('0'), base_salary - total_insurance_employee - standard_deduction)
+        income_tax = taxable_base * tax_rate
+        
+        # Нето = Бруто - Осигуровки - Данък
+        net_amount = base_salary - total_insurance_employee - income_tax
+        
+        return base_salary, net_amount
+    
+    # --- Нови методи за данъци (Фаза 2) ---
+    
+    async def calculate_tax_details(self, gross_amount: Decimal) -> dict:
+        """
+        Изчислява детайлите за данъците.
+        """
         from backend import crud
-        max_ins_str = await crud.get_global_setting(self.db, "payroll_max_insurance_base")
-        ins_rate_str = await crud.get_global_setting(self.db, "payroll_employee_insurance_rate")
-        tax_rate_str = await crud.get_global_setting(self.db, "payroll_income_tax_rate")
-        civil_costs_str = await crud.get_global_setting(self.db, "payroll_civil_contract_costs_rate")
-
-        MAX_INSURANCE_BASE = Decimal(max_ins_str) if max_ins_str else Decimal('3750.00')
-        INSURANCE_RATE = (Decimal(ins_rate_str) if ins_rate_str else Decimal('13.78')) / Decimal('100')
-        INCOME_TAX_RATE = (Decimal(tax_rate_str) if tax_rate_str else Decimal('10.00')) / Decimal('100')
-        CIVIL_COSTS_RATE = (Decimal(civil_costs_str) if civil_costs_str else Decimal('25.00')) / Decimal('100')
         
-        if not self.employment_contract:
-            return base_salary, base_salary * (Decimal('1.0') - INCOME_TAX_RATE)
+        # Вземи ставката
+        tax_rate_data = await crud.get_tax_rate(
+            self.db,
+            self.calculation_period['start_date'].year,
+            self.calculation_period['start_date'].month
+        )
+        tax_rate = Decimal(str(tax_rate_data.get('rate', 10.0)))
         
-        contract_type = self.employment_contract.contract_type
-        calculation_type = self.employment_contract.salary_calculation_type
-        is_contributor = getattr(self.employment_contract, 'insurance_contributor', True)
+        # Вземи стандартното подобрения
+        deduction_data = await crud.get_tax_deduction(
+            self.db,
+            self.calculation_period['start_date'].year,
+            self.calculation_period['start_date'].month,
+            "standard"
+        )
+        standard_deduction = Decimal(str(deduction_data.get('amount', 500.0)))
         
-        gross_amount = base_salary
-        net_amount = base_salary
+        # Вземи осигуровките
+        insurances = await self.calculate_all_insurances(gross_amount)
+        total_insurance_employee = Decimal(str(insurances.get('total_employee', 0)))
         
-        if contract_type == 'civil_contract':
-            if calculation_type == 'gross':
-                # Признати разходи (напр. 25%)
-                taxable_base = gross_amount * (Decimal('1.0') - CIVIL_COSTS_RATE)
-                
-                # ДОД се смята само ако е активиран за договора
-                income_tax = Decimal('0')
-                if getattr(self.employment_contract, 'has_income_tax', True):
-                    income_tax = taxable_base * INCOME_TAX_RATE
-                
-                net_amount = gross_amount - income_tax
-            else:
-                # Приблизително изчисление за нето към бруто
-                if getattr(self.employment_contract, 'has_income_tax', True):
-                    divider = Decimal('1.0') - (Decimal('1.0') - CIVIL_COSTS_RATE) * INCOME_TAX_RATE
-                    gross_amount = net_amount / divider
-                else:
-                    gross_amount = net_amount # No tax, Net = Gross
+        # Данъчна база
+        taxable_base = max(Decimal('0'), gross_amount - total_insurance_employee - standard_deduction)
         
-        elif contract_type in ['full_time', 'part_time']:
-            if calculation_type == 'gross':
-                # 1. Осигурителна база
-                insurance_base = min(gross_amount, MAX_INSURANCE_BASE)
-                
-                # 2. Лични осигуровки
-                insurance_contributions = Decimal('0')
-                if is_contributor:
-                    insurance_contributions = insurance_base * INSURANCE_RATE
-                
-                # 3. ДОД
-                taxable_amount = gross_amount - insurance_contributions
-                income_tax = taxable_amount * INCOME_TAX_RATE
-                
-                net_amount = gross_amount - insurance_contributions - income_tax
-            else:
-                # Използваме подобрената обратна калкулация с динамични стойности
-                gross_amount = await self._reverse_calculate_gross_from_net(
-                    net_amount, MAX_INSURANCE_BASE, INSURANCE_RATE, INCOME_TAX_RATE
-                )
+        # Данък
+        income_tax = taxable_base * (tax_rate / Decimal('100'))
         
-        else:  # contractor, internship, etc.
-            # Minimal deductions for unknown types
-            if calculation_type == 'gross':
-                net_amount = gross_amount * (Decimal('1.0') - INCOME_TAX_RATE)
-            else:
-                gross_amount = net_amount / (Decimal('1.0') - INCOME_TAX_RATE)
-        
-        return gross_amount, net_amount
+        return {
+            "gross_salary": float(gross_amount),
+            "standard_deduction": float(standard_deduction),
+            "insurance_employee_total": float(total_insurance_employee),
+            "taxable_base": float(taxable_base),
+            "tax_rate": float(tax_rate),
+            "income_tax": float(income_tax),
+            "tax_rate_source": tax_rate_data.get('source', 'settings'),
+            "deduction_source": deduction_data.get('source', 'settings')
+        }
     
     async def _reverse_calculate_gross_from_net(self, net_amount: Decimal, max_base: Decimal, ins_rate: Decimal, tax_rate: Decimal) -> Decimal:
         """Обратна калкулация с динамични коефициенти"""
@@ -714,3 +905,32 @@ def calculate_sick_leave_payment_by_law(
                 ]
             }
         }
+
+    async def _calculate_experience_bonus(self, base_salary: Decimal) -> Decimal:
+        """
+        Изчислява добавка за трудов стаж и професионален опит (чл. 12 НСОРЗ).
+        Минимум 0.6% за всяка година стаж.
+        """
+        if not self.employment_contract or not self.employment_contract.experience_start_date:
+            return Decimal('0')
+            
+        # Изчисляваме годините стаж към края на периода
+        end_date = self.calculation_period['end_date']
+        start_date = self.employment_contract.experience_start_date
+        
+        years = end_date.year - start_date.year
+        if (end_date.month, end_date.day) < (start_date.month, start_date.day):
+            years -= 1
+            
+        if years <= 0:
+            return Decimal('0')
+            
+        # Процентът може да е специфичен за договора или дефолт 0.6%
+        # В модела добавихме work_class като текст, но за изчисленията ни трябва число
+        # Ако няма специфичен процент в договора, ползваме 0.6%
+        rate_per_year = Decimal('0.6') 
+        
+        total_percent = Decimal(str(years)) * rate_per_year
+        bonus_amount = base_salary * (total_percent / 100)
+        
+        return bonus_amount.quantize(Decimal('0.01'))
