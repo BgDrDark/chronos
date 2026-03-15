@@ -5020,6 +5020,118 @@ class Mutation:
         return types.Payslip.from_instance(payslip)
 
     @strawberry.mutation
+    async def bulk_mark_payslips_as_paid(
+        self,
+        payslip_ids: List[int],
+        payment_date: Optional[datetime.datetime] = None,
+        payment_method: str = "bank",
+        info: strawberry.Info = None
+    ) -> List[types.Payslip]:
+        """
+        Bulk mark multiple payslips as paid.
+        Used for batch payment processing.
+        """
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+        from backend.database.models import Payslip
+        
+        updated_payslips = []
+        
+        for payslip_id in payslip_ids:
+            payslip = await db.get(Payslip, payslip_id)
+            if payslip and payslip.payment_status != "paid":
+                payslip.payment_status = "paid"
+                payslip.actual_payment_date = payment_date or sofia_now()
+                payslip.payment_method = payment_method
+                await db.refresh(payslip)
+                updated_payslips.append(payslip)
+        
+        await db.commit()
+        return [types.Payslip.from_instance(p) for p in updated_payslips]
+
+    @strawberry.mutation
+    async def generate_sepa_xml(
+        self,
+        company_id: int,
+        period_start: datetime.date,
+        period_end: datetime.date,
+        execution_date: Optional[datetime.date] = None,
+        info: strawberry.Info = None
+    ) -> str:
+        """
+        Generate SEPA XML file for payroll payments.
+        """
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+        from backend.database.models import Payslip, User, EmploymentContract
+        from backend.services.sepa_generator import SEPAGenerator
+        
+        # Get company settings
+        company_name = await crud.get_global_setting(db, f"company_{company_id}_name") or "Company"
+        company_iban = await crud.get_global_setting(db, f"company_{company_id}_iban") or ""
+        company_bic = await crud.get_global_setting(db, f"company_{company_id}_bic") or ""
+        
+        if not company_iban:
+            raise Exception("Company IBAN not configured")
+        
+        # Get paid payslips for the period
+        result = await db.execute(
+            select(Payslip).where(
+                and_(
+                    Payslip.period_start >= period_start,
+                    Payslip.period_end <= period_end,
+                    Payslip.payment_status == "paid"
+                )
+            )
+        )
+        payslips = result.scalars().all()
+        
+        # Build payments list
+        payments = []
+        for payslip in payslips:
+            user = await db.get(User, payslip.user_id)
+            if user and user.iban:
+                # Try to get bank details from employment contract
+                emp_result = await db.execute(
+                    select(EmploymentContract).where(
+                        EmploymentContract.user_id == user.id,
+                        EmploymentContract.is_active == True
+                    )
+                )
+                emp = emp_result.scalars().first()
+                
+                payments.append({
+                    "name": f"{user.firstName or ''} {user.lastName or ''}".strip(),
+                    "iban": user.iban,
+                    "amount": float(payslip.total_amount),
+                    "reference": f"SAL-{payslip.id}",
+                    "description": f"Заплата {period_start.strftime('%m/%Y')}"
+                })
+        
+        # Generate SEPA XML
+        generator = SEPAGenerator(
+            sender_name=company_name,
+            sender_iban=company_iban,
+            sender_bic=company_bic
+        )
+        
+        validation = generator.validate_payments(payments)
+        if not validation["valid"]:
+            raise Exception(f"Invalid payments: {', '.join(validation['errors'])}")
+        
+        return generator.generate_payment_xml(
+            payments=payments,
+            batch_name=f"Payroll {period_start.strftime('%m/%Y')}",
+            execution_date=execution_date.strftime("%Y-%m-%d") if execution_date else None
+        )
+
+    @strawberry.mutation
     async def create_contract_annex(
         self,
         contract_id: int,
