@@ -934,3 +934,133 @@ def calculate_sick_leave_payment_by_law(
         bonus_amount = base_salary * (total_percent / 100)
         
         return bonus_amount.quantize(Decimal('0.01'))
+    
+    # --- Pro-rata изчисления (Фаза 4) ---
+    
+    async def get_contract_segments_for_period(
+        self,
+        contract_id: int
+    ) -> list:
+        """
+        Връща списък от сегменти на договора за периода.
+        Всеки сегмент има начална дата, крайна дата и заплата.
+        """
+        from backend.database.models import ContractAnnex
+        from sqlalchemy import and_
+        
+        period_start = self.calculation_period['start_date']
+        period_end = self.calculation_period['end_date']
+        
+        segments = []
+        
+        # Първият сегмент е от началото на периода
+        current_start = period_start
+        
+        # Търсим анексите за този договор в периода
+        result = await self.db.execute(
+            select(ContractAnnex).where(
+                and_(
+                    ContractAnnex.contract_id == contract_id,
+                    ContractAnnex.effective_date <= period_end,
+                    ContractAnnex.is_signed == True
+                )
+            ).order_by(ContractAnnex.effective_date)
+        )
+        annexes = result.scalars().all()
+        
+        # Добави основния договор като първи сегмент
+        if self.employment_contract:
+            base_salary = self.employment_contract.base_salary or Decimal('0')
+            segments.append({
+                'start_date': period_start,
+                'end_date': period_end,
+                'salary': base_salary,
+                'source': 'contract',
+                'annex_id': None
+            })
+        
+        # Ако има анекси, разделяме периода
+        for annex in annexes:
+            if annex.effective_date > period_start:
+                # Намери предишния сегмент и го скъси
+                for seg in segments:
+                    if seg['end_date'] == period_end and seg['start_date'] == period_start:
+                        seg['end_date'] = annex.effective_date - timedelta(days=1)
+                        break
+                
+                # Добави нов сегмент от датата на анекса
+                new_salary = annex.base_salary if annex.base_salary else (
+                    self.employment_contract.base_salary if self.employment_contract else Decimal('0')
+                )
+                
+                # Намери крайната дата на този сегмент
+                next_annex_date = period_end
+                for next_annex in annexes:
+                    if next_annex.effective_date > annex.effective_date:
+                        next_annex_date = next_annex.effective_date - timedelta(days=1)
+                        break
+                
+                segments.append({
+                    'start_date': annex.effective_date,
+                    'end_date': min(next_annex_date, period_end),
+                    'salary': new_salary,
+                    'source': 'annex',
+                    'annex_id': annex.id
+                })
+        
+        return segments
+    
+    async def calculate_pro_rata_salary(self) -> dict:
+        """
+        Изчислява пропорционалната заплата за периода.
+        Ако има промени в договора (анекси) през периода,
+        разделяме периода на сегменти и изчисляваме пропорционално.
+        """
+        if not self.employment_contract:
+            return {
+                'base_salary': 0,
+                'pro_rata_salary': 0,
+                'segments': [],
+                'has_changes': False
+            }
+        
+        contract_id = self.employment_contract.id
+        
+        # Вземи всички сегменти за периода
+        segments = await self.get_contract_segments_for_period(contract_id)
+        
+        if len(segments) <= 1:
+            # Няма промени - връщаме стандартната заплата
+            base_salary = self.employment_contract.base_salary or Decimal('0')
+            return {
+                'base_salary': float(base_salary),
+                'pro_rata_salary': float(base_salary),
+                'segments': segments,
+                'has_changes': False
+            }
+        
+        # Има промени - изчисляваме пропорционално
+        period_start = self.calculation_period['start_date']
+        period_end = self.calculation_period['end_date']
+        total_days = (period_end - period_start).days + 1
+        
+        pro_rata_total = Decimal('0')
+        
+        for seg in segments:
+            seg_start = seg['start_date']
+            seg_end = seg['end_date']
+            seg_days = (seg_end - seg_start).days + 1
+            
+            # Пропорционална заплата за сегмента
+            seg_salary = Decimal(str(seg['salary'])) * Decimal(str(seg_days)) / Decimal(str(total_days))
+            pro_rata_total += seg_salary
+            
+            seg['pro_rata_amount'] = float(seg_salary)
+            seg['days'] = seg_days
+        
+        return {
+            'base_salary': float(self.employment_contract.base_salary or Decimal('0')),
+            'pro_rata_salary': float(pro_rata_total),
+            'segments': segments,
+            'has_changes': True
+        }
