@@ -6,7 +6,7 @@ import {
   useTheme, useMediaQuery, Grid, Stack, Tooltip
 } from '@mui/material';
 import { useQuery, useMutation, gql } from '@apollo/client';
-import { type Shift, type User, type WorkSchedule, type TimeLog, type ScheduleTemplate, type PublicHoliday } from '../types';
+import { type Shift, type User, type WorkSchedule, type TimeLog, type ScheduleTemplate, type PublicHoliday, type ScheduleLog } from '../types';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -293,7 +293,7 @@ const CalendarView: React.FC = () => {
   const [selectedShift, setSelectedShift] = useState('');
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
   const [isEventEdit, setIsEventEdit] = useState(false);
-  const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [selectedLog, setSelectedLog] = useState<ScheduleLog | null>(null);
 
     const { data: usersData } = useQuery(GET_USERS_QUERY, { variables: { limit: 1000 } });
 
@@ -448,7 +448,7 @@ const CalendarView: React.FC = () => {
         
         if (window.confirm(`Сигурни ли сте, че искате да изтриете този запис (ID: ${selectedLog.logId})?`)) {
             try {
-                await deleteTimeLog({ variables: { id: parseInt(selectedLog.logId) } });
+                await deleteTimeLog({ variables: { id: selectedLog.logId } });
                 setLogOpen(false);
                 await refetchLogs();
             } catch (e: unknown) {
@@ -681,7 +681,7 @@ const CalendarView: React.FC = () => {
                 >
                 {shiftsData?.shifts?.map((s: WorkSchedule) => (
                     <MenuItem key={s.id} value={s.id}>
-                    {s.name} ({s.startTime.substring(0, 5)} - {s.endTime.substring(0, 5)})
+                    {s.name} ({(s.startTime || '').substring(0, 5)} - {(s.endTime || '').substring(0, 5)})
                     </MenuItem>
                 )) || <MenuItem disabled value="">Зареждане...</MenuItem>}
                 </TextField>
@@ -734,7 +734,9 @@ const CalendarView: React.FC = () => {
                         Начало: {
                             (selectedLog.start instanceof Date 
                                 ? selectedLog.start 
-                                : new Date(selectedLog.start.endsWith('Z') ? selectedLog.start : selectedLog.start + 'Z')
+                                : selectedLog.start 
+                                ? new Date(selectedLog.start.endsWith('Z') ? selectedLog.start : selectedLog.start + 'Z')
+                                : '-'
                             ).toLocaleString('bg-BG')
                         }
                       </Typography>
@@ -852,10 +854,11 @@ const BulkAssign: React.FC = () => {
             SelectProps={{ 
               multiple: true, 
               value: selectedUsers, 
-              onChange: (e: React.ChangeEvent<{ value: unknown }>) => setSelectedUsers(e.target.value),
-              renderValue: (selected: number[]) => {
+              onChange: (e) => setSelectedUsers(e.target.value as number[]),
+              renderValue: (selected) => {
+                const selectedArray = selected as number[];
                 return usersData?.users?.users
-                  ?.filter((u: User) => selected.includes(u.id))
+                  ?.filter((u: User) => selectedArray.includes(u.id))
                   .map((u: User) => u.firstName ? `${u.firstName} ${u.lastName || ''}` : u.email)
                   .join(', ');
               }
@@ -877,7 +880,7 @@ const BulkAssign: React.FC = () => {
             margin="normal"
           >
             {shiftsData?.shifts?.map((s: WorkSchedule) => (
-              <MenuItem key={s.id} value={s.id}>{s.name} ({s.startTime.substring(0, 5)} - {s.endTime.substring(0, 5)})</MenuItem>
+              <MenuItem key={s.id} value={s.id}>{s.name} ({(s.startTime || '').substring(0, 5)} - {(s.endTime || '').substring(0, 5)})</MenuItem>
             )) || <MenuItem disabled value="">Зареждане...</MenuItem>}
           </TextField>
         </Grid>

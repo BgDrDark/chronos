@@ -555,6 +555,26 @@ function App() {
             </AdminRoute>
           }
         />
+        
+        {/* Шаблони */}
+        <Route
+          path="/admin/payroll/templates"
+          element={
+            <AdminRoute>
+              <PayrollPage tab="templates" />
+            </AdminRoute>
+          }
+        />
+        
+        {/* Допълнителни споразумения */}
+        <Route
+          path="/admin/payroll/annexes"
+          element={
+            <AdminRoute>
+              <PayrollPage tab="annexes" />
+            </AdminRoute>
+          }
+        />
       </Routes>
     </MainLayout>
   );

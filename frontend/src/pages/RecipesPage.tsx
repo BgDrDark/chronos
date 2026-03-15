@@ -37,7 +37,7 @@ interface ValidatedTextFieldProps {
   disabled?: boolean;
   multiline?: boolean;
   rows?: number;
-  InputProps?: unknown;
+  InputProps?: { sx?: object; endAdornment?: React.ReactNode };
   sx?: SxProps<Theme>;
 }
 
@@ -260,7 +260,27 @@ const RecipesPage: React.FC = () => {
   };
 
   // Form States - New 3-section structure
-  const [recipeForm, setRecipeForm] = useState({
+  const [recipeForm, setRecipeForm] = useState<{
+    name: string;
+    description: string;
+    yieldQuantity: string;
+    yieldUnit: string;
+    shelfLifeDays: string;
+    shelfLifeFrozenDays: string;
+    productionDeadlineDays: string;
+    defaultPieces: number;
+    currentPieces: number;
+    standardQuantity: string;
+    instructions: string;
+    sections: {
+      type: string;
+      name: string;
+      shelfLifeDays: number | null;
+      wastePercentage: number;
+      ingredients: { ingredientId: string; quantityGross: string }[];
+      steps: { workstationId: string; name: string; stepOrder: number; estimatedDurationMinutes: string }[];
+    }[];
+  }>({
     name: '',
     description: '',
     yieldQuantity: '1',
@@ -273,9 +293,9 @@ const RecipesPage: React.FC = () => {
     standardQuantity: '1',
     instructions: '',
     sections: [
-      { type: 'dough', name: 'Блат - ', shelfLifeDays: null, wastePercentage: 10, ingredients: [] as RecipeIngredient[], steps: [] as RecipeStep[] },
-      { type: 'cream', name: 'Крем - ', shelfLifeDays: null, wastePercentage: 5, ingredients: [] as RecipeIngredient[], steps: [] as RecipeStep[] },
-      { type: 'decoration', name: 'Декор - ', shelfLifeDays: null, wastePercentage: 15, ingredients: [] as RecipeIngredient[], steps: [] as RecipeStep[] }
+      { type: 'dough', name: 'Блат - ', shelfLifeDays: null, wastePercentage: 10, ingredients: [], steps: [] },
+      { type: 'cream', name: 'Крем - ', shelfLifeDays: null, wastePercentage: 5, ingredients: [], steps: [] },
+      { type: 'decoration', name: 'Декор - ', shelfLifeDays: null, wastePercentage: 15, ingredients: [], steps: [] }
     ]
   });
 
@@ -303,13 +323,13 @@ const RecipesPage: React.FC = () => {
       errors.productionDeadlineDays = 'Срокът за производство трябва да е между 0 и 30 дни';
     }
     
-    recipeForm.sections.forEach((section: RecipeSection, idx: number) => {
+    recipeForm.sections.forEach((section, idx) => {
       if (section.name && section.name.trim().length < 2) {
         errors[`section_${idx}_name`] = 'Името трябва да е поне 2 символа';
       }
       
       if (section.ingredients && section.ingredients.length > 0) {
-        section.ingredients.forEach((ing: RecipeIngredient, ingIdx: number) => {
+        section.ingredients.forEach((ing, ingIdx) => {
           if (!ing.ingredientId) {
             errors[`section_${idx}_ing_${ingIdx}`] = 'Избери съставка';
           }
@@ -331,13 +351,11 @@ const RecipesPage: React.FC = () => {
     const oldPieces = recipeForm.currentPieces;
     const ratio = newPieces / oldPieces;
     
-    const updatedSections = recipeForm.sections.map((section: RecipeSection) => ({
+    const updatedSections = recipeForm.sections.map((section) => ({
       ...section,
-      ingredients: section.ingredients.map((ing: RecipeIngredient) => ({
+      ingredients: section.ingredients.map((ing) => ({
         ...ing,
-        quantityGross: ing.originalQuantity 
-          ? Math.round(ing.originalQuantity * ratio * 1000) / 1000
-          : (parseFloat(ing.quantityGross || '0') * ratio)
+        quantityGross: String(Number(ing.quantityGross || '0') * ratio)
       }))
     }));
     
@@ -355,7 +373,7 @@ const RecipesPage: React.FC = () => {
 
   // Update section name when recipe name changes
   const handleNameChange = (newName: string) => {
-    const updatedSections = recipeForm.sections.map((section: RecipeSection) => ({
+    const updatedSections = recipeForm.sections.map((section) => ({
       ...section,
       name: `${section.type === 'dough' ? 'Блат' : section.type === 'cream' ? 'Крем' : 'Декор'} - ${newName}`
     }));
@@ -371,8 +389,7 @@ const RecipesPage: React.FC = () => {
     const newSections = [...recipeForm.sections];
     newSections[sectionIdx].ingredients.push({
       ingredientId: '',
-      quantityGross: '',
-      originalQuantity: null
+      quantityGross: ''
     });
     setRecipeForm({ ...recipeForm, sections: newSections });
   };
@@ -404,11 +421,11 @@ const RecipesPage: React.FC = () => {
   };
 
   // Calculate totals for a section
-  const calculateSectionTotals = (section: RecipeSection) => {
-    const totalGross = section.ingredients.reduce((sum: number, ing: RecipeIngredient) => 
-      sum + (parseFloat(ing.quantityGross?.toString() || '0') || 0), 0);
+  const calculateSectionTotals = (section: { ingredients: { quantityGross: string | number }[]; wastePercentage?: number | string | null }) => {
+    const totalGross = section.ingredients.reduce((sum, ing) => 
+      sum + (parseFloat(String(ing.quantityGross)) || 0), 0);
 
-    const wastePct = section.wastePercentage || 0;
+    const wastePct = parseFloat(String(section.wastePercentage || 0));
     const totalNet = totalGross - (totalGross * wastePct / 100);
     return { totalGross, totalNet };
   };
@@ -459,25 +476,25 @@ const RecipesPage: React.FC = () => {
     
     if (!user?.companyId) return;
     try {
-      const sections = recipeForm.sections.map((section: RecipeSection, idx: number) => ({
+      const sections = recipeForm.sections.map((section, idx) => ({
         sectionType: section.type,
         name: section.name || `${section.type === 'dough' ? 'Блат' : section.type === 'cream' ? 'Крем' : 'Декор'} - ${recipeForm.name}`,
-        shelfLifeDays: section.shelfLifeDays ? parseInt(section.shelfLifeDays) : null,
-        wastePercentage: parseFloat(section.wastePercentage) || 0,
+        shelfLifeDays: section.shelfLifeDays ? parseInt(String(section.shelfLifeDays)) : null,
+        wastePercentage: parseFloat(String(section.wastePercentage)) || 0,
         sectionOrder: idx + 1,
         ingredients: section.ingredients
-          .filter((i: RecipeIngredient) => i.ingredientId && i.quantityGross)
-          .map((i: RecipeIngredient) => ({
-            ingredientId: parseInt(i.ingredientId),
-            quantityGross: parseFloat(i.quantityGross)
+          .filter((i) => i.ingredientId && i.quantityGross)
+          .map((i) => ({
+            ingredientId: parseInt(String(i.ingredientId)),
+            quantityGross: parseFloat(String(i.quantityGross))
           })),
         steps: section.steps
-          .filter((s: RecipeStep) => s.workstationId && s.name)
-          .map((s: RecipeStep, sIdx: number) => ({
-            workstationId: parseInt(s.workstationId),
+          .filter((s) => s.workstationId && s.name)
+          .map((s, sIdx) => ({
+            workstationId: parseInt(String(s.workstationId)),
             name: s.name,
             stepOrder: s.stepOrder || sIdx + 1,
-            estimatedDurationMinutes: s.estimatedDurationMinutes ? parseInt(s.estimatedDurationMinutes) : null
+            estimatedDurationMinutes: s.estimatedDurationMinutes ? parseInt(String(s.estimatedDurationMinutes)) : null
           }))
       }));
 
@@ -609,7 +626,7 @@ const RecipesPage: React.FC = () => {
                   <Divider sx={{ my: 1 }} />
                   <Typography variant="subtitle2">Съставки:</Typography>
                   <List>
-                    {recipe.ingredients.slice(0, 3).map((ri: RecipeIngredient, idx: number) => (
+                    {(recipe.ingredients || []).slice(0, 3).map((ri: RecipeIngredient, idx: number) => (
                       <ListItem key={idx} sx={{ py: 0, px: 1 }}>
                         <ListItemText 
                           primary={`${ri.ingredient.name}: ${ri.quantityGross} ${ri.ingredient.unit}`} 
@@ -755,7 +772,7 @@ const RecipesPage: React.FC = () => {
           </Paper>
 
           {/* 3 Sections with Accordion */}
-          {recipeForm.sections.map((section: RecipeSection, sectionIdx: number) => {
+          {recipeForm.sections.map((section, sectionIdx) => {
             const totals = calculateSectionTotals(section);
             const sectionTitle = section.type === 'dough' ? 'ПЕКАРНА' : section.type === 'cream' ? 'КРЕМОВЕ' : 'ДЕКОРАЦИЯ';
             return (
@@ -814,13 +831,13 @@ const RecipesPage: React.FC = () => {
                       <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
                         СЪСТАВКИ:
                       </Typography>
-                      {section.ingredients.map((ing: RecipeIngredient, ingIdx: number) => (
+                      {section.ingredients.map((ing, ingIdx) => (
                         <Box key={ingIdx} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
                           <Autocomplete
                             size="small"
                             options={data?.ingredients || []}
                             getOptionLabel={(option: Ingredient) => `${option.name} (${option.unit})`}
-                            value={data?.ingredients?.find((i: RecipeIngredient) => i.id === parseInt(ing.ingredientId)) || null}
+                            value={data?.ingredients?.find((i: Ingredient) => i.id === Number(ing.ingredientId)) || null}
                             onChange={(_, newValue) => {
                               const newSections = [...recipeForm.sections];
                               newSections[sectionIdx].ingredients[ingIdx].ingredientId = newValue ? newValue.id.toString() : '';
@@ -875,7 +892,7 @@ const RecipesPage: React.FC = () => {
                       <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
                         СТЪПКИ:
                       </Typography>
-                      {section.steps.map((step: RecipeStep, stepIdx: number) => (
+                      {section.steps.map((step, stepIdx) => (
                         <Box key={stepIdx} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
                           <TextField
                             size="small"
@@ -896,12 +913,12 @@ const RecipesPage: React.FC = () => {
                               label="Станция"
                               onChange={(e) => {
                                 const newSections = [...recipeForm.sections];
-                                newSections[sectionIdx].steps[stepIdx].workstationId = e.target.value;
+                                newSections[sectionIdx].steps[stepIdx].workstationId = String(e.target.value);
                                 setRecipeForm({ ...recipeForm, sections: newSections });
                               }}
                             >
                               {data?.workstations?.map((w: Workstation) => (
-                                <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>
+                                <MenuItem key={w.id} value={String(w.id)}>{w.name}</MenuItem>
                               ))}
                             </Select>
                           </FormControl>
@@ -956,8 +973,9 @@ const RecipesPage: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {selectedRecipe?.ingredients?.map((ing: RecipeIngredient, idx: number) => {
-                    const waste = ing.quantityGross > 0 ? ((ing.quantityGross - ing.quantityNet) / ing.quantityGross * 100).toFixed(1) : '0';
+                  {(selectedRecipe?.ingredients || []).map((ing: RecipeIngredient, idx: number) => {
+                    const netQty = ing.quantityNet ?? 0;
+                    const waste = ing.quantityGross > 0 ? ((ing.quantityGross - netQty) / ing.quantityGross * 100).toFixed(1) : '0';
                     return (
                       <TableRow key={idx}>
                         <TableCell>{ing.ingredient.name}</TableCell>
@@ -973,9 +991,9 @@ const RecipesPage: React.FC = () => {
 
             <Grid size={{ xs: 12 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, mt: 2 }}>Стъпки</Typography>
-              {selectedRecipe?.steps?.length > 0 ? (
+              {(selectedRecipe?.steps?.length ?? 0) > 0 ? (
                 <List>
-                  {selectedRecipe.steps.map((step: RecipeStep, idx: number) => (
+                  {(selectedRecipe?.steps || []).map((step: RecipeStep, idx: number) => (
                     <ListItem key={idx} sx={{ borderBottom: '1px solid #eee' }}>
                       <ListItemText 
                         primary={`${idx + 1}. ${step.name}`} 
@@ -994,7 +1012,7 @@ const RecipesPage: React.FC = () => {
           <Button color="error" onClick={async () => {
             if (confirm('Сигурни ли сте, че искате да изтриете тази рецепта?')) {
               try {
-                await deleteRecipe({ variables: { id: selectedRecipe.id } });
+                await deleteRecipe({ variables: { id: selectedRecipe!.id } });
                 setSelectedRecipe(null);
                 refetch();
               } catch (err) {

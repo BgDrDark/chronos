@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getErrorMessage } from '../types';
+import { getErrorMessage, ScheduleTemplate, ScheduleTemplateItem, Shift } from '../types';
 import { 
   Box, Typography, Button, Card, CardContent, Grid, 
   TextField, Dialog, DialogTitle, DialogContent, DialogActions, 
@@ -100,7 +100,7 @@ const ScheduleTemplatesManager: React.FC = () => {
             </Box>
 
             <Grid container spacing={2}>
-                {data?.scheduleTemplates.map((t: any) => (
+                {data?.scheduleTemplates.map((t: ScheduleTemplate) => (
                     <Grid size={{ xs: 12, sm: 6, md: 4 }} key={t.id}>
                         <Card variant="outlined">
                             <CardContent>
@@ -114,7 +114,7 @@ const ScheduleTemplatesManager: React.FC = () => {
                                     {t.description || 'Няма описание'}
                                 </Typography>
                                 <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                    {t.items.map((item: any) => (
+                                    {t.items?.map((item: ScheduleTemplateItem) => (
                                         <Chip 
                                             key={item.dayIndex} 
                                             label={item.shift ? item.shift.name : 'ПОЧ'} 
@@ -155,7 +155,7 @@ const ScheduleTemplatesManager: React.FC = () => {
                                 }}
                             >
                                 <MenuItem value=""><em>Почивка</em></MenuItem>
-                                {data?.shifts?.map((s: any) => (
+                                {data?.shifts?.map((s: Shift) => (
                                     <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                                 ))}
                             </TextField>

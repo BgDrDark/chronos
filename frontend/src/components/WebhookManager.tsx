@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getErrorMessage } from '../types';
+import { getErrorMessage, Webhook } from '../types';
 import { 
   Box, Typography, Button, Card, CardContent, TextField, 
   List, ListItem, ListItemText, ListItemSecondaryAction, IconButton, 
@@ -77,7 +77,7 @@ const WebhookManager: React.FC = () => {
                 </Typography>
 
                 <List>
-                    {data?.webhooks.map((w: any) => (
+                    {data?.webhooks.map((w: Webhook) => (
                         <ListItem key={w.id} divider>
                             <ListItemText 
                                 primary={w.url} 

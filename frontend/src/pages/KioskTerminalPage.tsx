@@ -55,19 +55,12 @@ const KioskTerminalPage: React.FC = () => {
         }
         
         // Prevent screen sleep using Wake Lock API
-        interface NavigatorWithWakeLock extends Navigator {
-            wakeLock: {
-                request: (type: 'screen') => Promise<{ release: () => Promise<void> }>;
-            };
-        }
-
-        let wakeLock: { release: () => Promise<void> } | null = null;
-        const nav = navigator as NavigatorWithWakeLock;
+        let wakeLock: WakeLockSentinel | null = null;
 
         const requestWakeLock = async () => {
             try {
-                if ('wakeLock' in nav) {
-                    wakeLock = await nav.wakeLock.request('screen');
+                if ('wakeLock' in navigator) {
+                    wakeLock = await (navigator as any).wakeLock.request('screen');
                 }
             } catch {
                 console.log('Wake Lock not available');
@@ -100,7 +93,7 @@ const KioskTerminalPage: React.FC = () => {
                 if (data.background_image) {
                     setBackgroundImage(getApiUrl(`uploads/${data.background_image}`));
                 }
-            } catch {
+            } catch (e) {
                 console.error("Failed to fetch kiosk config", e);
             }
         };

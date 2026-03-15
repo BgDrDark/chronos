@@ -97,6 +97,8 @@ class UserCreate(UserBase):
     has_income_tax: Optional[bool] = None
 
     # ТРЗ разширение
+    payment_day: Optional[int] = 25
+    experience_start_date: Optional[date] = None
     night_work_rate: Optional[Decimal] = Decimal("0.50")
     overtime_rate: Optional[Decimal] = Decimal("1.50")
     holiday_rate: Optional[Decimal] = Decimal("2.00")
@@ -120,8 +122,30 @@ class UserUpdate(BaseModel):
     company_id: Optional[int] = None
     department_id: Optional[int] = None
     position_id: Optional[int] = None
+
+    # Employment Contract
+    contract_type: Optional[str] = None
+    contract_start_date: Optional[date] = None
+    contract_end_date: Optional[date] = None
     base_salary: Optional[Decimal] = None
-    
+    work_hours_per_week: Optional[int] = None
+    probation_months: Optional[int] = None
+    salary_calculation_type: Optional[str] = None
+    salary_installments_count: Optional[int] = None
+    monthly_advance_amount: Optional[Decimal] = None
+    tax_resident: Optional[bool] = None
+    insurance_contributor: Optional[bool] = None
+    has_income_tax: Optional[bool] = None
+
+    # TRZ extension
+    payment_day: Optional[int] = None
+    experience_start_date: Optional[date] = None
+    night_work_rate: Optional[Decimal] = None
+    overtime_rate: Optional[Decimal] = None
+    holiday_rate: Optional[Decimal] = None
+    work_class: Optional[str] = None
+    dangerous_work: Optional[bool] = None
+
     @field_validator('email', mode='before')
     @classmethod
     def empty_str_to_none(cls, v):

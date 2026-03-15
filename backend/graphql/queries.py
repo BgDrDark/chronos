@@ -152,16 +152,254 @@ class Query:
         noi_perc = await crud.get_global_setting(db, "payroll_noi_compensation_percent")
         sick_days = await crud.get_global_setting(db, "payroll_employer_paid_sick_days")
         tax_res = await crud.get_global_setting(db, "payroll_default_tax_resident")
-        
+        strict_mode = await crud.get_global_setting(db, "trz_compliance_strict_mode")
+
         return types.PayrollLegalSettings(
             max_insurance_base=float(max_ins) if max_ins else 3750.0,
             employee_insurance_rate=float(ins_rate) if ins_rate else 13.78,
             income_tax_rate=float(tax_rate) if tax_rate else 10.0,
             civil_contract_costs_rate=float(civil_costs) if civil_costs else 25.0,
             noi_compensation_percent=float(noi_perc) if noi_perc else 80.0,
-            employer_paid_sick_days=int(sick_days) if sick_days else 3,
-            default_tax_resident=(tax_res.lower() == "true") if tax_res else True
+            employer_paid_sick_days=int(sick_days) if sick_days else 2,
+            default_tax_resident=(tax_res.lower() == "true") if tax_res else True,
+            trz_compliance_strict_mode=(strict_mode.lower() == "true") if strict_mode else False
         )
+
+    @strawberry.field
+    async def contract_templates(self, info: strawberry.Info) -> List[types.ContractTemplate]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+        
+        company_id = current_user.company_id if current_user.role.name != "super_admin" else None
+        
+        from backend.database.models import ContractTemplate
+        stmt = select(ContractTemplate)
+        if company_id:
+            stmt = stmt.where(ContractTemplate.company_id == company_id)
+        stmt = stmt.where(ContractTemplate.is_active == True).order_by(ContractTemplate.name)
+        
+        result = await db.execute(stmt)
+        templates = result.scalars().all()
+        return [types.ContractTemplate(
+            id=t.id,
+            company_id=t.company_id,
+            name=t.name,
+            description=t.description,
+            contract_type=t.contract_type,
+            work_hours_per_week=t.work_hours_per_week,
+            probation_months=t.probation_months,
+            salary_calculation_type=t.salary_calculation_type,
+            payment_day=t.payment_day,
+            night_work_rate=float(t.night_work_rate),
+            overtime_rate=float(t.overtime_rate),
+            holiday_rate=float(t.holiday_rate),
+            work_class=t.work_class,
+            is_active=t.is_active,
+            created_at=t.created_at
+        ) for t in templates]
+
+    @strawberry.field
+    async def contract_template(self, info: strawberry.Info, id: int) -> Optional[types.ContractTemplate]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+        
+        from backend.database.models import ContractTemplate
+        template = await db.get(ContractTemplate, id)
+        if not template:
+            return None
+        return types.ContractTemplate(
+            id=template.id,
+            company_id=template.company_id,
+            name=template.name,
+            description=template.description,
+            contract_type=template.contract_type,
+            work_hours_per_week=template.work_hours_per_week,
+            probation_months=template.probation_months,
+            salary_calculation_type=template.salary_calculation_type,
+            payment_day=template.payment_day,
+            night_work_rate=float(template.night_work_rate),
+            overtime_rate=float(template.overtime_rate),
+            holiday_rate=float(template.holiday_rate),
+            work_class=template.work_class,
+            is_active=template.is_active,
+            created_at=template.created_at
+        )
+
+    @strawberry.field
+    async def contract_template_versions(self, info: strawberry.Info, template_id: int) -> List[types.ContractTemplateVersion]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+        
+        from backend.database.models import ContractTemplateVersion
+        stmt = select(ContractTemplateVersion).where(
+            ContractTemplateVersion.template_id == template_id
+        ).order_by(ContractTemplateVersion.version.desc())
+        
+        result = await db.execute(stmt)
+        versions = result.scalars().all()
+        return [types.ContractTemplateVersion(
+            id=v.id,
+            template_id=v.template_id,
+            version=v.version,
+            contract_type=v.contract_type,
+            work_hours_per_week=v.work_hours_per_week,
+            probation_months=v.probation_months,
+            salary_calculation_type=v.salary_calculation_type,
+            payment_day=v.payment_day,
+            night_work_rate=float(v.night_work_rate),
+            overtime_rate=float(v.overtime_rate),
+            holiday_rate=float(v.holiday_rate),
+            work_class=v.work_class,
+            is_current=v.is_current,
+            created_by=v.created_by,
+            created_at=v.created_at,
+            change_note=v.change_note
+        ) for v in versions]
+
+    @strawberry.field
+    async def annex_templates(self, info: strawberry.Info) -> List[types.AnnexTemplate]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+        
+        company_id = current_user.company_id if current_user.role.name != "super_admin" else None
+        
+        from backend.database.models import AnnexTemplate
+        stmt = select(AnnexTemplate)
+        if company_id:
+            stmt = stmt.where(AnnexTemplate.company_id == company_id)
+        stmt = stmt.where(AnnexTemplate.is_active == True).order_by(AnnexTemplate.name)
+        
+        result = await db.execute(stmt)
+        templates = result.scalars().all()
+        return [types.AnnexTemplate(
+            id=t.id,
+            company_id=t.company_id,
+            name=t.name,
+            description=t.description,
+            change_type=t.change_type,
+            new_base_salary=float(t.new_base_salary) if t.new_base_salary else None,
+            new_work_hours_per_week=t.new_work_hours_per_week,
+            new_night_work_rate=float(t.new_night_work_rate) if t.new_night_work_rate else None,
+            new_overtime_rate=float(t.new_overtime_rate) if t.new_overtime_rate else None,
+            new_holiday_rate=float(t.new_holiday_rate) if t.new_holiday_rate else None,
+            is_active=t.is_active,
+            created_at=t.created_at
+        ) for t in templates]
+
+    @strawberry.field
+    async def annex_template(self, info: strawberry.Info, id: int) -> Optional[types.AnnexTemplate]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+        
+        from backend.database.models import AnnexTemplate
+        template = await db.get(AnnexTemplate, id)
+        if not template:
+            return None
+        return types.AnnexTemplate(
+            id=template.id,
+            company_id=template.company_id,
+            name=template.name,
+            description=template.description,
+            change_type=template.change_type,
+            new_base_salary=float(template.new_base_salary) if template.new_base_salary else None,
+            new_work_hours_per_week=template.new_work_hours_per_week,
+            new_night_work_rate=float(template.new_night_work_rate) if template.new_night_work_rate else None,
+            new_overtime_rate=float(template.new_overtime_rate) if template.new_overtime_rate else None,
+            new_holiday_rate=float(template.new_holiday_rate) if template.new_holiday_rate else None,
+            is_active=template.is_active,
+            created_at=template.created_at
+        )
+
+    @strawberry.field
+    async def annex_template_versions(self, info: strawberry.Info, template_id: int) -> List[types.AnnexTemplateVersion]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+        
+        from backend.database.models import AnnexTemplateVersion
+        stmt = select(AnnexTemplateVersion).where(
+            AnnexTemplateVersion.template_id == template_id
+        ).order_by(AnnexTemplateVersion.version.desc())
+        
+        result = await db.execute(stmt)
+        versions = result.scalars().all()
+        return [types.AnnexTemplateVersion(
+            id=v.id,
+            template_id=v.template_id,
+            version=v.version,
+            change_type=v.change_type,
+            new_base_salary=float(v.new_base_salary) if v.new_base_salary else None,
+            new_work_hours_per_week=v.new_work_hours_per_week,
+            new_night_work_rate=float(v.new_night_work_rate) if v.new_night_work_rate else None,
+            new_overtime_rate=float(v.new_overtime_rate) if v.new_overtime_rate else None,
+            new_holiday_rate=float(v.new_holiday_rate) if v.new_holiday_rate else None,
+            is_current=v.is_current,
+            created_by=v.created_by,
+            created_at=v.created_at,
+            change_note=v.change_note
+        ) for v in versions]
+
+    @strawberry.field
+    async def clause_templates(self, info: strawberry.Info, category: Optional[str] = None) -> List[types.ClauseTemplate]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+        
+        company_id = current_user.company_id if current_user.role.name != "super_admin" else None
+        
+        from backend.database.models import ClauseTemplate
+        stmt = select(ClauseTemplate)
+        if company_id:
+            stmt = stmt.where(ClauseTemplate.company_id == company_id)
+        if category:
+            stmt = stmt.where(ClauseTemplate.category == category)
+        stmt = stmt.where(ClauseTemplate.is_active == True).order_by(ClauseTemplate.title)
+        
+        result = await db.execute(stmt)
+        templates = result.scalars().all()
+        return [types.ClauseTemplate(
+            id=t.id,
+            company_id=t.company_id,
+            title=t.title,
+            content=t.content,
+            category=t.category,
+            is_active=t.is_active,
+            created_at=t.created_at
+        ) for t in templates]
+
+    @strawberry.field
+    async def annexes(self, info: strawberry.Info, status: Optional[str] = None) -> List[types.ContractAnnex]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+        
+        from backend.database.models import ContractAnnex, EmploymentContract, User
+        stmt = select(ContractAnnex).join(EmploymentContract).join(User)
+        
+        if current_user.role.name != "super_admin":
+            stmt = stmt.where(User.company_id == current_user.company_id)
+        
+        if status:
+            stmt = stmt.where(ContractAnnex.status == status)
+        
+        stmt = stmt.order_by(ContractAnnex.effective_date.desc())
+        
+        result = await db.execute(stmt)
+        annexes = result.scalars().all()
+        return [types.ContractAnnex.from_instance(a) for a in annexes]
 
     @strawberry.field
     async def payroll_summary(

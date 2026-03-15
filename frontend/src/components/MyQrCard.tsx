@@ -3,7 +3,7 @@ import {
   Typography, Card, CardContent, Box, LinearProgress, CircularProgress
 } from '@mui/material';
 import QrCodeIcon from '@mui/icons-material/QrCode';
-import { useMutation, useQuery, gql } from '@apollo/client';
+import { useMutation, useQuery, gql, DocumentNode } from '@apollo/client';
 import QRCode from "react-qr-code";
 
 const REGENERATE_QR_MUTATION = gql`
@@ -22,8 +22,8 @@ const GET_QR_CONFIG = gql`
 
 interface MyQrCardProps {
     token: string | null;
-    refetchQuery: any; 
-    variables?: any;
+    refetchQuery: DocumentNode; 
+    variables?: Record<string, unknown>;
 }
 
 const MyQrCard: React.FC<MyQrCardProps> = ({ token, refetchQuery, variables }) => {

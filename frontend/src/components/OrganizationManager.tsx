@@ -234,7 +234,7 @@ const OrganizationManager: React.FC = () => {
 
       <Grid container spacing={3}>
         {/* COMPANIES */}
-        <Grid item xs={12} md={4}>
+        <Grid size={{ xs: 12, md: 4 }}>
           <Card variant="outlined" sx={{ height: '100%' }}>
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -265,7 +265,7 @@ const OrganizationManager: React.FC = () => {
         </Grid>
 
         {/* DEPARTMENTS */}
-        <Grid item xs={12} md={4}>
+        <Grid size={{ xs: 12, md: 4 }}>
           <Card variant="outlined" sx={{ height: '100%' }}>
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -296,7 +296,7 @@ const OrganizationManager: React.FC = () => {
         </Grid>
 
         {/* POSITIONS */}
-        <Grid item xs={12} md={4}>
+        <Grid size={{ xs: 12, md: 4 }}>
           <Card variant="outlined" sx={{ height: '100%' }}>
             <CardContent>
                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -329,22 +329,22 @@ const OrganizationManager: React.FC = () => {
         <Box component="form" onSubmit={companyForm.handleSubmit(handleCompanySubmit)}>
             <DialogContent dividers>
                 <Grid container spacing={2}>
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Controller name="name" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="Име на фирмата" size="small" required />} />
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid size={{ xs: 6 }}>
                         <Controller name="eik" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="ЕИК" size="small" />} />
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid size={{ xs: 6 }}>
                         <Controller name="bulstat" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="БУЛСТАТ" size="small" />} />
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Controller name="vatNumber" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="ДДС Номер" size="small" />} />
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Controller name="address" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="Адрес" size="small" multiline rows={2} />} />
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Controller name="molName" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="МОЛ" size="small" />} />
                     </Grid>
                 </Grid>
@@ -362,17 +362,17 @@ const OrganizationManager: React.FC = () => {
         <Box component="form" onSubmit={deptForm.handleSubmit(handleDeptSubmit)}>
             <DialogContent dividers>
                 <Grid container spacing={2}>
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Controller name="name" control={deptForm.control} render={({ field }) => <TextField {...field} fullWidth label="Име на отдела" size="small" required />} />
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Controller name="companyId" control={deptForm.control} render={({ field }) => (
                             <TextField {...field} select fullWidth label="Фирма" size="small" disabled={!!editingDepartment}>
                                 {data?.companies.map((c: Company) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
                             </TextField>
                         )} />
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Controller name="managerId" control={deptForm.control} render={({ field }) => (
                             <TextField {...field} select fullWidth label="Началник Отдел" size="small">
                                 <MenuItem value=""><em>Не е избран</em></MenuItem>
@@ -395,10 +395,10 @@ const OrganizationManager: React.FC = () => {
         <Box component="form" onSubmit={posForm.handleSubmit(handlePosSubmit)}>
             <DialogContent dividers>
                 <Grid container spacing={2}>
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Controller name="title" control={posForm.control} render={({ field }) => <TextField {...field} fullWidth label="Наименование" size="small" required />} />
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Controller name="departmentId" control={posForm.control} render={({ field }) => (
                             <TextField {...field} select fullWidth label="Към Отдел" size="small">
                                 {data?.departments.map((d: Department) => <MenuItem key={d.id} value={d.id}>{d.name} ({d.company?.name})</MenuItem>)}

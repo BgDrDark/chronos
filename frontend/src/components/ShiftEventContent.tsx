@@ -1,9 +1,10 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 import { getShiftIcon } from '../utils/shiftUtils';
+import { EventInput } from '@fullcalendar/core';
 
 interface ShiftEventContentProps {
-  eventInfo: any;
+  eventInfo: EventInput;
   minimal?: boolean;
 }
 

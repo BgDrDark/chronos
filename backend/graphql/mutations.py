@@ -1,4 +1,5 @@
 import strawberry
+import json
 from strawberry.file_uploads import Upload
 from typing import Optional, List
 import datetime
@@ -22,6 +23,13 @@ from backend.services.orthodox_holiday_service import fetch_and_store_orthodox_h
 from backend.database.models import LeaveRequest, AccessZone, AccessDoor, AccessCode, Gateway, NightWorkBonus, OvertimeWork, WorkOnHoliday, PublicHoliday, Shift
 from backend.auth.security import verify_password, hash_password, validate_password_complexity
 from backend.auth.module_guard import verify_module_enabled
+
+
+@strawberry.scalar
+class JSONScalar:
+    """Custom scalar for JSON data"""
+    def serialize(value):
+        return value
 
 
 async def create_trz_records_on_clock_out(
@@ -5169,10 +5177,493 @@ class Mutation:
         await db.refresh(annex)
         return types.ContractAnnex.from_instance(annex)
 
+    # === Contract Templates ===
+
+    @strawberry.mutation
+    async def create_contract_template(
+        self,
+        name: str,
+        description: Optional[str],
+        contract_type: str,
+        work_hours_per_week: int,
+        probation_months: int,
+        salary_calculation_type: str,
+        payment_day: int,
+        night_work_rate: float,
+        overtime_rate: float,
+        holiday_rate: float,
+        work_class: Optional[str],
+        info: strawberry.Info = None
+    ) -> types.ContractTemplate:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ContractTemplate, ContractTemplateVersion, ContractTemplateSection
+        from backend.database.models import sofia_now
+        from decimal import Decimal
+
+        template = ContractTemplate(
+            company_id=current_user.company_id,
+            name=name,
+            description=description,
+            contract_type=contract_type,
+            work_hours_per_week=work_hours_per_week,
+            probation_months=probation_months,
+            salary_calculation_type=salary_calculation_type,
+            payment_day=payment_day,
+            night_work_rate=Decimal(str(night_work_rate)),
+            overtime_rate=Decimal(str(overtime_rate)),
+            holiday_rate=Decimal(str(holiday_rate)),
+            work_class=work_class,
+            is_active=True,
+        )
+        db.add(template)
+        await db.flush()
+
+        version = ContractTemplateVersion(
+            template_id=template.id,
+            version=1,
+            contract_type=contract_type,
+            work_hours_per_week=work_hours_per_week,
+            probation_months=probation_months,
+            salary_calculation_type=salary_calculation_type,
+            payment_day=payment_day,
+            night_work_rate=Decimal(str(night_work_rate)),
+            overtime_rate=Decimal(str(overtime_rate)),
+            holiday_rate=Decimal(str(holiday_rate)),
+            work_class=work_class,
+            is_current=True,
+            created_by=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            change_note="Първоначална версия"
+        )
+        db.add(version)
+        await db.flush()
+
+        default_sections = [
+            {"title": "Предмет на договора", "content": "Работодателят предоставя на Работника работата на длъжността.", "order_index": 0, "is_required": True},
+            {"title": "Работно време и почивки", "content": f"Работникът изпълнява работата си в рамките на {work_hours_per_week} часа седмично.", "order_index": 1, "is_required": True},
+            {"title": "Права и задължения на работодателя", "content": "Работодателят е длъжен да осигури на Работника работата и необходимите условия.", "order_index": 2, "is_required": True},
+            {"title": "Права и задължения на работника", "content": "Работникът е длъжен да изпълнява работата лично и да спазва реда в предприятието.", "order_index": 3, "is_required": True},
+            {"title": "Заплащане", "content": "За извършената работа Работодателят заплаща трудовото възнаграждение.", "order_index": 4, "is_required": True},
+            {"title": "Конфиденциалност", "content": "Работникът се задължава да не разкрива на трети лица информация, станала му известна.", "order_index": 5, "is_required": False},
+        ]
+
+        for section_data in default_sections:
+            section = ContractTemplateSection(
+                template_id=template.id,
+                version_id=version.id,
+                title=section_data["title"],
+                content=section_data["content"],
+                order_index=section_data["order_index"],
+                is_required=section_data["is_required"],
+            )
+            db.add(section)
+
+        await db.commit()
+        await db.refresh(template)
+        return types.ContractTemplate(
+            id=template.id,
+            company_id=template.company_id,
+            name=template.name,
+            description=template.description,
+            contract_type=template.contract_type,
+            work_hours_per_week=template.work_hours_per_week,
+            probation_months=template.probation_months,
+            salary_calculation_type=template.salary_calculation_type,
+            payment_day=template.payment_day,
+            night_work_rate=float(template.night_work_rate),
+            overtime_rate=float(template.overtime_rate),
+            holiday_rate=float(template.holiday_rate),
+            work_class=template.work_class,
+            is_active=template.is_active,
+            created_at=template.created_at
+        )
+
+    @strawberry.mutation
+    async def update_contract_template(
+        self,
+        id: int,
+        name: str,
+        description: Optional[str],
+        contract_type: str,
+        work_hours_per_week: int,
+        probation_months: int,
+        salary_calculation_type: str,
+        payment_day: int,
+        night_work_rate: float,
+        overtime_rate: float,
+        holiday_rate: float,
+        work_class: Optional[str],
+        change_note: str,
+        info: strawberry.Info = None
+    ) -> types.ContractTemplate:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ContractTemplate, ContractTemplateVersion
+        from decimal import Decimal
+
+        template = await db.get(ContractTemplate, id)
+        if not template:
+            raise Exception("Template not found")
+
+        template.name = name
+        template.description = description
+        template.contract_type = contract_type
+        template.work_hours_per_week = work_hours_per_week
+        template.probation_months = probation_months
+        template.salary_calculation_type = salary_calculation_type
+        template.payment_day = payment_day
+        template.night_work_rate = Decimal(str(night_work_rate))
+        template.overtime_rate = Decimal(str(overtime_rate))
+        template.holiday_rate = Decimal(str(holiday_rate))
+        template.work_class = work_class
+
+        stmt = select(ContractTemplateVersion).where(
+            ContractTemplateVersion.template_id == id,
+            ContractTemplateVersion.is_current == True
+        )
+        result = await db.execute(stmt)
+        current_version = result.scalar_one_or_none()
+
+        if current_version:
+            current_version.is_current = False
+
+        new_version = ContractTemplateVersion(
+            template_id=template.id,
+            version=current_version.version + 1 if current_version else 1,
+            contract_type=contract_type,
+            work_hours_per_week=work_hours_per_week,
+            probation_months=probation_months,
+            salary_calculation_type=salary_calculation_type,
+            payment_day=payment_day,
+            night_work_rate=Decimal(str(night_work_rate)),
+            overtime_rate=Decimal(str(overtime_rate)),
+            holiday_rate=Decimal(str(holiday_rate)),
+            work_class=work_class,
+            is_current=True,
+            created_by=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            change_note=change_note
+        )
+        db.add(new_version)
+
+        await db.commit()
+        await db.refresh(template)
+        return types.ContractTemplate(
+            id=template.id,
+            company_id=template.company_id,
+            name=template.name,
+            description=template.description,
+            contract_type=template.contract_type,
+            work_hours_per_week=template.work_hours_per_week,
+            probation_months=template.probation_months,
+            salary_calculation_type=template.salary_calculation_type,
+            payment_day=template.payment_day,
+            night_work_rate=float(template.night_work_rate),
+            overtime_rate=float(template.overtime_rate),
+            holiday_rate=float(template.holiday_rate),
+            work_class=template.work_class,
+            is_active=template.is_active,
+            created_at=template.created_at
+        )
+
+    @strawberry.mutation
+    async def delete_contract_template(
+        self,
+        id: int,
+        info: strawberry.Info = None
+    ) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ContractTemplate
+
+        template = await db.get(ContractTemplate, id)
+        if not template:
+            raise Exception("Template not found")
+
+        template.is_active = False
+        await db.commit()
+        return True
+
+    @strawberry.mutation
+    async def restore_contract_template_version(
+        self,
+        version_id: int,
+        info: strawberry.Info = None
+    ) -> types.ContractTemplate:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ContractTemplate, ContractTemplateVersion
+        from decimal import Decimal
+
+        version = await db.get(ContractTemplateVersion, version_id)
+        if not version:
+            raise Exception("Version not found")
+
+        template = await db.get(ContractTemplate, version.template_id)
+        if not template:
+            raise Exception("Template not found")
+
+        stmt = select(ContractTemplateVersion).where(
+            ContractTemplateVersion.template_id == template.id,
+            ContractTemplateVersion.is_current == True
+        )
+        result = await db.execute(stmt)
+        current = result.scalar_one_or_none()
+        if current:
+            current.is_current = False
+
+        version.is_current = True
+
+        template.contract_type = version.contract_type
+        template.work_hours_per_week = version.work_hours_per_week
+        template.probation_months = version.probation_months
+        template.salary_calculation_type = version.salary_calculation_type
+        template.payment_day = version.payment_day
+        template.night_work_rate = version.night_work_rate
+        template.overtime_rate = version.overtime_rate
+        template.holiday_rate = version.holiday_rate
+        template.work_class = version.work_class
+
+        await db.commit()
+        await db.refresh(template)
+        return types.ContractTemplate(
+            id=template.id,
+            company_id=template.company_id,
+            name=template.name,
+            description=template.description,
+            contract_type=template.contract_type,
+            work_hours_per_week=template.work_hours_per_week,
+            probation_months=template.probation_months,
+            salary_calculation_type=template.salary_calculation_type,
+            payment_day=template.payment_day,
+            night_work_rate=float(template.night_work_rate),
+            overtime_rate=float(template.overtime_rate),
+            holiday_rate=float(template.holiday_rate),
+            work_class=template.work_class,
+            is_active=template.is_active,
+            created_at=template.created_at
+        )
+
+    # === Annex Templates ===
+
+    @strawberry.mutation
+    async def create_annex_template(
+        self,
+        name: str,
+        description: Optional[str],
+        change_type: str,
+        new_base_salary: Optional[float],
+        new_work_hours_per_week: Optional[int],
+        new_night_work_rate: Optional[float],
+        new_overtime_rate: Optional[float],
+        new_holiday_rate: Optional[float],
+        info: strawberry.Info = None
+    ) -> types.AnnexTemplate:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import AnnexTemplate, AnnexTemplateVersion, AnnexTemplateSection
+        from decimal import Decimal
+
+        template = AnnexTemplate(
+            company_id=current_user.company_id,
+            name=name,
+            description=description,
+            change_type=change_type,
+            new_base_salary=Decimal(str(new_base_salary)) if new_base_salary else None,
+            new_work_hours_per_week=new_work_hours_per_week,
+            new_night_work_rate=Decimal(str(new_night_work_rate)) if new_night_work_rate else None,
+            new_overtime_rate=Decimal(str(new_overtime_rate)) if new_overtime_rate else None,
+            new_holiday_rate=Decimal(str(new_holiday_rate)) if new_holiday_rate else None,
+            is_active=True,
+        )
+        db.add(template)
+        await db.flush()
+
+        version = AnnexTemplateVersion(
+            template_id=template.id,
+            version=1,
+            change_type=change_type,
+            new_base_salary=Decimal(str(new_base_salary)) if new_base_salary else None,
+            new_work_hours_per_week=new_work_hours_per_week,
+            new_night_work_rate=Decimal(str(new_night_work_rate)) if new_night_work_rate else None,
+            new_overtime_rate=Decimal(str(new_overtime_rate)) if new_overtime_rate else None,
+            new_holiday_rate=Decimal(str(new_holiday_rate)) if new_holiday_rate else None,
+            is_current=True,
+            created_by=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
+            change_note="Първоначална версия"
+        )
+        db.add(version)
+        await db.flush()
+
+        default_sections = [
+            {"title": "Описание на промените", "content": "С настоящето споразумение се променят следните условия от трудовия договор:", "order_index": 0, "is_required": True},
+            {"title": "Основание", "content": "Настоящето споразумение се сключва на основание чл. 119, ал. 1 от Кодекса на труда.", "order_index": 1, "is_required": False},
+        ]
+
+        for section_data in default_sections:
+            section = AnnexTemplateSection(
+                template_id=template.id,
+                version_id=version.id,
+                title=section_data["title"],
+                content=section_data["content"],
+                order_index=section_data["order_index"],
+                is_required=section_data["is_required"],
+            )
+            db.add(section)
+
+        await db.commit()
+        await db.refresh(template)
+        return types.AnnexTemplate(
+            id=template.id,
+            company_id=template.company_id,
+            name=template.name,
+            description=template.description,
+            change_type=template.change_type,
+            new_base_salary=float(template.new_base_salary) if template.new_base_salary else None,
+            new_work_hours_per_week=template.new_work_hours_per_week,
+            new_night_work_rate=float(template.new_night_work_rate) if template.new_night_work_rate else None,
+            new_overtime_rate=float(template.new_overtime_rate) if template.new_overtime_rate else None,
+            new_holiday_rate=float(template.new_holiday_rate) if template.new_holiday_rate else None,
+            is_active=template.is_active,
+            created_at=template.created_at
+        )
+
+    @strawberry.mutation
+    async def delete_annex_template(
+        self,
+        id: int,
+        info: strawberry.Info = None
+    ) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import AnnexTemplate
+
+        template = await db.get(AnnexTemplate, id)
+        if not template:
+            raise Exception("Template not found")
+
+        template.is_active = False
+        await db.commit()
+        return True
+
+    # === Clause Templates ===
+
+    @strawberry.mutation
+    async def create_clause_template(
+        self,
+        title: str,
+        content: str,
+        category: str,
+        info: strawberry.Info = None
+    ) -> types.ClauseTemplate:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ClauseTemplate
+
+        clause = ClauseTemplate(
+            company_id=current_user.company_id,
+            title=title,
+            content=content,
+            category=category,
+            is_active=True,
+        )
+        db.add(clause)
+        await db.commit()
+        await db.refresh(clause)
+        return types.ClauseTemplate(
+            id=clause.id,
+            company_id=clause.company_id,
+            title=clause.title,
+            content=clause.content,
+            category=clause.category,
+            is_active=clause.is_active,
+            created_at=clause.created_at
+        )
+
+    @strawberry.mutation
+    async def update_clause_template(
+        self,
+        id: int,
+        title: str,
+        content: str,
+        category: str,
+        info: strawberry.Info = None
+    ) -> types.ClauseTemplate:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ClauseTemplate
+
+        clause = await db.get(ClauseTemplate, id)
+        if not clause:
+            raise Exception("Clause not found")
+
+        clause.title = title
+        clause.content = content
+        clause.category = category
+
+        await db.commit()
+        await db.refresh(clause)
+        return types.ClauseTemplate(
+            id=clause.id,
+            company_id=clause.company_id,
+            title=clause.title,
+            content=clause.content,
+            category=clause.category,
+            is_active=clause.is_active,
+            created_at=clause.created_at
+        )
+
+    @strawberry.mutation
+    async def delete_clause_template(
+        self,
+        id: int,
+        info: strawberry.Info = None
+    ) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ClauseTemplate
+
+        clause = await db.get(ClauseTemplate, id)
+        if not clause:
+            raise Exception("Clause not found")
+
+        clause.is_active = False
+        await db.commit()
+        return True
+
+    # === Sign Annex (updated) ===
+
     @strawberry.mutation
     async def sign_contract_annex(
         self,
         annex_id: int,
+        role: str = "employer",
         info: strawberry.Info = None
     ) -> types.ContractAnnex:
         db = info.context["db"]
@@ -5185,26 +5676,38 @@ class Mutation:
         annex = await db.get(ContractAnnex, annex_id)
         if not annex:
             raise Exception("Annex not found")
-            
-        annex.is_signed = True
-        annex.signed_at = sofia_now()
         
-        # Ако анексът влиза в сила веднага или в миналото, обновяваме основния договор
-        if annex.effective_date <= datetime.date.today():
-            contract = await db.get(EmploymentContract, annex.contract_id)
-            if contract:
-                if annex.base_salary is not None:
-                    contract.base_salary = annex.base_salary
-                if annex.position_id is not None:
-                    contract.position_id = annex.position_id
-                if annex.work_hours_per_week is not None:
-                    contract.work_hours_per_week = annex.work_hours_per_week
-                if annex.night_work_rate is not None:
-                    contract.night_work_rate = annex.night_work_rate
-                if annex.overtime_rate is not None:
-                    contract.overtime_rate = annex.overtime_rate
-                if annex.holiday_rate is not None:
-                    contract.holiday_rate = annex.holiday_rate
+        now = sofia_now()
+        
+        if role == "employer":
+            annex.signed_by_employer = True
+            annex.signed_by_employer_at = now
+        elif role == "employee":
+            annex.signed_by_employee = True
+            annex.signed_by_employee_at = now
+        
+        if annex.signed_by_employer and annex.signed_by_employee:
+            annex.is_signed = True
+            annex.signed_at = now
+            annex.status = "signed"
+            
+            if annex.effective_date <= datetime.date.today():
+                contract = await db.get(EmploymentContract, annex.contract_id)
+                if contract:
+                    if annex.base_salary is not None:
+                        contract.base_salary = annex.base_salary
+                    if annex.position_id is not None:
+                        contract.position_id = annex.position_id
+                    if annex.work_hours_per_week is not None:
+                        contract.work_hours_per_week = annex.work_hours_per_week
+                    if annex.night_work_rate is not None:
+                        contract.night_work_rate = annex.night_work_rate
+                    if annex.overtime_rate is not None:
+                        contract.overtime_rate = annex.overtime_rate
+                    if annex.holiday_rate is not None:
+                        contract.holiday_rate = annex.holiday_rate
+        else:
+            annex.status = "pending"
         
         await db.commit()
         await db.refresh(annex)
@@ -5218,7 +5721,7 @@ class Mutation:
         company_id: int,
         year: int,
         info: strawberry.Info = None
-    ) -> dict:
+    ) -> JSONScalar:
         """Генерира годишна справка за осигурени лица"""
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -5236,7 +5739,7 @@ class Mutation:
         company_id: int,
         year: int,
         info: strawberry.Info = None
-    ) -> dict:
+    ) -> JSONScalar:
         """Генерира справка по чл. 73, ал. 6 ЗДДФЛ"""
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -5254,7 +5757,7 @@ class Mutation:
         company_id: int,
         year: int,
         info: strawberry.Info = None
-    ) -> dict:
+    ) -> JSONScalar:
         """Генерира експорт за електронната трудова книжка"""
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -5273,7 +5776,7 @@ class Mutation:
         year: int,
         month: int,
         info: strawberry.Info = None
-    ) -> dict:
+    ) -> JSONScalar:
         """Генерира месечна декларация за НАП"""
         db = info.context["db"]
         current_user = info.context["current_user"]

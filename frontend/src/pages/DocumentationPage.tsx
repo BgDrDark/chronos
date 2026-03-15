@@ -1,375 +1,385 @@
-import React from 'react';
-import { Container, Typography, Paper, Box, Divider, List, ListItem, ListItemText, Accordion, AccordionSummary, AccordionDetails, CircularProgress } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import React, { useState } from 'react';
+import { Container, Typography, Paper, Box, Divider, List, ListItem, ListItemText, Tabs, Tab, CircularProgress } from '@mui/material';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import SecurityIcon from '@mui/icons-material/Security';
-import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
-import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
+import SecurityIcon from '@mui/icons-material/Security';
+import PeopleIcon from '@mui/icons-material/People';
 import { useQuery } from '@apollo/client';
 import { ME_QUERY } from '../graphql/queries';
 
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div role="tabpanel" hidden={value !== index} {...other}>
+      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
+    </div>
+  );
+}
+
 const DocumentationPage: React.FC = () => {
   const { loading } = useQuery(ME_QUERY);
+  const [tabValue, setTabValue] = useState(0);
   
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
+
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+  };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 8 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, gap: 2 }}>
         <HelpOutlineIcon color="primary" sx={{ fontSize: 40 }} />
-        <Typography variant="h4" fontWeight="bold">Помощ</Typography>
+        <Typography variant="h4" fontWeight="bold">Документация</Typography>
       </Box>
 
-      <Paper sx={{ p: 4, borderRadius: 3 }}>
-        
-        {/* --- 1. КАКВО Е CHRONOS --- */}
-        <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">1. Какво представлява системата?</Typography>
-        <Typography variant="body1" paragraph sx={{ fontSize: '1.1rem', lineHeight: 1.8 }}>
-          <strong>Chronos</strong> е програма, която помага на фирмите да управляват:
-        </Typography>
-        <Box sx={{ pl: 2, mb: 3 }}>
-          <Typography variant="body1">✓ Кой кога идва на работа</Typography>
-          <Typography variant="body1">✓ Колко часове е работил всеки служител</Typography>
-          <Typography variant="body1">✓ Когато служителите ползват отпуск</Typography>
-          <Typography variant="body1">✓ Заплатите и данъците</Typography>
-          <Typography variant="body1">✓ Фактурите на фирмата</Typography>
-          <Typography variant="body1">✓ Кой може да влиза в определени стаи</Typography>
-          <Typography variant="body1">✓ Складът и производството (при сладкарници)</Typography>
-        </Box>
+      <Paper sx={{ borderRadius: 3 }}>
+        <Tabs 
+          value={tabValue} 
+          onChange={handleTabChange} 
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
+        >
+          <Tab icon={<PeopleIcon />} label="Персонал" iconPosition="start" />
+          <Tab icon={<QrCodeScannerIcon />} label="Часове" iconPosition="start" />
+          <Tab icon={<FlightTakeoffIcon />} label="Отпуски" iconPosition="start" />
+          <Tab icon={<PaymentsIcon />} label="Заплати" iconPosition="start" />
+          <Tab icon={<WarehouseIcon />} label="Склад" iconPosition="start" />
+          <Tab icon={<DirectionsCarIcon />} label="Автопарк" iconPosition="start" />
+          <Tab icon={<SecurityIcon />} label="Достъп" iconPosition="start" />
+        </Tabs>
 
-        <Divider sx={{ my: 4 }} />
-
-        {/* --- 2. КАК ДА ВЛЕЗЕТЕ --- */}
-        <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">2. Как да влезете в системата?</Typography>
-        <Box sx={{ bgcolor: 'grey.100', p: 3, borderRadius: 2, mb: 3 }}>
-          <Typography variant="body1" gutterBottom><strong>Стъпка 1:</strong> Отворете браузъра (Chrome, Firefox, Edge)</Typography>
-          <Typography variant="body1" gutterBottom><strong>Стъпка 2:</strong> Въведете адреса на системата</Typography>
-          <Typography variant="body1" gutterBottom><strong>Стъпка 3:</strong> Въведете вашия email и парола</Typography>
-          <Typography variant="body1" gutterBottom><strong>Стъпка 4:</strong> Натиснете бутона "Вход"</Typography>
-        </Box>
-        <Typography variant="body2" color="text.secondary">
-          Ако забравите паролата си, потърсете администратора на системата.
-        </Typography>
-
-        <Divider sx={{ my: 4 }} />
-
-        {/* --- 3. КОЙ КАКВО МОЖЕ ДА ПРАВИ --- */}
-        <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">3. Кой какво може да прави?</Typography>
-        <Typography variant="body1" paragraph>
-          В системата има три вида потребители:
-        </Typography>
-        
-        <Box sx={{ mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <AccountCircleIcon color="error" />
-            <Typography variant="h6" fontWeight="bold">Главен администратор</Typography>
-          </Box>
-          <Typography variant="body1" sx={{ pl: 4 }}>
-            Този потребител може всичко - да добавя нови фирми, да включва и изключва модули, да вижда всичко.
-          </Typography>
-        </Box>
-
-        <Box sx={{ mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <AccountCircleIcon color="primary" />
-            <Typography variant="h6" fontWeight="bold">Администратор на фирма</Typography>
-          </Box>
-          <Typography variant="body1" sx={{ pl: 4 }}>
-            Управлява служителите на своята фирма - може да добавя нови хора, да прави графици, да следи кой е на работа.
-          </Typography>
-        </Box>
-
-        <Box sx={{ mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <AccountCircleIcon color="success" />
-            <Typography variant="h6" fontWeight="bold">Служител</Typography>
-          </Box>
-          <Typography variant="body1" sx={{ pl: 4 }}>
-            Всеки редови служител. Може да вижда своя график, да пуска заявки за отпуск, да си отбелязва часовете.
-          </Typography>
-        </Box>
-
-        <Divider sx={{ my: 4 }} />
-
-        {/* --- 4. ОТБЕЛЯЗВАНЕ НА ЧАСОВЕ --- */}
-        <Accordion sx={{ mb: 2, borderLeft: '4px solid #ff5722' }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <QrCodeScannerIcon sx={{ color: '#ff5722' }} />
-              <Typography variant="h6" fontWeight="bold">4. Как да си отбележа часовете?</Typography>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Typography variant="body1" paragraph>
-              Има два начина да си отбележите кога идвате и си тръгвате от работа:
-            </Typography>
+        <Box sx={{ p: 3 }}>
+          {/* TAB 1: ПЕРСОНАЛ */}
+          <TabPanel value={tabValue} index={0}>
+            <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">Управление на персонала</Typography>
             
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Начин 1: QR код (препоръчителен)</Typography>
-            <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1, mb: 2 }}>
-              <Typography variant="body1">1. Отворете <strong>http://localhost:3000/kiosk</strong></Typography>
-              <Typography variant="body1">2. Отворете "Моята карта" на телефона си</Typography>
-              <Typography variant="body1">3. Покажете QR кода на камерата</Typography>
-              <Typography variant="body1">4. Готово! Системата е записала часа ви.</Typography>
-            </Box>
-
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Начин 2: Код</Typography>
-            <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1, mb: 2 }}>
-              <Typography variant="body1">1. Въведете вашия код (например 1234)</Typography>
-              <Typography variant="body1">2. Натиснете Clock In или Clock Out</Typography>
-            </Box>
-
-            <Typography variant="body2" color="text.secondary">
-              Ако сте забравили кода си, питайте администратора.
+            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Създаване на нов служител</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в меню 'Служители'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате бутон 'Нов потребител'" /></ListItem>
+              <ListItem><ListItemText primary="3. Попълвате данните: име, фамилия, email, телефон" /></ListItem>
+              <ListItem><ListItemText primary="4. Задавате роля и отдел" /></ListItem>
+              <ListItem><ListItemText primary="5. Запазвате" /></ListItem>
+            </List>
+            <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
+              Резултат: Служителят е създаден и може да влиза в системата
             </Typography>
-          </AccordionDetails>
-        </Accordion>
 
-        {/* --- 5. ГРАФИЦИ --- */}
-        <Accordion sx={{ mb: 2, borderLeft: '4px solid #2196f3' }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AssignmentIndIcon color="primary" />
-              <Typography variant="h6" fontWeight="bold">5. Графици и смени</Typography>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Typography variant="body1" paragraph>
-              Графикът показва кога трябва да сте на работа. Ако нещо не разбирате, питайте началника си.
-            </Typography>
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Създаване на трудов договор</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Отдел ТРЗ' → 'Шаблони'" /></ListItem>
+              <ListItem><ListItemText primary="2. Избирате шаблон за договор" /></ListItem>
+              <ListItem><ListItemText primary="3. Отивате в 'Допълнителни споразумения'" /></ListItem>
+              <ListItem><ListItemText primary="4. Натискате 'Нов договор'" /></ListItem>
+              <ListItem><ListItemText primary="5. Избирате служител и шаблон" /></ListItem>
+              <ListItem><ListItemText primary="6. Попълвате данните за договора" /></ListItem>
+              <ListItem><ListItemText primary="7. Запазвате" /></ListItem>
+            </List>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Задаване на график</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Графици'" /></ListItem>
+              <ListItem><ListItemText primary="2. Създавате или избирате шаблон" /></ListItem>
+              <ListItem><ListItemText primary="3. Прилагате шаблона към служител/служители" /></ListItem>
+              <ListItem><ListItemText primary="4. Задавате период" /></ListItem>
+            </List>
+
+            <Divider sx={{ my: 4 }} />
+            <Typography variant="h6" gutterBottom>Често задавани въпроси</Typography>
+            <List>
+              <ListItem><ListItemText primary="❓ Как да добавя нов служител?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Отидете в 'Служители' и натиснете 'Нов потребител'" /></ListItem>
+              <ListItem><ListItemText primary="❓ Как да създам договор?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Отидете в 'Отдел ТРЗ' → 'Допълнителни споразумения' → 'Нов договор'" /></ListItem>
+              <ListItem><ListItemText primary="❓ Как да задам график?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Отидете в 'Графици', създайте шаблон и го приложете" /></ListItem>
+            </List>
+          </TabPanel>
+
+          {/* TAB 2: ЧАСОВЕ */}
+          <TabPanel value={tabValue} index={1}>
+            <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">Отчитане на часовете</Typography>
             
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Какво можете да правите?</Typography>
+            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Clock in / Clock out</Typography>
             <List>
-              <ListItem>
-                <ListItemText primary="• Да виждате кога са вашите смени" />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="• Да пускате заявка за размяна на смяна с колега" />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="• Да виждате кой още работи днес" />
-              </ListItem>
+              <ListItem><ListItemText primary="1. Отворете 'Моята карта' на телефона" /></ListItem>
+              <ListItem><ListItemText primary="2. Сканирате QR кода на терминала" /></ListItem>
+              <ListItem><ListItemText primary="3. ИЛИ: Въведете кода си в киоска" /></ListItem>
+            </List>
+            <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
+              Резултат: Часовете са отбелязани
+            </Typography>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Ръчно отбелязване (от админ)</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Часове'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате 'Ръчно добавяне'" /></ListItem>
+              <ListItem><ListItemText primary="3. Избирате служител и дата/час" /></ListItem>
+              <ListItem><ListItemText primary="4. Натискате 'Вход' или 'Изход'" /></ListItem>
             </List>
 
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              За да ви бъде променен графикът, се обърнете към вашия ръководител или администратор.
-            </Typography>
-          </AccordionDetails>
-        </Accordion>
-
-        {/* --- 6. ОТПУСКИ --- */}
-        <Accordion sx={{ mb: 2, borderLeft: '4px solid #607d8b' }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <FlightTakeoffIcon sx={{ color: '#607d8b' }} />
-              <Typography variant="h6" fontWeight="bold">6. Отпуски</Typography>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Typography variant="body1" paragraph>
-              Ако искате да излезете в отпуск, трябва да пуснете заявка:
-            </Typography>
-
-            <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1, mb: 2 }}>
-              <Typography variant="body1">1. В менюто изберете <strong>Отпуски</strong></Typography>
-              <Typography variant="body1">2. Кликнете <strong>+ Нова заявка</strong></Typography>
-              <Typography variant="body1">3. Попълнете: вид на отпуската, от коя дата до коя дата</Typography>
-              <Typography variant="body1">4. Натиснете <strong>Изпрати</strong></Typography>
-            </Box>
-
-            <Typography variant="body2" color="text.secondary">
-              Вашата заявка ще бъде прегледана от вашия ръководител. Ще получите имейл или ще видите статуса в системата.
-            </Typography>
-          </AccordionDetails>
-        </Accordion>
-
-        {/* --- 7. КОНТРОЛ НА ДОСТЪПА --- */}
-        <Accordion sx={{ mb: 2, borderLeft: '4px solid #f44336' }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SecurityIcon color="error" />
-              <Typography variant="h6" fontWeight="bold">7. Врати и контрол на достъп</Typography>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Typography variant="body1" paragraph>
-              Контролът на достъп означава кой може да влиза в определени помещения. 
-              Например: не всеки може да влиза в склада или в офиса.
-            </Typography>
-
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Какво означава това на практика?</Typography>
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Размяна на смени</Typography>
             <List>
-              <ListItem>
-                <ListItemText primary="• Всяка врата има име и номер" />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="• Всяка врата е свързана към определена зона (например Офис, Склад)" />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="• Само хората с права могат да влизат в дадена зона" />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="• Всяко влизане се записва (кой, кога, коя врата)" />
-              </ListItem>
+              <ListItem><ListItemText primary="1. Служител А иска размяна с Б" /></ListItem>
+              <ListItem><ListItemText primary="2. Служител Б потвърждава" /></ListItem>
+              <ListItem><ListItemText primary="3. Админ одобрява" /></ListItem>
             </List>
 
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Как да влезете?</Typography>
-            <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1 }}>
-              <Typography variant="body1">1. Отидете на вратата</Typography>
-              <Typography variant="body1">2. Сложете картата или въведете кода</Typography>
-              <Typography variant="body1">3. Ако имате права - вратата се отваря</Typography>
-              <Typography variant="body1">4. Ако нямате права - вратата остава заключена</Typography>
-            </Box>
-
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              Ако ви трябват права за дадена врата, питайте администратора.
-            </Typography>
-          </AccordionDetails>
-        </Accordion>
-
-        {/* --- 8. СКЛАД И ПРОИЗВОДСТВО --- */}
-        <Accordion sx={{ mb: 2, borderLeft: '4px solid #795548' }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <WarehouseIcon sx={{ color: '#795548' }} />
-              <Typography variant="h6" fontWeight="bold">8. Склад и производство</Typography>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Typography variant="body1" paragraph>
-              Ако работите в сладкарница или производство, тук е обяснено как работи складът.
-            </Typography>
-
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Какво е складът?</Typography>
-            <Typography variant="body1" paragraph>
-              Складът е мястото където се пазят продуктите. В системата има три вида складове:
-            </Typography>
+            <Divider sx={{ my: 4 }} />
+            <Typography variant="h6" gutterBottom>Често задавани въпроси</Typography>
             <List>
-              <ListItem><ListItemText primary="🧊 Хладилен (-18°C) - за замразени продукти" /></ListItem>
-              <ListItem><ListItemText primary="❄️ Фризер (-18°C) - за замразени храни" /></ListItem>
-              <ListItem><ListItemText primary="📦 Сух склад - за сухи продукти (брашно, захар)" /></ListItem>
+              <ListItem><ListItemText primary="❓ Как да си отбележа часовете?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Сканирайте QR кода или въведете кода на киоска" /></ListItem>
+              <ListItem><ListItemText primary="❓ Забравих си кода" /></ListItem>
+              <ListItem><ListItemText primary="💡 Питайте администратора да ви го покаже" /></ListItem>
+              <ListItem><ListItemText primary="❓ Защо не мога да се чекирам?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Проверете дали имате активна смяна за днес" /></ListItem>
+            </List>
+          </TabPanel>
+
+          {/* TAB 3: ОТПУСКИ */}
+          <TabPanel value={tabValue} index={2}>
+            <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">Управление на отпуските</Typography>
+            
+            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Заявка за отпуск</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Отпуски'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате '+ Нова заявка'" /></ListItem>
+              <ListItem><ListItemText primary="3. Избирате вид отпуск (платен, неплатен, болничен)" /></ListItem>
+              <ListItem><ListItemText primary="4. Задавате начална и крайна дата" /></ListItem>
+              <ListItem><ListItemText primary="5. Натискате 'Изпрати'" /></ListItem>
+            </List>
+            <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
+              Резултат: Заявката е изпратена за одобрение
+            </Typography>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Одобряване на заявка (от ръководител)</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Получавате известие за нова заявка" /></ListItem>
+              <ListItem><ListItemText primary="2. Отивате в 'Отпуски'" /></ListItem>
+              <ListItem><ListItemText primary="3. Преглеждате заявката" /></ListItem>
+              <ListItem><ListItemText primary="4. Натискате 'Одобря' или 'Отхвърля'" /></ListItem>
             </List>
 
-            <Divider sx={{ my: 2 }} />
-
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Какво е рецептурникът?</Typography>
-            <Typography variant="body1" paragraph>
-              Рецептурникът е списъкът с всички рецепти. Всяка рецепта показва какви продукти и в какво количество са нужни за направата на даден десерт.
-            </Typography>
-
-            <Divider sx={{ my: 2 }} />
-
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Какво е поръчка?</Typography>
-            <Typography variant="body1" paragraph>
-              Поръчката е какво трябва да направите. Когато дойде поръчка от клиент (например 10 торти), тя се появява в системата и вие я изпълнявате стъпка по стъпка.
-            </Typography>
-
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Етикетиране</Typography>
-            <Typography variant="body1">
-              Всеки продукт има етикет с име, съставки, срок на годност и QR код. Това е нужно по закон (HACCP).
-            </Typography>
-          </AccordionDetails>
-        </Accordion>
-
-        {/* --- 9. СЧЕТОВОДСТВО --- */}
-        <Accordion sx={{ mb: 2, borderLeft: '4px solid #9c27b0' }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <PaymentsIcon sx={{ color: '#9c27b0' }} />
-              <Typography variant="h6" fontWeight="bold">9. Счетоводство и фактури</Typography>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Typography variant="body1" paragraph>
-              Тук се управляват парите на фирмата - фактурите, които плащаме и фактурите, които получаваме.
-            </Typography>
-
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Входящи фактури</Typography>
-            <Typography variant="body1" paragraph>
-              Това са фактурите, които получаваме от доставчиците (например за ток, вода, продукти).
-            </Typography>
-
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Изходящи фактури</Typography>
-            <Typography variant="body1" paragraph>
-              Това са фактурите, които издаваме на нашите клиенти.
-            </Typography>
-
-            <Divider sx={{ my: 2 }} />
-
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Статуси на фактурите</Typography>
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Баланс на отпуските</Typography>
             <List>
-              <ListItem><ListItemText primary="📝 Чернова - още се редактира" /></ListItem>
-              <ListItem><ListItemText primary="📤 Изпратена - изпратена е на клиента/доставчика" /></ListItem>
-              <ListItem><ListItemText primary="💰 Платена - парите са получени/платени" /></ListItem>
-              <ListItem><ListItemText primary="⚠️ Просрочена - не е платена навреме" /></ListItem>
-              <ListItem><ListItemText primary="❌ Анулирана - отменена е" /></ListItem>
+              <ListItem><ListItemText primary="1. Отивате в 'Моят профил' или 'Отпуски'" /></ListItem>
+              <ListItem><ListItemText primary="2. Виждате оставащите дни" /></ListItem>
             </List>
-          </AccordionDetails>
-        </Accordion>
 
-        {/* --- 10. ЧЕСТО ЗАДАВАНИ ВЪПРОСИ --- */}
-        <Accordion sx={{ mb: 2, borderLeft: '4px solid #4caf50' }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <HelpOutlineIcon sx={{ color: '#4caf50' }} />
-              <Typography variant="h6" fontWeight="bold">10. Често задавани въпроси</Typography>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle1" fontWeight="bold">❓ Забравих паролата си</Typography>
-              <Typography variant="body1">Потърсете администратора на системата или използвайте "Забравена парола" (ако е включено).</Typography>
-            </Box>
+            <Divider sx={{ my: 4 }} />
+            <Typography variant="h6" gutterBottom>Често задавани въпроси</Typography>
+            <List>
+              <ListItem><ListItemText primary="❓ Колко отпуск ми остава?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Отидете в 'Отпуски' → 'Моите заявки'" /></ListItem>
+              <ListItem><ListItemText primary="❓ Защо ми отхвърлиха заявката?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Проверете причината в детайлите на заявката" /></ListItem>
+              <ListItem><ListItemText primary="❓ Мога ли да кандидатствам за отпуск без график?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Не, трябва да имате задан график" /></ListItem>
+            </List>
+          </TabPanel>
 
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle1" fontWeight="bold">❓ Не мога да вляза</Typography>
-              <Typography variant="body1">Проверете дали email-ът е правилен. Ако продължавате да имате проблеми, свържете се с администратора.</Typography>
-            </Box>
+          {/* TAB 4: ЗАПЛАТИ */}
+          <TabPanel value={tabValue} index={3}>
+            <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">Заплати и TRZ</Typography>
+            
+            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Изчисляване на заплата</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Заплати'" /></ListItem>
+              <ListItem><ListItemText primary="2. Избирате период (месец)" /></ListItem>
+              <ListItem><ListItemText primary="3. Натискате 'Изчисли'" /></ListItem>
+              <ListItem><ListItemText primary="4. Преглеждате фишовете" /></ListItem>
+            </List>
+            <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
+              Резултат: Изчислени заплати за периода
+            </Typography>
 
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle1" fontWeight="bold">❓ Забравих кода за Clock In/Out</Typography>
-              <Typography variant="body1">Вашият код може да видите в "Моята карта" или питайте администратора.</Typography>
-            </Box>
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Допълнително споразумение (анекс)</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Отдел ТРЗ' → 'Допълнителни споразумения'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате 'Нов анекс'" /></ListItem>
+              <ListItem><ListItemText primary="3. Избирате служител и шаблон" /></ListItem>
+              <ListItem><ListItemText primary="4. Попълвате новите условия" /></ListItem>
+              <ListItem><ListItemText primary="5. Натискате 'Подпиши'" /></ListItem>
+            </List>
 
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle1" fontWeight="bold">❓ Защо вратата не се отваря?</Typography>
-              <Typography variant="body1">Вероятно нямате права за тази зона. Питайте администратора да ви добави.</Typography>
-            </Box>
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Плащане на заплати (SEPA)</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Плащания'" /></ListItem>
+              <ListItem><ListItemText primary="2. Избирате периода" /></ListItem>
+              <ListItem><ListItemText primary="3. Натискате 'Генерирай XML'" /></ListItem>
+              <ListItem><ListItemText primary="4. Качвате XML-то в банката" /></ListItem>
+            </List>
 
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle1" fontWeight="bold">❓ Как да видя колко отпуск ми остава?</Typography>
-              <Typography variant="body1">Отидете в "Отпуски" → "Моите заявки". Там ще видите оставащите дни.</Typography>
-            </Box>
+            <Divider sx={{ my: 4 }} />
+            <Typography variant="h6" gutterBottom>Често задавани въпроси</Typography>
+            <List>
+              <ListItem><ListItemText primary="❓ Кога ще ми дойде заплатата?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Проверете в 'Плащания' - там е датата на плащане" /></ListItem>
+              <ListItem><ListItemText primary="❓ Как да видя фиша си?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Отидете в 'Заплати' и качете конкретния служител" /></ListItem>
+              <ListItem><ListItemText primary="❓ Какво е TRZ?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Трудово-правни отношения - управление на заплати, данъци, осигуровки" /></ListItem>
+            </List>
+          </TabPanel>
 
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle1" fontWeight="bold">❓ Не виждам определено меню</Typography>
-              <Typography variant="body1">Някои менюта са само за администратори. Ако ви трябва достъп, питайте вашия ръководител.</Typography>
-            </Box>
-          </AccordionDetails>
-        </Accordion>
+          {/* TAB 5: СКЛАД */}
+          <TabPanel value={tabValue} index={4}>
+            <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">Склад и производство</Typography>
+            
+            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Управление на продукти</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Склад' → 'Продукти'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате 'Нов продукт'" /></ListItem>
+              <ListItem><ListItemText primary="3. Попълвате име, количество, мярка" /></ListItem>
+              <ListItem><ListItemText primary="4. Задавате склад" /></ListItem>
+            </List>
 
-        {/* --- 11. КОНТАКТИ --- */}
-        <Box sx={{ mt: 4, p: 3, bgcolor: 'primary.light', color: 'primary.contrastText', borderRadius: 2 }}>
-          <Typography variant="h6" gutterBottom>📞 Нужда от помощ?</Typography>
-          <Typography variant="body1">
-            Ако имате проблеми или въпроси, свържете се с:
-          </Typography>
-          <Typography variant="body1" sx={{ mt: 1 }}>
-            • Вашия ръководител<br />
-            • Системния администратор<br />
-            • Имейл: admin@example.com
-          </Typography>
-        </Box>
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Поръчка за производство</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Поръчки'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате 'Нова поръчка'" /></ListItem>
+              <ListItem><ListItemText primary="3. Избирате рецепта" /></ListItem>
+              <ListItem><ListItemText primary="4. Задавате количество" /></ListItem>
+              <ListItem><ListItemText primary="5. Стартирате производството" /></ListItem>
+            </List>
 
-        <Box sx={{ mt: 6, p: 2, bgcolor: 'action.hover', borderRadius: 2 }}>
-          <Typography variant="subtitle2" color="text.secondary" align="center">
-              © {new Date().getFullYear()} Chronos - Работно Време. Всички права запазени.
-          </Typography>
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Инвентаризация</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Склад' → 'Инвентаризация'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате 'Нова сесия'" /></ListItem>
+              <ListItem><ListItemText primary="3. Сканирате продуктите" /></ListItem>
+              <ListItem><ListItemText primary="4. Приключвате" /></ListItem>
+            </List>
+
+            <Divider sx={{ my: 4 }} />
+            <Typography variant="h6" gutterBottom>Често задавани въпроси</Typography>
+            <List>
+              <ListItem><ListItemText primary="❓ Как да добавя продукт?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Отидете в 'Склад' → 'Продукти' → 'Нов продукт'" /></ListItem>
+              <ListItem><ListItemText primary="❓ Как да направя поръчка?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Отидете в 'Поръчки' → 'Нова поръчка'" /></ListItem>
+              <ListItem><ListItemText primary="❓ Приключи ли ми се поръчката?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Проверете статуса в 'Поръчки'" /></ListItem>
+            </List>
+          </TabPanel>
+
+          {/* TAB 6: АВТОПАРК */}
+          <TabPanel value={tabValue} index={5}>
+            <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">Автопарк</Typography>
+            
+            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Добавяне на автомобил</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Автопарк'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате 'Нова кола'" /></ListItem>
+              <ListItem><ListItemText primary="3. Попълвате данните (номер, марка, модел)" /></ListItem>
+              <ListItem><ListItemText primary="4. Качвате документи" /></ListItem>
+            </List>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Зареждане с гориво</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Автопарк' → 'Гориво'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате 'Ново зареждане'" /></ListItem>
+              <ListItem><ListItemText primary="3. Избирате кола, литри, цена" /></ListItem>
+            </List>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Ремонт</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Автопарк' → 'Ремонти'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате 'Нов ремонт'" /></ListItem>
+              <ListItem><ListItemText primary="3. Описвате проблема" /></ListItem>
+              <ListItem><ListItemText primary="4. Приключвате след ремонта" /></ListItem>
+            </List>
+
+            <Divider sx={{ my: 4 }} />
+            <Typography variant="h6" gutterBottom>Често задавани въпроси</Typography>
+            <List>
+              <ListItem><ListItemText primary="❓ Как да добавя нова кола?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Отидете в 'Автопарк' → 'Нова кола'" /></ListItem>
+              <ListItem><ListItemText primary="❓ Кога ми е прегледът?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Виждате го в детайлите на колата" /></ListItem>
+              <ListItem><ListItemText primary="❓ Как да отчета гориво?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Отидете в 'Гориво' → 'Ново зареждане'" /></ListItem>
+            </List>
+          </TabPanel>
+
+          {/* TAB 7: ДОСТЪП */}
+          <TabPanel value={tabValue} index={6}>
+            <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">Контрол на достъпа</Typography>
+            
+            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Добавяне на врата</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Достъп' → 'Врати'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате 'Нова врата'" /></ListItem>
+              <ListItem><ListItemText primary="3. Задавате име и номер" /></ListItem>
+              <ListItem><ListItemText primary="4. Свързвате със зона" /></ListItem>
+            </List>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Създаване на зона</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Достъп' → 'Зони'" /></ListItem>
+              <ListItem><ListItemText primary="2. Натискате 'Нова зона'" /></ListItem>
+              <ListItem><ListItemText primary="3. Задавате име" /></ListItem>
+              <ListItem><ListItemText primary="4. Добавете врати" /></ListItem>
+            </List>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Задаване на права</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Отивате в 'Достъп' → 'Права'" /></ListItem>
+              <ListItem><ListItemText primary="2. Избирате потребител" /></ListItem>
+              <ListItem><ListItemText primary="3. Добавете зоните с достъп" /></ListItem>
+            </List>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Използване на достъп</Typography>
+            <List>
+              <ListItem><ListItemText primary="1. Приближавате картата до четеца" /></ListItem>
+              <ListItem><ListItemText primary="2. ИЛИ: Въведете кода на клавиатурата" /></ListItem>
+              <ListItem><ListItemText primary="3. Ако имате права - вратата се отваря" /></ListItem>
+            </List>
+
+            <Divider sx={{ my: 4 }} />
+            <Typography variant="h6" gutterBottom>Често задавани въпроси</Typography>
+            <List>
+              <ListItem><ListItemText primary="❓ Защо не мога да вляза?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Проверете дали имате права за тази зона" /></ListItem>
+              <ListItem><ListItemText primary="❓ Как да добавя права?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Отидете в 'Достъп' → 'Права' и добавете зона" /></ListItem>
+              <ListItem><ListItemText primary="❓ Кой е влизал?" /></ListItem>
+              <ListItem><ListItemText primary="💡 Прегледайте логовете в 'Достъп' → 'Логове'" /></ListItem>
+            </List>
+          </TabPanel>
         </Box>
       </Paper>
+
+      <Box sx={{ mt: 4, p: 3, bgcolor: 'primary.light', color: 'primary.contrastText', borderRadius: 2 }}>
+        <Typography variant="h6" gutterBottom>📞 Нужда от помощ?</Typography>
+        <Typography variant="body1">
+          Ако имате проблеми или въпроси, свържете се с:
+        </Typography>
+        <Typography variant="body1" sx={{ mt: 1 }}>
+          • Вашия ръководител<br />
+          • Системния администратор<br />
+          • Имейл: admin@example.com
+        </Typography>
+      </Box>
+
+      <Box sx={{ mt: 4, p: 2, bgcolor: 'action.hover', borderRadius: 2 }}>
+        <Typography variant="subtitle2" color="text.secondary" align="center">
+            © {new Date().getFullYear()} Chronos - Работно Време. Всички права запазени.
+        </Typography>
+      </Box>
     </Container>
   );
 };

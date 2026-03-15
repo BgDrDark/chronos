@@ -8,7 +8,6 @@ import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
   People as PeopleIcon,
-  Payments as PaymentsIcon,
   Logout as LogoutIcon,
   CalendarMonth as CalendarIcon,
   Settings as SettingsIcon,
@@ -31,6 +30,7 @@ import {
   Assessment as ReportsIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
+  Work as WorkIcon,
 } from '@mui/icons-material';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useApolloClient } from '@apollo/client';
@@ -279,15 +279,17 @@ const MainLayout: React.FC<Props> = ({ children }) => {
       ]
     },
     { 
-      text: 'Отдел финанси', 
-      icon: <PaymentsIcon />, 
+      text: 'Отдел ТРЗ', 
+      icon: <WorkIcon />, 
       visible: isAdmin && isEnabled('salaries'),
       children: [
+        { text: 'ТРЗ Настройки', path: '/admin/payroll/trz-settings', visible: true },
+        { text: 'Шаблони', path: '/admin/payroll/templates', visible: true },
+        { text: 'Допълнителни споразумения', path: '/admin/payroll/annexes', visible: true },
         { text: 'Плащания', path: '/admin/payroll/payments', visible: true },
         { text: 'Празници', path: '/admin/payroll/declarations', visible: true },
-        { text: 'ТРЗ Настройки', path: '/admin/payroll/trz-settings', visible: true },
-        { text: 'Настройки', path: '/admin/payroll/settings', visible: true },
         { text: 'Справки', path: '/admin/payroll/reports', visible: true },
+        { text: 'Настройки', path: '/admin/payroll/settings', visible: true },
       ]
     },
     { 
@@ -589,7 +591,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
           p: { xs: 2, sm: 3 },
           width: { sm: isPublicPage ? '100%' : `calc(100% - ${isCollapsed ? collapsedDrawerWidth : drawerWidth}px)` },
           minHeight: '100vh',
-          backgroundColor: (theme) => theme.palette.mode === 'light' ? '#f8fafc' : 'transparent',
+          backgroundColor: (theme) => theme.palette.background.default,
           transition: (theme) => theme.transitions.create(['width', 'margin'], {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.enteringScreen,

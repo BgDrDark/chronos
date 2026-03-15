@@ -13,6 +13,7 @@ from backend.database.models import (
 )
 from backend.database.models import sofia_now
 from backend.services.trz_calculators import NightWorkCalculator, OvertimeCalculator, BusinessTripCalculator
+from backend import crud
 
 
 class EnhancedPayrollCalculator(PayrollCalculator):
@@ -53,10 +54,12 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         
     async def calculate_enhanced_payroll(self) -> Dict[str, Any]:
         """Calculate complete payroll with all new components"""
+        start_date = datetime.combine(self.calculation_period['start_date'], datetime.min.time())
+        end_date = datetime.combine(self.calculation_period['end_date'], datetime.max.time())
         base_calculation = await self.calculate(
             self.user_id, 
-            self.calculation_period['start_date'], 
-            self.calculation_period['end_date']
+            start_date, 
+            end_date
         )
         
         # Load additional components (from preloaded data if available)
@@ -95,11 +98,11 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         base_salary = await self._get_base_salary()
         
         # Calculate experience bonus (Class)
-        experience_bonus = await self._calculate_experience_bonus(base_salary)
+        experience_bonus = await self._calculate_experience_bonus(base_salary or Decimal('0'))
         
         # Calculate gross/net based on contract settings (include class bonus in gross)
         gross_amount, net_amount = await self._calculate_gross_net(
-            base_salary + experience_bonus, base_calculation
+            (base_salary or Decimal('0')) + experience_bonus, base_calculation
         )
         
         # Final calculations
@@ -162,6 +165,8 @@ class EnhancedPayrollCalculator(PayrollCalculator):
     
     async def _apply_preloaded_data(self):
         """Map preloaded data to calculator attributes"""
+        if not self.preloaded_data:
+            return
         self.payment_schedule = self.preloaded_data.get('payment_schedule')
         self.employment_contract = self.preloaded_data.get('contracts', {}).get(self.user_id)
         self.additional_deductions = self.preloaded_data.get('deductions', [])
@@ -309,17 +314,22 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         else:
             # Default: 25-то число на следващия месец
             target_day = 25
-            target_month = self.calculation_period['end_date'].month + 1
+            end_month = self.calculation_period['end_date'].month
+            target_month = (int(end_month) if hasattr(end_month, '__int__') else end_month) + 1
             
-        target_year = self.calculation_period['end_date'].year
+        end_year = self.calculation_period['end_date'].year
+        target_year = int(end_year) if hasattr(end_year, '__int__') else end_year
         
-        if target_month > 12:
-            target_month -= 12
+        month_val = int(target_month) if hasattr(target_month, '__int__') else target_month
+        if month_val > 12:
+            target_month = month_val - 12
             target_year += 1
         
         # Предпазване от невалидни дати (напр. 31 февруари)
         import calendar
-        last_day = calendar.monthrange(target_year, target_month)[1]
+        year_val = int(target_year) if hasattr(target_year, '__int__') else target_year
+        month_val2 = int(target_month) if hasattr(target_month, '__int__') else target_month
+        last_day = calendar.monthrange(year_val, month_val2)[1]
         target_day = min(target_day, last_day)
         
         return date(target_year, target_month, target_day)
@@ -329,10 +339,10 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         total_deduction = Decimal('0')
         
         for deduction in self.additional_deductions:
-            if deduction.apply_to_all or (deduction.employee_ids and self.user_id in deduction.employee_ids):
-                if deduction.deduction_type == 'fixed':
+            if bool(deduction.apply_to_all) is True or (deduction.employee_ids is not None and self.user_id in deduction.employee_ids):
+                if str(deduction.deduction_type) == 'fixed':
                     total_deduction += Decimal(str(deduction.amount))
-                elif deduction.deduction_type == 'percentage':
+                elif str(deduction.deduction_type) == 'percentage':
                     base_salary = await self._get_base_salary()
                     if base_salary:
                         percentage_amount = base_salary * (Decimal(str(deduction.percentage)) / Decimal('100'))
@@ -365,7 +375,7 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         
         total_payment = Decimal('0')
         
-        if sick_record.sick_leave_type == 'general':
+        if str(sick_record.sick_leave_type) == 'general':
             # 1. Employer days (usually first 3)
             employer_days = min(EMPLOYER_DAYS, sick_record.total_days)
             # Typically employer pays 70% or 75% for these days in BG
@@ -392,18 +402,18 @@ class EnhancedPayrollCalculator(PayrollCalculator):
                 full_potential = Decimal(str(sick_record.total_days)) * daily_gross
                 total_payment = full_potential
                 
-        elif sick_record.sick_leave_type == 'work_related':
+        elif str(sick_record.sick_leave_type) == 'work_related':
             total_payment = Decimal(str(sick_record.total_days)) * daily_gross
             
         return total_payment
     
     async def _calculate_noi_payments(self) -> Decimal:
         """Calculate employer contributions for NOI payment days"""
-        if not self.noi_payment_days or self.noi_payment_days.employer_payment_percentage <= 0:
+        if not self.noi_payment_days or float(str(self.noi_payment_days.employer_payment_percentage or 0)) <= 0:
             return Decimal('0')
         
         # Ако са използвани НОЙ дни и има 75% плащане от работодателя
-        if self.noi_payment_days.noi_days_used > 0:
+        if str(self.noi_payment_days.noi_days_used) > '0':
             daily_salary = await self._get_daily_gross_salary()
             if daily_salary:
                 employer_payment_percentage = Decimal(str(self.noi_payment_days.employer_payment_percentage)) / Decimal('100')
@@ -597,12 +607,11 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         payroll = payroll_result.scalar_one_or_none()
         
         if payroll:
-            if payroll.monthly_salary:
+            if payroll.monthly_salary is not None:
                 return Decimal(str(payroll.monthly_salary))
-            elif payroll.hourly_rate:
-                # Estimate monthly from hourly rate
-                monthly_hours = Decimal('160')  # 40 hours/week * 4 weeks
-                return payroll.hourly_rate * monthly_hours
+            elif payroll.hourly_rate is not None:
+                monthly_hours = Decimal('160')
+                return Decimal(str(payroll.hourly_rate)) * monthly_hours
         
         return None
     
@@ -720,61 +729,61 @@ class EnhancedPayrollCalculator(PayrollCalculator):
             return (net_amount + max_ins_deduction * (Decimal('1.0') - tax_rate)) / (Decimal('1.0') - tax_rate)
 
 
-def calculate_sick_leave_payment_by_law(
-    daily_gross: Decimal, 
-    total_days: int, 
-    leave_type: str = 'general'
-) -> Dict[str, Any]:
-    """
-    Calculate sick leave payment according to Bulgarian Labor Code
+    def calculate_sick_leave_payment_by_law(
+        self,
+        daily_gross: Decimal, 
+        total_days: int, 
+        leave_type: str = 'general'
+    ) -> Dict[str, Any]:
+        """
+        Calculate sick leave payment according to Bulgarian Labor Code
     
-    General Sick Leave Rules:
-    - Days 1-3: No payment
-    - Days 4-30: 80% from National Insurance Fund (NOI)
-    - Days 31+: 100% from employer
+        General Sick Leave Rules:
+        - Days 1-3: No payment
+        - Days 4-30: 80% from National Insurance Fund (NOI)
+        - Days 31+: 100% from employer
     
-    Work-related Injury:
-    - 100% from NOI from day 1
+        Work-related Injury:
+        - 100% from NOI from day 1
     
-    Returns detailed breakdown of payments
-    """
-    unpaid_days = 0
-    noi_payment_days = 0
-    employer_payment_days = 0
+        Returns detailed breakdown of payments
+        """
+        unpaid_days = 0
+        noi_payment_days = 0
+        employer_payment_days = 0
     
-    if leave_type == 'general':
-        unpaid_days = min(3, total_days)
-        noi_payment_days = max(0, min(27, total_days - 3))
-        employer_payment_days = max(0, total_days - 30)
-    elif leave_type == 'work_related':
-        noi_payment_days = total_days  # 100% from NOI
+        if leave_type == 'general':
+            unpaid_days = min(3, total_days)
+            noi_payment_days = max(0, min(27, total_days - 3))
+            employer_payment_days = max(0, total_days - 30)
+        elif leave_type == 'work_related':
+            noi_payment_days = total_days  # 100% from NOI
     
-    # Calculate payments
-    unpaid_amount = Decimal(str(unpaid_days)) * daily_gross
-    noi_payment = Decimal(str(noi_payment_days)) * daily_gross * Decimal('0.80')
-    employer_payment = Decimal(str(employer_payment_days)) * daily_gross
-    total_payment = noi_payment + employer_payment
+        # Calculate payments
+        unpaid_amount = Decimal(str(unpaid_days)) * daily_gross
+        noi_payment = Decimal(str(noi_payment_days)) * daily_gross * Decimal('0.80')
+        employer_payment = Decimal(str(employer_payment_days)) * daily_gross
+        total_payment = noi_payment + employer_payment
     
-    return {
-        'unpaid_days': unpaid_days,
-        'noi_payment_days': noi_payment_days,
-        'employer_payment_days': employer_payment_days,
-        'unpaid_amount': float(unpaid_amount),
-        'noi_payment': float(noi_payment),
-        'employer_payment': float(employer_payment),
-        'total_payment': float(total_payment),
-        'daily_gross': float(daily_gross),
-        'leave_type': leave_type,
-        'total_days': total_days
-    }
+        return {
+            'unpaid_days': unpaid_days,
+            'noi_payment_days': noi_payment_days,
+            'employer_payment_days': employer_payment_days,
+            'unpaid_amount': float(unpaid_amount),
+            'noi_payment': float(noi_payment),
+            'employer_payment': float(employer_payment),
+            'total_payment': float(total_payment),
+            'daily_gross': float(daily_gross),
+            'leave_type': leave_type,
+            'total_days': total_days
+        }
 
-    # ==================== ТРЗ Калкулатори ====================
+        # ==================== ТРЗ Калкулатори ====================
     
-    def _is_trz_feature_enabled(self, feature_key: str) -> bool:
+    async def _is_trz_feature_enabled(self, feature_key: str) -> bool:
         """Проверява дали ТРЗ функцията е включена"""
         from backend import crud
-        # По подразбиране всички са изключени
-        value = crud.get_global_setting(self.db, feature_key)
+        value = await crud.get_global_setting(self.db, feature_key)
         return value.lower() == "true" if value else False
     
     async def _calculate_night_work(self) -> Decimal:
@@ -899,7 +908,7 @@ def calculate_sick_leave_payment_by_law(
                         'destination': t.destination,
                         'start_date': t.start_date,
                         'end_date': t.end_date,
-                        'total_amount': float(t.total_amount)
+                        'total_amount': float(str(t.total_amount)) if t.total_amount is not None else 0.0
                     }
                     for t in self.business_trips
                 ]

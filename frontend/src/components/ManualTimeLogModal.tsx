@@ -8,7 +8,8 @@ import {
   TextField,
   MenuItem,
   Alert,
-  Grid
+  Grid,
+  Box
 } from '@mui/material';
 import { useMutation, gql } from '@apollo/client';
 import { useForm, Controller } from 'react-hook-form';
@@ -104,7 +105,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
       <Box component="form" onSubmit={handleSubmit(onSubmit)}>
         <DialogContent dividers>
           <Grid container spacing={2}>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Controller
                 name="userId"
                 control={control}
@@ -127,7 +128,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
                 )}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Controller
                 name="date"
                 control={control}
@@ -145,7 +146,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
                 )}
               />
             </Grid>
-            <Grid item xs={6}>
+            <Grid size={{ xs: 6 }}>
               <Controller
                 name="startTime"
                 control={control}
@@ -163,7 +164,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
                 )}
               />
             </Grid>
-            <Grid item xs={6}>
+            <Grid size={{ xs: 6 }}>
               <Controller
                 name="endTime"
                 control={control}
@@ -181,7 +182,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
                 )}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Controller
                 name="breakDuration"
                 control={control}

@@ -9,13 +9,17 @@ const mockUseApolloClient = jest.fn(() => ({
   resetStore: mockResetStore,
 }));
 
+interface MockApolloProviderProps {
+  children: React.ReactNode;
+}
+
 // We need to mock ApolloProvider separately because it's a component
 // and jest.mock can't mock components directly in the same way as functions/hooks
 jest.mock('@apollo/client', () => {
   const actualApolloClient = jest.requireActual('@apollo/client');
   return {
     ...actualApolloClient,
-    ApolloProvider: ({ children }: any) => children, // Simply render children
+    ApolloProvider: ({ children }: MockApolloProviderProps) => children, // Simply render children
     useApolloClient: () => mockUseApolloClient(),
   };
 });
@@ -28,7 +32,7 @@ jest.mock('react-router-dom', () => ({
 
 // Mock the fetch API
 const mockFetch = jest.fn();
-(globalThis as any).fetch = mockFetch;
+(globalThis as unknown as { fetch: typeof mockFetch }).fetch = mockFetch;
 
 const renderLoginPage = () => {
   render(

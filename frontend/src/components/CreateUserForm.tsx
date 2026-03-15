@@ -12,12 +12,17 @@ import PersonIcon from '@mui/icons-material/Person';
 
 // Zod schema for validation
 const createUserSchema = z.object({
-  email: z.string().email('Невалиден имейл адрес').optional().or(z.literal('')),
+  email: z.string().email('Невалиден имейл адрес'),
   username: z.string().min(3, 'Потребителското име трябва да е поне 3 символа').optional().or(z.literal('')),
   password: z.string().min(8, 'Паролата трябва да е поне 8 символа'),
   firstName: z.string().min(1, 'Полето е задължително'),
   lastName: z.string().min(1, 'Полето е задължително'),
-  phoneNumber: z.string().optional().or(z.literal('')),
+  phoneNumber: z.string()
+    .optional()
+    .or(z.literal(''))
+    .refine((val) => !val || /^(\+?359|0)[89]\d{7,8}$/.test(val), {
+      message: 'Невалиден телефонен номер (очакван формат: +359888123456, 0888123456 или 359888123456)'
+    }),
   address: z.string().optional().or(z.literal('')),
   egn: z.string().max(10).optional().or(z.literal('')),
   birthDate: z.string().optional().or(z.literal('')),
@@ -48,7 +53,7 @@ const createUserSchema = z.object({
 });
 
 interface CreateUserFormData {
-  email?: string;
+  email: string;
   username?: string;
   password: string;
   firstName: string;
@@ -86,7 +91,7 @@ interface CreateUserFormData {
 // GraphQL Mutations & Queries
 const CREATE_USER_MUTATION = gql`
   mutation CreateUser(
-    $email: String
+    $email: String!
     $username: String
     $password: String!
     $firstName: String
@@ -233,6 +238,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
     },
   });
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const selectedCompanyId = watch('companyId');
   const selectedDepartmentId = watch('departmentId');
 
@@ -335,6 +341,8 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
           <TextField
             fullWidth label="Телефон"
             {...register('phoneNumber')} size="small"
+            error={!!errors.phoneNumber}
+            helperText={errors.phoneNumber?.message}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
@@ -372,7 +380,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
-            fullWidth label="Имейл адрес"
+            required fullWidth label="Имейл адрес"
             {...register('email')} error={!!errors.email} size="small"
           />
         </Grid>
@@ -399,11 +407,17 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
                 >
                   {orgData?.roles.map((role) => {
                     const roleTranslations: Record<string, string> = {
+                      'super_admin': 'Супер администратор',
                       'admin': 'Администратор',
-                      'super_admin': 'Главен Администратор',
-                      'user': 'Служител',
+                      'global_accountant': 'Главен счетоводител',
                       'accountant': 'Счетоводител',
+                      'logistics_manager': 'Логистичен мениджър',
+                      'fleet_manager': 'Мениджър автопарк',
+                      'hr_manager': 'HR мениджър',
                       'manager': 'Мениджър',
+                      'driver': 'Шофьор',
+                      'employee': 'Служител',
+                      'viewer': 'Наблюдател',
                       'kiosk': 'Терминал (Kiosk)'
                     };
                     const displayName = roleTranslations[role.name.toLowerCase()] || role.description || role.name.toUpperCase();

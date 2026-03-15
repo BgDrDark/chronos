@@ -26,16 +26,13 @@ import {
 } from '@mui/material';
 import {
   Edit as EditIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
   Computer as ComputerIcon,
   Print as PrintIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { useQuery, useMutation } from '@apollo/client';
+import { useQuery } from '@apollo/client';
 import {
   GATEWAYS_QUERY,
-  GATEWAY_QUERY,
   TERMINALS_QUERY,
   PRINTERS_QUERY,
   GATEWAY_STATS_QUERY
@@ -102,12 +99,12 @@ const GatewayAdminPage: React.FC = () => {
   const [aliasDialogOpen, setAliasDialogOpen] = useState(false);
   const [aliasValue, setAliasValue] = useState('');
 
-  const { data: statsData, loading: statsLoading, refetch: refetchStats } = useQuery<{ gatewayStats: GatewayStats }>(GATEWAY_STATS_QUERY);
+  const { data: statsData, loading: statsLoading } = useQuery<{ gatewayStats: GatewayStats }>(GATEWAY_STATS_QUERY);
   const { data: gatewaysData, loading: gatewaysLoading, refetch: refetchGateways } = useQuery<{ gateways: Gateway[] }>(GATEWAYS_QUERY);
-  const { data: terminalsData, loading: terminalsLoading, refetch: refetchTerminals } = useQuery<{ terminals: Terminal[] }>(TERMINALS_QUERY, {
+  const { data: terminalsData, loading: terminalsLoading } = useQuery<{ terminals: Terminal[] }>(TERMINALS_QUERY, {
     variables: { gatewayId: selectedGateway?.id }
   });
-  const { data: printersData, loading: printersLoading, refetch: refetchPrinters } = useQuery<{ printers: Printer[] }>(PRINTERS_QUERY, {
+  const { data: printersData, loading: printersLoading } = useQuery<{ printers: Printer[] }>(PRINTERS_QUERY, {
     variables: { gatewayId: selectedGateway?.id }
   });
 
@@ -121,12 +118,6 @@ const GatewayAdminPage: React.FC = () => {
       setAliasValue(selectedGateway.alias || '');
       setAliasDialogOpen(true);
     }
-  };
-
-  const formatDateTime = (dateStr: string | null) => {
-    if (!dateStr) return 'Never';
-    const date = new Date(dateStr);
-    return date.toLocaleString('bg-BG');
   };
 
   const formatTimeAgo = (dateStr: string | null) => {

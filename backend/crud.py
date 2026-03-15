@@ -666,8 +666,13 @@ async def create_user(db: AsyncSession, user: schemas.UserCreate, role_name: str
         else:
             raise ValueError(f"Role '{role_name}' or ID {role_id} does not exist.")
 
+    # Generate default email if not provided
+    user_email = user.email
+    if not user_email and user.username:
+        user_email = f"{user.username}@local"
+    
     db_user = User(
-        email=user.email,
+        email=user_email,
         username=user.username,
         hashed_password=hashed_password,
         role_id=role.id,

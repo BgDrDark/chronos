@@ -8,7 +8,7 @@ from strawberry.experimental.pydantic import input as pydantic_input
 
 # Pydantic models for validation
 class UserCreatePydantic(BaseModel):
-    email: Optional[EmailStr] = None
+    email: EmailStr = Field(description="User email address")
     username: Optional[str] = None
     password: str = Field(min_length=8)
     first_name: Optional[str] = None
@@ -29,12 +29,6 @@ class UserCreatePydantic(BaseModel):
     # Employment Contract
     contract_type: Optional[str] = None
     
-    @field_validator('email', mode='before')
-    @classmethod
-    def empty_str_to_none(cls, v):
-        if v == '' or v is None:
-            return None
-        return v
     contract_start_date: Optional[datetime.date] = None
     contract_end_date: Optional[datetime.date] = None
     base_salary: Optional[Decimal] = None
@@ -48,6 +42,8 @@ class UserCreatePydantic(BaseModel):
     has_income_tax: Optional[bool] = None
     
     # TRZ extension
+    payment_day: Optional[int] = 25
+    experience_start_date: Optional[datetime.date] = None
     night_work_rate: Optional[Decimal] = Decimal("0.50")
     overtime_rate: Optional[Decimal] = Decimal("1.50")
     holiday_rate: Optional[Decimal] = Decimal("2.00")
@@ -101,6 +97,8 @@ class UpdateUserPydantic(BaseModel):
     has_income_tax: Optional[bool] = None
 
     # TRZ fields
+    payment_day: Optional[int] = None
+    experience_start_date: Optional[datetime.date] = None
     night_work_rate: Optional[float] = None
     overtime_rate: Optional[float] = None
     holiday_rate: Optional[float] = None
@@ -137,6 +135,8 @@ class UserCreateInput:
     tax_resident: strawberry.auto
     insurance_contributor: strawberry.auto
     has_income_tax: strawberry.auto
+    payment_day: strawberry.auto
+    experience_start_date: strawberry.auto
     night_work_rate: strawberry.auto
     overtime_rate: strawberry.auto
     holiday_rate: strawberry.auto
@@ -325,6 +325,8 @@ class UpdateUserInput:
     insurance_contributor: strawberry.auto
     has_income_tax: strawberry.auto
     # ТРЗ разширение
+    payment_day: strawberry.auto
+    experience_start_date: strawberry.auto
     night_work_rate: strawberry.auto
     overtime_rate: strawberry.auto
     holiday_rate: strawberry.auto

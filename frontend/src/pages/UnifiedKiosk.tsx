@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { 
     Box, Typography, Paper, Button, Container, Dialog, 
@@ -68,18 +68,29 @@ const UnifiedKiosk: React.FC = () => {
     const scannerRef = useRef<Html5QrcodeScanner | null>(null);
     const hwidRef = useRef<string>('');
 
+    const isScanningRef = useRef(isScanning);
+    const setIsScanningRef = useRef(setIsScanning);
+    const setScanResultRef = useRef(setScanResult);
+    const setOfflineQueueRef = useRef(setOfflineQueue);
+    const offlineQueueRef = useRef(offlineQueue);
+    isScanningRef.current = isScanning;
+    setIsScanningRef.current = setIsScanning;
+    setScanResultRef.current = setScanResult;
+    setOfflineQueueRef.current = setOfflineQueue;
+    offlineQueueRef.current = offlineQueue;
+
     // TTS Function
-    const speak = (text: string) => {
+    const speak = useCallback((text: string) => {
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
             const msg = new SpeechSynthesisUtterance(text);
             msg.lang = 'en-US';
             window.speechSynthesis.speak(msg);
         }
-    };
+    }, []);
 
     // Get or create hardware UUID
-    const getOrCreateHWID = (): string => {
+    const getOrCreateHWID = useCallback((): string => {
         let id = localStorage.getItem('terminal_hardware_uuid');
         if (!id) {
             id = 'TERMINAL-' + Math.random().toString(36).substring(2, 15).toUpperCase();
@@ -87,7 +98,7 @@ const UnifiedKiosk: React.FC = () => {
         }
         hwidRef.current = id;
         return id;
-    };
+    }, []);
 
     // Sync offline data
     const syncOfflineData = async () => {
@@ -122,7 +133,7 @@ const UnifiedKiosk: React.FC = () => {
             if (saved) setOfflineQueue(JSON.parse(saved));
 
             // Request Fullscreen
-            try { document.documentElement.requestFullscreen(); } catch { }
+            try { document.documentElement.requestFullscreen(); } catch { /* Ignore fullscreen errors */ }
 
             // Fetch Config
             try {
@@ -140,35 +151,21 @@ const UnifiedKiosk: React.FC = () => {
                 if (bgData.background_image) {
                     setBackgroundImage(getApiUrl(`uploads/${bgData.background_image}`));
                 }
-            } catch { }
+            } catch { /* Ignore background fetch errors */ }
 
             setLoading(false);
         };
         initTerminal();
-    }, []);
-
-    // Scanner Management
-    useEffect(() => {
-        if (entryMode === 'qr' && !loading && !scanResult) {
-            const scanner = new Html5QrcodeScanner(
-                "qr-reader",
-                { fps: 10, qrbox: { width: 280, height: 280 }, formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE] },
-                false
-            );
-            scanner.render(onScanSuccess, () => {});
-            scannerRef.current = scanner;
-            return () => { scanner.clear().catch(() => {}); };
-        }
-    }, [entryMode, loading, !!scanResult]);
+    }, [getOrCreateHWID]);
 
     const playSound = (type: 'success' | 'error') => {
         const audio = new Audio(type === 'success' ? '/success.mp3' : '/error.mp3');
         audio.play().catch(() => {});
     };
 
-    const handleRequest = async (payload: { qr_token?: string, code?: string }) => {
-        if (!isScanning) return;
-        setIsScanning(false);
+    const handleRequest = useCallback(async (payload: { qr_token?: string, code?: string }) => {
+        if (!isScanningRef.current) return;
+        setIsScanningRef.current(false);
         if (scannerRef.current) scannerRef.current.pause();
 
         const hwid = getOrCreateHWID();
@@ -183,7 +180,7 @@ const UnifiedKiosk: React.FC = () => {
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
-                    setScanResult({
+                    setScanResultRef.current({
                         status: data.door_opened === false && data.access_granted === false ? 'warning' : 'success',
                         message: data.message,
                         user: data.user,
@@ -193,7 +190,6 @@ const UnifiedKiosk: React.FC = () => {
                         profile_picture: data.profile_picture
                     });
                     
-                    // Restore English TTS logic
                     let ttsMsg = "Success";
                     if (data.clock_action === "in") {
                         ttsMsg = "Thank you, have a nice day";
@@ -206,32 +202,48 @@ const UnifiedKiosk: React.FC = () => {
                     playSound('success');
                 } else {
                     const msg = data.message || data.detail || 'Error';
-                    setScanResult({ status: 'error', message: msg });
+                    setScanResultRef.current({ status: 'error', message: msg });
                     speak("Access denied");
                     playSound('error');
                 }
 
             } else {
-                // Offline fallback
-                const queue = [...offlineQueue, { id: Date.now().toString(), type: 'clock', timestamp: new Date().toISOString(), action: 'auto' }];
+                const queue = [...offlineQueueRef.current, { id: Date.now().toString(), type: 'clock', timestamp: new Date().toISOString(), action: 'auto' }];
                 localStorage.setItem('offline_queue', JSON.stringify(queue));
-                setOfflineQueue(queue as OfflineLog[]);
-                setScanResult({ status: 'success', message: 'Записано офлайн (БЕЗ ДОСТЪП)' });
+                setOfflineQueueRef.current(queue as OfflineLog[]);
+                setScanResultRef.current({ status: 'success', message: 'Записано офлайн (БЕЗ ДОСТЪП)' });
                 playSound('success');
             }
         } catch {
-            setScanResult({ status: 'error', message: 'Мрежова грешка' });
+            setScanResultRef.current({ status: 'error', message: 'Мрежова грешка' });
             playSound('error');
         }
 
         setTimeout(() => {
-            setScanResult(null);
-            setIsScanning(true);
+            setScanResultRef.current(null);
+            setIsScanningRef.current(true);
             if (scannerRef.current) scannerRef.current.resume();
         }, 4000);
-    };
+    }, [isOnline, getOrCreateHWID, speak]);
 
-    const onScanSuccess = (text: string) => handleRequest({ qr_token: text });
+    const onScanSuccess = useCallback((text: string) => {
+        handleRequest({ qr_token: text });
+    }, [handleRequest]);
+
+    // Scanner Management
+    useEffect(() => {
+        const shouldScan = entryMode === 'qr' && !loading && !scanResult;
+        if (shouldScan) {
+            const scanner = new Html5QrcodeScanner(
+                "qr-reader",
+                { fps: 10, qrbox: { width: 280, height: 280 }, formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE] },
+                false
+            );
+            scanner.render(onScanSuccess, () => {});
+            scannerRef.current = scanner;
+            return () => { scanner.clear().catch(() => {}); };
+        }
+    }, [entryMode, loading, scanResult, onScanSuccess]);
 
     const handleExitVerify = async () => {
         setIsVerifying(true);

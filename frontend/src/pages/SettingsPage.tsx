@@ -233,12 +233,12 @@ const ActiveSessions: React.FC = () => {
     const { data, loading, refetch } = useQuery(GET_ACTIVE_SESSIONS);
     const [invalidate] = useMutation(INVALIDATE_SESSION);
 
-    const handleInvalidate = async (id: number) => {
+    const handleInvalidate = async (id: string) => {
         if (!window.confirm("Сигурни ли сте, че искате да прекратите тази сесия?")) return;
         try {
             await invalidate({ variables: { sessionId: id } });
             refetch();
-        } catch (_err: unknown) { if (err instanceof Error) if (err instanceof Error) if (_err instanceof Error) alert(_err.message); }
+        } catch (err) { if (err instanceof Error) alert(err.message); }
     };
 
     if (loading) return <CircularProgress />;
@@ -262,7 +262,7 @@ const ActiveSessions: React.FC = () => {
                                 <tr key={s.id} style={{ borderBottom: '1px solid #eee' }}>
                                     <td style={{ padding: 8 }}>{s.user.email}</td>
                                     <td style={{ padding: 8 }}>{s.ipAddress || '-'}</td>
-                                    <td style={{ padding: 8 }}>{new Date(s.lastUsedAt).toLocaleString('bg-BG')}</td>
+                                    <td style={{ padding: 8 }}>{s.lastUsedAt ? new Date(s.lastUsedAt).toLocaleString('bg-BG') : '-'}</td>
                                     <td style={{ padding: 8 }}>
                                         <Button size="small" color="error" onClick={() => handleInvalidate(s.id)}>
                                             Прекрати
@@ -287,7 +287,7 @@ const GoogleCalendarSettings: React.FC = () => {
     const [disconnect, { loading: disconnecting }] = useMutation(DISCONNECT_GOOGLE_MUTATION);
     const [msg, setMsg] = useState('');
 
-    const handleToggle = async (field: string, value: boolean) => {
+    const handleToggle = async (field: string, value: string | boolean) => {
         if (!data?.googleCalendarAccount?.syncSettings) return;
         
         const s = data.googleCalendarAccount.syncSettings;
@@ -304,7 +304,7 @@ const GoogleCalendarSettings: React.FC = () => {
             setMsg('Настройките са запазени.');
             refetch();
             setTimeout(() => setMsg(''), 3000);
-        } catch (_err: unknown) { if (err instanceof Error) if (err instanceof Error) if (_err instanceof Error) alert(_err.message); }
+        } catch (err) { if (err instanceof Error) alert(err.message); }
     };
 
     const handleConnect = () => {
@@ -317,7 +317,7 @@ const GoogleCalendarSettings: React.FC = () => {
         try {
             await disconnect();
             refetch();
-        } catch (_err: unknown) { if (err instanceof Error) if (err instanceof Error) if (_err instanceof Error) alert(_err.message); }
+        } catch (err) { if (err instanceof Error) alert(err.message); }
     };
 
     if (loading) return <CircularProgress size={24} />;
@@ -423,7 +423,7 @@ const SecuritySettings: React.FC = () => {
         try {
             await updateSecurity({ variables: { maxLoginAttempts: parseInt(String(maxAttempts)), lockoutMinutes: parseInt(String(lockoutMins)) } });
             setMsg('Настройките за сигурност са запазени.');
-        } catch (_err: unknown) { if (err instanceof Error) if (err instanceof Error) if (_err instanceof Error) alert(_err.message); }
+        } catch (err) { if (err instanceof Error) alert(err.message); }
     };
 
     return (
@@ -500,8 +500,8 @@ const OfficeLocationSettings: React.FC = () => {
         try {
             await updateLoc({ 
                 variables: { 
-                    latitude: parseFloat(lat), 
-                    longitude: parseFloat(lon), 
+                    latitude: Number(lat), 
+                    longitude: Number(lon), 
                     radius: parseInt(rad),
                     entryEnabled,
                     exitEnabled
@@ -603,7 +603,7 @@ const SystemSettings: React.FC = () => {
             a.href = url;
             a.download = `chronos_backup_${new Date().toISOString()}.json`;
             a.click();
-        } catch (_err: unknown) { if (err instanceof Error) if (err instanceof Error) if (_err instanceof Error) alert(_err.message); }
+        } catch (err) { if (err instanceof Error) alert(err.message); }
     };
 
     const handleRestore = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -826,8 +826,8 @@ const SettingsPage: React.FC = () => {
     try {
       const res = await generatePayslip({ variables: { startDate, endDate } });
       setPayslipResult(res.data.generateMyPayslip);
-    } catch (_err: unknown) {
-      if (err instanceof Error) if (_err instanceof Error) alert(_err.message);
+    } catch (err) {
+      if (err instanceof Error) alert(err.message);
     }
   };
 
@@ -878,6 +878,17 @@ const SettingsPage: React.FC = () => {
                 />
               }
               label="Покажи детайлна седмична таблица"
+            />
+          </Box>
+          <Box>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={dashboardConfig.showFleetCard}
+                  onChange={() => toggleDashboardWidget('showFleetCard')}
+                />
+              }
+              label="Покажи картичка Автопарк"
             />
           </Box>
           <Box sx={{ mt: 3 }}>
@@ -1017,7 +1028,7 @@ const SettingsPage: React.FC = () => {
                     </Grid>
                     <Grid size={{ xs: 6 }}>
                         <Typography variant="body2" color="text.secondary">Сума (Редовни):</Typography>
-                        <Typography fontWeight="bold">{parseFloat(payslipResult.regularAmount).toFixed(2)} {currency}</Typography>
+                        <Typography fontWeight="bold">{Number(payslipResult.regularAmount).toFixed(2)} {currency}</Typography>
                     </Grid>
                     <Grid size={{ xs: 6 }}>
                         <Typography variant="body2" color="error">Извънреден труд:</Typography>
@@ -1025,14 +1036,14 @@ const SettingsPage: React.FC = () => {
                     </Grid>
                     <Grid size={{ xs: 6 }}>
                         <Typography variant="body2" color="error">Сума (Извънредни):</Typography>
-                        <Typography fontWeight="bold" color="error">{parseFloat(payslipResult.overtimeAmount).toFixed(2)} {currency}</Typography>
+                        <Typography fontWeight="bold" color="error">{Number(payslipResult.overtimeAmount).toFixed(2)} {currency}</Typography>
                     </Grid>
                     
                     <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
                     
                     <Grid size={{ xs: 6 }}>
                         <Typography variant="body2" color="warning.dark">Бонуси:</Typography>
-                        <Typography fontWeight="bold">+{parseFloat(payslipResult.bonusAmount).toFixed(2)} {currency}</Typography>
+                        <Typography fontWeight="bold">+{Number(payslipResult.bonusAmount).toFixed(2)} {currency}</Typography>
                     </Grid>
                     <Grid size={{ xs: 6 }}>
                         <Typography variant="body2" color="text.secondary">Отпуск / Болнични:</Typography>
@@ -1043,17 +1054,17 @@ const SettingsPage: React.FC = () => {
                     
                     <Grid size={{ xs: 6 }}>
                         <Typography variant="body2" color="error.main">Осигуровки:</Typography>
-                        <Typography fontWeight="bold" color="error.main">-{parseFloat(payslipResult.insuranceAmount).toFixed(2)} {currency}</Typography>
+                        <Typography fontWeight="bold" color="error.main">-{Number(payslipResult.insuranceAmount).toFixed(2)} {currency}</Typography>
                     </Grid>
                     <Grid size={{ xs: 6 }}>
                         <Typography variant="body2" color="error.main">Данък (ДДФЛ):</Typography>
-                        <Typography fontWeight="bold" color="error.main">-{parseFloat(payslipResult.taxAmount).toFixed(2)} {currency}</Typography>
+                        <Typography fontWeight="bold" color="error.main">-{Number(payslipResult.taxAmount).toFixed(2)} {currency}</Typography>
                     </Grid>
                 </Grid>
 
                 <Box sx={{ mt: 3, p: 2, bgcolor: 'success.light', color: 'white', borderRadius: 2, textAlign: 'center' }}>
                     <Typography variant="subtitle2" sx={{ opacity: 0.9 }}>ОБЩО ЗА ПОЛУЧАВАНЕ (НЕТО)</Typography>
-                    <Typography variant="h4" fontWeight="bold">{parseFloat(payslipResult.totalAmount).toFixed(2)} {currency}</Typography>
+                    <Typography variant="h4" fontWeight="bold">{Number(payslipResult.totalAmount).toFixed(2)} {currency}</Typography>
                 </Box>
                 
                 <Box sx={{ mt: 2, textAlign: 'center' }}>

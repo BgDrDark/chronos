@@ -3,6 +3,7 @@ import { createContext, useContext } from 'react';
 export interface DashboardConfig {
   showChart: boolean;
   showWeeklyTable: boolean;
+  showFleetCard: boolean;
 }
 
 export interface ThemeContextType {
@@ -15,7 +16,7 @@ export interface ThemeContextType {
 export const ThemeContext = createContext<ThemeContextType>({
   mode: 'light',
   toggleTheme: () => {},
-  dashboardConfig: { showChart: true, showWeeklyTable: true },
+  dashboardConfig: { showChart: true, showWeeklyTable: true, showFleetCard: true },
   toggleDashboardWidget: () => {},
 });
 

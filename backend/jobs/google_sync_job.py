@@ -1,7 +1,6 @@
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, update, delete
 from sqlalchemy.orm import selectinload
@@ -95,10 +94,10 @@ class GoogleSyncJob:
         
         try:
             # Refresh access token if needed
-            if account.token_expires_at and datetime.now() >= account.token_expires_at:
+            if account.token_expires_at and datetime.now() >= account.token_expires_at.replace(tzinfo=None):
                 token_response = await google_calendar_service.refresh_access_token(account.refresh_token)
                 account.access_token = token_response['access_token']
-                account.token_expires_at = datetime.now() + timedelta(seconds=token_response['expires_in'])
+                account.token_expires_at = (datetime.now() + timedelta(seconds=token_response['expires_in'])).replace(tzinfo=None)
                 await db.commit()
             
             # Get sync date range
@@ -154,12 +153,12 @@ class GoogleSyncJob:
                 events_deleted += result['deleted']
             
             # Update sync log
-            sync_log.events_processed = events_processed
-            sync_log.events_created = events_created
-            sync_log.events_updated = events_updated
-            sync_log.events_deleted = events_deleted
+            sync_log.events_processed = int(events_processed)
+            sync_log.events_created = int(events_created)
+            sync_log.events_updated = int(events_updated)
+            sync_log.events_deleted = int(events_deleted)
             sync_log.completed_at = datetime.now()
-            sync_log.status = 'completed'
+            sync_log.status = str('completed')
             
         except Exception as e:
             logger.error(f"Sync failed for user {account.user_id}: {e}")
@@ -197,6 +196,7 @@ class GoogleSyncJob:
         updated = 0
         
         for schedule in schedules:
+            existing = None
             try:
                 # Check if already synced
                 existing_event_query = select(GoogleCalendarEvent).where(
@@ -223,7 +223,7 @@ class GoogleSyncJob:
                     )
                     existing.last_sync_at = datetime.now()
                     existing.sync_status = 'synced'
-                    existing.sync_error = None
+                    existing.sync_error = ''
                     updated += 1
                 else:
                     # Create new event
@@ -581,7 +581,7 @@ class GoogleSyncJob:
                         google_updated = datetime.fromisoformat(google_event['updated'].replace('Z', '+00:00'))
                         if google_updated > existing.last_sync_at:
                             # Update local record
-                            existing.google_updated_at = google_updated
+                            existing.google_updated_at = google_event['updated']
                             existing.last_sync_at = datetime.now()
                             updated += 1
                     processed += 1

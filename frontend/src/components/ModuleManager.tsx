@@ -6,6 +6,7 @@ import {
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import { useQuery, gql } from '@apollo/client';
 import axios from 'axios';
+import { Module } from '../types';
 
 interface ModuleData {
   id: number;
@@ -120,7 +121,7 @@ const ModuleManager: React.FC = () => {
         {msg && <Alert severity={msg.type} sx={{ mb: 2 }}>{msg.text}</Alert>}
 
         <List>
-          {displayModules.map((mod: any) => (
+          {displayModules.map((mod: Module) => (
             <React.Fragment key={mod.id}>
               <ListItem
                 secondaryAction={

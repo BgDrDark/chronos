@@ -6,6 +6,12 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import WarningIcon from '@mui/icons-material/Warning';
 import CelebrationIcon from '@mui/icons-material/Celebration';
 import EditIcon from '@mui/icons-material/Edit';
+import type { CSSProperties } from 'react';
+
+interface IconProps {
+  style?: CSSProperties;
+  [key: string]: unknown;
+}
 
 // Colors mapped to shift types
 export const ShiftTypeColors: Record<string, string> = {
@@ -34,7 +40,7 @@ export const ShiftTypeLabels: Record<string, string> = {
 };
 
 // Helper to get Icon component
-export const getShiftIcon = (type: string, props: any = {}) => {
+export const getShiftIcon = (type: string, props: IconProps = {}): React.ReactElement => {
   const style = { fontSize: '1rem', ...props.style };
   
   switch (type) {

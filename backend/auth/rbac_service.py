@@ -462,17 +462,69 @@ DEFAULT_ROLES = {
         "is_system_role": True,
         "permissions": list(DEFAULT_PERMISSIONS.keys())
     },
-    "company_admin": {
-        "description": "Company Administrator with company-scoped access",
-        "priority": 80,
+    "admin": {
+        "description": "Администратор с пълен достъп до системата",
+        "priority": 90,
+        "permissions": list(DEFAULT_PERMISSIONS.keys())
+    },
+    "global_accountant": {
+        "description": "Главен счетоводител с достъп до всички фирми",
+        "priority": 75,
         "permissions": [
-            "users:read", "users:create", "users:update", "users:delete", "users:manage_roles",
-            "timelogs:read", "timelogs:admin_create", "timelogs:update", "timelogs:delete",
-            "schedules:read", "schedules:create", "schedules:update", "schedules:delete", "schedules:approve_swaps",
+            "users:read", "users:create", "users:update",
+            "timelogs:read", "timelogs:admin_create",
+            "schedules:read",
             "payroll:read", "payroll:create", "payroll:update", "payroll:export",
-            "leaves:read", "leaves:approve", "leaves:update", "leaves:delete",
-            "companies:read", "companies:update", "companies:manage_users",
+            "leaves:read",
+            "companies:read",
             "reports:read", "reports:create", "reports:export", "analytics:read",
+        ]
+    },
+    "accountant": {
+        "description": "Счетоводител с достъп до конкретна фирма",
+        "priority": 70,
+        "permissions": [
+            "users:read", "users:create", "users:update",
+            "timelogs:read", "timelogs:admin_create",
+            "schedules:read",
+            "payroll:read", "payroll:create", "payroll:update", "payroll:export",
+            "leaves:read",
+            "companies:read",
+            "reports:read", "reports:create", "reports:export", "analytics:read",
+        ]
+    },
+    "logistics_manager": {
+        "description": "Управление на логистиката",
+        "priority": 65,
+        "permissions": [
+            "logistics:suppliers:read", "logistics:suppliers:create", "logistics:suppliers:update", "logistics:suppliers:delete",
+            "logistics:templates:read", "logistics:templates:create", "logistics:templates:update", "logistics:templates:delete",
+            "logistics:requests:read", "logistics:requests:create", "logistics:requests:update", "logistics:requests:approve", "logistics:requests:delete",
+            "logistics:orders:read", "logistics:orders:create", "logistics:orders:update", "logistics:orders:delete",
+            "logistics:deliveries:read", "logistics:deliveries:create", "logistics:deliveries:update", "logistics:deliveries:delete",
+            "reports:read", "reports:create", "reports:export",
+        ]
+    },
+    "fleet_manager": {
+        "description": "Управление на автопарк",
+        "priority": 65,
+        "permissions": [
+            "fleet:vehicles:read", "fleet:vehicles:create", "fleet:vehicles:update", "fleet:vehicles:delete", "fleet:vehicles:status",
+            "fleet:documents:read", "fleet:documents:create", "fleet:documents:update", "fleet:documents:delete",
+            "fleet:fuel_cards:read", "fleet:fuel_cards:create", "fleet:fuel_cards:update", "fleet:fuel_cards:delete",
+            "fleet:vignettes:read", "fleet:vignettes:create", "fleet:vignettes:update", "fleet:vignettes:delete",
+            "fleet:tolls:read", "fleet:tolls:create", "fleet:tolls:update", "fleet:tolls:delete",
+            "fleet:mileage:read", "fleet:mileage:create", "fleet:mileage:update", "fleet:mileage:delete",
+            "fleet:fuel:read", "fleet:fuel:create", "fleet:fuel:update", "fleet:fuel:delete",
+            "fleet:repairs:read", "fleet:repairs:create", "fleet:repairs:update", "fleet:repairs:delete",
+            "fleet:schedules:read", "fleet:schedules:create", "fleet:schedules:update", "fleet:schedules:delete",
+            "fleet:insurances:read", "fleet:insurances:create", "fleet:insurances:update", "fleet:insurances:delete",
+            "fleet:inspections:read", "fleet:inspections:create", "fleet:inspections:update", "fleet:inspections:delete",
+            "fleet:drivers:read", "fleet:drivers:create", "fleet:drivers:update", "fleet:drivers:delete",
+            "fleet:trips:read", "fleet:trips:create", "fleet:trips:update", "fleet:trips:delete",
+            "fleet:expenses:read", "fleet:expenses:create", "fleet:expenses:update", "fleet:expenses:delete",
+            "fleet:costcenters:read", "fleet:costcenters:create", "fleet:costcenters:update", "fleet:costcenters:delete",
+            "fleet:reports:read", "fleet:reports:export",
         ]
     },
     "hr_manager": {
@@ -491,12 +543,22 @@ DEFAULT_ROLES = {
         "description": "Manager with team oversight permissions",
         "priority": 50,
         "permissions": [
-            "users:read",  # Only team members
-            "timelogs:read", "timelogs:admin_create",  # For team members
+            "users:read",
+            "timelogs:read", "timelogs:admin_create",
             "schedules:read", "schedules:create", "schedules:update", "schedules:approve_swaps",
             "payroll:read",
             "leaves:read", "leaves:approve",
             "reports:read", "analytics:read",
+        ]
+    },
+    "driver": {
+        "description": "Шофьор с достъп до своите данни",
+        "priority": 25,
+        "permissions": [
+            "fleet:vehicles:read_own",
+            "fleet:trips:read_own", "fleet:trips:create_own", "fleet:trips:update_own",
+            "fleet:pretrip:create",
+            "fleet:fuel:read_own",
         ]
     },
     "employee": {

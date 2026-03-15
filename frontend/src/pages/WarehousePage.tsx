@@ -74,7 +74,7 @@ interface ValidatedTextFieldProps {
   disabled?: boolean;
   multiline?: boolean;
   rows?: number;
-  InputProps?: unknown; // MUI InputProps are complex, keeping simple or could use Partial<InputProps>
+  InputProps?: { sx?: object };
   sx?: SxProps<Theme>;
 }
 
@@ -463,6 +463,36 @@ const WarehousePage: React.FC = () => {
   const [foundIngredient, setFoundIngredient] = useState<Ingredient | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
+  const stopScanner = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+        scannerRef.current = null;
+      } catch (e) {
+        console.error('Error stopping scanner:', e);
+      }
+    }
+    setScannerOpen(false);
+    setScannerTarget(null);
+  }, []);
+
+  const handleBarcodeFound = useCallback((barcode: string) => {
+    setSearchQuery(barcode);
+    setScannerOpen(false);
+    
+    if (scannerTarget === 'ingredient') {
+      setIngredientForm({ ...ingredientForm, barcode });
+    } else if (scannerTarget === 'batch') {
+      const ingredient = data?.ingredients?.find((i: Ingredient) => i.barcode === barcode);
+      if (ingredient) {
+        setCurrentBatchItem({ ...currentBatchItem, ingredientId: ingredient.id.toString(), barcode, storageZoneId: ingredient.storageZone?.id?.toString() || '' });
+      } else {
+        setCurrentBatchItem({ ...currentBatchItem, barcode });
+      }
+    }
+    setScannerTarget(null);
+  }, [ingredientForm, scannerTarget, data, currentBatchItem]);
+
   // Start scanner when dialog opens
   useEffect(() => {
     if (scannerOpen && !scannerRef.current) {
@@ -488,38 +518,6 @@ const WarehousePage: React.FC = () => {
       }
     };
   }, [scannerOpen, handleBarcodeFound, stopScanner]);
-
-  const stopScanner = useCallback(async () => {
-    if (scannerRef.current) {
-      try {
-        await scannerRef.current.stop();
-        scannerRef.current = null;
-      } catch (e) {
-        console.error('Error stopping scanner:', e);
-      }
-    }
-    setScannerOpen(false);
-    setScannerTarget(null);
-  }, []);
-
-  const handleBarcodeFound = useCallback((barcode: string) => {
-    setSearchQuery(barcode);
-    setScannerOpen(false);
-    
-    // Handle based on scanner target
-    if (scannerTarget === 'ingredient') {
-      setIngredientForm({ ...ingredientForm, barcode });
-    } else if (scannerTarget === 'batch') {
-      // Find ingredient by barcode and set it
-      const ingredient = data?.ingredients?.find((i: Ingredient) => i.barcode === barcode);
-      if (ingredient) {
-        setCurrentBatchItem({ ...currentBatchItem, ingredientId: ingredient.id.toString(), barcode, storageZoneId: ingredient.storageZone?.id?.toString() || '' });
-      } else {
-        setCurrentBatchItem({ ...currentBatchItem, barcode });
-      }
-    }
-    setScannerTarget(null);
-  }, [ingredientForm, scannerTarget, data, currentBatchItem]);
 
   const openScannerFor = (target: 'ingredient' | 'batch') => {
     setScannerTarget(target);
@@ -766,8 +764,8 @@ const WarehousePage: React.FC = () => {
       setEditZoneForm({
         id: editingZone.id,
         name: editingZone.name || '',
-        tempMin: editingZone.tempMin || '',
-        tempMax: editingZone.tempMax || '',
+        tempMin: editingZone.tempMin != null ? String(editingZone.tempMin) : '',
+        tempMax: editingZone.tempMax != null ? String(editingZone.tempMax) : '',
         description: editingZone.description || '',
         isActive: editingZone.isActive ?? true,
         assetType: editingZone.assetType || 'KMA',
@@ -1028,7 +1026,7 @@ const WarehousePage: React.FC = () => {
                       {item.baselineMinStock} {item.unit}
                     </TableCell>
                     <TableCell>
-                      {parseFloat(item.currentStock) <= parseFloat(item.baselineMinStock) ? (
+                      {Number(item.currentStock) <= Number(item.baselineMinStock) ? (
                         <Chip
                           icon={<WarningIcon />}
                           label="Ниска наличност"
@@ -1105,14 +1103,15 @@ const WarehousePage: React.FC = () => {
                   .filter((b: Batch) => !selectedIngredientId || b.ingredientId === selectedIngredientId)
                   .filter((b: Batch) => b.status === batchFilterStatus)
                   .map((batch: Batch) => {
-                    const isExpired = new Date(batch.expiryDate) < new Date();
+                    const expiryDate = batch.expiryDate ? new Date(batch.expiryDate) : null;
+                    const isExpired = expiryDate ? expiryDate < new Date() : false;
                     return (
                       <TableRow key={batch.id} sx={isExpired ? { backgroundColor: '#fff3e0' } : {}}>
                         <TableCell>{batch.ingredient?.name}</TableCell>
                         <TableCell>{batch.batchNumber || '-'}</TableCell>
                         <TableCell align="right">{batch.quantity} {batch.ingredient?.unit}</TableCell>
                         <TableCell>
-                          {new Date(batch.expiryDate).toLocaleDateString('bg-BG')}
+                          {expiryDate ? expiryDate.toLocaleDateString('bg-BG') : '-'}
                           {isExpired && <Chip label="Изтекъл" color="error" size="small" sx={{ ml: 1 }} />}
                         </TableCell>
                         <TableCell>{batch.supplier?.name || '-'}</TableCell>

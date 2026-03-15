@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Box, Typography, Paper, CircularProgress, 
   IconButton, Container, AppBar, Toolbar, Button 
@@ -45,19 +45,27 @@ const MyCardPage: React.FC = () => {
     }
   };
 
-  const fetchToken = async () => {
-    // Ако не сме админ и не е засечен бекон, първо сканираме
-    // (Забележка: Админите ги пропускаме за лесно тестване)
-    if (!beaconDetected && !loading) {
-        // Първия път ще изискваме ръчно сканиране чрез бутон за UX
-        // Но за сигурност, ако не е засечен, връщаме грешка
-        setError('Моля, застанете до терминала и натиснете "Сканирай за терминал"');
-        setLoading(false);
+  const loadingRef = useRef(loading);
+  const beaconDetectedRef = useRef(beaconDetected);
+  const setTokenRef = useRef(setToken);
+  const setLoadingRef = useRef(setLoading);
+  const setTimeLeftRef = useRef(setTimeLeft);
+  const setErrorRef = useRef(setError);
+  loadingRef.current = loading;
+  beaconDetectedRef.current = beaconDetected;
+  setTokenRef.current = setToken;
+  setLoadingRef.current = setLoading;
+  setTimeLeftRef.current = setTimeLeft;
+  setErrorRef.current = setError;
+
+  const fetchToken = useCallback(async () => {
+    if (!beaconDetectedRef.current && !loadingRef.current) {
+        setErrorRef.current('Моля, застанете до терминала и натиснете "Сканирай за терминал"');
+        setLoadingRef.current(false);
         return;
     }
 
     try {
-      // Опит за вземане на GPS координати
       let coords = '';
       try {
         const pos = await new Promise<GeolocationPosition>((res, rej) => {
@@ -71,20 +79,21 @@ const MyCardPage: React.FC = () => {
       const response = await axios.get(`${API_URL}/auth/qr-token${coords}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
-      setToken(response.data.qr_token);
-      setLoading(false);
-      setTimeLeft(30);
-      setError(null);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Грешка при зареждане на картата');
-      setLoading(false);
+      setTokenRef.current(response.data.qr_token);
+      setLoadingRef.current(false);
+      setTimeLeftRef.current(30);
+      setErrorRef.current(null);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } } };
+      setErrorRef.current(error.response?.data?.detail || 'Грешка при зареждане на картата');
+      setLoadingRef.current(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchToken();
     const interval = setInterval(() => {
-      setTimeLeft((prev) => {
+      setTimeLeftRef.current((prev: number) => {
         if (prev <= 1) {
           fetchToken();
           return 30;
@@ -94,14 +103,14 @@ const MyCardPage: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchToken]);
 
   // Увеличаване на яркостта за по-лесно сканиране (PWA API)
   useEffect(() => {
     if ('wakeLock' in navigator) {
       try {
         (navigator as any).wakeLock.request('screen');
-      } catch { }
+      } catch { /* intentionally empty */ }
     }
   }, []);
 

@@ -10,7 +10,7 @@ export const AppThemeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [dashboardConfig, setDashboardConfig] = useState<DashboardConfig>(() => {
     const saved = localStorage.getItem('dashboardConfig');
-    return saved ? JSON.parse(saved) : { showChart: true, showWeeklyTable: true };
+    return saved ? JSON.parse(saved) : { showChart: true, showWeeklyTable: true, showFleetCard: true };
   });
 
   const toggleTheme = () => {
@@ -35,17 +35,16 @@ export const AppThemeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         palette: {
           mode,
           primary: {
-            main: '#3f51b5',
+            main: '#2563eb',
           },
           secondary: {
-            main: '#f50057',
+            main: '#8b5cf6',
           },
           background: {
-            default: mode === 'light' 
-              ? '#f5f5f5' 
-              : 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
-            paper: mode === 'light' ? '#ffffff' : '#1e293b',
+            default: mode === 'light' ? '#f8fafc' : '#0a0e17',
+            paper: mode === 'light' ? '#ffffff' : '#111827',
           },
+          divider: mode === 'light' ? '#e2e8f0' : '#1e293b',
         },
         typography: {
           fontSize: 12.8,

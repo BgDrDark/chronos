@@ -1423,6 +1423,9 @@ class EmploymentContract(Base):
     work_class: Mapped[str] = mapped_column(String(10), nullable=True)  # Трудов клас (I, II, III, IV)
     dangerous_work: Mapped[bool] = mapped_column(Boolean, default=False)  # Вредни условия на труд
     
+    # Връзка към шаблон
+    template_id: Mapped[int] = mapped_column(Integer, ForeignKey("contract_templates.id", ondelete="SET NULL"), nullable=True)
+    
     created_at = Column(DateTime, default=sofia_now)
     updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
     
@@ -1452,12 +1455,178 @@ class ContractAnnex(Base):
     # Статус
     is_signed: Mapped[bool] = mapped_column(Boolean, default=False)
     signed_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    
+    # Нови полета за e-signature и шаблони
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    template_id: Mapped[int] = mapped_column(Integer, ForeignKey("annex_templates.id", ondelete="SET NULL"), nullable=True)
+    change_type: Mapped[str] = mapped_column(String(50), nullable=True)
+    change_description: Mapped[str] = mapped_column(Text, nullable=True)
+    
+    signature_requested_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    signed_by_employee: Mapped[bool] = mapped_column(Boolean, default=False)
+    signed_by_employee_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    signed_by_employer: Mapped[bool] = mapped_column(Boolean, default=False)
+    signed_by_employer_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    rejection_reason: Mapped[str] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
 
     contract = relationship("EmploymentContract", backref="annexes")
     position = relationship("Position")
+
+
+class ContractTemplate(Base):
+    """Шаблон за трудов договор"""
+    __tablename__ = "contract_templates"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    
+    contract_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    work_hours_per_week: Mapped[int] = mapped_column(Integer, default=40)
+    probation_months: Mapped[int] = mapped_column(Integer, default=6)
+    salary_calculation_type: Mapped[str] = mapped_column(String(20), default='gross')
+    payment_day: Mapped[int] = mapped_column(Integer, default=25)
+    night_work_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=0.5)
+    overtime_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=1.5)
+    holiday_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=2.0)
+    work_class: Mapped[str] = mapped_column(String(10), nullable=True)
+    
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
+    
+    company = relationship("Company", backref="contract_templates")
+    versions = relationship("ContractTemplateVersion", back_populates="template", cascade="all, delete-orphan")
+
+
+class ContractTemplateVersion(Base):
+    """Версия на шаблон за договор"""
+    __tablename__ = "contract_template_versions"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    template_id: Mapped[int] = mapped_column(Integer, ForeignKey("contract_templates.id", ondelete="CASCADE"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    
+    contract_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    work_hours_per_week: Mapped[int] = mapped_column(Integer, nullable=False)
+    probation_months: Mapped[int] = mapped_column(Integer, nullable=False)
+    salary_calculation_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    payment_day: Mapped[int] = mapped_column(Integer, nullable=False)
+    night_work_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
+    overtime_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
+    holiday_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
+    work_class: Mapped[str] = mapped_column(String(10), nullable=True)
+    
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    change_note: Mapped[str] = mapped_column(String(500), nullable=True)
+    
+    template = relationship("ContractTemplate", back_populates="versions")
+    sections = relationship("ContractTemplateSection", back_populates="version", cascade="all, delete-orphan")
+
+
+class ContractTemplateSection(Base):
+    """Секция/клауза в шаблон за договор"""
+    __tablename__ = "contract_template_sections"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    template_id: Mapped[int] = mapped_column(Integer, ForeignKey("contract_templates.id", ondelete="CASCADE"), nullable=False)
+    version_id: Mapped[int] = mapped_column(Integer, ForeignKey("contract_template_versions.id", ondelete="CASCADE"), nullable=False)
+    
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=True)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    
+    version = relationship("ContractTemplateVersion", back_populates="sections")
+
+
+class AnnexTemplate(Base):
+    """Шаблон за допълнително споразумение"""
+    __tablename__ = "annex_templates"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    
+    change_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    
+    new_base_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=True)
+    new_work_hours_per_week: Mapped[int] = mapped_column(Integer, nullable=True)
+    new_night_work_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=True)
+    new_overtime_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=True)
+    new_holiday_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=True)
+    
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
+    
+    company = relationship("Company", backref="annex_templates")
+    versions = relationship("AnnexTemplateVersion", back_populates="template", cascade="all, delete-orphan")
+
+
+class AnnexTemplateVersion(Base):
+    """Версия на шаблон за анекс"""
+    __tablename__ = "annex_template_versions"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    template_id: Mapped[int] = mapped_column(Integer, ForeignKey("annex_templates.id", ondelete="CASCADE"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    
+    change_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    new_base_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=True)
+    new_work_hours_per_week: Mapped[int] = mapped_column(Integer, nullable=True)
+    new_night_work_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=True)
+    new_overtime_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=True)
+    new_holiday_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=True)
+    
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    change_note: Mapped[str] = mapped_column(String(500), nullable=True)
+    
+    template = relationship("AnnexTemplate", back_populates="versions")
+    sections = relationship("AnnexTemplateSection", back_populates="version", cascade="all, delete-orphan")
+
+
+class AnnexTemplateSection(Base):
+    """Секция/клауза в шаблон за анекс"""
+    __tablename__ = "annex_template_sections"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    template_id: Mapped[int] = mapped_column(Integer, ForeignKey("annex_templates.id", ondelete="CASCADE"), nullable=False)
+    version_id: Mapped[int] = mapped_column(Integer, ForeignKey("annex_template_versions.id", ondelete="CASCADE"), nullable=False)
+    
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=True)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    
+    version = relationship("AnnexTemplateVersion", back_populates="sections")
+
+
+class ClauseTemplate(Base):
+    """Библиотека от преизползваеми клаузи"""
+    __tablename__ = "clause_templates"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
+    
+    company = relationship("Company", backref="clause_templates")
 
 
 class PayrollPeriod(Base):

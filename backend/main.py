@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from strawberry.fastapi import GraphQLRouter
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette_csrf import CSRFMiddleware
-from backend.routers import auth, export, system, kiosk, webauthn, google, documents, notifications, warehouse, gateway, terminal
+from backend.routers import auth, export, system, kiosk, webauthn, google, documents, notifications, warehouse, gateway, terminal, trz_export
 from backend.graphql.schema import schema
 from backend.database.database import get_db
 from backend.database.session_proxy import LockedSession
@@ -208,6 +208,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(export.router)
+app.include_router(trz_export.router)
 app.include_router(system.router)
 app.include_router(notifications.router)
 app.include_router(warehouse.router)

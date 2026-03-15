@@ -230,6 +230,16 @@ class ContractAnnex:
     holiday_rate: Optional[float]
     is_signed: bool
     signed_at: Optional[datetime.datetime]
+    status: str
+    template_id: Optional[int]
+    change_type: Optional[str]
+    change_description: Optional[str]
+    signature_requested_at: Optional[datetime.datetime]
+    signed_by_employee: bool
+    signed_by_employee_at: Optional[datetime.datetime]
+    signed_by_employer: bool
+    signed_by_employer_at: Optional[datetime.datetime]
+    rejection_reason: Optional[str]
     created_at: datetime.datetime
 
     @strawberry.field
@@ -253,8 +263,221 @@ class ContractAnnex:
             holiday_rate=float(instance.holiday_rate) if instance.holiday_rate else None,
             is_signed=instance.is_signed,
             signed_at=instance.signed_at,
+            status=instance.status if instance.status else "draft",
+            template_id=instance.template_id,
+            change_type=instance.change_type,
+            change_description=instance.change_description,
+            signature_requested_at=instance.signature_requested_at,
+            signed_by_employee=instance.signed_by_employee if instance.signed_by_employee else False,
+            signed_by_employee_at=instance.signed_by_employee_at,
+            signed_by_employer=instance.signed_by_employer if instance.signed_by_employer else False,
+            signed_by_employer_at=instance.signed_by_employer_at,
+            rejection_reason=instance.rejection_reason,
             created_at=instance.created_at
         )
+
+
+@strawberry.type
+class ContractTemplateSection:
+    id: int
+    template_id: int
+    version_id: int
+    title: str
+    content: Optional[str]
+    order_index: int
+    is_required: bool
+
+
+@strawberry.type
+class ContractTemplateVersion:
+    id: int
+    template_id: int
+    version: int
+    contract_type: str
+    work_hours_per_week: int
+    probation_months: int
+    salary_calculation_type: str
+    payment_day: int
+    night_work_rate: float
+    overtime_rate: float
+    holiday_rate: float
+    work_class: Optional[str]
+    is_current: bool
+    created_by: Optional[str]
+    created_at: datetime.datetime
+    change_note: Optional[str]
+
+    @strawberry.field
+    async def sections(self, info: strawberry.Info) -> List["ContractTemplateSection"]:
+        from sqlalchemy import select
+        from backend.database.models import ContractTemplateSection as ModelSection
+        db = info.context["db"]
+        stmt = select(ModelSection).where(ModelSection.version_id == self.id).order_by(ModelSection.order_index)
+        result = await db.execute(stmt)
+        sections = result.scalars().all()
+        return [ContractTemplateSection(
+            id=s.id,
+            template_id=s.template_id,
+            version_id=s.version_id,
+            title=s.title,
+            content=s.content,
+            order_index=s.order_index,
+            is_required=s.is_required
+        ) for s in sections]
+
+
+@strawberry.type
+class ContractTemplate:
+    id: int
+    company_id: int
+    name: str
+    description: Optional[str]
+    contract_type: str
+    work_hours_per_week: int
+    probation_months: int
+    salary_calculation_type: str
+    payment_day: int
+    night_work_rate: float
+    overtime_rate: float
+    holiday_rate: float
+    work_class: Optional[str]
+    is_active: bool
+    created_at: datetime.datetime
+
+    @strawberry.field
+    async def current_version(self, info: strawberry.Info) -> Optional["ContractTemplateVersion"]:
+        from sqlalchemy import select
+        from backend.database.models import ContractTemplateVersion as ModelVersion
+        db = info.context["db"]
+        stmt = select(ModelVersion).where(
+            ModelVersion.template_id == self.id,
+            ModelVersion.is_current == True
+        ).order_by(ModelVersion.version.desc())
+        result = await db.execute(stmt)
+        version = result.scalar_one_or_none()
+        if not version:
+            return None
+        return ContractTemplateVersion(
+            id=version.id,
+            template_id=version.template_id,
+            version=version.version,
+            contract_type=version.contract_type,
+            work_hours_per_week=version.work_hours_per_week,
+            probation_months=version.probation_months,
+            salary_calculation_type=version.salary_calculation_type,
+            payment_day=version.payment_day,
+            night_work_rate=float(version.night_work_rate),
+            overtime_rate=float(version.overtime_rate),
+            holiday_rate=float(version.holiday_rate),
+            work_class=version.work_class,
+            is_current=version.is_current,
+            created_by=version.created_by,
+            created_at=version.created_at,
+            change_note=version.change_note
+        )
+
+
+@strawberry.type
+class AnnexTemplateSection:
+    id: int
+    template_id: int
+    version_id: int
+    title: str
+    content: Optional[str]
+    order_index: int
+    is_required: bool
+
+
+@strawberry.type
+class AnnexTemplateVersion:
+    id: int
+    template_id: int
+    version: int
+    change_type: str
+    new_base_salary: Optional[float]
+    new_work_hours_per_week: Optional[int]
+    new_night_work_rate: Optional[float]
+    new_overtime_rate: Optional[float]
+    new_holiday_rate: Optional[float]
+    is_current: bool
+    created_by: Optional[str]
+    created_at: datetime.datetime
+    change_note: Optional[str]
+
+    @strawberry.field
+    async def sections(self, info: strawberry.Info) -> List["AnnexTemplateSection"]:
+        from sqlalchemy import select
+        from backend.database.models import AnnexTemplateSection as ModelSection
+        db = info.context["db"]
+        stmt = select(ModelSection).where(ModelSection.version_id == self.id).order_by(ModelSection.order_index)
+        result = await db.execute(stmt)
+        sections = result.scalars().all()
+        return [AnnexTemplateSection(
+            id=s.id,
+            template_id=s.template_id,
+            version_id=s.version_id,
+            title=s.title,
+            content=s.content,
+            order_index=s.order_index,
+            is_required=s.is_required
+        ) for s in sections]
+
+
+@strawberry.type
+class AnnexTemplate:
+    id: int
+    company_id: int
+    name: str
+    description: Optional[str]
+    change_type: str
+    new_base_salary: Optional[float]
+    new_work_hours_per_week: Optional[int]
+    new_night_work_rate: Optional[float]
+    new_overtime_rate: Optional[float]
+    new_holiday_rate: Optional[float]
+    is_active: bool
+    created_at: datetime.datetime
+
+    @strawberry.field
+    async def current_version(self, info: strawberry.Info) -> Optional["AnnexTemplateVersion"]:
+        from sqlalchemy import select
+        from backend.database.models import AnnexTemplateVersion as ModelVersion
+        db = info.context["db"]
+        stmt = select(ModelVersion).where(
+            ModelVersion.template_id == self.id,
+            ModelVersion.is_current == True
+        ).order_by(ModelVersion.version.desc())
+        result = await db.execute(stmt)
+        version = result.scalar_one_or_none()
+        if not version:
+            return None
+        return AnnexTemplateVersion(
+            id=version.id,
+            template_id=version.template_id,
+            version=version.version,
+            change_type=version.change_type,
+            new_base_salary=float(version.new_base_salary) if version.new_base_salary else None,
+            new_work_hours_per_week=version.new_work_hours_per_week,
+            new_night_work_rate=float(version.new_night_work_rate) if version.new_night_work_rate else None,
+            new_overtime_rate=float(version.new_overtime_rate) if version.new_overtime_rate else None,
+            new_holiday_rate=float(version.new_holiday_rate) if version.new_holiday_rate else None,
+            is_current=version.is_current,
+            created_by=version.created_by,
+            created_at=version.created_at,
+            change_note=version.change_note
+        )
+
+
+@strawberry.type
+class ClauseTemplate:
+    id: int
+    company_id: int
+    title: str
+    content: Optional[str]
+    category: str
+    is_active: bool
+    created_at: datetime.datetime
+
 
 @strawberry.type
 class PayrollLegalSettings:

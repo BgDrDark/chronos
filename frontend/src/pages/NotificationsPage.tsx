@@ -154,6 +154,7 @@ export default function NotificationsPage({ tab }: Props) {
 
   useEffect(() => {
     if (settingsData?.notificationSettings) {
+      // eslint-disable-next-line
       setSettings(settingsData.notificationSettings.map((s: any) => {
         let parsedRecipients: Recipient[] = [];
         try {
@@ -181,6 +182,7 @@ export default function NotificationsPage({ tab }: Props) {
 
   useEffect(() => {
     if (smtpData?.smtpSettings) {
+      // eslint-disable-next-line
       setSmtpForm({
         smtpServer: smtpData.smtpSettings.smtpServer || '',
         smtpPort: smtpData.smtpSettings.smtpPort || 587,

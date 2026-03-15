@@ -6,7 +6,7 @@ Comprehensive batch loading for GraphQL N+1 problem resolution
 import asyncio
 from collections import defaultdict
 from typing import List, Dict, Any, Optional, Type, Union
-from datetime import datetime, date
+from datetime import datetime, date, time
 from decimal import Decimal
 
 from strawberry.dataloader import DataLoader
@@ -95,14 +95,14 @@ class UserDataLoader(OptimizedDataLoader):
         )
         
         users = result.scalars().unique().all()
-        user_map = {user.id: user for user in users}
+        user_map = {int(user.id): user for user in users}
         
         # Update cache
         for key in uncached_keys:
-            self.set_cache(key, user_map.get(key))
+            self.set_cache(int(key), user_map.get(int(key)))
         
         # Return results in original order
-        return [user_map.get(key) for key in keys]
+        return [user_map.get(int(key)) for key in keys]
 
 class TimeLogDataLoader(OptimizedDataLoader):
     """Optimized time log data loader with date range support"""
@@ -298,7 +298,7 @@ class LeaveRequestDataLoader(OptimizedDataLoader):
             .where(LeaveRequest.status == 'pending')
             .order_by(LeaveRequest.created_at)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
 class PayslipDataLoader(OptimizedDataLoader):
     """Optimized payslip data loader"""
@@ -395,8 +395,8 @@ class UserPresenceDataLoader(OptimizedDataLoader):
                 presence_data[schedule.user_id]['schedule'] = schedule
         
         # 3. Load time logs for the target date
-        start_dt = datetime.combine(target_date, datetime.time.min)
-        end_dt = datetime.combine(target_date, datetime.time.max)
+        start_dt = datetime.combine(target_date, time.min)
+        end_dt = datetime.combine(target_date, time.max)
         
         timelogs_result = await self.session.execute(
             select(TimeLog)

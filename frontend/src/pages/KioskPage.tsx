@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { 
     Box, Typography, Paper, Button, Container, Dialog, 
@@ -29,9 +29,14 @@ const KioskPage: React.FC = () => {
     const [isVerifying, setIsVerifying] = useState(false);
 
     const navigate = useNavigate();
+    const isScanningRef = useRef(isScanning);
+    const setIsScanningRef = useRef(setIsScanning);
+    const setScanResultRef = useRef(setScanResult);
     const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+    isScanningRef.current = isScanning;
+    setIsScanningRef.current = setIsScanning;
+    setScanResultRef.current = setScanResult;
 
-    // Fetch Kiosk Config (Background etc)
     useEffect(() => {
         const fetchConfig = async () => {
             try {
@@ -40,20 +45,20 @@ const KioskPage: React.FC = () => {
                 if (data.background_image) {
                     setBackgroundImage(getApiUrl(`uploads/${data.background_image}`));
                 }
-            } catch (e) {
-                console.error("Failed to fetch kiosk config", e);
+            } catch (error) {
+                console.error('Failed to fetch config:', error);
             }
         };
         fetchConfig();
     }, []);
 
-    const onScanSuccess = async (decodedText: string) => {
-        if (!isScanning) return;
+    const onScanSuccess = useCallback(async (decodedText: string) => {
+        if (!isScanningRef.current) return;
         
         if (scannerRef.current) {
             scannerRef.current.pause();
         }
-        setIsScanning(false);
+        setIsScanningRef.current(false);
 
         try {
             const response = await fetch(getApiUrl('kiosk/scan'), {
@@ -68,7 +73,7 @@ const KioskPage: React.FC = () => {
             const data = await response.json();
             
             if (response.ok) {
-                setScanResult({ 
+                setScanResultRef.current({ 
                     status: 'success', 
                     message: data.message, 
                     user: data.user,
@@ -76,21 +81,21 @@ const KioskPage: React.FC = () => {
                 });
                 new Audio('/success.mp3').play().catch(() => {}); 
             } else {
-                setScanResult({ status: 'error', message: data.detail || 'Грешка при сканиране' });
+                setScanResultRef.current({ status: 'error', message: data.detail || 'Грешка при сканиране' });
                 new Audio('/error.mp3').play().catch(() => {});
             }
         } catch {
-            setScanResult({ status: 'error', message: "Мрежова грешка" });
+            setScanResultRef.current({ status: 'error', message: "Мрежова грешка" });
         }
 
         setTimeout(() => {
-            setScanResult(null);
-            setIsScanning(true);
+            setScanResultRef.current(null);
+            setIsScanningRef.current(true);
             if (scannerRef.current) {
                 scannerRef.current.resume();
             }
         }, 4000);
-    };
+    }, []);
 
     const onScanFailure = () => {
         // Ignored
@@ -143,7 +148,7 @@ const KioskPage: React.FC = () => {
                 console.error("Failed to clear html5QrcodeScanner. ", error);
             });
         };
-    }, []);
+    }, [onScanSuccess]);
 
     const defaultBg = 'url(https://images.unsplash.com/photo-1497215728101-856f4ea42174?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80)';
 

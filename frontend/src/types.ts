@@ -20,6 +20,15 @@ export interface Role {
   description?: string | null;
 }
 
+export interface Module {
+  id: number;
+  code: string;
+  name: string;
+  description?: string | null;
+  isEnabled: boolean;
+  isPremium?: boolean;
+}
+
 export interface Company {
   id: number;
   name: string;
@@ -47,9 +56,11 @@ export interface Position {
 
 export interface EmploymentContract {
   id: number;
+  contractNumber?: string | null;
   contractType: string;
   startDate: string;
   endDate?: string | null;
+  isActive?: boolean;
   baseSalary?: string | number | null;
   workHoursPerWeek?: number | null;
   probationMonths?: number | null;
@@ -64,6 +75,136 @@ export interface EmploymentContract {
   holidayRate?: string | number | null;
   workClass?: string | null;
   dangerousWork?: boolean;
+  position?: Position | null;
+}
+
+export interface ContractTemplateSection {
+  id: number;
+  templateId: number;
+  versionId: number;
+  title: string;
+  content: string | null;
+  orderIndex: number;
+  isRequired: boolean;
+}
+
+export interface ContractTemplateVersion {
+  id: number;
+  templateId: number;
+  version: number;
+  contractType: string;
+  workHoursPerWeek: number;
+  probationMonths: number;
+  salaryCalculationType: string;
+  paymentDay: number;
+  nightWorkRate: number;
+  overtimeRate: number;
+  holidayRate: number;
+  workClass: string | null;
+  isCurrent: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  changeNote: string | null;
+  sections?: ContractTemplateSection[];
+}
+
+export interface ContractTemplate {
+  id: number;
+  companyId: number;
+  name: string;
+  description: string | null;
+  contractType: string;
+  workHoursPerWeek: number;
+  probationMonths: number;
+  salaryCalculationType: string;
+  paymentDay: number;
+  nightWorkRate: number;
+  overtimeRate: number;
+  holidayRate: number;
+  workClass: string | null;
+  isActive: boolean;
+  createdAt: string;
+  currentVersion?: ContractTemplateVersion | null;
+}
+
+export interface AnnexTemplateSection {
+  id: number;
+  templateId: number;
+  versionId: number;
+  title: string;
+  content: string | null;
+  orderIndex: number;
+  isRequired: boolean;
+}
+
+export interface AnnexTemplateVersion {
+  id: number;
+  templateId: number;
+  version: number;
+  changeType: string;
+  newBaseSalary: number | null;
+  newWorkHoursPerWeek: number | null;
+  newNightWorkRate: number | null;
+  newOvertimeRate: number | null;
+  newHolidayRate: number | null;
+  isCurrent: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  changeNote: string | null;
+  sections?: AnnexTemplateSection[];
+}
+
+export interface AnnexTemplate {
+  id: number;
+  companyId: number;
+  name: string;
+  description: string | null;
+  changeType: string;
+  newBaseSalary: number | null;
+  newWorkHoursPerWeek: number | null;
+  newNightWorkRate: number | null;
+  newOvertimeRate: number | null;
+  newHolidayRate: number | null;
+  isActive: boolean;
+  createdAt: string;
+  currentVersion?: AnnexTemplateVersion | null;
+}
+
+export interface ClauseTemplate {
+  id: number;
+  companyId: number;
+  title: string;
+  content: string | null;
+  category: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface ContractAnnex {
+  id: number;
+  contractId: number;
+  annexNumber: string | null;
+  effectiveDate: string;
+  baseSalary: number | null;
+  positionId: number | null;
+  workHoursPerWeek: number | null;
+  nightWorkRate: number | null;
+  overtimeRate: number | null;
+  holidayRate: number | null;
+  isSigned: boolean;
+  signedAt: string | null;
+  status: string;
+  templateId: number | null;
+  changeType: string | null;
+  changeDescription: string | null;
+  signatureRequestedAt: string | null;
+  signedByEmployee: boolean;
+  signedByEmployeeAt: string | null;
+  signedByEmployer: boolean;
+  signedByEmployerAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  position?: Position | null;
 }
 
 export interface User {
@@ -75,6 +216,7 @@ export interface User {
   phoneNumber?: string | null;
   address?: string | null;
   egn?: string | null;
+  pin?: string | null;
   birthDate?: string | null;
   iban?: string | null;
   isActive: boolean;
@@ -306,6 +448,8 @@ export interface UserDocument {
 
 export interface InvoiceItem {
   id: number;
+  ingredientId?: number | null;
+  batchId?: number | null;
   name: string;
   quantity: number;
   unit: string;
@@ -327,6 +471,7 @@ export interface Invoice {
   documentType: string;
   griff?: string | null;
   description?: string | null;
+  deliveryMethod?: string | null;
   date: string;
   supplier?: Supplier | null;
   clientName?: string | null;
@@ -339,7 +484,10 @@ export interface Invoice {
   vatAmount: number;
   total: number;
   paymentMethod: string;
+  paymentDate?: string | null;
+  dueDate?: string | null;
   status: string;
+  notes?: string | null;
   isCorrected?: boolean;
   batch?: Batch | null;
   originalInvoiceId?: number | null;
@@ -567,6 +715,35 @@ export interface ScheduleTemplate {
   id: number;
   name: string;
   description?: string | null;
+  items?: ScheduleTemplateItem[];
+}
+
+export interface ScheduleTemplateItem {
+  dayIndex: number;
+  shiftId?: number | null;
+  shift?: { name: string } | null;
+}
+
+export interface Webhook {
+  id: number;
+  url: string;
+  description?: string | null;
+  isActive: boolean;
+  events?: string[];
+}
+
+export interface UserPresence {
+  user: {
+    id: number;
+    firstName?: string | null;
+    lastName?: string | null;
+    email: string;
+  };
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
+  actualArrival?: string | null;
+  actualDeparture?: string | null;
+  status: string;
 }
 
 export interface StorageZone {
@@ -741,7 +918,15 @@ export interface Order {
   clientPhone?: string;
   total?: number;
   createdAt?: string;
-  recipe?: { id: number; name: string };
+  productionDeadline?: string | null;
+  recipe?: { 
+    id: number; 
+    name: string;
+    ingredients?: { 
+      ingredient: { name: string; unit: string; currentStock: number | null }; 
+      quantityNet: number 
+    }[] 
+  };
   productionRecordByOrder?: {
     workers?: { id: number; name: string }[];
     ingredients?: { id: number; name: string; quantity: number }[];
@@ -773,18 +958,48 @@ export interface Terminal {
   alias?: string;
   mode?: string;
   isActive?: boolean;
+  deviceName?: string;
+  deviceModel?: string;
+  osVersion?: string;
+  lastSeen?: string;
+  [key: string]: unknown;
 }
 
 export interface Gateway {
   id: number;
   name: string;
   ipAddress?: string;
+  isActive?: boolean;
+  alias?: string;
+  lastHeartbeat?: string;
+  [key: string]: unknown;
 }
 
 export interface AccessZone {
   id: number;
   name: string;
+  zoneId?: number;
   authorizedUsers?: { id: number; firstName?: string; lastName?: string }[];
+  level?: number;
+  requiredHoursStart?: string;
+  requiredHours_end?: string;
+  antiPassbackEnabled?: boolean;
+  antiPassbackType?: string;
+  [key: string]: unknown;
+}
+
+export interface AccessDoor {
+  id: number;
+  name: string;
+  terminalId?: string;
+  zoneId?: number;
+  isOnline?: boolean;
+  zone?: string;
+  zoneDbId?: number;
+  deviceId?: string;
+  relayNumber?: number;
+  doorId?: number;
+  [key: string]: unknown;
 }
 
 export interface LabelData {
@@ -794,4 +1009,41 @@ export interface LabelData {
   expiryDate?: string;
   qrCodeContent?: string;
   batchNumber?: string;
+}
+
+export interface AccessDoor {
+  id: number;
+  name: string;
+  terminalId?: string;
+  zoneId?: number;
+  isOnline?: boolean;
+  zone?: string;
+  zoneDbId?: number;
+  deviceId?: string;
+  relayNumber?: number;
+}
+
+export interface AccessCode {
+  id: number;
+  code: string;
+  zoneId?: number;
+  isActive?: boolean;
+  usesRemaining?: number;
+  codeType?: string;
+  [key: string]: unknown;
+}
+
+export interface AccessLog {
+  id: number;
+  timestamp: string;
+  userId?: number;
+  doorId?: number;
+  userName?: string;
+  zoneName?: string;
+  result?: string;
+}
+
+export interface Company {
+  id: number;
+  name: string;
 }

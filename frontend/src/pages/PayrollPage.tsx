@@ -2,14 +2,14 @@ import React, { useState } from 'react';
 import {
   Container, Typography, Box, TextField, Button, MenuItem,
   Alert, CircularProgress, Card, CardContent, Divider, Grid, Link, FormControlLabel, Checkbox,
-  Tooltip, Switch, type SelectChangeEvent
+  Tooltip, Switch, type SelectChangeEvent, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
+  InputLabel, Select, FormControl
 } from '@mui/material';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import PaidIcon from '@mui/icons-material/Paid';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import AddIcon from '@mui/icons-material/Add';
 import AssessmentIcon from '@mui/icons-material/Assessment';
-// @ts-expect-error Apollo types conflict with local interfaces
 import { useQuery, useMutation, gql, useLazyQuery } from '@apollo/client';
 import { useForm, Controller } from 'react-hook-form';
 import { useCurrency } from '../currencyContext';
@@ -21,9 +21,15 @@ import {
   type PayrollConfig,
   type Bonus,
   type User,
-  type Position
+  type Position,
+  type ContractTemplate,
+  type AnnexTemplate,
+  type ClauseTemplate,
+  type ContractAnnex,
+  getErrorMessage
 } from '../types';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import PrintIcon from '@mui/icons-material/Print';
 import SecurityIcon from '@mui/icons-material/Security';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloudSyncIcon from '@mui/icons-material/CloudSync';
@@ -241,13 +247,265 @@ const GET_MONTHLY_WORK_DAYS = gql`
   }
 `;
 
+// --- TRZ Templates Queries & Mutations ---
+const GET_CONTRACT_TEMPLATES = gql`
+  query GetContractTemplates {
+    contractTemplates {
+      id
+      companyId
+      name
+      description
+      contractType
+      workHoursPerWeek
+      probationMonths
+      salaryCalculationType
+      paymentDay
+      nightWorkRate
+      overtimeRate
+      holidayRate
+      workClass
+      isActive
+      createdAt
+      currentVersion {
+        id
+        version
+        isCurrent
+        createdBy
+        createdAt
+        changeNote
+      }
+    }
+  }
+`;
+
+const GET_ANNEX_TEMPLATES = gql`
+  query GetAnnexTemplates {
+    annexTemplates {
+      id
+      companyId
+      name
+      description
+      changeType
+      newBaseSalary
+      newWorkHoursPerWeek
+      newNightWorkRate
+      newOvertimeRate
+      newHolidayRate
+      isActive
+      createdAt
+      currentVersion {
+        id
+        version
+        isCurrent
+        createdBy
+        createdAt
+        changeNote
+      }
+    }
+  }
+`;
+
+const GET_CLAUSE_TEMPLATES = gql`
+  query GetClauseTemplates($category: String) {
+    clauseTemplates(category: $category) {
+      id
+      companyId
+      title
+      content
+      category
+      isActive
+      createdAt
+    }
+  }
+`;
+
+const GET_ANNEXES = gql`
+  query GetAnnexes($status: String) {
+    annexes(status: $status) {
+      id
+      contractId
+      annexNumber
+      effectiveDate
+      status
+      baseSalary
+      changeType
+      isSigned
+      signedByEmployee
+      signedByEmployer
+      createdAt
+    }
+  }
+`;
+
+const GET_CONTRACTS = gql`
+  query GetContracts {
+    users(skip: 0, limit: 1000) {
+      users {
+        id
+        firstName
+        lastName
+        pin
+        employmentContract {
+          id
+          contractNumber
+          startDate
+          endDate
+          isActive
+          contractType
+          baseSalary
+          position {
+            id
+            title
+          }
+        }
+      }
+    }
+  }
+`;
+
+const CREATE_CONTRACT_ANNEX = gql`
+  mutation CreateContractAnnex(
+    $contractId: Int!,
+    $effectiveDate: String!,
+    $annexNumber: String,
+    $baseSalary: Float,
+    $workHoursPerWeek: Int,
+    $nightWorkRate: Float,
+    $overtimeRate: Float,
+    $holidayRate: Float
+  ) {
+    createContractAnnex(
+      contractId: $contractId,
+      effectiveDate: $effectiveDate,
+      annexNumber: $annexNumber,
+      baseSalary: $baseSalary,
+      workHoursPerWeek: $workHoursPerWeek,
+      nightWorkRate: $nightWorkRate,
+      overtimeRate: $overtimeRate,
+      holidayRate: $holidayRate
+    ) {
+      id
+      contractId
+      annexNumber
+      effectiveDate
+      status
+    }
+  }
+`;
+
+const CREATE_CONTRACT_TEMPLATE = gql`
+  mutation CreateContractTemplate(
+    $name: String!,
+    $description: String,
+    $contractType: String!,
+    $workHoursPerWeek: Int!,
+    $probationMonths: Int!,
+    $salaryCalculationType: String!,
+    $paymentDay: Int!,
+    $nightWorkRate: Float!,
+    $overtimeRate: Float!,
+    $holidayRate: Float!,
+    $workClass: String
+  ) {
+    createContractTemplate(
+      name: $name,
+      description: $description,
+      contractType: $contractType,
+      workHoursPerWeek: $workHoursPerWeek,
+      probationMonths: $probationMonths,
+      salaryCalculationType: $salaryCalculationType,
+      paymentDay: $paymentDay,
+      nightWorkRate: $nightWorkRate,
+      overtimeRate: $overtimeRate,
+      holidayRate: $holidayRate,
+      workClass: $workClass
+    ) {
+      id
+      name
+    }
+  }
+`;
+
+const DELETE_CONTRACT_TEMPLATE = gql`
+  mutation DeleteContractTemplate($id: Int!) {
+    deleteContractTemplate(id: $id)
+  }
+`;
+
+const CREATE_ANNEX_TEMPLATE = gql`
+  mutation CreateAnnexTemplate(
+    $name: String!,
+    $description: String,
+    $changeType: String!,
+    $newBaseSalary: Float,
+    $newWorkHoursPerWeek: Int,
+    $newNightWorkRate: Float,
+    $newOvertimeRate: Float,
+    $newHolidayRate: Float
+  ) {
+    createAnnexTemplate(
+      name: $name,
+      description: $description,
+      changeType: $changeType,
+      newBaseSalary: $newBaseSalary,
+      newWorkHoursPerWeek: $newWorkHoursPerWeek,
+      newNightWorkRate: $newNightWorkRate,
+      newOvertimeRate: $newOvertimeRate,
+      newHolidayRate: $newHolidayRate
+    ) {
+      id
+      name
+    }
+  }
+`;
+
+const DELETE_ANNEX_TEMPLATE = gql`
+  mutation DeleteAnnexTemplate($id: Int!) {
+    deleteAnnexTemplate(id: $id)
+  }
+`;
+
+const CREATE_CLAUSE_TEMPLATE = gql`
+  mutation CreateClauseTemplate(
+    $title: String!,
+    $content: String!,
+    $category: String!
+  ) {
+    createClauseTemplate(
+      title: $title,
+      content: $content,
+      category: $category
+    ) {
+      id
+      title
+    }
+  }
+`;
+
+const DELETE_CLAUSE_TEMPLATE = gql`
+  mutation DeleteClauseTemplate($id: Int!) {
+    deleteClauseTemplate(id: $id)
+  }
+`;
+
+const SIGN_CONTRACT_ANNEX = gql`
+  mutation SignContractAnnex($annexId: Int!) {
+    signContractAnnex(annexId: $annexId) {
+      id
+      status
+      isSigned
+      signedAt
+    }
+  }
+`;
+
 // --- Component: Payroll Legal Settings ---
 const PayrollLegalSettings: React.FC = () => {
     const { data, loading, refetch } = useQuery(GET_PAYROLL_LEGAL_SETTINGS);
     const [updateLegal, { loading: updating }] = useMutation(UPDATE_PAYROLL_LEGAL_MUTATION);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-    const { control, handleSubmit, reset } = useForm({
+    const { control, handleSubmit, reset } = useForm<PayrollLegalSettings>({
         defaultValues: {
             maxInsuranceBase: 3750.0,
             employeeInsuranceRate: 13.78,
@@ -265,24 +523,25 @@ const PayrollLegalSettings: React.FC = () => {
         }
     }, [data, reset]);
 
-    const onSubmit = async (formData: PayrollLegalSettings) => {
+    type LegalFormData = PayrollLegalSettings;
+    const onSubmitLegal = async (formData: LegalFormData) => {
         setMessage(null);
         try {
             await updateLegal({
                 variables: {
-                    maxInsuranceBase: parseFloat(formData.maxInsuranceBase),
-                    employeeInsuranceRate: parseFloat(formData.employeeInsuranceRate),
-                    incomeTaxRate: parseFloat(formData.incomeTaxRate),
-                    civilContractCostsRate: parseFloat(formData.civilContractCostsRate),
-                    noiCompensationPercent: parseFloat(formData.noiCompensationPercent),
-                    employerPaidSickDays: parseInt(formData.employerPaidSickDays),
+                    maxInsuranceBase: Number(formData.maxInsuranceBase),
+                    employeeInsuranceRate: Number(formData.employeeInsuranceRate),
+                    incomeTaxRate: Number(formData.incomeTaxRate),
+                    civilContractCostsRate: Number(formData.civilContractCostsRate),
+                    noiCompensationPercent: Number(formData.noiCompensationPercent),
+                    employerPaidSickDays: Number(formData.employerPaidSickDays),
                     defaultTaxResident: formData.defaultTaxResident
                 }
             });
             setMessage({ type: 'success', text: 'Законовите настройки са обновени успешно!' });
             refetch();
-        } catch {
-            setMessage({ type: 'error', text: (err instanceof Error ? _err.message : "Грешка") });
+        } catch (e) {
+            setMessage({ type: 'error', text: e instanceof Error ? e.message : "Грешка" });
         }
     };
 
@@ -297,7 +556,7 @@ const PayrollLegalSettings: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" paragraph>
                     Тук се задават стойностите, определени от законодателството. Променяйте ги само при официални промени в законите!
                 </Typography>
-                <Box component="form" onSubmit={handleSubmit(onSubmit)}>
+          <Box component="form" onSubmit={handleSubmit(onSubmitLegal)}>
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                             <Controller name="maxInsuranceBase" control={control} render={({ field }) => (
@@ -380,7 +639,7 @@ const PayrollReports: React.FC = () => {
             a.href = url;
             a.download = `payslip_${userId}_${startDate}.pdf`;
             a.click();
-        } catch { alert("Грешка при генериране на PDF: " + e.message); }
+        } catch (e) { alert("Грешка при генериране на PDF: " + (e instanceof Error ? e.message : "")); }
     };
 
     const exportToXLSX = async () => {
@@ -396,7 +655,7 @@ const PayrollReports: React.FC = () => {
             a.href = downloadUrl;
             a.download = `payroll_report_${startDate}_${endDate}.xlsx`;
             a.click();
-        } catch { if (_err instanceof Error) if (_err instanceof Error) if (_err instanceof Error) alert(__err.message); }
+        } catch (err) { if (err instanceof Error) alert(err.message); }
     };
 
     const handleGenerate = () => {
@@ -591,8 +850,8 @@ const MonthlyWorkDaysSettings: React.FC = () => {
             setMessage('Запазено успешно!');
             refetch(); // Refetch to confirm save
             setTimeout(() => setMessage(null), 3000);
-        } catch {
-            if (_err instanceof Error) if (_err instanceof Error) if (_err instanceof Error) alert(__err.message);
+        } catch (err) {
+            if (err instanceof Error) alert(err.message);
         }
     };
 
@@ -646,7 +905,7 @@ const GlobalPayrollSettings: React.FC = () => {
       variables: { year: currentYear, month: currentMonth }
     });
 
-    const { control, handleSubmit, reset, watch, setValue, getValues } = useForm({
+    const { control, handleSubmit, reset, watch, setValue, getValues } = useForm<PayrollLegalSettings>({
         defaultValues: {
             hourlyRate: 0,
             monthlySalary: 0,
@@ -666,8 +925,9 @@ const GlobalPayrollSettings: React.FC = () => {
 
     React.useEffect(() => {
         const workDays = workDaysData?.monthlyWorkDays?.daysCount || 22;
-        if (watchedSalary > 0) {
-            const calculatedRate = (watchedSalary / workDays) / 8;
+        const salary = watchedSalary ?? 0;
+        if (salary > 0) {
+            const calculatedRate = (salary / workDays) / 8;
             const rate = parseFloat(calculatedRate.toFixed(4));
             setValue('hourlyRate', rate);
 
@@ -679,15 +939,15 @@ const GlobalPayrollSettings: React.FC = () => {
                     await updateConfig({
                         variables: {
                             hourlyRate: rate.toString(),
-                            monthlySalary: watchedSalary.toString(),
-                            overtimeMultiplier: vals.overtimeMultiplier.toString(),
-                            standardHoursPerDay: Math.round(vals.standardHoursWeekly / 5),
+                            monthlySalary: salary.toString(),
+                            overtimeMultiplier: String(vals.overtimeMultiplier ?? ''),
+                            standardHoursPerDay: Math.round((vals.standardHoursWeekly ?? 40) / 5),
                             currency: vals.currency,
-                            annualLeaveDays: parseInt(vals.annualLeaveDays.toString()),
-                            taxPercent: vals.taxPercent.toString(),
-                            healthInsurancePercent: vals.healthInsurancePercent.toString(),
-                            hasTaxDeduction: vals.hasTaxDeduction,
-                            hasHealthInsurance: vals.hasHealthInsurance
+                            annualLeaveDays: parseInt(String(vals.annualLeaveDays ?? 0)),
+                            taxPercent: String(vals.taxPercent ?? 0),
+                            healthInsurancePercent: String(vals.healthInsurancePercent ?? 0),
+                            hasTaxDeduction: vals.hasTaxDeduction ?? false,
+                            hasHealthInsurance: vals.hasHealthInsurance ?? false
                         }
                     });
                     setSaveStatus('saved');
@@ -718,27 +978,28 @@ const GlobalPayrollSettings: React.FC = () => {
         }
     }, [data, reset]);
 
-    const onSubmit = async (formData: PayrollLegalSettings) => {
+    type GlobalFormData = PayrollLegalSettings;
+    const onSubmitGlobal = async (formData: GlobalFormData) => {
         setMessage(null);
         try {
             await updateConfig({
                 variables: {
-                    hourlyRate: formData.hourlyRate.toString(),
-                    monthlySalary: formData.monthlySalary.toString(),
-                    overtimeMultiplier: formData.overtimeMultiplier.toString(),
-                    standardHoursPerDay: Math.round(formData.standardHoursWeekly / 5),
-                    currency: formData.currency,
-                    annualLeaveDays: parseInt(formData.annualLeaveDays),
-                    taxPercent: formData.taxPercent.toString(),
-                    healthInsurancePercent: formData.healthInsurancePercent.toString(),
-                    hasTaxDeduction: formData.hasTaxDeduction,
-                    hasHealthInsurance: formData.hasHealthInsurance
+                    hourlyRate: String(formData.hourlyRate ?? 0),
+                    monthlySalary: String(formData.monthlySalary ?? 0),
+                    overtimeMultiplier: String(formData.overtimeMultiplier ?? 1),
+                    standardHoursPerDay: Math.round((formData.standardHoursWeekly ?? 40) / 5),
+                    currency: formData.currency ?? 'EUR',
+                    annualLeaveDays: Number(formData.annualLeaveDays ?? 20),
+                    taxPercent: String(formData.taxPercent ?? 10),
+                    healthInsurancePercent: String(formData.healthInsurancePercent ?? 5),
+                    hasTaxDeduction: formData.hasTaxDeduction ?? true,
+                    hasHealthInsurance: formData.hasHealthInsurance ?? true
                 }
             });
             setMessage({ type: 'success', text: 'Глобалните настройки са обновени!' });
             refreshCurrency(); // Refresh global currency context
-        } catch {
-            setMessage({ type: 'error', text: (err instanceof Error ? _err.message : "Грешка") });
+        } catch (e) {
+            setMessage({ type: 'error', text: e instanceof Error ? e.message : "Грешка" });
         }
     };
 
@@ -751,7 +1012,7 @@ const GlobalPayrollSettings: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" paragraph>
                     Тези настройки важат за всички служители, които нямат индивидуална конфигурация.
                 </Typography>
-                <Box component="form" onSubmit={handleSubmit(onSubmit)}>
+                <Box component="form" onSubmit={handleSubmit(onSubmitGlobal)}>
                     <Grid container spacing={2}>
                         <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                             <Controller name="hourlyRate" control={control} render={({ field }) => (
@@ -795,19 +1056,20 @@ const GlobalPayrollSettings: React.FC = () => {
                         
                         <Grid size={{ xs: 6, md: 3 }}>
                             <FormControlLabel
-                                control={<Controller name="hasTaxDeduction" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+                                control={<Controller name="hasTaxDeduction" control={control} render={({ field }) => <Checkbox {...field} checked={field.value ?? false} />} />}
                                 label="ДДФЛ"
                             />
                         </Grid>
                         <Grid size={{ xs: 6, md: 3 }}>
                             <Controller name="taxPercent" control={control} render={({ field }) => (
+                                // eslint-disable-next-line react-hooks/incompatible-library
                                 <TextField {...field} fullWidth label="ДДФЛ %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!watch('hasTaxDeduction')} />
                             )} />
                         </Grid>
                         
                         <Grid size={{ xs: 6, md: 3 }}>
                             <FormControlLabel
-                                control={<Controller name="hasHealthInsurance" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+                                control={<Controller name="hasHealthInsurance" control={control} render={({ field }) => <Checkbox {...field} checked={field.value ?? false} />} />}
                                 label="Осигуровки"
                             />
                         </Grid>
@@ -885,8 +1147,8 @@ const AdvanceLoanManager: React.FC = () => {
             alert("Записано успешно!");
             setAmount('');
             setDesc('');
-        } catch {
-            alert("Грешка: " + e.message);
+        } catch (e) {
+            alert("Грешка: " + (e instanceof Error ? e.message : ""));
         } finally {
             setLoading(false);
         }
@@ -985,7 +1247,7 @@ const PayrollSettings: React.FC = () => {
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-  const { control, handleSubmit, reset, watch, setValue, getValues } = useForm({
+  const { control, handleSubmit, reset, watch, setValue, getValues } = useForm<PayrollLegalSettings>({
     defaultValues: {
       targetId: '',
       hourlyRate: 0,
@@ -1009,8 +1271,9 @@ const PayrollSettings: React.FC = () => {
   // Auto-calculate hourly rate when salary changes and auto-save
   React.useEffect(() => {
     const workDays = workDaysData?.monthlyWorkDays?.daysCount || 22;
-    if (watchedSalary > 0 && selectedTargetId) {
-      const calculatedRate = (watchedSalary / workDays) / 8;
+    const salary = watchedSalary ?? 0;
+    if (salary > 0 && selectedTargetId) {
+      const calculatedRate = (salary / workDays) / 8;
       const rate = parseFloat(calculatedRate.toFixed(4));
       setValue('hourlyRate', rate);
 
@@ -1019,17 +1282,17 @@ const PayrollSettings: React.FC = () => {
       autoSaveTimer.current = setTimeout(async () => {
         try {
           const vals = getValues();
-          const dailyHours = vals.standardHoursWeekly / 5;
+          const dailyHours = (vals.standardHoursWeekly ?? 40) / 5;
           const variables = {
             hourlyRate: rate.toString(),
-            monthlySalary: watchedSalary.toString(),
-            annualLeaveDays: parseInt(vals.annualLeaveDays.toString()),
+            monthlySalary: salary.toString(),
+            annualLeaveDays: parseInt(String(vals.annualLeaveDays ?? 0)),
             currency: vals.currency,
-            overtimeMultiplier: vals.overtimeMultiplier.toString(),
-            standardHoursPerDay: parseInt(Math.round(dailyHours).toString()),
-            taxPercent: vals.taxPercent.toString(),
-            healthInsurancePercent: vals.healthInsurancePercent.toString(),
-            hasTaxDeduction: vals.hasTaxDeduction,
+            overtimeMultiplier: String(vals.overtimeMultiplier ?? ''),
+            standardHoursPerDay: parseInt(String(Math.round(dailyHours))),
+            taxPercent: String(vals.taxPercent ?? 0),
+            healthInsurancePercent: String(vals.healthInsurancePercent ?? 0),
+            hasTaxDeduction: vals.hasTaxDeduction ?? false,
             hasHealthInsurance: vals.hasHealthInsurance
           };
 
@@ -1075,8 +1338,8 @@ const PayrollSettings: React.FC = () => {
       setBonusAmount('');
       setBonusDescription('');
       await refetchBonuses();
-    } catch {
-      if (_err instanceof Error) if (_err instanceof Error) alert(__err.message);
+    } catch (err) {
+      if (err instanceof Error) alert(err.message);
     }
   };
 
@@ -1084,8 +1347,8 @@ const PayrollSettings: React.FC = () => {
     try {
       await removeBonus({ variables: { id } });
       await refetchBonuses();
-    } catch {
-      if (_err instanceof Error) if (_err instanceof Error) alert(__err.message);
+    } catch (err) {
+      if (err instanceof Error) alert(err.message);
     }
   };
 
@@ -1160,43 +1423,44 @@ const PayrollSettings: React.FC = () => {
     }
   }, [selectedTargetId, mode, data, globalData, reset]);
 
-  const onSubmit = async (formData: PayrollLegalSettings) => {
+  type IndividualFormData = PayrollLegalSettings;
+  const onSubmitIndividual = async (formData: IndividualFormData) => {
     setMessage(null);
     try {
-      const dailyHours = formData.standardHoursWeekly / 5;
+      const dailyHours = (formData.standardHoursWeekly ?? 40) / 5;
 
       const variables = {
-        hourlyRate: formData.hourlyRate.toString(), 
-        monthlySalary: formData.monthlySalary ? formData.monthlySalary.toString() : null,
-        annualLeaveDays: parseInt(formData.annualLeaveDays),
-        currency: formData.currency,
-        overtimeMultiplier: formData.overtimeMultiplier.toString(),
-        standardHoursPerDay: parseInt(Math.round(dailyHours).toString()),
-        taxPercent: formData.taxPercent.toString(),
-        healthInsurancePercent: formData.healthInsurancePercent.toString(),
-        hasTaxDeduction: formData.hasTaxDeduction,
-        hasHealthInsurance: formData.hasHealthInsurance
+        hourlyRate: String(formData.hourlyRate ?? 0), 
+        monthlySalary: formData.monthlySalary ? String(formData.monthlySalary) : null,
+        annualLeaveDays: Number(formData.annualLeaveDays ?? 20),
+        currency: formData.currency ?? 'EUR',
+        overtimeMultiplier: String(formData.overtimeMultiplier ?? 1),
+        standardHoursPerDay: Number(Math.round(dailyHours)),
+        taxPercent: String(formData.taxPercent ?? 10),
+        healthInsurancePercent: String(formData.healthInsurancePercent ?? 5),
+        hasTaxDeduction: formData.hasTaxDeduction ?? true,
+        hasHealthInsurance: formData.hasHealthInsurance ?? true
       };
 
       if (mode === 'user') {
         await updateUserPayroll({
           variables: {
-            userId: parseInt(formData.targetId),
+            userId: Number(formData.targetId),
             ...variables
           }
         });
       } else {
         await updatePosPayroll({
           variables: {
-            positionId: parseInt(formData.targetId),
+            positionId: Number(formData.targetId),
             ...variables
           }
         });
       }
       setMessage({ type: 'success', text: 'Настройките са актуализирани успешно!' });
-    } catch {
-      setMessage({ type: 'error', text: (err instanceof Error ? _err.message : "Грешка") });
-    }
+        } catch (e) {
+            setMessage({ type: 'error', text: e instanceof Error ? e.message : "Грешка" });
+        }
   };
 
   if (loading) return <CircularProgress />;
@@ -1225,7 +1489,7 @@ const PayrollSettings: React.FC = () => {
             {mode === 'user' ? 'Конфигуриране за служител' : 'Конфигуриране за длъжност'}
           </Typography>
           
-          <Box component="form" onSubmit={handleSubmit(onSubmit)}>
+          <Box component="form" onSubmit={handleSubmit(onSubmitIndividual)}>
             <Controller
               name="targetId"
               control={control}
@@ -1329,19 +1593,20 @@ const PayrollSettings: React.FC = () => {
               
               <Grid size={{ xs: 6, md: 3 }}>
                   <FormControlLabel
-                      control={<Controller name="hasTaxDeduction" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+                      control={<Controller name="hasTaxDeduction" control={control} render={({ field }) => <Checkbox {...field} checked={field.value ?? false} />} />}
                       label="ДДФЛ"
                   />
               </Grid>
               <Grid size={{ xs: 6, md: 3 }}>
                   <Controller name="taxPercent" control={control} render={({ field }) => (
+                      // eslint-disable-next-line react-hooks/incompatible-library
                       <TextField {...field} fullWidth label="ДДФЛ %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!watch('hasTaxDeduction')} />
                   )} />
               </Grid>
               
               <Grid size={{ xs: 6, md: 3 }}>
                   <FormControlLabel
-                      control={<Controller name="hasHealthInsurance" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+                      control={<Controller name="hasHealthInsurance" control={control} render={({ field }) => <Checkbox {...field} checked={field.value ?? false} />} />}
                       label="Осигуровки"
                   />
               </Grid>
@@ -1402,7 +1667,7 @@ const PayrollSettings: React.FC = () => {
                                 <Box key={b.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1.5, borderBottom: '1px solid #e0e0e0', bgcolor: 'white', mb: 1, borderRadius: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                                     <Box>
                                         <Typography variant="body1" fontWeight="bold" color="success.main">
-                                            +{parseFloat(b.amount).toFixed(2)} {currency}
+                                            +{Number(b.amount).toFixed(2)} {currency}
                                         </Typography>
                                         <Typography variant="caption" color="text.secondary" display="block">
                                             Дата: {b.date} {b.description ? `| ${b.description}` : ''}
@@ -1458,8 +1723,8 @@ const HolidaySettings: React.FC = () => {
     try {
       const res = await syncHolidays({ variables: { year } });
       setResult(`Успешно добавени ${res.data.syncHolidays} нови официални празници за ${year}г.`);
-    } catch {
-      setResult(`Грешка: ${e.message}`);
+    } catch (e) {
+      setResult(`Грешка: ${e instanceof Error ? e.message : ""}`);
     }
   };
 
@@ -1467,8 +1732,8 @@ const HolidaySettings: React.FC = () => {
     try {
       const res = await syncOrthodoxHolidays({ variables: { year } });
       setResult(`Успешно добавени ${res.data.syncOrthodoxHolidays} нови православни празници за ${year}г.`);
-    } catch {
-      setResult(`Грешка: ${e.message}`);
+    } catch (e) {
+      setResult(`Грешка: ${e instanceof Error ? e.message : ""}`);
     }
   };
 
@@ -1552,6 +1817,8 @@ const HolidaySettings: React.FC = () => {
     'payments': 1,
     'declarations': 2,
     'settings': 0,
+    'templates': 4,
+    'annexes': 5,
   };
 
   interface Props {
@@ -1588,7 +1855,702 @@ const HolidaySettings: React.FC = () => {
       )}
       {tabValue === 2 && <HolidaySettings />}
       {tabValue === 3 && <PayrollReports />}
+      {tabValue === 4 && <TemplatesSettings />}
+      {tabValue === 5 && <AnnexesSettings />}
     </Container>
+  );
+};
+
+// --- Component: Templates Settings ---
+const TemplatesSettings: React.FC = () => {
+  const [templateType, setTemplateType] = useState<'contracts' | 'annexes' | 'clauses'>('contracts');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const { data: contractData, loading: contractLoading, refetch: refetchContracts } = useQuery(GET_CONTRACT_TEMPLATES);
+  const { data: annexData, loading: annexLoading, refetch: refetchAnnexes } = useQuery(GET_ANNEX_TEMPLATES);
+  const { data: clauseData, loading: clauseLoading, refetch: refetchClauses } = useQuery(GET_CLAUSE_TEMPLATES, {
+    variables: { category: null }
+  });
+
+  const [createContractTemplate] = useMutation(CREATE_CONTRACT_TEMPLATE);
+  const [deleteContractTemplate] = useMutation(DELETE_CONTRACT_TEMPLATE);
+  const [createAnnexTemplate] = useMutation(CREATE_ANNEX_TEMPLATE);
+  const [deleteAnnexTemplate] = useMutation(DELETE_ANNEX_TEMPLATE);
+  const [createClauseTemplate] = useMutation(CREATE_CLAUSE_TEMPLATE);
+  const [deleteClauseTemplate] = useMutation(DELETE_CLAUSE_TEMPLATE);
+
+  const [openDialog, setOpenDialog] = useState<boolean>(false);
+  const [editingItem, setEditingItem] = useState<ContractTemplate | AnnexTemplate | ClauseTemplate | null>(null);
+
+  const contractTypes = [
+    { value: 'full_time', label: 'Пълно работно време' },
+    { value: 'part_time', label: 'Непълно работно време' },
+    { value: 'contractor', label: 'Граждански договор' },
+    { value: 'internship', label: 'Стажант' },
+  ];
+
+  const changeTypes = [
+    { value: 'salary', label: 'Повишение на заплатата' },
+    { value: 'position', label: 'Промяна на длъжността' },
+    { value: 'hours', label: 'Промяна на работното време' },
+    { value: 'rate', label: 'Промяна на надбавки' },
+    { value: 'other', label: 'Друго' },
+  ];
+
+  const clauseCategories = [
+    { value: 'rights_employer', label: 'Права на работодателя' },
+    { value: 'rights_employee', label: 'Права на работника' },
+    { value: 'work_schedule', label: 'Работно време' },
+    { value: 'salary', label: 'Заплащане' },
+    { value: 'confidentiality', label: 'Конфиденциалност' },
+    { value: 'business_trip', label: 'Командироване' },
+    { value: 'termination', label: 'Прекратяване' },
+    { value: 'other', label: 'Друго' },
+  ];
+
+  const handleCreate = async (formData: Record<string, unknown>) => {
+    setError(null);
+    setSuccess(null);
+    try {
+      if (templateType === 'contracts') {
+        await createContractTemplate({ variables: formData });
+        setSuccess('Шаблонът е създаден успешно');
+        await refetchContracts();
+      } else if (templateType === 'annexes') {
+        await createAnnexTemplate({ variables: formData });
+        setSuccess('Шаблонът за анекс е създаден успешно');
+        await refetchAnnexes();
+      } else if (templateType === 'clauses') {
+        await createClauseTemplate({ variables: formData });
+        setSuccess('Клаузата е създадена успешно');
+        await refetchClauses();
+      }
+      setOpenDialog(false);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Сигурни ли сте, че искате да изтриете този шаблон?')) return;
+    setError(null);
+    try {
+      if (templateType === 'contracts') {
+        await deleteContractTemplate({ variables: { id } });
+        setSuccess('Шаблонът е изтрит');
+        await refetchContracts();
+      } else if (templateType === 'annexes') {
+        await deleteAnnexTemplate({ variables: { id } });
+        setSuccess('Шаблонът за анекс е изтрит');
+        await refetchAnnexes();
+      } else if (templateType === 'clauses') {
+        await deleteClauseTemplate({ variables: { id } });
+        setSuccess('Клаузата е изтрита');
+        await refetchClauses();
+      }
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  };
+
+  const renderForm = () => {
+    const isContracts = templateType === 'contracts';
+    const isAnnexes = templateType === 'annexes';
+    const isClauses = templateType === 'clauses';
+
+    return (
+      <Box component="form" onSubmit={(e) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        const data: Record<string, unknown> = {};
+        
+        if (isContracts) {
+          data.name = formData.get('name');
+          data.description = formData.get('description');
+          data.contractType = formData.get('contractType');
+          data.workHoursPerWeek = Number(formData.get('workHoursPerWeek'));
+          data.probationMonths = Number(formData.get('probationMonths'));
+          data.salaryCalculationType = formData.get('salaryCalculationType');
+          data.paymentDay = Number(formData.get('paymentDay'));
+          data.nightWorkRate = Number(formData.get('nightWorkRate'));
+          data.overtimeRate = Number(formData.get('overtimeRate'));
+          data.holidayRate = Number(formData.get('holidayRate'));
+          data.workClass = formData.get('workClass') || null;
+        } else if (isAnnexes) {
+          data.name = formData.get('name');
+          data.description = formData.get('description');
+          data.changeType = formData.get('changeType');
+          data.newBaseSalary = formData.get('newBaseSalary') ? Number(formData.get('newBaseSalary')) : null;
+          data.newWorkHoursPerWeek = formData.get('newWorkHoursPerWeek') ? Number(formData.get('newWorkHoursPerWeek')) : null;
+          data.newNightWorkRate = formData.get('newNightWorkRate') ? Number(formData.get('newNightWorkRate')) : null;
+          data.newOvertimeRate = formData.get('newOvertimeRate') ? Number(formData.get('newOvertimeRate')) : null;
+          data.newHolidayRate = formData.get('newHolidayRate') ? Number(formData.get('newHolidayRate')) : null;
+        } else if (isClauses) {
+          data.title = formData.get('title');
+          data.content = formData.get('content');
+          data.category = formData.get('category');
+        }
+        
+        handleCreate(data);
+      }}>
+        <Grid container spacing={2}>
+          {isContracts && (
+            <>
+              <Grid size={{ xs: 12 }}>
+                <TextField name="name" label="Име на шаблона" required fullWidth defaultValue={(editingItem as ContractTemplate | null)?.name} />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField name="description" label="Описание" fullWidth defaultValue={(editingItem as ContractTemplate | null)?.description || ''} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField select name="contractType" label="Вид договор" required fullWidth defaultValue={(editingItem as ContractTemplate | null)?.contractType || 'full_time'}>
+                  {contractTypes.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField name="workHoursPerWeek" label="Работни часа/седмица" type="number" required fullWidth defaultValue={(editingItem as ContractTemplate | null)?.workHoursPerWeek || 40} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField name="probationMonths" label="Пробен период (месеци)" type="number" required fullWidth defaultValue={(editingItem as ContractTemplate | null)?.probationMonths || 6} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField name="paymentDay" label="Ден за плащане" type="number" required fullWidth defaultValue={(editingItem as ContractTemplate | null)?.paymentDay || 25} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <TextField name="nightWorkRate" label="Нощен труд (%)" type="number" required fullWidth defaultValue={(editingItem as ContractTemplate | null)?.nightWorkRate || 0.5} inputProps={{ step: 0.01 }} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <TextField name="overtimeRate" label="Извънреден труд (множ.)" type="number" required fullWidth defaultValue={(editingItem as ContractTemplate | null)?.overtimeRate || 1.5} inputProps={{ step: 0.1 }} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <TextField name="holidayRate" label="Празничен труд (множ.)" type="number" required fullWidth defaultValue={(editingItem as ContractTemplate | null)?.holidayRate || 2.0} inputProps={{ step: 0.1 }} />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField name="salaryCalculationType" select label="Начин на изчисляване" required fullWidth defaultValue={(editingItem as ContractTemplate | null)?.salaryCalculationType || 'gross'}>
+                  <MenuItem value="gross">Брутно</MenuItem>
+                  <MenuItem value="net">Нетно</MenuItem>
+                </TextField>
+              </Grid>
+            </>
+          )}
+          {isAnnexes && (
+            <>
+              <Grid size={{ xs: 12 }}>
+                <TextField name="name" label="Име на шаблона" required fullWidth defaultValue={(editingItem as AnnexTemplate | null)?.name} />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField name="description" label="Описание" fullWidth defaultValue={(editingItem as AnnexTemplate | null)?.description || ''} />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField select name="changeType" label="Вид промяна" required fullWidth defaultValue={(editingItem as AnnexTemplate | null)?.changeType || 'salary'}>
+                  {changeTypes.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField name="newBaseSalary" label="Нова заплата" type="number" fullWidth />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField name="newWorkHoursPerWeek" label="Нови часове/седмица" type="number" fullWidth />
+              </Grid>
+            </>
+          )}
+          {isClauses && (
+            <>
+              <Grid size={{ xs: 12 }}>
+                <TextField name="title" label="Заглав" required fullWidth defaultValue={(editingItem as ClauseTemplate | null)?.title} />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField select name="category" label="Категория" required fullWidth defaultValue={(editingItem as ClauseTemplate | null)?.category || 'other'}>
+                  {clauseCategories.map((c) => <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField name="content" label="Съдържание" multiline rows={4} fullWidth defaultValue={(editingItem as ClauseTemplate | null)?.content || ''} />
+              </Grid>
+            </>
+          )}
+          <Grid size={{ xs: 12 }}>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+              <Button variant="outlined" onClick={() => setOpenDialog(false)}>Отказ</Button>
+              <Button variant="contained" type="submit">Запиши</Button>
+            </Box>
+          </Grid>
+        </Grid>
+      </Box>
+    );
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" fontWeight="bold">Шаблони</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingItem(null); setOpenDialog(true); }}>
+          Нов {templateType === 'contracts' ? 'шаблон' : templateType === 'annexes' ? 'шаблон за анекс' : 'клауза'}
+        </Button>
+      </Box>
+
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
+
+      <Box sx={{ mb: 3, display: 'flex', gap: 1 }}>
+        <Button variant={templateType === 'contracts' ? 'contained' : 'outlined'} onClick={() => setTemplateType('contracts')}>
+          Договори
+        </Button>
+        <Button variant={templateType === 'annexes' ? 'contained' : 'outlined'} onClick={() => setTemplateType('annexes')}>
+          Анекси
+        </Button>
+        <Button variant={templateType === 'clauses' ? 'contained' : 'outlined'} onClick={() => setTemplateType('clauses')}>
+          Клаузи
+        </Button>
+      </Box>
+
+      {templateType === 'contracts' && (
+        <Box>
+          {contractLoading ? <CircularProgress /> : (
+            contractData?.contractTemplates?.length === 0 ? (
+              <Alert severity="info">Няма създадени шаблони за договори</Alert>
+            ) : (
+              contractData?.contractTemplates?.map((template: ContractTemplate) => (
+                <Card key={template.id} variant="outlined" sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Box>
+                        <Typography variant="h6">{template.name}</Typography>
+                        <Typography variant="body2" color="text.secondary">{template.description}</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {template.workHoursPerWeek} часа/седмица | {template.contractType}
+                        </Typography>
+                        {template.currentVersion && (
+                          <Typography variant="caption" color="info.main">
+                            Версия {template.currentVersion.version} {template.currentVersion.isCurrent ? '(активна)' : ''}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Box>
+                        <Button size="small" color="error" onClick={() => handleDelete(template.id)}>Изтрий</Button>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))
+            )
+          )}
+        </Box>
+      )}
+
+      {templateType === 'annexes' && (
+        <Box>
+          {annexLoading ? <CircularProgress /> : (
+            annexData?.annexTemplates?.length === 0 ? (
+              <Alert severity="info">Няма създадени шаблони за анекси</Alert>
+            ) : (
+              annexData?.annexTemplates?.map((template: AnnexTemplate) => (
+                <Card key={template.id} variant="outlined" sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Box>
+                        <Typography variant="h6">{template.name}</Typography>
+                        <Typography variant="body2" color="text.secondary">{template.description}</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Вид промяна: {template.changeType}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Button size="small" color="error" onClick={() => handleDelete(template.id)}>Изтрий</Button>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))
+            )
+          )}
+        </Box>
+      )}
+
+      {templateType === 'clauses' && (
+        <Box>
+          {clauseLoading ? <CircularProgress /> : (
+            clauseData?.clauseTemplates?.length === 0 ? (
+              <Alert severity="info">Няма създадени клаузи</Alert>
+            ) : (
+              clauseData?.clauseTemplates?.map((clause: ClauseTemplate) => (
+                <Card key={clause.id} variant="outlined" sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Box>
+                        <Typography variant="h6">{clause.title}</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{clause.content}</Typography>
+                        <Chip label={clause.category} size="small" />
+                      </Box>
+                      <Box>
+                        <Button size="small" color="error" onClick={() => handleDelete(clause.id)}>Изтрий</Button>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))
+            )
+          )}
+        </Box>
+      )}
+
+      {openDialog && (
+        <Card variant="outlined" sx={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 1000, width: 500, maxHeight: '90vh', overflow: 'auto', p: 2 }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            {editingItem ? 'Редактирай' : 'Създай нов'} {templateType === 'contracts' ? 'шаблон' : templateType === 'annexes' ? 'шаблон за анекс' : 'клауза'}
+          </Typography>
+          {renderForm()}
+        </Card>
+      )}
+      {openDialog && <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 999 }} onClick={() => setOpenDialog(false)} />}
+    </Box>
+  );
+};
+
+// --- Component: Annexes Settings ---
+const AnnexesSettings: React.FC = () => {
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [itemType, setItemType] = useState<'contracts' | 'annexes'>('contracts');
+  const [openAnnexDialog, setOpenAnnexDialog] = useState(false);
+  const [selectedContractId, setSelectedContractId] = useState<number | ''>('');
+  const [annexForm, setAnnexForm] = useState({
+    annexNumber: '',
+    effectiveDate: new Date().toISOString().split('T')[0],
+    baseSalary: '',
+    workHoursPerWeek: '',
+    nightWorkRate: '',
+    overtimeRate: '',
+    holidayRate: ''
+  });
+
+  const { data: annexData, loading: annexLoading, refetch: refetchAnnexes } = useQuery(GET_ANNEXES, {
+    variables: { status: statusFilter }
+  });
+
+  const { data: contractData, loading: contractLoading, refetch: refetchContracts } = useQuery(GET_CONTRACTS);
+
+  const [signAnnex] = useMutation(SIGN_CONTRACT_ANNEX);
+  const [createAnnex] = useMutation(CREATE_CONTRACT_ANNEX);
+
+  const handleSign = async (annexId: number) => {
+    setError(null);
+    try {
+      await signAnnex({ variables: { annexId } });
+      setSuccess('Анексът е подписан');
+      await refetchAnnexes();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  };
+
+  const handleCreateAnnex = async () => {
+    if (!selectedContractId) {
+      setError('Моля, изберете договор');
+      return;
+    }
+    setError(null);
+    try {
+      await createAnnex({
+        variables: {
+          contractId: selectedContractId,
+          effectiveDate: annexForm.effectiveDate,
+          annexNumber: annexForm.annexNumber || null,
+          baseSalary: annexForm.baseSalary ? parseFloat(annexForm.baseSalary) : null,
+          workHoursPerWeek: annexForm.workHoursPerWeek ? parseInt(annexForm.workHoursPerWeek) : null,
+          nightWorkRate: annexForm.nightWorkRate ? parseFloat(annexForm.nightWorkRate) : null,
+          overtimeRate: annexForm.overtimeRate ? parseFloat(annexForm.overtimeRate) : null,
+          holidayRate: annexForm.holidayRate ? parseFloat(annexForm.holidayRate) : null
+        }
+      });
+      setSuccess('Анексът е създаден успешно');
+      setOpenAnnexDialog(false);
+      setSelectedContractId('');
+      setAnnexForm({
+        annexNumber: '',
+        effectiveDate: new Date().toISOString().split('T')[0],
+        baseSalary: '',
+        workHoursPerWeek: '',
+        nightWorkRate: '',
+        overtimeRate: '',
+        holidayRate: ''
+      });
+      await refetchAnnexes();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  };
+
+  const getStatusColor = (status: string): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' => {
+    switch (status) {
+      case 'draft': return 'default';
+      case 'pending': return 'warning';
+      case 'signed': return 'success';
+      case 'rejected': return 'error';
+      default: return 'default';
+    }
+  };
+
+  const getStatusLabel = (status: string): string => {
+    switch (status) {
+      case 'draft': return 'Чернова';
+      case 'pending': return 'Чакащ';
+      case 'signed': return 'Подписан';
+      case 'rejected': return 'Отхвърлен';
+      default: return status;
+    }
+  };
+
+  const activeContracts = contractData?.users?.users?.filter((u: User) => u.employmentContract?.isActive) || [];
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" fontWeight="bold">Допълнителни споразумения</Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="contained" color="primary" onClick={() => window.location.href = '/admin/users?new=true'}>
+            Нов договор
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenAnnexDialog(true)}>
+            Нов анекс
+          </Button>
+        </Box>
+      </Box>
+
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
+
+      <Box sx={{ mb: 3, display: 'flex', gap: 1 }}>
+        <Button variant={itemType === 'contracts' ? 'contained' : 'outlined'} onClick={() => setItemType('contracts')}>
+          Договори
+        </Button>
+        <Button variant={itemType === 'annexes' ? 'contained' : 'outlined'} onClick={() => setItemType('annexes')}>
+          Анекси
+        </Button>
+      </Box>
+
+      {itemType === 'contracts' && (
+        <Box>
+          {contractLoading ? <CircularProgress /> : activeContracts.length === 0 ? (
+            <Alert severity="info">Няма намерени активни договори</Alert>
+          ) : (
+            activeContracts.map((user: User) => user.employmentContract && (
+              <Card key={user.employmentContract.id} variant="outlined" sx={{ mb: 2 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Box>
+                      <Typography variant="h6">
+                        {user.firstName} {user.lastName}
+                        <Chip label={user.employmentContract.contractType === 'full_time' ? 'Пълен работен ден' : user.employmentContract.contractType === 'part_time' ? 'Непълен работен ден' : 'Договор за услуга'} size="small" sx={{ ml: 1 }} />
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        ЕГН: {user.pin}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Договор №{user.employmentContract.contractNumber} от {user.employmentContract.startDate}
+                      </Typography>
+                      {user.employmentContract.position && (
+                        <Typography variant="body2" color="primary.main">
+                          Позиция: {user.employmentContract.position.title}
+                        </Typography>
+                      )}
+                      {user.employmentContract.baseSalary && (
+                        <Typography variant="body2" color="primary.main">
+                          Заплата: {Number(user.employmentContract.baseSalary).toFixed(2)} лв.
+                        </Typography>
+                      )}
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button size="small" variant="outlined" onClick={() => window.location.href = `/admin/users?edit=${user.id}`}>
+                        Редактирай
+                      </Button>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </Box>
+      )}
+
+      {itemType === 'annexes' && (
+        <Box>
+          <Box sx={{ mb: 3, display: 'flex', gap: 1 }}>
+            <Button variant={statusFilter === null ? 'contained' : 'outlined'} onClick={() => setStatusFilter(null)}>
+              Всички
+            </Button>
+            <Button variant={statusFilter === 'draft' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('draft')}>
+              Чернови
+            </Button>
+            <Button variant={statusFilter === 'pending' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('pending')}>
+              Чакащи
+            </Button>
+            <Button variant={statusFilter === 'signed' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('signed')}>
+              Подписани
+            </Button>
+          </Box>
+
+          {annexLoading ? <CircularProgress /> : (
+            annexData?.annexes?.length === 0 ? (
+              <Alert severity="info">Няма намерени анекси</Alert>
+            ) : (
+              annexData?.annexes?.map((annex: ContractAnnex) => (
+                <Card key={annex.id} variant="outlined" sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Box>
+                        <Typography variant="h6">
+                          Анекс №{annex.annexNumber || annex.id}
+                          <Chip 
+                            label={getStatusLabel(annex.status)} 
+                            size="small" 
+                            color={getStatusColor(annex.status)} 
+                            sx={{ ml: 1 }} 
+                          />
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Дата: {annex.effectiveDate}
+                        </Typography>
+                        {annex.changeType && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Вид: {annex.changeType}
+                          </Typography>
+                        )}
+                        {annex.baseSalary && (
+                          <Typography variant="body2" color="primary.main">
+                            Нова заплата: {Number(annex.baseSalary).toFixed(2)} лв.
+                          </Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button 
+                          size="small" 
+                          variant="outlined" 
+                          startIcon={<PrintIcon />}
+                          onClick={() => {
+                            const printWindow = window.open(`/api/export/trz/annex/${annex.id}/pdf`, '_blank');
+                            printWindow?.addEventListener('load', () => {
+                              printWindow.print();
+                            });
+                          }}
+                        >
+                          Принтирай
+                        </Button>
+                        <Button 
+                          size="small" 
+                          variant="outlined" 
+                          startIcon={<FileDownloadIcon />}
+                          component="a"
+                          href={`/api/export/trz/annex/${annex.id}/pdf`}
+                          target="_blank"
+                        >
+                          PDF
+                        </Button>
+                        {!annex.isSigned && annex.status !== 'signed' && (
+                          <Button size="small" variant="contained" onClick={() => handleSign(annex.id)}>
+                            Подпиши
+                          </Button>
+                        )}
+                        {annex.isSigned && (
+                          <Typography variant="body2" color="success.main">
+                            Подписан: {annex.signedAt ? new Date(annex.signedAt).toLocaleDateString() : ''}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))
+            )
+          )}
+        </Box>
+      )}
+
+      {/* New Annex Dialog */}
+      <Dialog open={openAnnexDialog} onClose={() => setOpenAnnexDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Създаване на нов анекс</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1 }}>
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Изберете договор</InputLabel>
+              <Select
+                value={selectedContractId}
+                label="Изберете договор"
+                onChange={(e) => setSelectedContractId(e.target.value as number)}
+              >
+                {activeContracts.map((user: User) => (
+                  <MenuItem key={user.employmentContract?.id} value={user.employmentContract?.id}>
+                    {user.firstName} {user.lastName} - Договор №{user.employmentContract?.contractNumber}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              fullWidth
+              label="Номер на анекс"
+              value={annexForm.annexNumber}
+              onChange={(e) => setAnnexForm({ ...annexForm, annexNumber: e.target.value })}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="Дата на влизане в сила"
+              type="date"
+              value={annexForm.effectiveDate}
+              onChange={(e) => setAnnexForm({ ...annexForm, effectiveDate: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="Нова базова заплата"
+              type="number"
+              value={annexForm.baseSalary}
+              onChange={(e) => setAnnexForm({ ...annexForm, baseSalary: e.target.value })}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="Работни часа/седмица"
+              type="number"
+              value={annexForm.workHoursPerWeek}
+              onChange={(e) => setAnnexForm({ ...annexForm, workHoursPerWeek: e.target.value })}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="Процент нощен труд"
+              type="number"
+              value={annexForm.nightWorkRate}
+              onChange={(e) => setAnnexForm({ ...annexForm, nightWorkRate: e.target.value })}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="Множител извънреден труд"
+              type="number"
+              value={annexForm.overtimeRate}
+              onChange={(e) => setAnnexForm({ ...annexForm, overtimeRate: e.target.value })}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="Множител празничен труд"
+              type="number"
+              value={annexForm.holidayRate}
+              onChange={(e) => setAnnexForm({ ...annexForm, holidayRate: e.target.value })}
+              sx={{ mb: 2 }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAnnexDialog(false)}>Отказ</Button>
+          <Button onClick={handleCreateAnnex} variant="contained">Създай</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 };
 

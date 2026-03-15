@@ -169,7 +169,7 @@ const ShiftSwapCenter: React.FC = () => {
 
             <Grid container spacing={3}>
                 {/* 1. Create Request */}
-                <Grid item xs={12} md={4}>
+                <Grid size={{ xs: 12, md: 4 }}>
                     <Card variant="outlined" sx={{ height: '100%' }}>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Нова заявка</Typography>
@@ -216,7 +216,7 @@ const ShiftSwapCenter: React.FC = () => {
                 </Grid>
 
                 {/* 2. My Requests List */}
-                <Grid item xs={12} md={8}>
+                <Grid size={{ xs: 12, md: 8 }}>
                     <Card variant="outlined" sx={{ height: '100%' }}>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Моите размени</Typography>
@@ -226,7 +226,7 @@ const ShiftSwapCenter: React.FC = () => {
                                     return (
                                         <Paper key={req.id} variant="outlined" sx={{ mb: 2, p: 2 }}>
                                             <Grid container alignItems="center" spacing={2}>
-                                                <Grid item xs={12} sm={8}>
+                                                <Grid size={{ xs: 12, sm: 8 }}>
                                                     <Typography variant="subtitle2">
                                                         {isIncoming ? `Покана от ${req.requestor.firstName}` : `Покана до ${req.targetUser.firstName}`}
                                                     </Typography>
@@ -242,7 +242,7 @@ const ShiftSwapCenter: React.FC = () => {
                                                         />
                                                     </Box>
                                                 </Grid>
-                                                <Grid item xs={12} sm={4} sx={{ textAlign: 'right' }}>
+                                                <Grid size={{ xs: 12, sm: 4 }} sx={{ textAlign: 'right' }}>
                                                     {isIncoming && req.status === 'pending' && (
                                                         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
                                                             <Button size="small" variant="contained" color="success" onClick={() => handleRespond(req.id, true)}>Приеми</Button>
@@ -262,7 +262,7 @@ const ShiftSwapCenter: React.FC = () => {
 
                 {/* 3. Admin Approval Section */}
                 {isAdmin && adminPending.length > 0 && (
-                    <Grid item xs={12}>
+                    <Grid size={{ xs: 12 }}>
                         <Card variant="outlined" sx={{ border: '2px solid #2196f3' }}>
                             <CardContent>
                                 <Typography variant="h6" color="primary" gutterBottom sx={{ fontWeight: 'bold' }}>
@@ -270,7 +270,7 @@ const ShiftSwapCenter: React.FC = () => {
                                 </Typography>
                                 <Grid container spacing={2}>
                                     {adminPending.map((p: SwapRequest) => (
-                                        <Grid item xs={12} sm={6} md={4} key={p.id}>
+                                        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={p.id}>
                                             <Paper sx={{ p: 2, bgcolor: '#e3f2fd' }}>
                                                 <Typography variant="body2">
                                                     <strong>{p.requestor.firstName}</strong> <SwapHorizIcon sx={{ verticalAlign: 'middle', fontSize: '1rem' }} /> <strong>{p.targetUser.firstName}</strong>
