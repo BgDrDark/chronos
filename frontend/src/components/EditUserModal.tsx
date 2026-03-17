@@ -123,6 +123,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
     handleSubmit,
     reset,
     control,
+    watch,
+    setValue,
     formState: { isSubmitting },
   } = useForm<UpdateUserFormData>({
     resolver: zodResolver(updateUserSchema),
@@ -335,11 +337,11 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }} display="flex" flexDirection="column">
                 <FormControlLabel
-                    control={<Controller name="isActive" control={control} render={({ field }) => <Switch checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                    control={<Switch checked={!!watch('isActive')} onChange={e => setValue('isActive', e.target.checked)} size="small" />}
                     label={<Typography variant="body2">Активен акаунт</Typography>}
                 />
                 <FormControlLabel
-                    control={<Controller name="passwordForceChange" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                    control={<Checkbox checked={!!watch('passwordForceChange')} onChange={e => setValue('passwordForceChange', e.target.checked)} size="small" />}
                     label={<Typography variant="body2">Смяна на парола</Typography>}
                 />
             </Grid>
@@ -459,19 +461,19 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }} display="flex" alignItems="center">
               <FormControlLabel
-                control={<Controller name="taxResident" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                control={<Checkbox checked={!!watch('taxResident')} onChange={e => setValue('taxResident', e.target.checked)} size="small" />}
                 label={<Typography variant="body2">Данъчен резидент</Typography>}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControlLabel
-                control={<Controller name="hasIncomeTax" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                control={<Checkbox checked={!!watch('hasIncomeTax')} onChange={e => setValue('hasIncomeTax', e.target.checked)} size="small" />}
                 label={<Typography variant="body2">Удържай ДОД (10%)</Typography>}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControlLabel
-                control={<Controller name="insuranceContributor" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                control={<Checkbox checked={!!watch('insuranceContributor')} onChange={e => setValue('insuranceContributor', e.target.checked)} size="small" />}
                 label={<Typography variant="body2">Осигурено лице</Typography>}
               />
             </Grid>
@@ -494,7 +496,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
               <FormControlLabel
-                control={<Controller name="dangerousWork" control={control} render={({ field }) => <Checkbox checked={!!field.value} onChange={e => field.onChange(e.target.checked)} size="small" />} />}
+                control={<Checkbox checked={!!watch('dangerousWork')} onChange={e => setValue('dangerousWork', e.target.checked)} size="small" />}
                 label={<Typography variant="body2">Вредни условия на труд</Typography>}
               />
             </Grid>

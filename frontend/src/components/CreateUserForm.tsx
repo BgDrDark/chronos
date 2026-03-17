@@ -269,6 +269,8 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
     handleSubmit,
     reset,
     control,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<CreateUserFormData>({
     resolver: zodResolver(createUserSchema),
@@ -590,7 +592,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }} display="flex" alignItems="center">
           <FormControlLabel
-            control={<Controller name="passwordForceChange" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+            control={<Checkbox checked={!!watch('passwordForceChange')} onChange={e => setValue('passwordForceChange', e.target.checked)} />}
             label="Задължителна смяна на парола"
           />
         </Grid>
@@ -759,20 +761,20 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }} display="flex" alignItems="center">
           <FormControlLabel
-            control={<Controller name="taxResident" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+            control={<Checkbox checked={!!watch('taxResident')} onChange={e => setValue('taxResident', e.target.checked)} />}
             label="Данъчен резидент"
           />
         </Grid>
         
         <Grid size={{ xs: 12, sm: 6 }}>
           <FormControlLabel
-            control={<Controller name="hasIncomeTax" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+            control={<Checkbox checked={!!watch('hasIncomeTax')} onChange={e => setValue('hasIncomeTax', e.target.checked)} />}
             label="Удържай ДОД (10%)"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
           <FormControlLabel
-            control={<Controller name="insuranceContributor" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+            control={<Checkbox checked={!!watch('insuranceContributor')} onChange={e => setValue('insuranceContributor', e.target.checked)} />}
             label="Осигурено лице"
           />
         </Grid>
@@ -817,7 +819,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
           <FormControlLabel
-            control={<Controller name="dangerousWork" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+            control={<Checkbox checked={!!watch('dangerousWork')} onChange={e => setValue('dangerousWork', e.target.checked)} />}
             label="Вредни условия на труд"
           />
         </Grid>
