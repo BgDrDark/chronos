@@ -349,6 +349,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=True) # Now optional
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     first_name: Mapped[str] = mapped_column(String, nullable=True)
+    surname: Mapped[str] = mapped_column(String, nullable=True)
     last_name: Mapped[str] = mapped_column(String, nullable=True)
     phone_number: Mapped[str] = mapped_column(String(20), nullable=True)
     address: Mapped[str] = mapped_column(String(255), nullable=True)
@@ -1401,6 +1402,7 @@ class EmploymentContract(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     contract_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "full_time", "part_time", "contractor", "internship"
+    contract_number: Mapped[str] = mapped_column(String(50), nullable=True)  # Уникален номер на договора
     start_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     end_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)  # For fixed-term contracts
     base_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=True)
@@ -1425,12 +1427,14 @@ class EmploymentContract(Base):
     
     # Връзка към шаблон
     template_id: Mapped[int] = mapped_column(Integer, ForeignKey("contract_templates.id", ondelete="SET NULL"), nullable=True)
+    position_id: Mapped[int] = mapped_column(Integer, ForeignKey("positions.id", ondelete="SET NULL"), nullable=True)
     
     created_at = Column(DateTime, default=sofia_now)
     updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
     
     user = relationship("User", backref="employment_contracts")
     company = relationship("Company", backref="employment_contracts")
+    position = relationship("Position", backref="employment_contracts")
 
 
 class ContractAnnex(Base):

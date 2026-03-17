@@ -196,14 +196,17 @@ class EmploymentContract:
     dangerous_work: bool
     position_id: Optional[int]
     position_title: Optional[str]
+    position: Optional["Position"]
 
     @classmethod
     def from_instance(cls, instance: models.EmploymentContract) -> "EmploymentContract":
+        position = None
         position_title = None
         if hasattr(instance, 'position_id') and instance.position_id:
             from backend.database.models import Position
-            # We need to get position title from the relation
-            # For now return None - it will be loaded via dataloader if needed
+            position = instance.position
+            if position:
+                position_title = position.title
         return cls(
             id=instance.id,
             user_id=instance.user_id,
@@ -231,7 +234,8 @@ class EmploymentContract:
             work_class=instance.work_class,
             dangerous_work=instance.dangerous_work if instance.dangerous_work is not None else False,
             position_id=getattr(instance, 'position_id', None),
-            position_title=None,
+            position_title=position_title,
+            position=Position.from_instance(position) if position else None,
         )
 
 @strawberry.type
