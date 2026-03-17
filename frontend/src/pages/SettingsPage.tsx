@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getErrorMessage } from '../types';
 import { 
   Container, Typography, Card, CardContent, Grid, TextField, Button, 
   Alert, Box, CircularProgress, Switch, FormControlLabel, Divider, Tooltip
@@ -238,7 +239,7 @@ const ActiveSessions: React.FC = () => {
         try {
             await invalidate({ variables: { sessionId: id } });
             refetch();
-        } catch (err) { if (err instanceof Error) alert(err.message); }
+        } catch (err) { alert(getErrorMessage(err)); }
     };
 
     if (loading) return <CircularProgress />;
@@ -304,7 +305,7 @@ const GoogleCalendarSettings: React.FC = () => {
             setMsg('Настройките са запазени.');
             refetch();
             setTimeout(() => setMsg(''), 3000);
-        } catch (err) { if (err instanceof Error) alert(err.message); }
+        } catch (err) { alert(getErrorMessage(err)); }
     };
 
     const handleConnect = () => {
@@ -317,7 +318,7 @@ const GoogleCalendarSettings: React.FC = () => {
         try {
             await disconnect();
             refetch();
-        } catch (err) { if (err instanceof Error) alert(err.message); }
+        } catch (err) { alert(getErrorMessage(err)); }
     };
 
     if (loading) return <CircularProgress size={24} />;
@@ -423,7 +424,7 @@ const SecuritySettings: React.FC = () => {
         try {
             await updateSecurity({ variables: { maxLoginAttempts: parseInt(String(maxAttempts)), lockoutMinutes: parseInt(String(lockoutMins)) } });
             setMsg('Настройките за сигурност са запазени.');
-        } catch (err) { if (err instanceof Error) alert(err.message); }
+        } catch (err) { alert(getErrorMessage(err)); }
     };
 
     return (
@@ -508,8 +509,8 @@ const OfficeLocationSettings: React.FC = () => {
                 } 
             });
             setMsg({ type: 'success', text: 'Офис локацията е запазена.' });
-        } catch (_err: unknown) {
-            setMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") });
+        } catch (err) {
+            setMsg({ type: 'error', text: getErrorMessage(err) });
         }
     };
 
@@ -603,7 +604,7 @@ const SystemSettings: React.FC = () => {
             a.href = url;
             a.download = `chronos_backup_${new Date().toISOString()}.json`;
             a.click();
-        } catch (err) { if (err instanceof Error) alert(err.message); }
+        } catch (err) { alert(getErrorMessage(err)); }
     };
 
     const handleRestore = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -634,8 +635,8 @@ const SystemSettings: React.FC = () => {
             
             setMsg({ type: 'success', text: 'Базата данни е възстановена успешно!' });
             alert("Възстановяването успешно! Препоръчително е да излезете и влезете отново.");
-        } catch (_err: unknown) {
-            setMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") });
+        } catch (err) {
+            setMsg({ type: 'error', text: getErrorMessage(err) });
         } finally {
             setUploading(false);
             event.target.value = '';
@@ -664,8 +665,8 @@ const SystemSettings: React.FC = () => {
             a.click();
             
             setMsg({ type: 'success', text: 'Архивирането успешно! Данните са изтрити и свалени локално.' });
-        } catch (_err: unknown) {
-            setMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") });
+        } catch (err) {
+            setMsg({ type: 'error', text: getErrorMessage(err) });
         } finally {
             setArchiving(false);
         }
@@ -795,8 +796,8 @@ const SettingsPage: React.FC = () => {
     try {
       await biometricService.registerBiometrics("Моят телефон");
       setBiometricMsg({ type: 'success', text: 'Биометрията е регистрирана успешно!' });
-    } catch (_err: unknown) {
-      setBiometricMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") || 'Грешка при регистрация' });
+    } catch (err) {
+      setBiometricMsg({ type: 'error', text: getErrorMessage(err) || 'Грешка при регистрация' });
     } finally {
       setBiometricLoading(false);
     }
@@ -827,7 +828,7 @@ const SettingsPage: React.FC = () => {
       const res = await generatePayslip({ variables: { startDate, endDate } });
       setPayslipResult(res.data.generateMyPayslip);
     } catch (err) {
-      if (err instanceof Error) alert(err.message);
+      alert(getErrorMessage(err));
     }
   };
 

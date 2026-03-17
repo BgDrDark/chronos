@@ -2,13 +2,20 @@ import datetime
 import json
 import enum
 import strawberry
-from typing import Optional, List, Any, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING
 from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from backend.database import models
 from backend.database.models import sofia_now
+
+# JSON Scalar for GraphQL
+@strawberry.scalar
+class JSONScalar:
+    """Custom scalar for JSON data"""
+    def serialize(value):
+        return value
 
 if TYPE_CHECKING:
     from backend.graphql.types import Workstation
@@ -166,6 +173,7 @@ class EmploymentContract:
     user_id: int
     company_id: int
     contract_type: str
+    contract_number: Optional[str]
     start_date: datetime.date
     end_date: Optional[datetime.date]
     base_salary: Optional[float]
@@ -186,14 +194,22 @@ class EmploymentContract:
     holiday_rate: Optional[float]
     work_class: Optional[str]
     dangerous_work: bool
+    position_id: Optional[int]
+    position_title: Optional[str]
 
     @classmethod
     def from_instance(cls, instance: models.EmploymentContract) -> "EmploymentContract":
+        position_title = None
+        if hasattr(instance, 'position_id') and instance.position_id:
+            from backend.database.models import Position
+            # We need to get position title from the relation
+            # For now return None - it will be loaded via dataloader if needed
         return cls(
             id=instance.id,
             user_id=instance.user_id,
             company_id=instance.company_id,
             contract_type=instance.contract_type,
+            contract_number=instance.contract_number if hasattr(instance, "contract_number") else None,
             start_date=instance.start_date,
             end_date=instance.end_date,
             base_salary=float(instance.base_salary) if instance.base_salary else None,
@@ -214,6 +230,8 @@ class EmploymentContract:
             holiday_rate=float(instance.holiday_rate) if instance.holiday_rate else None,
             work_class=instance.work_class,
             dangerous_work=instance.dangerous_work if instance.dangerous_work is not None else False,
+            position_id=getattr(instance, 'position_id', None),
+            position_title=None,
         )
 
 @strawberry.type
@@ -496,10 +514,12 @@ class User:
     email: Optional[str]
     username: Optional[str]
     first_name: Optional[str]
+    surname: Optional[str]
     last_name: Optional[str]
     phone_number: Optional[str]
     address: Optional[str]
     egn: Optional[str]
+    pin: Optional[str] = strawberry.field(name="pin", deprecation_reason="Use egn instead")
     birth_date: Optional[datetime.date]
     iban: Optional[str]
     is_active: bool
@@ -684,10 +704,12 @@ class User:
             email=instance.email,
             username=instance.username,
             first_name=instance.first_name,
+            surname=getattr(instance, 'surname', None),
             last_name=instance.last_name,
             phone_number=getattr(instance, 'phone_number', None),
             address=getattr(instance, 'address', None),
             egn=decrypt_data(getattr(instance, 'egn', None)),
+            pin=decrypt_data(getattr(instance, 'egn', None)),
             birth_date=getattr(instance, 'birth_date', None),
             iban=decrypt_data(getattr(instance, 'iban', None)),
             is_active=instance.is_active,
@@ -3084,7 +3106,7 @@ class SupplierExtended:
 class RequestTemplate:
     id: int
     name: str
-    items: Optional[List[Any]] = None
+    items: Optional[JSONScalar] = None
     default_department_id: Optional[int]
     notes: Optional[str]
     company_id: int
@@ -3166,8 +3188,8 @@ class PurchaseRequest:
     company_id: int
     created_at: Optional[datetime.datetime]
     updated_at: Optional[datetime.datetime]
-    items: Optional[List[Any]] = None
-    approvals: Optional[List[Any]] = None
+    items: Optional[JSONScalar] = None
+    approvals: Optional[JSONScalar] = None
 
     @classmethod
     def from_instance(cls, instance: models.PurchaseRequest) -> "PurchaseRequest":
@@ -3610,7 +3632,7 @@ class VehicleRepair:
     repair_date: datetime.datetime
     repair_type: Optional[str]
     description: Optional[str]
-    parts: Optional[List[Any]] = None
+    parts: Optional[JSONScalar] = None
     labor_hours: Optional[float]
     labor_cost: Optional[float]
     parts_cost: Optional[float]
@@ -3773,7 +3795,7 @@ class VehiclePreTripInspection:
     warning_triangle: Optional[bool]
     overall_status: PreTripStatus
     notes: Optional[str]
-    photos: Optional[List[Any]] = None
+    photos: Optional[JSONScalar] = None
     created_at: Optional[datetime.datetime]
 
     @classmethod

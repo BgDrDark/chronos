@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getErrorMessage } from '../types';
 import {
   Container, Typography, Box, TextField, Button,
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -188,7 +189,7 @@ const ShiftManager: React.FC = () => {
       });
       setName('');
       refetch();
-    } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
+    } catch (err) { alert(getErrorMessage(err)); }
   };
 
   const handleDelete = async (id: number) => {
@@ -196,7 +197,7 @@ const ShiftManager: React.FC = () => {
       try {
         await deleteShift({ variables: { id } });
         refetch();
-      } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
+      } catch (err) { alert(getErrorMessage(err)); }
     }
   };
 
@@ -354,7 +355,7 @@ const CalendarView: React.FC = () => {
             setApplyTmplOpen(false);
             alert("Шаблонът е приложен успешно!");
             refetchSched();
-        } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
+        } catch (err) { alert(getErrorMessage(err)); }
     };
 
     const handleDatesSet = (arg: any) => {
@@ -428,7 +429,7 @@ const CalendarView: React.FC = () => {
         });
         setOpen(false);
         refetchSched();
-      } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
+      } catch (err) { alert(getErrorMessage(err)); }
     };
 
     const handleDeleteSchedule = async () => {
@@ -438,7 +439,7 @@ const CalendarView: React.FC = () => {
           await deleteSchedule({ variables: { id: editingScheduleId } });
           setOpen(false);
           refetchSched();
-        } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
+        } catch (err) { alert(getErrorMessage(err)); }
       }
     };
 
@@ -834,7 +835,7 @@ const BulkAssign: React.FC = () => {
       });
       alert('Графиците са генерирани успешно!');
       setSelectedUsers([]);
-    } catch (err: unknown) { if (err instanceof Error) if (err instanceof Error) alert(err.message); }
+    } catch (err) { alert(getErrorMessage(err)); }
   };
 
   const dayNames = ['Пон', 'Вт', 'Ср', 'Чет', 'Пет', 'Съб', 'Нед'];

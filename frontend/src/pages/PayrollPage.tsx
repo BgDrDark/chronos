@@ -655,7 +655,7 @@ const PayrollReports: React.FC = () => {
             a.href = downloadUrl;
             a.download = `payroll_report_${startDate}_${endDate}.xlsx`;
             a.click();
-        } catch (err) { if (err instanceof Error) alert(err.message); }
+        } catch (err) { alert(getErrorMessage(err)); }
     };
 
     const handleGenerate = () => {
@@ -2308,7 +2308,7 @@ const AnnexesSettings: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" fontWeight="bold">Допълнителни споразумения</Typography>
+        <Typography variant="h5" fontWeight="bold">Договори</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button variant="contained" color="primary" onClick={() => window.location.href = '/admin/users?new=true'}>
             Нов договор

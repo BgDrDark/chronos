@@ -7,29 +7,31 @@ from decimal import Decimal
 from sqlalchemy import select
 from datetime import time as dt_time
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
 from backend.graphql import types, inputs
+from backend.graphql.types import JSONScalar
 from backend import crud, schemas
+from backend.utils.error_handling import (
+    permission_denied, not_found, bad_request, 
+    handle_db_error, get_error_message, unauthorized, internal_server_error
+)
 from backend.graphql.inputs import (
     UserCreateInput, RoleCreateInput, UpdateUserInput,
     LeaveRequestInput, UpdateLeaveRequestStatusInput,
     CompanyCreateInput, CompanyUpdateInput, DepartmentCreateInput, DepartmentUpdateInput, PositionCreateInput,
     SmtpSettingsInput, BonusCreateInput, MonthlyWorkDaysInput,
-    PasswordSettingsInput
+    PasswordSettingsInput, VehicleCreateInput, VehicleUpdateInput,
+    VehicleMileageInput, VehicleFuelInput, VehicleRepairInput,
+    VehicleInsuranceInput, VehicleInspectionInput, VehicleDriverInput, VehicleTripInput,
+    VehicleMileageUpdateInput, VehicleFuelUpdateInput, VehicleRepairUpdateInput,
+    VehicleInsuranceUpdateInput, VehicleInspectionUpdateInput, VehicleDriverUpdateInput, VehicleTripUpdateInput
 )
 from backend.services.holiday_service import fetch_and_store_holidays
 from backend.services.orthodox_holiday_service import fetch_and_store_orthodox_holidays
 from backend.database.models import LeaveRequest, AccessZone, AccessDoor, AccessCode, Gateway, NightWorkBonus, OvertimeWork, WorkOnHoliday, PublicHoliday, Shift
 from backend.auth.security import verify_password, hash_password, validate_password_complexity
 from backend.auth.module_guard import verify_module_enabled
-
-
-@strawberry.scalar
-class JSONScalar:
-    """Custom scalar for JSON data"""
-    def serialize(value):
-        return value
 
 
 async def create_trz_records_on_clock_out(
@@ -173,7 +175,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         await verify_module_enabled("integrations", db)
 
@@ -190,10 +192,10 @@ class Mutation:
         req = res.scalars().first()
 
         if not req:
-            raise HTTPException(status_code=404, detail="Request not found")
+            raise not_found("Request not found")
 
         if req.user_id != current_user.id and current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         # Append text
         original_reason = req.reason or ""
@@ -217,11 +219,11 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         # Basic Validation
         if not settings.smtp_server or not settings.sender_email:
-            raise HTTPException(status_code=400, detail="Server and Sender Email are required")
+            raise bad_request("Server and Sender Email are required")
 
         await crud.set_global_setting(db, "smtp_server", settings.smtp_server)
         await crud.set_global_setting(db, "smtp_port", str(settings.smtp_port))
@@ -248,7 +250,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         import json
         from backend.database.models import NotificationSetting
@@ -304,7 +306,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         # TODO: Implement actual email sending
         # For now, just return success
@@ -326,7 +328,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         # Само super_admin може да променя строгия режим на съответствие
         if trz_compliance_strict_mode is not None and current_user.role.name == "super_admin":
@@ -356,13 +358,14 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         user_data = schemas.UserCreate(
             email=userInput.email,
             username=userInput.username,
             password=userInput.password,
             first_name=userInput.first_name,
+            surname=userInput.surname,
             last_name=userInput.last_name,
             phone_number=userInput.phone_number,
             address=userInput.address,
@@ -374,6 +377,7 @@ class Mutation:
             position_id=userInput.position_id,
             password_force_change=userInput.password_force_change,
             contract_type=userInput.contract_type,
+            contract_number=userInput.contract_number,
             contract_start_date=userInput.contract_start_date,
             contract_end_date=userInput.contract_end_date,
             base_salary=userInput.base_salary,
@@ -403,48 +407,82 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         if current_user.id != userInput.id and current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
-        update_data = schemas.UserUpdate(
-            email=userInput.email,
-            username=userInput.username,
-            password=userInput.password,
-            first_name=userInput.first_name,
-            last_name=userInput.last_name,
-            phone_number=userInput.phone_number,
-            address=userInput.address,
-            egn=userInput.egn,
-            birth_date=userInput.birth_date,
-            iban=userInput.iban,
-            is_active=userInput.is_active,
-            role_id=userInput.role_id,
-            password_force_change=userInput.password_force_change,
-            company_id=userInput.company_id,
-            department_id=userInput.department_id,
-            position_id=userInput.position_id,
-            base_salary=userInput.base_salary,
-            contract_type=userInput.contract_type,
-            contract_start_date=userInput.contract_start_date,
-            contract_end_date=userInput.contract_end_date,
-            work_hours_per_week=userInput.work_hours_per_week,
-            probation_months=userInput.probation_months,
-            salary_calculation_type=userInput.salary_calculation_type,
-            salary_installments_count=userInput.salary_installments_count,
-            monthly_advance_amount=userInput.monthly_advance_amount,
-            tax_resident=userInput.tax_resident,
-            insurance_contributor=userInput.insurance_contributor,
-            has_income_tax=userInput.has_income_tax,
-            payment_day=userInput.payment_day,
-            experience_start_date=userInput.experience_start_date,
-            night_work_rate=userInput.night_work_rate,
-            overtime_rate=userInput.overtime_rate,
-            holiday_rate=userInput.holiday_rate,
-            work_class=userInput.work_class,
-            dangerous_work=userInput.dangerous_work,
-        )
+        # Build update data - exclude None values to preserve existing data
+        update_data = {}
+        if userInput.first_name is not None:
+            update_data["first_name"] = userInput.first_name
+        if userInput.surname is not None:
+            update_data["surname"] = userInput.surname
+        if userInput.last_name is not None:
+            update_data["last_name"] = userInput.last_name
+        if userInput.phone_number is not None:
+            update_data["phone_number"] = userInput.phone_number
+        if userInput.address is not None:
+            update_data["address"] = userInput.address
+        if userInput.egn is not None:
+            update_data["egn"] = userInput.egn
+        if userInput.birth_date is not None:
+            update_data["birth_date"] = userInput.birth_date
+        if userInput.iban is not None:
+            update_data["iban"] = userInput.iban
+        if userInput.is_active is not None:
+            update_data["is_active"] = userInput.is_active
+        if userInput.password_force_change is not None:
+            update_data["password_force_change"] = userInput.password_force_change
+        if userInput.company_id is not None:
+            update_data["company_id"] = userInput.company_id
+        if userInput.department_id is not None:
+            update_data["department_id"] = userInput.department_id
+        if userInput.position_id is not None:
+            update_data["position_id"] = userInput.position_id
+        if userInput.role_id is not None:
+            update_data["role_id"] = userInput.role_id
+        if userInput.password is not None and userInput.password != '':
+            update_data["password"] = userInput.password
+
+        update_data["base_salary"] = userInput.base_salary
+        update_data["contract_type"] = userInput.contract_type
+        update_data["contract_number"] = userInput.contract_number
+        update_data["contract_start_date"] = userInput.contract_start_date
+        update_data["contract_end_date"] = userInput.contract_end_date
+        update_data["work_hours_per_week"] = userInput.work_hours_per_week
+        update_data["probation_months"] = userInput.probation_months
+        update_data["salary_calculation_type"] = userInput.salary_calculation_type
+        update_data["salary_installments_count"] = userInput.salary_installments_count
+        update_data["monthly_advance_amount"] = userInput.monthly_advance_amount
+        update_data["tax_resident"] = userInput.tax_resident
+        update_data["insurance_contributor"] = userInput.insurance_contributor
+        update_data["has_income_tax"] = userInput.has_income_tax
+        update_data["payment_day"] = userInput.payment_day
+        update_data["experience_start_date"] = userInput.experience_start_date
+        update_data["night_work_rate"] = userInput.night_work_rate
+        update_data["overtime_rate"] = userInput.overtime_rate
+        update_data["holiday_rate"] = userInput.holiday_rate
+        update_data["work_class"] = userInput.work_class
+        update_data["dangerous_work"] = userInput.dangerous_work
+
+        # Filter out None values for contract-related fields
+        contract_fields = [
+            'base_salary', 'contract_type', 'contract_number', 'contract_start_date', 
+            'contract_end_date', 'work_hours_per_week', 'probation_months', 
+            'salary_calculation_type', 'salary_installments_count', 'monthly_advance_amount',
+            'tax_resident', 'insurance_contributor', 'has_income_tax', 'payment_day',
+            'experience_start_date', 'night_work_rate', 'overtime_rate', 'holiday_rate',
+            'work_class', 'dangerous_work'
+        ]
+        for field in contract_fields:
+            if field in update_data and update_data[field] is None:
+                del update_data[field]
+
+        # Also add surname to update_data
+        if userInput.surname is not None:
+            update_data["surname"] = userInput.surname
+
         db_user = await crud.update_user(db, user_id=userInput.id, user_in=update_data)
         
         # Update or create EmploymentContract with TRZ fields
@@ -537,7 +575,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
         return await crud.delete_user(db, id)
 
     @strawberry.mutation
@@ -545,7 +583,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name != "super_admin":
-            raise HTTPException(status_code=403, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         company = await crud.create_company(
             db,
@@ -563,7 +601,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name != "super_admin":
-            raise HTTPException(status_code=403, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         company = await crud.update_company(
             db,
@@ -582,7 +620,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=403, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         dept = await crud.create_department(db, name=input.name, company_id=input.company_id,
                                             manager_id=input.manager_id)
@@ -593,7 +631,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=403, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         dept = await crud.update_department(db, department_id=input.id, name=input.name, manager_id=input.manager_id)
         return types.Department.from_instance(dept)
@@ -603,7 +641,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         pos = await crud.create_position(db, title, department_id)
         return types.Position.from_instance(pos)
@@ -613,7 +651,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         pos = await crud.update_position(db, id, title, department_id)
         return types.Position.from_instance(pos)
@@ -623,8 +661,416 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
         return await crud.delete_position(db, id)
+
+    @strawberry.mutation
+    async def create_vehicle(self, input: VehicleCreateInput, info: strawberry.Info) -> types.Vehicle:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+
+        # Get company_id from current user if not provided
+        company_id = input.company_id or current_user.company_id
+
+        vehicle = await crud.create_vehicle(
+            db,
+            registration_number=input.registration_number,
+            vin=input.vin,
+            make=input.make,
+            model=input.model,
+            year=input.year,
+            vehicle_type=input.vehicle_type,
+            fuel_type=input.fuel_type,
+            status=input.status,
+            color=input.color,
+            initial_mileage=input.initial_mileage,
+            is_company_vehicle=input.is_company_vehicle,
+            notes=input.notes,
+            company_id=company_id,
+        )
+        return types.Vehicle.from_instance(vehicle)
+
+    @strawberry.mutation
+    async def update_vehicle(self, id: int, input: VehicleUpdateInput, info: strawberry.Info) -> types.Vehicle:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+
+        vehicle = await crud.update_vehicle(
+            db,
+            vehicle_id=id,
+            registration_number=input.registration_number,
+            vin=input.vin,
+            make=input.make,
+            model=input.model,
+            year=input.year,
+            vehicle_type=input.vehicle_type,
+            fuel_type=input.fuel_type,
+            status=input.status,
+            color=input.color,
+            initial_mileage=input.initial_mileage,
+            is_company_vehicle=input.is_company_vehicle,
+            notes=input.notes,
+        )
+        if not vehicle:
+            raise not_found("Vehicle not found")
+        return types.Vehicle.from_instance(vehicle)
+
+    @strawberry.mutation
+    async def delete_vehicle(self, id: int, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+
+        success = await crud.delete_vehicle(db, vehicle_id=id)
+        if not success:
+            raise not_found("Vehicle not found")
+        return True
+
+    @strawberry.mutation
+    async def create_vehicle_mileage(self, input: VehicleMileageInput, info: strawberry.Info) -> types.VehicleMileage:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
+            raise permission_denied("Operation not permitted")
+
+        record = await crud.create_vehicle_mileage(
+            db,
+            vehicle_id=input.vehicle_id,
+            date=input.date.date() if hasattr(input.date, 'date') else input.date,
+            mileage=input.mileage,
+            notes=input.notes,
+        )
+        return types.VehicleMileage.from_instance(record)
+
+    @strawberry.mutation
+    async def create_vehicle_fuel(self, input: VehicleFuelInput, info: strawberry.Info) -> types.VehicleFuel:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
+            raise permission_denied("Operation not permitted")
+
+        record = await crud.create_vehicle_fuel(
+            db,
+            vehicle_id=input.vehicle_id,
+            date=input.date.date() if hasattr(input.date, 'date') else input.date,
+            liters=input.liters,
+            price=input.price,
+            total=input.total,
+            fuel_type=input.fuel_type,
+            notes=input.notes,
+        )
+        return types.VehicleFuel.from_instance(record)
+
+    @strawberry.mutation
+    async def create_vehicle_repair(self, input: VehicleRepairInput, info: strawberry.Info) -> types.VehicleRepair:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+
+        record = await crud.create_vehicle_repair(
+            db,
+            vehicle_id=input.vehicle_id,
+            date=input.date.date() if hasattr(input.date, 'date') else input.date,
+            description=input.description,
+            cost=input.cost or 0,
+            repair_type=input.repair_type or "maintenance",
+            notes=input.notes,
+        )
+        return types.VehicleRepair.from_instance(record)
+
+    @strawberry.mutation
+    async def create_vehicle_insurance(self, input: VehicleInsuranceInput, info: strawberry.Info) -> types.VehicleInsurance:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+
+        record = await crud.create_vehicle_insurance(
+            db,
+            vehicle_id=input.vehicle_id,
+            provider=input.provider,
+            policy_number=input.policy_number,
+            start_date=input.start_date.date() if hasattr(input.start_date, 'date') else input.start_date,
+            end_date=input.end_date.date() if hasattr(input.end_date, 'date') else input.end_date,
+            premium=input.premium or 0,
+            insurance_type=input.insurance_type or "grazhdanska",
+            notes=input.notes,
+        )
+        return types.VehicleInsurance.from_instance(record)
+
+    @strawberry.mutation
+    async def create_vehicle_inspection(self, input: VehicleInspectionInput, info: strawberry.Info) -> types.VehicleInspection:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+
+        record = await crud.create_vehicle_inspection(
+            db,
+            vehicle_id=input.vehicle_id,
+            date=input.date.date() if hasattr(input.date, 'date') else input.date,
+            next_date=input.next_date.date() if input.next_date and hasattr(input.next_date, 'date') else input.next_date,
+            cost=input.cost or 0,
+            result=input.result or "passed",
+            protocol_number=input.protocol_number,
+            notes=input.notes,
+        )
+        return types.VehicleInspection.from_instance(record)
+
+    @strawberry.mutation
+    async def create_vehicle_driver(self, input: VehicleDriverInput, info: strawberry.Info) -> types.VehicleDriver:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+
+        record = await crud.create_vehicle_driver(
+            db,
+            vehicle_id=input.vehicle_id,
+            user_id=input.user_id,
+            license_number=input.license_number,
+            license_expiry=input.license_expiry.date() if hasattr(input.license_expiry, 'date') else input.license_expiry,
+            phone=input.phone,
+            category=input.category or "B",
+            is_primary=input.is_primary or False,
+            notes=input.notes,
+        )
+        return types.VehicleDriver.from_instance(record)
+
+    @strawberry.mutation
+    async def create_vehicle_trip(self, input: VehicleTripInput, info: strawberry.Info) -> types.VehicleTrip:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
+            raise permission_denied("Operation not permitted")
+
+        record = await crud.create_vehicle_trip(
+            db,
+            vehicle_id=input.vehicle_id,
+            user_id=input.user_id,
+            start_date=input.start_date,
+            end_date=input.end_date,
+            start_location=input.start_location,
+            end_location=input.end_location,
+            distance=input.distance or 0,
+            trip_type=input.trip_type or "business",
+            notes=input.notes,
+        )
+        return types.VehicleTrip.from_instance(record)
+
+    @strawberry.mutation
+    async def delete_vehicle_mileage(self, id: int, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        success = await crud.delete_vehicle_mileage(db, id)
+        if not success:
+            raise not_found("Record not found")
+        return True
+
+    @strawberry.mutation
+    async def delete_vehicle_fuel(self, id: int, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        success = await crud.delete_vehicle_fuel(db, id)
+        if not success:
+            raise not_found("Record not found")
+        return True
+
+    @strawberry.mutation
+    async def delete_vehicle_repair(self, id: int, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        success = await crud.delete_vehicle_repair(db, id)
+        if not success:
+            raise not_found("Record not found")
+        return True
+
+    @strawberry.mutation
+    async def delete_vehicle_insurance(self, id: int, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        success = await crud.delete_vehicle_insurance(db, id)
+        if not success:
+            raise not_found("Record not found")
+        return True
+
+    @strawberry.mutation
+    async def delete_vehicle_inspection(self, id: int, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        success = await crud.delete_vehicle_inspection(db, id)
+        if not success:
+            raise not_found("Record not found")
+        return True
+
+    @strawberry.mutation
+    async def delete_vehicle_driver(self, id: int, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        success = await crud.delete_vehicle_driver(db, id)
+        if not success:
+            raise not_found("Record not found")
+        return True
+
+    @strawberry.mutation
+    async def delete_vehicle_trip(self, id: int, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        success = await crud.delete_vehicle_trip(db, id)
+        if not success:
+            raise not_found("Record not found")
+        return True
+
+    @strawberry.mutation
+    async def update_vehicle_mileage(self, id: int, input: VehicleMileageUpdateInput, info: strawberry.Info) -> types.VehicleMileage:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
+            raise permission_denied("Operation not permitted")
+        record = await crud.update_vehicle_mileage(
+            db, id,
+            date=input.date.date() if input.date else None,
+            mileage=input.mileage,
+            notes=input.notes,
+        )
+        if not record:
+            raise not_found("Record not found")
+        return types.VehicleMileage.from_instance(record)
+
+    @strawberry.mutation
+    async def update_vehicle_fuel(self, id: int, input: VehicleFuelUpdateInput, info: strawberry.Info) -> types.VehicleFuel:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
+            raise permission_denied("Operation not permitted")
+        record = await crud.update_vehicle_fuel(
+            db, id,
+            date=input.date.date() if input.date else None,
+            liters=input.liters,
+            price=input.price,
+            total=input.total,
+            fuel_type=input.fuel_type,
+            notes=input.notes,
+        )
+        if not record:
+            raise not_found("Record not found")
+        return types.VehicleFuel.from_instance(record)
+
+    @strawberry.mutation
+    async def update_vehicle_repair(self, id: int, input: VehicleRepairUpdateInput, info: strawberry.Info) -> types.VehicleRepair:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        record = await crud.update_vehicle_repair(
+            db, id,
+            date=input.date.date() if input.date else None,
+            description=input.description,
+            cost=input.cost,
+            repair_type=input.repair_type,
+            notes=input.notes,
+        )
+        if not record:
+            raise not_found("Record not found")
+        return types.VehicleRepair.from_instance(record)
+
+    @strawberry.mutation
+    async def update_vehicle_insurance(self, id: int, input: VehicleInsuranceUpdateInput, info: strawberry.Info) -> types.VehicleInsurance:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        record = await crud.update_vehicle_insurance(
+            db, id,
+            provider=input.provider,
+            policy_number=input.policy_number,
+            start_date=input.start_date.date() if input.start_date else None,
+            end_date=input.end_date.date() if input.end_date else None,
+            premium=input.premium,
+            insurance_type=input.insurance_type,
+            notes=input.notes,
+        )
+        if not record:
+            raise not_found("Record not found")
+        return types.VehicleInsurance.from_instance(record)
+
+    @strawberry.mutation
+    async def update_vehicle_inspection(self, id: int, input: VehicleInspectionUpdateInput, info: strawberry.Info) -> types.VehicleInspection:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        record = await crud.update_vehicle_inspection(
+            db, id,
+            date=input.date.date() if input.date else None,
+            next_date=input.next_date.date() if input.next_date else None,
+            cost=input.cost,
+            result=input.result,
+            protocol_number=input.protocol_number,
+            notes=input.notes,
+        )
+        if not record:
+            raise not_found("Record not found")
+        return types.VehicleInspection.from_instance(record)
+
+    @strawberry.mutation
+    async def update_vehicle_driver(self, id: int, input: VehicleDriverUpdateInput, info: strawberry.Info) -> types.VehicleDriver:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
+            raise permission_denied("Operation not permitted")
+        record = await crud.update_vehicle_driver(
+            db, id,
+            license_number=input.license_number,
+            license_expiry=input.license_expiry.date() if input.license_expiry else None,
+            phone=input.phone,
+            category=input.category,
+            is_primary=input.is_primary,
+            notes=input.notes,
+        )
+        if not record:
+            raise not_found("Record not found")
+        return types.VehicleDriver.from_instance(record)
+
+    @strawberry.mutation
+    async def update_vehicle_trip(self, id: int, input: VehicleTripUpdateInput, info: strawberry.Info) -> types.VehicleTrip:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
+            raise permission_denied("Operation not permitted")
+        record = await crud.update_vehicle_trip(
+            db, id,
+            start_date=input.start_date,
+            end_date=input.end_date,
+            start_location=input.start_location,
+            end_location=input.end_location,
+            distance=input.distance,
+            trip_type=input.trip_type,
+            notes=input.notes,
+        )
+        if not record:
+            raise not_found("Record not found")
+        return types.VehicleTrip.from_instance(record)
 
     @strawberry.mutation
     async def create_shift(self, name: str, start_time: datetime.time, end_time: datetime.time,
@@ -632,7 +1078,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         s = await crud.create_shift(db, name, start_time, end_time)
         return types.Shift.from_instance(s)
@@ -647,7 +1093,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         s = await crud.update_shift(
             db, id, name, start_time, end_time,
@@ -660,7 +1106,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
         return await crud.delete_shift(db, id)
 
     @strawberry.mutation
@@ -668,7 +1114,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         role = await crud.create_role(db, schemas.RoleCreate(name=input.name, description=input.description))
         return types.Role.from_instance(role)
@@ -679,7 +1125,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         role = await crud.update_role(db, id, name, description)
         return types.Role.from_instance(role)
@@ -689,7 +1135,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
         return await crud.delete_role(db, id)
 
     @strawberry.mutation
@@ -697,7 +1143,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         from backend.auth.rbac_service import PermissionService
         perm_service = PermissionService(db)
@@ -709,7 +1155,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name != "super_admin":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         setting = await crud.set_global_setting(db, key, value)
         return types.GlobalSetting.from_instance(setting)
@@ -733,7 +1179,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         config_data = {
             "hourly_rate": hourly_rate,
@@ -758,7 +1204,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         # Override user_id from input to ensure self-submission
         req_data = schemas.LeaveRequestCreate(**input.dict(), user_id=current_user.id)
@@ -771,7 +1217,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         req = await crud.update_leave_request_status(
             db,
@@ -788,7 +1234,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
         return await crud.delete_leave_request(db, id)
 
     @strawberry.mutation
@@ -804,7 +1250,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await crud.set_global_setting(db, "office_latitude", str(latitude))
         await crud.set_global_setting(db, "office_longitude", str(longitude))
@@ -830,7 +1276,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         # Re-fetch user from DB to access hashed_password (not present in Pydantic schema)
         from backend.database.models import User
@@ -839,10 +1285,10 @@ class Mutation:
         db_user = result.scalars().first()
 
         if not db_user:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise not_found("User not found")
 
         if not verify_password(old_password, db_user.hashed_password):
-            raise HTTPException(status_code=400, detail="Incorrect old password")
+            raise bad_request("Incorrect old password")
 
         await validate_password_complexity(db, new_password)
 
@@ -857,15 +1303,15 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         # Check if the session belongs to the user trying to invalidate (if not admin)
         session_to_invalidate = await crud.get_user_session_by_id(db, sessionId)
         if not session_to_invalidate:
-            raise HTTPException(status_code=404, detail="Session not found")
+            raise not_found("Session not found")
 
         if session_to_invalidate.user_id != current_user.id and current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=403, detail="Not authorized to invalidate this session")
+            raise permission_denied("Not authorized to invalidate this session")
 
         return await crud.invalidate_user_session(db, session_to_invalidate.refresh_token_jti)
 
@@ -879,7 +1325,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await crud.set_global_setting(db, "max_login_attempts", str(max_login_attempts))
         await crud.set_global_setting(db, "lockout_minutes", str(lockout_minutes))
@@ -896,7 +1342,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await crud.set_global_setting(db, "kiosk_require_gps", "true" if require_gps else "false")
         await crud.set_global_setting(db, "kiosk_require_same_network", "true" if require_same_network else "false")
@@ -908,7 +1354,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         await crud.disconnect_google_calendar(db, current_user.id)
         return True
@@ -926,7 +1372,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         await crud.update_google_calendar_sync_settings(
             db,
@@ -949,7 +1395,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         await verify_module_enabled("salaries", db)
 
@@ -990,7 +1436,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await verify_module_enabled("salaries", db)
 
@@ -1035,7 +1481,7 @@ class Mutation:
         current_user = info.context["current_user"]
 
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         log = await crud.create_time_log(
             db, user_id, start_time, end_time, is_manual, break_duration_minutes, notes
@@ -1052,7 +1498,7 @@ class Mutation:
         current_user = info.context["current_user"]
 
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         log = await crud.update_time_log(
             db, id, start_time, end_time, is_manual, break_duration_minutes, notes
@@ -1064,7 +1510,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
         return await crud.delete_time_log(db, id)
 
     @strawberry.mutation
@@ -1133,7 +1579,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await verify_module_enabled("shifts", db)
 
@@ -1155,7 +1601,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await verify_module_enabled("shifts", db)
 
@@ -1184,7 +1630,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await verify_module_enabled("shifts", db)
 
@@ -1196,7 +1642,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await verify_module_enabled("shifts", db)
         return await crud.delete_schedule_template(db, id)
@@ -1212,7 +1658,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await verify_module_enabled("shifts", db)
 
@@ -1228,7 +1674,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name != "super_admin":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await crud.set_global_setting(db, "pwd_min_length", str(settings.min_length))
         await crud.set_global_setting(db, "pwd_max_length", str(settings.max_length))
@@ -1259,7 +1705,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         return await fetch_and_store_holidays(db, year)
 
@@ -1268,7 +1714,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         try:
             return await fetch_and_store_orthodox_holidays(db, year)
@@ -1295,7 +1741,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         bonus = await crud.create_bonus(
             db,
@@ -1312,7 +1758,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         await crud.delete_bonus(db, id)
         await db.commit()
@@ -1323,7 +1769,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         return await crud.regenerate_user_qr_token(db, current_user.id)
 
@@ -1339,7 +1785,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         advance = await crud.create_advance_payment(
             db, user_id=user_id, amount=amount, payment_date=payment_date, description=description
@@ -1359,7 +1805,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         loan = await crud.create_service_loan(
             db, user_id=user_id, total_amount=total_amount, installments_count=installments_count,
@@ -1372,7 +1818,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         res = await crud.set_monthly_work_days(db, input.year, input.month, input.days_count)
         return types.MonthlyWorkDays.from_instance(res)
@@ -1390,7 +1836,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         log = await crud.create_manual_time_log(
             db, user_id, start_time, end_time, break_duration_minutes, notes
@@ -1402,7 +1848,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         return await crud.delete_schedule(db, id)
 
@@ -1412,7 +1858,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         res = await crud.create_or_update_schedule(db, user_id, shift_id, date)
         return types.WorkSchedule.from_instance(res)
@@ -1423,7 +1869,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         return await crud.create_bulk_schedules(db, user_ids, shift_id, start_date, end_date, days_of_week)
 
@@ -1432,7 +1878,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         new_status = "accepted" if accept else "rejected"
         res = await crud.update_swap_status(db, swap_id, new_status)
@@ -1443,7 +1889,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted")
+            raise permission_denied("Operation not permitted")
 
         new_status = "approved" if approve else "rejected"
         res = await crud.update_swap_status(db, swap_id, new_status, admin_user_id=current_user.id)
@@ -1455,7 +1901,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         res = await crud.create_swap_request(db, current_user.id, requestor_schedule_id, target_user_id,
                                              target_schedule_id)
@@ -1468,19 +1914,18 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
-            raise HTTPException(status_code=400, detail="Company ID is required")
+            raise bad_request("Company ID is required")
 
         # Validate company exists
         from backend.database.models import Company
         stmt = select(Company).where(Company.id == target_company_id)
         res = await db.execute(stmt)
         if not res.scalar_one_or_none():
-            raise HTTPException(status_code=400,
-                                detail=f"Фирма с ID {target_company_id} не съществува. Моля, първо създайте фирма.")
+            raise bad_request(f"Фирма с ID {target_company_id} не съществува. Моля, първо създайте фирма.")
 
         from backend.database.models import StorageZone
         zone = StorageZone(
@@ -1504,7 +1949,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         from backend.database.models import StorageZone
         from sqlalchemy import select
@@ -1512,10 +1957,10 @@ class Mutation:
         res = await db.execute(stmt)
         zone = res.scalar_one_or_none()
         if not zone:
-            raise HTTPException(status_code=404, detail="Зоната не е намерена")
+            raise not_found("Зоната не е намерена")
 
         if current_user.role.name not in ["super_admin"] and zone.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Нямате достъп до тази зона")
+            raise permission_denied("Нямате достъп до тази зона")
 
         zone.name = input.name
         zone.temp_min = input.temp_min
@@ -1534,19 +1979,18 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
-            raise HTTPException(status_code=400, detail="Company ID is required")
+            raise bad_request("Company ID is required")
 
         # Validate company exists
         from backend.database.models import Company
         stmt = select(Company).where(Company.id == target_company_id)
         res = await db.execute(stmt)
         if not res.scalar_one_or_none():
-            raise HTTPException(status_code=400,
-                                detail=f"Фирма с ID {target_company_id} не съществува. Моля, първо създайте фирма.")
+            raise bad_request(f"Фирма с ID {target_company_id} не съществува. Моля, първо създайте фирма.")
 
         from backend.database.models import Supplier
         supplier = Supplier(
@@ -1569,7 +2013,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         from backend.database.models import Supplier
         from sqlalchemy import select
@@ -1577,10 +2021,10 @@ class Mutation:
         res = await db.execute(stmt)
         supplier = res.scalar_one_or_none()
         if not supplier:
-            raise HTTPException(status_code=404, detail="Доставчикът не е намерен")
+            raise not_found("Доставчикът не е намерен")
 
         if current_user.role.name not in ["super_admin"] and supplier.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Нямате достъп до този доставчик")
+            raise permission_denied("Нямате достъп до този доставчик")
 
         supplier.name = input.name
         supplier.eik = input.eik
@@ -1599,18 +2043,18 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
-            raise HTTPException(status_code=400, detail="Company ID is required")
+            raise bad_request("Company ID is required")
 
         # Validate company exists
         from backend.database.models import Company
         stmt = select(Company).where(Company.id == target_company_id)
         res = await db.execute(stmt)
         if not res.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail=f"Фирма с ID {target_company_id} не съществува.")
+            raise bad_request(f"Фирма с ID {target_company_id} не съществува.")
 
         from backend.database.models import Ingredient
         ingredient = Ingredient(
@@ -1635,15 +2079,15 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         from backend.database.models import Ingredient
         ingredient = await db.get(Ingredient, input.id)
         if not ingredient:
-            raise HTTPException(status_code=404, detail="Ingredient not found")
+            raise not_found("Ingredient not found")
 
         if current_user.role.name != "super_admin" and ingredient.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         ingredient.name = input.name
         ingredient.unit = input.unit
@@ -1665,13 +2109,13 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         from backend.database.models import Batch, Ingredient
         # Verify ingredient belongs to company
         res = await db.get(Ingredient, input.ingredient_id)
         if not res or (current_user.role.name != "super_admin" and res.company_id != current_user.company_id):
-            raise HTTPException(status_code=403, detail="Not authorized for this ingredient")
+            raise permission_denied("Not authorized for this ingredient")
 
         batch = Batch(
             ingredient_id=input.ingredient_id,
@@ -1693,15 +2137,15 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         from backend.database.models import Batch, Ingredient
         batch = await db.get(Batch, id)
-        if not batch: raise HTTPException(status_code=404, detail="Batch not found")
+        if not batch: raise not_found("Batch not found")
 
         ingredient = await db.get(Ingredient, batch.ingredient_id)
         if current_user.role.name != "super_admin" and ingredient.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         batch.status = status
         await db.commit()
@@ -1713,16 +2157,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         from backend.database.models import Batch, Ingredient
         batch = await db.get(Batch, input.id)
         if not batch:
-            raise HTTPException(status_code=404, detail="Batch not found")
+            raise not_found("Batch not found")
 
         ingredient = await db.get(Ingredient, batch.ingredient_id)
         if current_user.role.name != "super_admin" and ingredient.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         batch.ingredient_id = input.ingredient_id
         batch.batch_number = input.batch_number
@@ -1741,18 +2185,18 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
-            raise HTTPException(status_code=400, detail="Company ID is required")
+            raise bad_request("Company ID is required")
 
         # Validate company exists
         from backend.database.models import Company
         stmt = select(Company).where(Company.id == target_company_id)
         res = await db.execute(stmt)
         if not res.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail=f"Фирма с ID {target_company_id} не съществува.")
+            raise bad_request(f"Фирма с ID {target_company_id} не съществува.")
 
         from backend.database.models import Recipe, RecipeSection, RecipeIngredient, RecipeStep
 
@@ -1816,18 +2260,18 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         target_company_id = company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
-            raise HTTPException(status_code=400, detail="Company ID is required")
+            raise bad_request("Company ID is required")
 
         # Validate company exists
         from backend.database.models import Company
         stmt = select(Company).where(Company.id == target_company_id)
         res = await db.execute(stmt)
         if not res.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail=f"Фирма с ID {target_company_id} не съществува.")
+            raise bad_request(f"Фирма с ID {target_company_id} не съществува.")
 
         from backend.database.models import Workstation
         ws = Workstation(
@@ -1845,18 +2289,18 @@ class Mutation:
                                       info: strawberry.Info) -> types.ProductionOrder:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
-            raise HTTPException(status_code=400, detail="Company ID is required")
+            raise bad_request("Company ID is required")
 
         # Validate company exists
         from backend.database.models import Company
         stmt = select(Company).where(Company.id == target_company_id)
         res = await db.execute(stmt)
         if not res.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail=f"Фирма с ID {target_company_id} не съществува.")
+            raise bad_request(f"Фирма с ID {target_company_id} не съществува.")
 
         from backend.database.models import ProductionOrder, Recipe, ProductionTask, Batch, sofia_now
         from datetime import timedelta
@@ -1918,14 +2362,14 @@ class Mutation:
                                              info: strawberry.Info) -> types.ProductionOrder:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import ProductionOrder
         order = await db.get(ProductionOrder, id)
-        if not order: raise HTTPException(status_code=404, detail="Order not found")
+        if not order: raise not_found("Order not found")
 
         if current_user.role.name != "super_admin" and order.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         order.status = status
         await db.commit()
@@ -1937,7 +2381,7 @@ class Mutation:
         """Department head confirms order is ready for transport"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import (
             ProductionOrder, ProductionTask, ProductionRecord,
@@ -1948,13 +2392,13 @@ class Mutation:
         from datetime import timedelta
 
         order = await db.get(ProductionOrder, id)
-        if not order: raise HTTPException(status_code=404, detail="Order not found")
+        if not order: raise not_found("Order not found")
 
         if current_user.role.name != "super_admin" and order.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         if order.status != "ready":
-            raise HTTPException(status_code=400, detail="Order must be in 'ready' status to confirm")
+            raise bad_request("Order must be in 'ready' status to confirm")
 
         # Get recipe for shelf_life_days
         recipe = await db.get(Recipe, order.recipe_id)
@@ -2036,18 +2480,18 @@ class Mutation:
         """Mark a task as scrap - deducts all ingredients for that task"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import ProductionTask, ProductionOrder, Recipe, RecipeIngredient, Batch, \
             RecipeStep, sofia_now
         from sqlalchemy import select
 
         task = await db.get(ProductionTask, id)
-        if not task: raise HTTPException(status_code=404, detail="Task not found")
+        if not task: raise not_found("Task not found")
 
         order = await db.get(ProductionOrder, task.order_id)
         if current_user.role.name != "super_admin" and order.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         # Mark task as scrap
         task.is_scrap = True
@@ -2087,23 +2531,23 @@ class Mutation:
         """Scrap part of a task quantity - logs the scrap and reduces the order quantity"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import ProductionTask, ProductionOrder, ProductionScrapLog, sofia_now
 
         task = await db.get(ProductionTask, input.task_id)
-        if not task: raise HTTPException(status_code=404, detail="Task not found")
+        if not task: raise not_found("Task not found")
 
         order = await db.get(ProductionOrder, task.order_id)
         if current_user.role.name != "super_admin" and order.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         # Validate quantity
         if input.quantity <= 0:
-            raise HTTPException(status_code=400, detail="Quantity must be positive")
+            raise bad_request("Quantity must be positive")
 
         if input.quantity > float(order.quantity):
-            raise HTTPException(status_code=400, detail="Cannot scrap more than the order quantity")
+            raise bad_request("Cannot scrap more than the order quantity")
 
         # Create scrap log
         scrap_log = ProductionScrapLog(
@@ -2127,17 +2571,17 @@ class Mutation:
         """Get scrap logs for a task"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import ProductionScrapLog, ProductionTask, ProductionOrder
         from sqlalchemy import select
 
         task = await db.get(ProductionTask, task_id)
-        if not task: raise HTTPException(status_code=404, detail="Task not found")
+        if not task: raise not_found("Task not found")
 
         order = await db.get(ProductionOrder, task.order_id)
         if current_user.role.name != "super_admin" and order.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         stmt = select(ProductionScrapLog).where(ProductionScrapLog.task_id == task_id).order_by(
             ProductionScrapLog.created_at.desc())
@@ -2148,16 +2592,16 @@ class Mutation:
     async def update_production_task_status(self, id: int, status: str, info: strawberry.Info) -> types.ProductionTask:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import ProductionTask, ProductionOrder, sofia_now
         task = await db.get(ProductionTask, id)
-        if not task: raise HTTPException(status_code=404, detail="Task not found")
+        if not task: raise not_found("Task not found")
 
         # Verify ownership
         order = await db.get(ProductionOrder, task.order_id)
         if current_user.role.name != "super_admin" and order.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         task.status = status
         if status == "in_progress" and not task.started_at:
@@ -2261,7 +2705,7 @@ class Mutation:
         """Start a new inventory session"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import InventorySession, sofia_now
 
@@ -2287,22 +2731,22 @@ class Mutation:
         """Add or update an item in the inventory session"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import InventorySession, InventoryItem, Ingredient, Batch
         from sqlalchemy import func, select
 
         # Verify session exists and belongs to company
         session = await db.get(InventorySession, session_id)
-        if not session: raise HTTPException(status_code=404, detail="Session not found")
+        if not session: raise not_found("Session not found")
         if session.company_id != current_user.company_id and current_user.role.name != "super_admin":
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
         if session.status != "active":
-            raise HTTPException(status_code=400, detail="Session is not active")
+            raise bad_request("Session is not active")
 
         # Get ingredient
         ingredient = await db.get(Ingredient, ingredient_id)
-        if not ingredient: raise HTTPException(status_code=404, detail="Ingredient not found")
+        if not ingredient: raise not_found("Ingredient not found")
 
         # Calculate system quantity (sum of all active batches)
         stmt = select(func.coalesce(func.sum(Batch.quantity), 0)).where(
@@ -2348,7 +2792,7 @@ class Mutation:
         """Complete inventory session and adjust quantities"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import InventorySession, InventoryItem, Batch, sofia_now
         from sqlalchemy import select
@@ -2356,11 +2800,11 @@ class Mutation:
 
         # Verify session
         session = await db.get(InventorySession, session_id)
-        if not session: raise HTTPException(status_code=404, detail="Session not found")
+        if not session: raise not_found("Session not found")
         if session.company_id != current_user.company_id and current_user.role.name != "super_admin":
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
         if session.status != "active":
-            raise HTTPException(status_code=400, detail="Session is not active")
+            raise bad_request("Session is not active")
 
         # Get all items
         stmt = select(InventoryItem).where(InventoryItem.session_id == session_id)
@@ -2437,7 +2881,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
         from decimal import Decimal
@@ -2564,17 +3008,17 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
         from decimal import Decimal
 
         invoice = await db.get(models.Invoice, id)
         if not invoice:
-            raise HTTPException(status_code=404, detail="Invoice not found")
+            raise not_found("Invoice not found")
 
         if current_user.role.name != "super_admin" and invoice.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         # Update basic fields
         invoice.type = invoice_data.type
@@ -2688,16 +3132,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         invoice = await db.get(models.Invoice, id)
         if not invoice:
-            raise HTTPException(status_code=404, detail="Invoice not found")
+            raise not_found("Invoice not found")
 
         if current_user.role.name != "super_admin" and invoice.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         # Log the deletion before deleting
         log_entry = models.OperationLog(
@@ -2723,17 +3167,17 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
         from decimal import Decimal
 
         batch = await db.get(models.Batch, batch_id)
         if not batch:
-            raise HTTPException(status_code=404, detail="Batch not found")
+            raise not_found("Batch not found")
 
         if current_user.role.name != "super_admin" and batch.ingredient.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         # Get ingredient price
         ingredient = await db.get(models.Ingredient, batch.ingredient_id)
@@ -2817,7 +3261,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
         from decimal import Decimal
@@ -2916,7 +3360,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
@@ -2961,16 +3405,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         entry = await db.get(models.CashJournalEntry, id)
         if not entry:
-            raise HTTPException(status_code=404, detail="Entry not found")
+            raise not_found("Entry not found")
 
         if current_user.role.name != "super_admin" and entry.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         # Log the deletion (soft delete)
         log_entry = models.OperationLog(
@@ -2998,7 +3442,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
         import datetime
@@ -3109,7 +3553,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
         import datetime
@@ -3222,7 +3666,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
         import datetime
@@ -3345,7 +3789,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         # Import SAF-T generator
         from backend.services.saft_generator import generate_saft_file as saft_generator
@@ -3373,10 +3817,7 @@ class Mutation:
                 file_name=result['file_name']
             )
         except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error generating SAF-T file: {str(e)}"
-            )
+            raise internal_server_error(f"Error generating SAF-T file: {str(e)}")
 
     @strawberry.mutation
     async def validate_saft_xml(
@@ -3414,7 +3855,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
@@ -3495,13 +3936,13 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         proforma = await db.get(models.Invoice, proforma_id)
         if not proforma or proforma.type != "proforma":
-            raise HTTPException(status_code=404, detail="Proforma invoice not found")
+            raise not_found("Proforma invoice not found")
 
         # Generate new invoice number
         today = datetime.date.today()
@@ -3583,13 +4024,13 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         original_invoice = await db.get(models.Invoice, original_invoice_id)
         if not original_invoice:
-            raise HTTPException(status_code=404, detail="Original invoice not found")
+            raise not_found("Original invoice not found")
 
         # Create correction
         correction = models.InvoiceCorrection(
@@ -3622,7 +4063,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
@@ -3653,16 +4094,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         receipt = await db.get(models.CashReceipt, id)
         if not receipt:
-            raise HTTPException(status_code=404, detail="Cash receipt not found")
+            raise not_found("Cash receipt not found")
 
         if receipt.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         if input.receipt_number is not None:
             receipt.receipt_number = input.receipt_number
@@ -3693,16 +4134,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         receipt = await db.get(models.CashReceipt, id)
         if not receipt:
-            raise HTTPException(status_code=404, detail="Cash receipt not found")
+            raise not_found("Cash receipt not found")
 
         if receipt.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         await db.delete(receipt)
         await db.commit()
@@ -3718,7 +4159,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
@@ -3759,16 +4200,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         account = await db.get(models.BankAccount, id)
         if not account:
-            raise HTTPException(status_code=404, detail="Bank account not found")
+            raise not_found("Bank account not found")
 
         if account.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         if input.is_default and not account.is_default:
             existing = await db.execute(
@@ -3810,16 +4251,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         account = await db.get(models.BankAccount, id)
         if not account:
-            raise HTTPException(status_code=404, detail="Bank account not found")
+            raise not_found("Bank account not found")
 
         if account.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         await db.delete(account)
         await db.commit()
@@ -3835,7 +4276,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
@@ -3867,16 +4308,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         transaction = await db.get(models.BankTransaction, id)
         if not transaction:
-            raise HTTPException(status_code=404, detail="Bank transaction not found")
+            raise not_found("Bank transaction not found")
 
         if transaction.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         if input.date is not None:
             transaction.date = input.date
@@ -3908,16 +4349,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         transaction = await db.get(models.BankTransaction, id)
         if not transaction:
-            raise HTTPException(status_code=404, detail="Bank transaction not found")
+            raise not_found("Bank transaction not found")
 
         if transaction.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         await db.delete(transaction)
         await db.commit()
@@ -3934,20 +4375,20 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         transaction = await db.get(models.BankTransaction, transaction_id)
         if not transaction:
-            raise HTTPException(status_code=404, detail="Bank transaction not found")
+            raise not_found("Bank transaction not found")
 
         invoice = await db.get(models.Invoice, invoice_id)
         if not invoice:
-            raise HTTPException(status_code=404, detail="Invoice not found")
+            raise not_found("Invoice not found")
 
         if transaction.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         transaction.invoice_id = invoice_id
         transaction.matched = True
@@ -3966,7 +4407,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
@@ -3995,16 +4436,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         account = await db.get(models.Account, id)
         if not account:
-            raise HTTPException(status_code=404, detail="Account not found")
+            raise not_found("Account not found")
 
         if account.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         if input.code is not None:
             account.code = input.code
@@ -4031,16 +4472,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         account = await db.get(models.Account, id)
         if not account:
-            raise HTTPException(status_code=404, detail="Account not found")
+            raise not_found("Account not found")
 
         if account.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         await db.delete(account)
         await db.commit()
@@ -4056,7 +4497,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
@@ -4089,16 +4530,16 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
         entry = await db.get(models.AccountingEntry, id)
         if not entry:
-            raise HTTPException(status_code=404, detail="Accounting entry not found")
+            raise not_found("Accounting entry not found")
 
         if entry.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         await db.delete(entry)
         await db.commit()
@@ -4114,7 +4555,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         from backend.database import models
 
@@ -4212,16 +4653,16 @@ class Mutation:
         """Reassign a production task to a different workstation"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import ProductionTask, ProductionOrder
 
         task = await db.get(ProductionTask, task_id)
-        if not task: raise HTTPException(status_code=404, detail="Task not found")
+        if not task: raise not_found("Task not found")
 
         order = await db.get(ProductionOrder, task.order_id)
         if current_user.role.name != "super_admin" and order.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         task.workstation_id = new_workstation_id
         await db.commit()
@@ -4237,16 +4678,16 @@ class Mutation:
         """Recalculate production_deadline for an order based on recipe"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import ProductionOrder, Recipe, sofia_now
         from datetime import timedelta
 
         order = await db.get(ProductionOrder, order_id)
-        if not order: raise HTTPException(status_code=404, detail="Order not found")
+        if not order: raise not_found("Order not found")
 
         if current_user.role.name != "super_admin" and order.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         recipe = await db.get(Recipe, order.recipe_id)
         if recipe and recipe.production_deadline_days and order.due_date:
@@ -4266,19 +4707,19 @@ class Mutation:
         """Update production order quantity"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise HTTPException(status_code=401, detail="Not authenticated")
+        if not current_user: raise unauthorized("Not authenticated")
 
         from backend.database.models import ProductionOrder
         from decimal import Decimal
 
         order = await db.get(ProductionOrder, order_id)
-        if not order: raise HTTPException(status_code=404, detail="Order not found")
+        if not order: raise not_found("Order not found")
 
         if current_user.role.name != "super_admin" and order.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         if quantity <= 0:
-            raise HTTPException(status_code=400, detail="Quantity must be positive")
+            raise bad_request("Quantity must be positive")
 
         order.quantity = Decimal(str(quantity))
         await db.commit()
@@ -4291,11 +4732,11 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            raise unauthorized("Not authenticated")
 
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
-            raise HTTPException(status_code=400, detail="Company ID is required")
+            raise bad_request("Company ID is required")
 
         from backend.database.models import ProductionOrder, Recipe, sofia_now, Company
         from datetime import timedelta
@@ -4303,7 +4744,7 @@ class Mutation:
         # Get recipe
         recipe = await db.get(Recipe, input.recipe_id)
         if not recipe:
-            raise HTTPException(status_code=400, detail="Рецептата не е намерена")
+            raise not_found("Рецептата не е намерена")
 
         # Create production order with completed status (direct sale)
         now = sofia_now()
@@ -5042,7 +5483,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         from backend.database.models import Payslip
         
@@ -5075,7 +5516,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+            raise permission_denied("Not authorized")
 
         from backend.database.models import Payslip, User, EmploymentContract
         from backend.services.sepa_generator import SEPAGenerator
@@ -5726,7 +6167,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+            raise permission_denied("Not authorized")
         
         from backend.services.nap_reports import NAPReportsGenerator
         
@@ -5744,7 +6185,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+            raise permission_denied("Not authorized")
         
         from backend.services.nap_reports import NAPReportsGenerator
         
@@ -5762,7 +6203,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+            raise permission_denied("Not authorized")
         
         from backend.services.nap_reports import NAPReportsGenerator
         
@@ -5781,7 +6222,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+            raise permission_denied("Not authorized")
         
         from backend.services.nap_reports import NAPReportsGenerator
         

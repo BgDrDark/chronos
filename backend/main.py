@@ -25,8 +25,9 @@ from fastapi.responses import JSONResponse
 from fastapi import status
 import logging
 from backend.auth.limiter import limiter
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from backend.exceptions import CHRONOSException
+from backend.utils.error_handling import get_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,20 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None
 )
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """Handle rate limit exceeded errors"""
+    logger.warning(f"Rate limit exceeded: {request.method} {request.url}")
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={
+            "error": "Rate limit exceeded",
+            "message": "Превишихте броя на заявките. Моля, изчакайте малко и опитайте отново.",
+            "retry_after": 1
+        }
+    )
 
 # Transaction Error Handlers
 @app.exception_handler(TransactionError)
@@ -84,6 +98,19 @@ async def transaction_exception_handler(request: Request, exc: TransactionError)
             "error": "Database transaction failed",
             "message": "Възникна грешка при операция с базата данни. Моля, опитайте отново.",
             "detail": str(exc) if settings.DEBUG else None
+        }
+    )
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """Handle rate limit exceeded errors"""
+    logger.warning(f"Rate limit exceeded: {request.method} {request.url}")
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={
+            "error": "Rate limit exceeded",
+            "message": "Превишихте броя на заявките. Моля, изчакайте малко и опитайте отново.",
+            "retry_after": 1
         }
     )
 
@@ -110,6 +137,19 @@ async def concurrent_modification_exception_handler(request: Request, exc: Concu
             "error": "Concurrent modification",
             "message": "Данните са променени от друг потребител. Моля, опреснете страницата и опитайте отново.",
             "retry_after": 1
+        }
+    )
+
+# CHRONOS Custom Exception Handlers
+@app.exception_handler(CHRONOSException)
+async def chronos_exception_handler(request: Request, exc: CHRONOSException):
+    """Handle CHRONOS custom exceptions"""
+    logger.error(f"CHRONOS error in {request.method} {request.url}: {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.__class__.__name__,
+            "message": exc.detail
         }
     )
 

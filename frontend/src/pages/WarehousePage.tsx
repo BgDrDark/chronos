@@ -46,7 +46,7 @@ import {
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { CREATE_INGREDIENT, UPDATE_INGREDIENT, UPDATE_BATCH, CREATE_SUPPLIER, UPDATE_SUPPLIER, CREATE_STORAGE_ZONE, UPDATE_STORAGE_ZONE, UPDATE_BATCH_STATUS, START_INVENTORY_SESSION, ADD_INVENTORY_ITEM, COMPLETE_INVENTORY_SESSION, BULK_ADD_BATCHES } from '../graphql/confectioneryMutations';
 import { ME_QUERY, INVENTORY_SESSIONS_QUERY, INVENTORY_SESSION_ITEMS_QUERY, INVENTORY_BY_BARCODE_QUERY, INGREDIENTS_QUERY } from '../graphql/queries';
-import { type Ingredient, type Batch, type Supplier, type StorageZone, type InventorySession, type InventorySessionItem } from '../types';
+import { getErrorMessage, type Ingredient, type Batch, type Supplier, type StorageZone, type InventorySession, type InventorySessionItem } from '../types';
 import { type SxProps, type Theme } from '@mui/material';
 
 interface BatchItem {
@@ -561,7 +561,7 @@ const WarehousePage: React.FC = () => {
       setValidationErrors({});
       refetch();
     } catch (err) {
-      console.error(err);
+      alert(getErrorMessage(err));
     }
   };
 
@@ -653,7 +653,7 @@ const WarehousePage: React.FC = () => {
       setValidationErrors({});
       refetch();
     } catch (err) {
-      console.error(err);
+      alert(getErrorMessage(err));
     }
   };
 
@@ -683,7 +683,7 @@ const WarehousePage: React.FC = () => {
       setValidationErrors({});
       refetch();
     } catch (err) {
-      console.error(err);
+      alert(getErrorMessage(err));
     }
   };
 
@@ -711,7 +711,7 @@ const WarehousePage: React.FC = () => {
       setValidationErrors({});
       refetch();
     } catch (err) {
-      console.error(err);
+      alert(getErrorMessage(err));
     }
   };
 
@@ -739,7 +739,7 @@ const WarehousePage: React.FC = () => {
       setValidationErrors({});
       refetch();
     } catch (err) {
-      console.error(err);
+      alert(getErrorMessage(err));
     }
   };
 
@@ -817,7 +817,7 @@ const WarehousePage: React.FC = () => {
       setValidationErrors({});
       refetch();
     } catch (err) {
-      console.error(err);
+      alert(getErrorMessage(err));
     }
   };
 
@@ -832,7 +832,7 @@ const WarehousePage: React.FC = () => {
       });
       refetch();
     } catch (err) {
-      console.error(err);
+      alert(getErrorMessage(err));
     } finally {
       setUpdatingBatchId(null);
     }
@@ -877,7 +877,7 @@ const WarehousePage: React.FC = () => {
       setValidationErrors({});
       refetch();
     } catch (err) {
-      console.error(err);
+      alert(getErrorMessage(err));
     }
   };
 

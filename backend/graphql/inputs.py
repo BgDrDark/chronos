@@ -12,6 +12,7 @@ class UserCreatePydantic(BaseModel):
     username: Optional[str] = None
     password: str = Field(min_length=8)
     first_name: Optional[str] = None
+    surname: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
     address: Optional[str] = None
@@ -28,6 +29,7 @@ class UserCreatePydantic(BaseModel):
     
     # Employment Contract
     contract_type: Optional[str] = None
+    contract_number: Optional[str] = None
     
     contract_start_date: Optional[datetime.date] = None
     contract_end_date: Optional[datetime.date] = None
@@ -60,6 +62,7 @@ class UpdateUserPydantic(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = Field(None, min_length=8)
     first_name: Optional[str] = None
+    surname: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
     address: Optional[str] = None
@@ -84,6 +87,7 @@ class UpdateUserPydantic(BaseModel):
 
     # Employment Contract
     contract_type: Optional[str] = None
+    contract_number: Optional[str] = None
     contract_start_date: Optional[datetime.date] = None
     contract_end_date: Optional[datetime.date] = None
     base_salary: Optional[Decimal] = None
@@ -112,6 +116,7 @@ class UserCreateInput:
     username: strawberry.auto
     password: strawberry.auto
     first_name: strawberry.auto
+    surname: strawberry.auto
     last_name: strawberry.auto
     phone_number: strawberry.auto
     address: strawberry.auto
@@ -124,6 +129,7 @@ class UserCreateInput:
     position_id: strawberry.auto
     password_force_change: strawberry.auto
     contract_type: strawberry.auto
+    contract_number: strawberry.auto
     contract_start_date: strawberry.auto
     contract_end_date: strawberry.auto
     base_salary: strawberry.auto
@@ -300,6 +306,7 @@ class UpdateUserInput:
     username: strawberry.auto
     password: strawberry.auto
     first_name: strawberry.auto
+    surname: strawberry.auto
     last_name: strawberry.auto
     phone_number: strawberry.auto
     address: strawberry.auto
@@ -313,6 +320,7 @@ class UpdateUserInput:
     department_id: strawberry.auto
     position_id: strawberry.auto
     contract_type: strawberry.auto
+    contract_number: strawberry.auto
     contract_start_date: strawberry.auto
     contract_end_date: strawberry.auto
     base_salary: strawberry.auto
@@ -775,3 +783,183 @@ class VATRegisterInput:
     period_month: int
     period_year: int
     company_id: int
+
+
+# Vehicle Inputs
+@strawberry.input
+class VehicleCreateInput:
+    registration_number: str
+    vin: Optional[str] = None
+    make: str
+    model: Optional[str] = None
+    year: Optional[int] = None
+    vehicle_type: Optional[str] = "car"
+    fuel_type: Optional[str] = "dizel"
+    status: Optional[str] = "active"
+    color: Optional[str] = None
+    initial_mileage: Optional[int] = 0
+    is_company_vehicle: Optional[bool] = True
+    notes: Optional[str] = None
+    company_id: Optional[int] = None
+
+
+@strawberry.input
+class VehicleUpdateInput:
+    registration_number: Optional[str] = None
+    vin: Optional[str] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[int] = None
+    vehicle_type: Optional[str] = None
+    fuel_type: Optional[str] = None
+    status: Optional[str] = None
+    color: Optional[str] = None
+    initial_mileage: Optional[int] = None
+    is_company_vehicle: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleMileageInput:
+    vehicle_id: int
+    date: datetime.datetime
+    mileage: int
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleFuelInput:
+    vehicle_id: int
+    date: datetime.datetime
+    liters: float
+    price: float
+    total: float
+    fuel_type: Optional[str] = "dizel"
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleRepairInput:
+    vehicle_id: int
+    date: datetime.datetime
+    description: str
+    cost: Optional[float] = 0
+    repair_type: Optional[str] = "maintenance"
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleInsuranceInput:
+    vehicle_id: int
+    provider: str
+    policy_number: str
+    start_date: datetime.datetime
+    end_date: datetime.datetime
+    premium: Optional[float] = 0
+    insurance_type: Optional[str] = "grazhdanska"
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleInspectionInput:
+    vehicle_id: int
+    date: datetime.datetime
+    next_date: Optional[datetime.datetime] = None
+    cost: Optional[float] = 0
+    result: Optional[str] = "passed"
+    protocol_number: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleDriverInput:
+    vehicle_id: int
+    user_id: int
+    license_number: str
+    license_expiry: datetime.datetime
+    phone: Optional[str] = None
+    category: Optional[str] = "B"
+    is_primary: Optional[bool] = False
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleTripInput:
+    vehicle_id: int
+    user_id: int
+    start_date: datetime.datetime
+    end_date: Optional[datetime.datetime] = None
+    start_location: Optional[str] = None
+    end_location: Optional[str] = None
+    distance: Optional[float] = 0
+    trip_type: Optional[str] = "business"
+    notes: Optional[str] = None
+
+
+# Update Input types
+@strawberry.input
+class VehicleMileageUpdateInput:
+    date: Optional[datetime.datetime] = None
+    mileage: Optional[int] = None
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleFuelUpdateInput:
+    date: Optional[datetime.datetime] = None
+    liters: Optional[float] = None
+    price: Optional[float] = None
+    total: Optional[float] = None
+    fuel_type: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleRepairUpdateInput:
+    date: Optional[datetime.datetime] = None
+    description: Optional[str] = None
+    cost: Optional[float] = None
+    repair_type: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleInsuranceUpdateInput:
+    provider: Optional[str] = None
+    policy_number: Optional[str] = None
+    start_date: Optional[datetime.datetime] = None
+    end_date: Optional[datetime.datetime] = None
+    premium: Optional[float] = None
+    insurance_type: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleInspectionUpdateInput:
+    date: Optional[datetime.datetime] = None
+    next_date: Optional[datetime.datetime] = None
+    cost: Optional[float] = None
+    result: Optional[str] = None
+    protocol_number: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleDriverUpdateInput:
+    license_number: Optional[str] = None
+    license_expiry: Optional[datetime.datetime] = None
+    phone: Optional[str] = None
+    category: Optional[str] = None
+    is_primary: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+@strawberry.input
+class VehicleTripUpdateInput:
+    start_date: Optional[datetime.datetime] = None
+    end_date: Optional[datetime.datetime] = None
+    start_location: Optional[str] = None
+    end_location: Optional[str] = None
+    distance: Optional[float] = None
+    trip_type: Optional[str] = None
+    notes: Optional[str] = None

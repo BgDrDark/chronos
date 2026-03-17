@@ -1589,8 +1589,8 @@ function BankTab() {
             <FormControl size="small" sx={{ minWidth: 200 }}>
               <InputLabel>Сметка</InputLabel>
               <Select value={accountId || ''} label="Сметка" onChange={(e) => setAccountId(e.target.value as number)}>
-                {accounts.map((acc: any) => (
-                  <MenuItem key={acc.id} value={acc.id}>{acc.bankName} - {acc.iban.slice(-4)}</MenuItem>
+                {accounts.map((acc: Account) => (
+                  <MenuItem key={acc.id} value={acc.id}>{acc.bankName} - {acc.iban?.slice(-4) || '----'}</MenuItem>
                 ))}
               </Select>
             </FormControl>

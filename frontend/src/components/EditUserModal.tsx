@@ -17,11 +17,11 @@ import {
   Checkbox
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, useWatch, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { gql, useMutation, useQuery } from '@apollo/client';
-import { type User, type Role, type Company, type Department, type Position } from '../types';
+import { type User, type Role, type Company, type Department, type Position, type UpdateUserInput } from '../types';
 
 // Zod schema for validation
 const updateUserSchema = z.object({
@@ -30,6 +30,7 @@ const updateUserSchema = z.object({
   username: z.string().min(3, 'Потребителското име трябва да е поне 3 символа').optional().or(z.literal('')),
   password: z.string().optional().or(z.literal('')),
   firstName: z.string().optional().or(z.literal('')),
+  surname: z.string().optional().or(z.literal('')),
   lastName: z.string().optional().or(z.literal('')),
   phoneNumber: z.string().optional().or(z.literal('')),
   address: z.string().optional().or(z.literal('')),
@@ -44,6 +45,7 @@ const updateUserSchema = z.object({
   passwordForceChange: z.boolean().optional(),
   // Contract fields
   contractType: z.string().optional().or(z.literal('')),
+  contractNumber: z.string().optional().or(z.literal('')),
   contractStartDate: z.string().optional().or(z.literal('')),
   contractEndDate: z.string().nullable().optional().or(z.literal('')),
   baseSalary: z.number().nullable().optional(),
@@ -55,7 +57,8 @@ const updateUserSchema = z.object({
   salaryInstallmentsCount: z.number().min(1),
   monthlyAdvanceAmount: z.number().min(0),
   taxResident: z.boolean(),
-  // ТРЗ разширение
+  // TRZ разширение
+  paymentDay: z.number().min(1).max(31).optional(),
   nightWorkRate: z.number().min(0).optional(),
   overtimeRate: z.number().min(0).optional(),
   holidayRate: z.number().min(0).optional(),
@@ -120,7 +123,6 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
     handleSubmit,
     reset,
     control,
-    watch,
     formState: { isSubmitting },
   } = useForm<UpdateUserFormData>({
     resolver: zodResolver(updateUserSchema),
@@ -134,9 +136,10 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
       const contract = user.employmentContract;
       reset({
         id: user.id ? Number(user.id) : undefined,
-        email: user.email || '',
+        email: '', // Keep email empty for privacy
         username: user.username || '',
         firstName: user.firstName || '',
+        surname: user.surname || '',
         lastName: user.lastName || '',
         phoneNumber: user.phoneNumber || '',
         address: user.address || '',
@@ -152,6 +155,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         password: '',
         // ТРЗ данни от employment contract
         contractType: contract?.contractType || 'full_time',
+        contractNumber: contract?.contractNumber || '',
         contractStartDate: contract?.startDate || '',
         contractEndDate: contract?.endDate || '',
         baseSalary: contract?.baseSalary !== undefined && contract?.baseSalary !== null ? Number(contract.baseSalary) : null,
@@ -164,6 +168,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         monthlyAdvanceAmount: contract?.monthlyAdvanceAmount !== undefined && contract?.monthlyAdvanceAmount !== null ? Number(contract.monthlyAdvanceAmount) : 0,
         taxResident: contract?.taxResident ?? true,
         // ТРЗ Разширение
+        paymentDay: contract?.paymentDay || 25,
         nightWorkRate: contract?.nightWorkRate !== undefined && contract?.nightWorkRate !== null ? Number(contract.nightWorkRate) : 0.50,
         overtimeRate: contract?.overtimeRate !== undefined && contract?.overtimeRate !== null ? Number(contract.overtimeRate) : 1.50,
         holidayRate: contract?.holidayRate !== undefined && contract?.holidayRate !== null ? Number(contract.holidayRate) : 2.00,
@@ -173,8 +178,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
     }
   }, [user, open, reset]);
 
-  const selectedCompanyId = watch('companyId');
-  const selectedDepartmentId = watch('departmentId');
+  const selectedCompanyId = useWatch({ name: 'companyId' });
+  const selectedDepartmentId = useWatch({ name: 'departmentId' });
 
   const filteredDepartments = orgData?.departments.filter((d) => 
     selectedCompanyId ? d.companyId === selectedCompanyId : true
@@ -187,9 +192,10 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
   const onSubmit = async (formData: UpdateUserFormData) => {
     setApiError('');
     try {
-      const input: any = { // Keeping any for mutation input as it's dynamic
+      const input: UpdateUserInput = {
         id: formData.id,
         firstName: formData.firstName,
+        surname: formData.surname || null,
         lastName: formData.lastName,
         phoneNumber: formData.phoneNumber,
         address: formData.address,
@@ -203,6 +209,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         isActive: formData.isActive,
         passwordForceChange: formData.passwordForceChange,
         contractType: formData.contractType,
+        contractNumber: formData.contractNumber || null,
         contractStartDate: formData.contractStartDate || null,
         contractEndDate: formData.contractEndDate || null,
         baseSalary: formData.baseSalary,
@@ -215,6 +222,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         monthlyAdvanceAmount: formData.monthlyAdvanceAmount,
         taxResident: formData.taxResident,
         // ТРЗ разширение
+        paymentDay: formData.paymentDay || 25,
         nightWorkRate: formData.nightWorkRate,
         overtimeRate: formData.overtimeRate,
         holidayRate: formData.holidayRate,
@@ -262,10 +270,13 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 ЛИЧНИ ДАННИ
               </Alert>
             </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField fullWidth label="Име" {...register('firstName')} size="small" />
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth label="Първо име" {...register('firstName')} size="small" />
             </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <TextField fullWidth label="Презиме" {...register('surname')} size="small" />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
               <TextField fullWidth label="Фамилия" {...register('lastName')} size="small" />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -305,7 +316,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                   control={control}
                   render={({ field }) => (
                     <Select {...field} label="Роля в системата" value={field.value || ''}>
-                      {orgData?.roles.map((role) => {
+                      {orgData?.roles?.map((role) => {
                         const roleTranslations: Record<string, string> = {
                           'admin': 'Администратор',
                           'super_admin': 'Главен Администратор',
@@ -385,7 +396,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
               <Alert severity="warning" variant="outlined" icon={false} sx={{ py: 0, fontWeight: 'bold' }}>ДОГОВОР И ФИНАНСИ</Alert>
             </Grid>
             
-            <Grid size={{ xs: 12, sm: 4 }}>
+            <Grid size={{ xs: 12, sm: 3 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Тип договор</InputLabel>
                 <Controller
@@ -402,7 +413,13 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 />
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <TextField fullWidth label="Номер на договор" {...register('contractNumber')} size="small" />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <TextField fullWidth label="Ден за плащане" type="number" {...register('paymentDay', { valueAsNumber: true })} size="small" inputProps={{ min: 1, max: 31 }} />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Вид изчисление</InputLabel>
                 <Controller
@@ -427,10 +444,10 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
             <Grid size={{ xs: 12, sm: 3 }}>
               <TextField fullWidth label="Изпитателен срок" type="number" {...register('probationMonths', { valueAsNumber: true })} size="small" />
             </Grid>
-            <Grid size={{ xs: 12, sm: 3 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="Старт" type="date" {...register('contractStartDate')} InputLabelProps={{ shrink: true }} size="small" />
             </Grid>
-            <Grid size={{ xs: 12, sm: 3 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="Край" type="date" {...register('contractEndDate')} InputLabelProps={{ shrink: true }} size="small" />
             </Grid>
             

@@ -3,7 +3,21 @@ export function getErrorMessage(error: unknown): string {
   if (typeof error === 'string') return error;
   
   if (typeof error === 'object' && error !== null) {
-    const err = error as { response?: { data?: { detail?: string | { message?: string } } }; message?: string };
+    const err = error as { 
+      response?: { data?: { detail?: string | { message?: string } } }; 
+      message?: string;
+      graphQLErrors?: Array<{ message?: string }>;
+      networkError?: { message?: string };
+    };
+    
+    if (err.graphQLErrors && err.graphQLErrors.length > 0) {
+      return err.graphQLErrors[0].message || 'Грешка от сървъра';
+    }
+    
+    if (err.networkError) {
+      return 'Няма връзка със сървъра';
+    }
+    
     if (err.response?.data?.detail) {
       if (typeof err.response.data.detail === 'string') return err.response.data.detail;
       if (err.response.data.detail.message) return err.response.data.detail.message;
@@ -76,6 +90,48 @@ export interface EmploymentContract {
   workClass?: string | null;
   dangerousWork?: boolean;
   position?: Position | null;
+  paymentDay?: number | null;
+}
+
+export interface UpdateUserInput {
+  id?: number;
+  email?: string | null;
+  username?: string | null;
+  firstName?: string | null;
+  surname?: string | null;
+  lastName?: string | null;
+  phoneNumber?: string | null;
+  address?: string | null;
+  egn?: string | null;
+  pin?: string | null;
+  birthDate?: string | null;
+  iban?: string | null;
+  companyId?: number | null;
+  departmentId?: number | null;
+  positionId?: number | null;
+  roleId?: number | null;
+  isActive?: boolean;
+  passwordForceChange?: boolean;
+  password?: string | null;
+  contractType?: string | null;
+  contractNumber?: string | null;
+  contractStartDate?: string | null;
+  contractEndDate?: string | null;
+  baseSalary?: number | string | null;
+  workHoursPerWeek?: number | null;
+  probationMonths?: number | null;
+  salaryCalculationType?: string | null;
+  hasIncomeTax?: boolean;
+  insuranceContributor?: boolean;
+  salaryInstallmentsCount?: number | null;
+  monthlyAdvanceAmount?: number | string | null;
+  taxResident?: boolean;
+  paymentDay?: number | null;
+  nightWorkRate?: number | string | null;
+  overtimeRate?: number | string | null;
+  holidayRate?: number | string | null;
+  workClass?: string | null;
+  dangerousWork?: boolean;
 }
 
 export interface ContractTemplateSection {
@@ -212,6 +268,7 @@ export interface User {
   email: string;
   username?: string | null;
   firstName?: string | null;
+  surname?: string | null;
   lastName?: string | null;
   phoneNumber?: string | null;
   address?: string | null;
