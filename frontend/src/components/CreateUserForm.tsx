@@ -312,8 +312,8 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
     },
   });
 
-  const selectedCompanyId = useWatch({ name: 'companyId' });
-  const selectedDepartmentId = useWatch({ name: 'departmentId' });
+  const selectedCompanyId = useWatch({ name: 'companyId', defaultValue: null });
+  const selectedDepartmentId = useWatch({ name: 'departmentId', defaultValue: null });
 
   const filteredDepartments = orgData?.departments.filter((d) => 
     selectedCompanyId ? d.companyId === selectedCompanyId : true

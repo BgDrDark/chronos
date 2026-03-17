@@ -178,8 +178,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
     }
   }, [user, open, reset]);
 
-  const selectedCompanyId = useWatch({ name: 'companyId' });
-  const selectedDepartmentId = useWatch({ name: 'departmentId' });
+  const selectedCompanyId = useWatch({ name: 'companyId', defaultValue: null });
+  const selectedDepartmentId = useWatch({ name: 'departmentId', defaultValue: null });
 
   const filteredDepartments = orgData?.departments.filter((d) => 
     selectedCompanyId ? d.companyId === selectedCompanyId : true
