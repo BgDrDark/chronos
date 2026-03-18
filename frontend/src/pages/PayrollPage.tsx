@@ -505,7 +505,7 @@ const PayrollLegalSettings: React.FC = () => {
     const [updateLegal, { loading: updating }] = useMutation(UPDATE_PAYROLL_LEGAL_MUTATION);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-    const { control, handleSubmit, reset } = useForm<PayrollLegalSettings>({
+    const { control, handleSubmit, reset, watch, setValue } = useForm<PayrollLegalSettings>({
         defaultValues: {
             maxInsuranceBase: 3750.0,
             employeeInsuranceRate: 13.78,
@@ -592,7 +592,7 @@ const PayrollLegalSettings: React.FC = () => {
                         </Grid>
                         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                             <FormControlLabel
-                                control={<Controller name="defaultTaxResident" control={control} render={({ field }) => <Checkbox {...field} checked={field.value} />} />}
+                                control={<Checkbox checked={!!watch('defaultTaxResident')} onChange={e => setValue('defaultTaxResident', e.target.checked)} />}
                                 label="Данъчен резидент (Default)"
                             />
                         </Grid>
@@ -1056,20 +1056,19 @@ const GlobalPayrollSettings: React.FC = () => {
                         
                         <Grid size={{ xs: 6, md: 3 }}>
                             <FormControlLabel
-                                control={<Controller name="hasTaxDeduction" control={control} render={({ field }) => <Checkbox {...field} checked={field.value ?? false} />} />}
+                                control={<Checkbox checked={!!watch('hasTaxDeduction')} onChange={e => setValue('hasTaxDeduction', e.target.checked)} />}
                                 label="ДДФЛ"
                             />
                         </Grid>
                         <Grid size={{ xs: 6, md: 3 }}>
                             <Controller name="taxPercent" control={control} render={({ field }) => (
-                                // eslint-disable-next-line react-hooks/incompatible-library
                                 <TextField {...field} fullWidth label="ДДФЛ %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!watch('hasTaxDeduction')} />
                             )} />
                         </Grid>
                         
                         <Grid size={{ xs: 6, md: 3 }}>
                             <FormControlLabel
-                                control={<Controller name="hasHealthInsurance" control={control} render={({ field }) => <Checkbox {...field} checked={field.value ?? false} />} />}
+                                control={<Checkbox checked={!!watch('hasHealthInsurance')} onChange={e => setValue('hasHealthInsurance', e.target.checked)} />}
                                 label="Осигуровки"
                             />
                         </Grid>
@@ -1593,20 +1592,19 @@ const PayrollSettings: React.FC = () => {
               
               <Grid size={{ xs: 6, md: 3 }}>
                   <FormControlLabel
-                      control={<Controller name="hasTaxDeduction" control={control} render={({ field }) => <Checkbox {...field} checked={field.value ?? false} />} />}
+                      control={<Checkbox checked={!!watch('hasTaxDeduction')} onChange={e => setValue('hasTaxDeduction', e.target.checked)} />}
                       label="ДДФЛ"
                   />
               </Grid>
               <Grid size={{ xs: 6, md: 3 }}>
                   <Controller name="taxPercent" control={control} render={({ field }) => (
-                      // eslint-disable-next-line react-hooks/incompatible-library
                       <TextField {...field} fullWidth label="ДДФЛ %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!watch('hasTaxDeduction')} />
                   )} />
               </Grid>
               
               <Grid size={{ xs: 6, md: 3 }}>
                   <FormControlLabel
-                      control={<Controller name="hasHealthInsurance" control={control} render={({ field }) => <Checkbox {...field} checked={field.value ?? false} />} />}
+                      control={<Checkbox checked={!!watch('hasHealthInsurance')} onChange={e => setValue('hasHealthInsurance', e.target.checked)} />}
                       label="Осигуровки"
                   />
               </Grid>
