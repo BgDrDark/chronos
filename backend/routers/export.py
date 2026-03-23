@@ -687,10 +687,26 @@ async def export_invoice_pdf(
         logger.info(f"Generating PDF for invoice {invoice_id}: number={invoice.number}, items_count={len(items)}, total={invoice.total}, company={company.name if company else None}")
 
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=30, rightMargin=30, topMargin=30, bottomMargin=30)
+        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=40, rightMargin=40, topMargin=30, bottomMargin=30)
         elements = []
         styles = getSampleStyleSheet()
 
+        # Създай персонални стилове
+        styles.add(styles['Normal'].clone('InvoiceTitle'))
+        styles['InvoiceTitle'].fontName = BOLD_FONT
+        styles['InvoiceTitle'].fontSize = 16
+        styles['InvoiceTitle'].spaceAfter = 6
+        
+        styles.add(styles['Normal'].clone('InvoiceText'))
+        styles['InvoiceText'].fontName = DEFAULT_FONT
+        styles['InvoiceText'].fontSize = 9
+        styles['InvoiceText'].spaceAfter = 1
+        
+        styles.add(styles['Normal'].clone('InvoiceSmall'))
+        styles['InvoiceSmall'].fontName = DEFAULT_FONT
+        styles['InvoiceSmall'].fontSize = 8
+        styles['InvoiceSmall'].spaceAfter = 1
+        
         for style_name in styles.byName:
             style = styles[style_name]
             if 'Bold' in style_name or 'Title' in style_name or 'Heading' in style_name:
@@ -698,20 +714,15 @@ async def export_invoice_pdf(
             else:
                 style.fontName = DEFAULT_FONT
 
-        if 'Italic' in styles:
-            styles['Italic'].fontName = DEFAULT_FONT
-        else:
-            styles.add(styles['Normal'].clone('Italic'))
-            styles['Italic'].fontName = DEFAULT_FONT
-
         # Заглавна част - ФАКТУРА
-        elements.append(Paragraph("<b>ФАКТУРА</b>", styles['Title']))
-        elements.append(Spacer(1, 6))
-        elements.append(Paragraph(f"<b>№ {invoice.number or invoice.id}</b>", styles['Normal']))
-        elements.append(Paragraph(f"Дата: {invoice.date.strftime('%d.%m.%Y') if invoice.date else 'N/A'}", styles['Normal']))
-        elements.append(Paragraph(f"<b>{invoice.griff or 'ОРИГИНАЛ'}</b>", styles['Normal']))
+        elements.append(Paragraph("ФАКТУРА", styles['InvoiceTitle']))
+        
+        # Номер и дата в една линия
+        invoice_info = f"№ {invoice.number or invoice.id}                              Дата: {invoice.date.strftime('%d.%m.%Y') if invoice.date else 'N/A'}"
+        elements.append(Paragraph(invoice_info, styles['InvoiceText']))
+        elements.append(Paragraph(f"<b>{invoice.griff or 'ОРИГИНАЛ'}</b>", styles['InvoiceText']))
 
-        elements.append(Spacer(1, 12))
+        elements.append(Spacer(1, 10))
 
         # ИЗДАТЕЛ и ПОЛУЧАТЕЛ
         if invoice.type == 'incoming':
@@ -735,55 +746,74 @@ async def export_invoice_pdf(
             recipient_eik = invoice.client_eik or '-'
             recipient_vat = getattr(invoice, 'client_vat_number', '-') or '-'
 
+        # Таблица за ИЗДАТЕЛ и ПОЛУЧАТЕЛ - СЪС СЪЩАТА ШИРИНА КАТО ТАБЛИЦАТА С АРТИКУЛИ
+        table_width = 490  # Обща ширина на страницата
+        
         party_table_data = [
-            ['<b>ИЗДАТЕЛ</b>', '<b>ПОЛУЧАТЕЛ</b>'],
-            [issuer_name, recipient_name],
-            [f'Адрес: {issuer_address}' if issuer_address != '-' else '-', f'Адрес: {recipient_address}' if recipient_address != '-' else '-'],
-            [f'ЕИК: {issuer_eik}' if issuer_eik != '-' else '-', f'ЕИК: {recipient_eik}' if recipient_eik != '-' else '-'],
-            [f'ИН по ЗДДС: {issuer_vat}' if issuer_vat != '-' else '-', f'ИН по ЗДДС: {recipient_vat}' if recipient_vat != '-' else '-'],
+            [Paragraph('<b>ИЗДАТЕЛ</b>', styles['InvoiceSmall']), Paragraph('<b>ПОЛУЧАТЕЛ</b>', styles['InvoiceSmall'])],
+            [Paragraph(f'<b>{issuer_name}</b>', styles['InvoiceSmall']), Paragraph(f'<b>{recipient_name}</b>', styles['InvoiceSmall'])],
+            [Paragraph(f'Адрес: {issuer_address}', styles['InvoiceSmall']), Paragraph(f'Адрес: {recipient_address}', styles['InvoiceSmall'])],
+            [Paragraph(f'ЕИК: {issuer_eik}', styles['InvoiceSmall']), Paragraph(f'ЕИК: {recipient_eik}', styles['InvoiceSmall'])],
+            [Paragraph(f'ИН по ЗДДС: {issuer_vat}', styles['InvoiceSmall']), Paragraph(f'ИН по ЗДДС: {recipient_vat}', styles['InvoiceSmall'])],
         ]
         
-        party_table = Table([[Paragraph(cell, styles['Normal']) for cell in row] for row in party_table_data], 
-                          colWidths=[250, 250])
+        half_width = table_width // 2
+        party_table = Table(party_table_data, colWidths=[half_width, table_width - half_width])
+        party_table_bg = colors.Color(0.92, 0.92, 0.92)
         party_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), BOLD_FONT),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (0, 0), (-1, -1), party_table_bg),
+            ('BOX', (0, 0), (-1, -1), 1, party_table_bg),
+            ('LINEBEFORE', (1, 0), (1, -1), 1, party_table_bg),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (-1, -1), 6),
             ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
         ]))
         elements.append(party_table)
 
-        elements.append(Spacer(1, 12))
+        elements.append(Spacer(1, 10))
 
-        # Таблица с артикули
+        # Таблица с артикули - СЪС СЪЩАТА ШИРИНА
         vat_rate = float(invoice.vat_rate) if invoice.vat_rate else 20
         
-        table_data = [['№', 'Наименование', 'К-во', 'Ед.мярка', 'Цена без ДДС', 'Цена със ДДС', 'Партида', 'Годност', 'ДДС %', 'Сума']]
+        # Колонни ширини за таблицата с артикули
+        col_widths = [18, 120, 42, 38, 55, 55, 52, 50, 30, 30]  # Общо 490
+        
+        table_data = [
+            [Paragraph('<b>№</b>', styles['InvoiceSmall']), 
+             Paragraph('<b>Наименование</b>', styles['InvoiceSmall']), 
+             Paragraph('<b>К-во</b>', styles['InvoiceSmall']), 
+             Paragraph('<b>Ед.мярка</b>', styles['InvoiceSmall']), 
+             Paragraph('<b>Цена без ДДС</b>', styles['InvoiceSmall']), 
+             Paragraph('<b>Цена със ДДС</b>', styles['InvoiceSmall']), 
+             Paragraph('<b>Партида</b>', styles['InvoiceSmall']), 
+             Paragraph('<b>Годност</b>', styles['InvoiceSmall']), 
+             Paragraph('<b>ДДС %</b>', styles['InvoiceSmall']), 
+             Paragraph('<b>Сума</b>', styles['InvoiceSmall'])]
+        ]
         
         for idx, item in enumerate(items, 1):
             item_name = item.name or (item.ingredient.name if item.ingredient else f"Артикул {item.id}")
             unit_price = float(item.unit_price) if item.unit_price else 0
             unit_price_vat = float(item.unit_price_with_vat) if item.unit_price_with_vat else None
-            batch_num = item.batch_number or ''
-            expiry = item.expiration_date.strftime('%d.%m.%Y') if item.expiration_date else ''
+            batch_num = item.batch_number or '-'
+            expiry = item.expiration_date.strftime('%d.%m.%Y') if item.expiration_date else '-'
             item_total = float(item.total) if item.total else 0
             
             table_data.append([
-                str(idx),
-                item_name[:35],
-                f"{float(item.quantity):.3f}" if item.quantity else '',
-                item.unit or 'бр.',
-                f"{unit_price:.2f}" if unit_price else '',
-                f"{unit_price_vat:.2f}" if unit_price_vat else '',
-                batch_num,
-                expiry,
-                f"{vat_rate:.0f}%",
-                f"{item_total:.2f}" if item_total else ''
+                Paragraph(str(idx), styles['InvoiceSmall']),
+                Paragraph(item_name[:30], styles['InvoiceSmall']),
+                Paragraph(f"{float(item.quantity):.3f}" if item.quantity else '-', styles['InvoiceSmall']),
+                Paragraph(item.unit or 'бр.', styles['InvoiceSmall']),
+                Paragraph(f"{unit_price:.2f}" if unit_price else '-', styles['InvoiceSmall']),
+                Paragraph(f"{unit_price_vat:.2f}" if unit_price_vat else '-', styles['InvoiceSmall']),
+                Paragraph(batch_num[:15], styles['InvoiceSmall']),
+                Paragraph(expiry[:12], styles['InvoiceSmall']),
+                Paragraph(f"{vat_rate:.0f}%", styles['InvoiceSmall']),
+                Paragraph(f"{item_total:.2f}" if item_total else '-', styles['InvoiceSmall']),
             ])
 
         # Крайни суми
@@ -791,58 +821,94 @@ async def export_invoice_pdf(
         vat_amount = float(invoice.vat_amount) if invoice.vat_amount else 0
         total_amount = float(invoice.total) if invoice.total else 0
         
-        table_data.append(['', '', '', '', '', '', '', '', 'Сума:', f"{subtotal:.2f}"])
-        table_data.append(['', '', '', '', '', '', '', '', f'ДДС {vat_rate:.0f}%:', f"{vat_amount:.2f}"])
-        table_data.append(['', '', '', '', '', '', '', '', '<b>ОБЩО:</b>', f"<b>{total_amount:.2f}</b>"])
+        table_data.append([
+            '', '', '', '', '', '', '', '',
+            Paragraph('<b>Сума:</b>', styles['InvoiceSmall']),
+            Paragraph(f"<b>{subtotal:.2f}</b>", styles['InvoiceSmall'])
+        ])
+        table_data.append([
+            '', '', '', '', '', '', '', '',
+            Paragraph(f'<b>ДДС {vat_rate:.0f}%:</b>', styles['InvoiceSmall']),
+            Paragraph(f"<b>{vat_amount:.2f}</b>", styles['InvoiceSmall'])
+        ])
+        table_data.append([
+            '', '', '', '', '', '', '', '',
+            Paragraph('<b>ОБЩО:</b>', styles['InvoiceSmall']),
+            Paragraph(f"<b>{total_amount:.2f} лв.</b>", styles['InvoiceSmall'])
+        ])
 
-        items_table = Table(table_data, colWidths=[20, 130, 45, 45, 60, 60, 55, 55, 35, 55])
+        items_table = Table(table_data, colWidths=col_widths)
+        
+        # Цвят за header и border
+        header_bg = colors.Color(0.85, 0.85, 0.85)
         
         # Стил за таблицата с артикули
         table_style = [
             ('FONTNAME', (0, 0), (-1, 0), BOLD_FONT),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
+            ('BACKGROUND', (0, 0), (-1, 0), header_bg),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
             ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
             ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
-            ('GRID', (0, 0), (-1, -2), 0.5, colors.grey),
-            ('LINEBELOW', (0, -3), (-1, -3), 1, colors.black),
-            ('FONTNAME', (8, -2), (8, -1), BOLD_FONT),
-            ('FONTNAME', (9, -2), (9, -1), BOLD_FONT),
-            ('FONTSIZE', (8, -2), (9, -1), 9),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('GRID', (0, 0), (-1, -2), 0.5, header_bg),
+            ('LINEBELOW', (0, -3), (-1, -3), 1, header_bg),
+            ('BOX', (0, 0), (-1, -1), 1, header_bg),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ]
         
-        # Подчертай последните 3 реда
+        # Сив фон за последните 3 реда
         for i in range(1, 4):
             row_idx = -i
-            table_style.append(('BACKGROUND', (8, row_idx), (9, row_idx), colors.Color(0.95, 0.95, 0.95)))
+            table_style.append(('BACKGROUND', (8, row_idx), (9, row_idx), colors.Color(0.92, 0.92, 0.92)))
         
         items_table.setStyle(TableStyle(table_style))
         elements.append(items_table)
 
-        elements.append(Spacer(1, 16))
+        elements.append(Spacer(1, 10))
 
         # Дати и плащане
+        payment_info = []
         if invoice.payment_method:
-            elements.append(Paragraph(f"<b>Начин на плащане:</b> {invoice.payment_method}", styles['Normal']))
+            payment_info.append(f"Начин на плащане: {invoice.payment_method}")
         if invoice.due_date:
-            elements.append(Paragraph(f"<b>Срок на плащане:</b> {invoice.due_date.strftime('%d.%m.%Y')}", styles['Normal']))
+            payment_info.append(f"Срок на плащане: {invoice.due_date.strftime('%d.%m.%Y')}")
         if getattr(invoice, 'payment_date', None):
-            elements.append(Paragraph(f"<b>Дата на плащане:</b> {invoice.payment_date.strftime('%d.%m.%Y')}", styles['Normal']))
+            payment_info.append(f"Дата на плащане: {invoice.payment_date.strftime('%d.%m.%Y')}")
+        
+        if payment_info:
+            elements.append(Paragraph(" | ".join(payment_info), styles['InvoiceText']))
+        
         if invoice.notes:
-            elements.append(Spacer(1, 8))
-            elements.append(Paragraph(f"<b>Бележки:</b> {invoice.notes}", styles['Normal']))
+            elements.append(Spacer(1, 6))
+            elements.append(Paragraph(f"<b>Бележки:</b> {invoice.notes}", styles['InvoiceSmall']))
 
-        elements.append(Spacer(1, 20))
+        elements.append(Spacer(1, 15))
 
-        # QR код
+        # Подписи с QR код ПОД тях
+        signatures_data = [
+            [Paragraph('_' * 45, styles['InvoiceSmall']), Paragraph('_' * 35, styles['InvoiceSmall'])],
+            [Paragraph('За издателя', styles['InvoiceSmall']), Paragraph('За получателя', styles['InvoiceSmall'])],
+        ]
+        signatures_table = Table(signatures_data, colWidths=[245, 245])
+        signatures_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+        
+        elements.append(signatures_table)
+        
+        elements.append(Spacer(1, 8))
+        
+        # QR код - ПОД подписите, по-малък
         try:
-            qr = qrcode.QRCode(version=1, box_size=10, border=4)
+            qr = qrcode.QRCode(version=1, box_size=8, border=3)
             qr.add_data(f"BULSTAT:{issuer_eik};INV:{invoice.number};DATE:{invoice.date.strftime('%Y%m%d') if invoice.date else ''};SUM:{total_amount:.2f}")
             qr.make(fit=True)
             qr_img = qr.make_image(fill_color="black", back_color="white")
@@ -851,16 +917,21 @@ async def export_invoice_pdf(
             qr_img.save(qr_buffer, format='PNG')
             qr_buffer.seek(0)
             
-            qr_image = Image(qr_buffer, width=60, height=60)
-            elements.append(qr_image)
-            elements.append(Paragraph(f"QR код: {invoice.number}", styles['Normal']))
+            # QR код с 10% по-малък (63 вместо 70)
+            qr_image = Image(qr_buffer, width=63, height=63)
+            
+            # QR кода центриран
+            qr_table_data = [
+                [qr_image],
+                [Paragraph(f"QR код: {invoice.number}", styles['InvoiceSmall'])]
+            ]
+            qr_table = Table(qr_table_data, colWidths=[63])
+            qr_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ]))
+            elements.append(qr_table)
         except Exception as qr_error:
             logger.warning(f"Failed to generate QR code: {qr_error}")
-
-        # Подписи
-        elements.append(Spacer(1, 30))
-        elements.append(Paragraph("_" * 60 + "                    " + "_" * 40, styles['Normal']))
-        elements.append(Paragraph("За издателя                              За получателя", styles['Normal']))
 
         doc.build(elements)
 

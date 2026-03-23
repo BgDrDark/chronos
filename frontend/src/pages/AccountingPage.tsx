@@ -40,6 +40,7 @@ import {
   Edit as EditIcon,
   ExpandMore as ExpandMoreIcon,
   Print as PrintIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -2995,7 +2996,21 @@ function SAFTTab() {
       <Dialog open={detailsDialogOpen} onClose={handleCloseDetailsDialog} maxWidth="md" fullWidth>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" fontWeight="bold">ФАКТУРА</Typography>
-          <Typography variant="h6" color="primary">ОРИГИНАЛ</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {selectedInvoice && (
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<PrintIcon />}
+                onClick={() => handlePrintInvoice(selectedInvoice.id)}
+              >
+                Принт
+              </Button>
+            )}
+            <IconButton onClick={handleCloseDetailsDialog} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
         </DialogTitle>
         <DialogContent dividers>
           {selectedInvoice && (
