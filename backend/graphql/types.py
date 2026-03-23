@@ -2528,6 +2528,11 @@ class Invoice:
         return Batch.from_instance(result) if result else None
 
     @strawberry.field
+    async def company(self, info: strawberry.Info) -> Optional[Company]:
+        result = await info.context["dataloaders"]["company_by_id"].load(self.company_id)
+        return Company.from_instance(result) if result else None
+
+    @strawberry.field
     async def items(self, info: strawberry.Info) -> List[InvoiceItem]:
         results = await info.context["dataloaders"]["invoice_items_by_invoice_id"].load(self.id)
         return [InvoiceItem.from_instance(t) for t in results]

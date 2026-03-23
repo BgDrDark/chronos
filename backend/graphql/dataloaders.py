@@ -2,7 +2,7 @@ from typing import List, Dict, Sequence
 from strawberry.dataloader import DataLoader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend.database.models import Role, Position, Department, EmploymentContract, User
+from backend.database.models import Role, Position, Department, EmploymentContract, User, Company
 from backend.database.models import Supplier, Ingredient, Batch, StorageZone, Recipe, RecipeSection
 from backend.database.models import Account
 
@@ -39,6 +39,12 @@ async def load_suppliers(db: AsyncSession, keys: Sequence[int]) -> List[Supplier
     res = await db.execute(stmt)
     suppliers = {s.id: s for s in res.scalars().all()}
     return [suppliers.get(key) for key in keys]
+
+async def load_companies(db: AsyncSession, keys: Sequence[int]) -> List[Company]:
+    stmt = select(Company).where(Company.id.in_(keys))
+    res = await db.execute(stmt)
+    companies = {c.id: c for c in res.scalars().all()}
+    return [companies.get(key) for key in keys]
 
 async def load_ingredients(db: AsyncSession, keys: Sequence[int]) -> List[Ingredient]:
     stmt = select(Ingredient).where(Ingredient.id.in_(keys))
@@ -92,6 +98,7 @@ def create_dataloaders(db: AsyncSession):
         "position_by_id": DataLoader[int, Position](load_fn=lambda keys: load_positions(db, keys)),
         "contract_by_user_id": DataLoader[int, EmploymentContract](load_fn=lambda keys: load_contracts(db, keys)),
         "supplier_by_id": DataLoader[int, Supplier](load_fn=lambda keys: load_suppliers(db, keys)),
+        "company_by_id": DataLoader[int, Company](load_fn=lambda keys: load_companies(db, keys)),
         "ingredient_by_id": DataLoader[int, Ingredient](load_fn=lambda keys: load_ingredients(db, keys)),
         "batch_by_id": DataLoader[int, Batch](load_fn=lambda keys: load_batches(db, keys)),
         "storage_zone_by_id": DataLoader[int, StorageZone](load_fn=lambda keys: load_storage_zones(db, keys)),

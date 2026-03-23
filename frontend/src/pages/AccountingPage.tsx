@@ -172,6 +172,13 @@ const GET_INVOICES = gql`
         vatNumber
         address
       }
+      company {
+        id
+        name
+        eik
+        vatNumber
+        address
+      }
       clientName
       clientEik
       clientAddress
@@ -716,7 +723,8 @@ interface Invoice {
   number: string;
   type: string;
   date: string;
-  supplier?: { id: number; name: string } | null;
+  supplier?: { id: number; name: string; eik?: string; vatNumber?: string; address?: string } | null;
+  company?: { id: number; name: string; eik?: string; vatNumber?: string; address?: string } | null;
   clientName?: string | null;
   clientEik?: string | null;
   clientAddress?: string | null;
@@ -3025,25 +3033,27 @@ function SAFTTab() {
                       <Typography variant="body2">ЕИК: {(selectedInvoice.supplier as any)?.eik || '-'}</Typography>
                       <Typography variant="body2">ИН по ЗДДС: {(selectedInvoice.supplier as any)?.vatNumber || '-'}</Typography>
                     </>
-                  ) : (
+                  ) : selectedInvoice.company ? (
                     <>
-                      <Typography variant="body2">Сладкарница "Планински Кладенец"</Typography>
-                      <Typography variant="body2">ул. "Пирин" №15, гр. София</Typography>
-                      <Typography variant="body2">ЕИК: 123456789</Typography>
-                      <Typography variant="body2">ИН по ЗДДС: BG1234567890</Typography>
+                      <Typography variant="body2">{selectedInvoice.company.name}</Typography>
+                      <Typography variant="body2">{(selectedInvoice.company as any)?.address || '-'}</Typography>
+                      <Typography variant="body2">ЕИК: {(selectedInvoice.company as any)?.eik || '-'}</Typography>
+                      <Typography variant="body2">ИН по ЗДДС: {(selectedInvoice.company as any)?.vatNumber || '-'}</Typography>
                     </>
+                  ) : (
+                    <Typography variant="body2">-</Typography>
                   )}
                 </Box>
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Box sx={{ p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
                   <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>ПОЛУЧАТЕЛ</Typography>
-                  {selectedInvoice.type === 'incoming' ? (
+                  {selectedInvoice.type === 'incoming' && selectedInvoice.company ? (
                     <>
-                      <Typography variant="body2">Сладкарница "Планински Кладенец"</Typography>
-                      <Typography variant="body2">ул. "Пирин" №15, гр. София</Typography>
-                      <Typography variant="body2">ЕИК: 123456789</Typography>
-                      <Typography variant="body2">ИН по ЗДДС: BG1234567890</Typography>
+                      <Typography variant="body2">{selectedInvoice.company.name}</Typography>
+                      <Typography variant="body2">{(selectedInvoice.company as any)?.address || '-'}</Typography>
+                      <Typography variant="body2">ЕИК: {(selectedInvoice.company as any)?.eik || '-'}</Typography>
+                      <Typography variant="body2">ИН по ЗДДС: {(selectedInvoice.company as any)?.vatNumber || '-'}</Typography>
                     </>
                   ) : (
                     <>

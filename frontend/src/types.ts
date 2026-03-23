@@ -549,6 +549,7 @@ export interface Invoice {
   deliveryMethod?: string | null;
   date: string;
   supplier?: Supplier | null;
+  company?: Company | null;
   clientName?: string | null;
   clientEik?: string | null;
   clientAddress?: string | null;
