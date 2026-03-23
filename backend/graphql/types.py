@@ -43,6 +43,64 @@ class Company:
     vat_number: Optional[str]
     address: Optional[str]
     mol_name: Optional[str]
+    
+    # Default accounting accounts
+    default_sales_account_id: Optional[int]
+    default_expense_account_id: Optional[int]
+    default_vat_account_id: Optional[int]
+    default_customer_account_id: Optional[int]
+    default_supplier_account_id: Optional[int]
+    default_cash_account_id: Optional[int]
+    default_bank_account_id: Optional[int]
+
+    @strawberry.field
+    async def default_sales_account(self, info: strawberry.Info) -> Optional["Account"]:
+        if not self.default_sales_account_id:
+            return None
+        result = await info.context["dataloaders"]["account_by_id"].load(self.default_sales_account_id)
+        return Account.from_instance(result) if result else None
+
+    @strawberry.field
+    async def default_expense_account(self, info: strawberry.Info) -> Optional["Account"]:
+        if not self.default_expense_account_id:
+            return None
+        result = await info.context["dataloaders"]["account_by_id"].load(self.default_expense_account_id)
+        return Account.from_instance(result) if result else None
+
+    @strawberry.field
+    async def default_vat_account(self, info: strawberry.Info) -> Optional["Account"]:
+        if not self.default_vat_account_id:
+            return None
+        result = await info.context["dataloaders"]["account_by_id"].load(self.default_vat_account_id)
+        return Account.from_instance(result) if result else None
+
+    @strawberry.field
+    async def default_customer_account(self, info: strawberry.Info) -> Optional["Account"]:
+        if not self.default_customer_account_id:
+            return None
+        result = await info.context["dataloaders"]["account_by_id"].load(self.default_customer_account_id)
+        return Account.from_instance(result) if result else None
+
+    @strawberry.field
+    async def default_supplier_account(self, info: strawberry.Info) -> Optional["Account"]:
+        if not self.default_supplier_account_id:
+            return None
+        result = await info.context["dataloaders"]["account_by_id"].load(self.default_supplier_account_id)
+        return Account.from_instance(result) if result else None
+
+    @strawberry.field
+    async def default_cash_account(self, info: strawberry.Info) -> Optional["Account"]:
+        if not self.default_cash_account_id:
+            return None
+        result = await info.context["dataloaders"]["account_by_id"].load(self.default_cash_account_id)
+        return Account.from_instance(result) if result else None
+
+    @strawberry.field
+    async def default_bank_account(self, info: strawberry.Info) -> Optional["Account"]:
+        if not self.default_bank_account_id:
+            return None
+        result = await info.context["dataloaders"]["account_by_id"].load(self.default_bank_account_id)
+        return Account.from_instance(result) if result else None
 
     @classmethod
     def from_instance(cls, instance: models.Company) -> "Company":
@@ -53,7 +111,14 @@ class Company:
             bulstat=instance.bulstat,
             vat_number=instance.vat_number,
             address=instance.address,
-            mol_name=instance.mol_name
+            mol_name=instance.mol_name,
+            default_sales_account_id=instance.default_sales_account_id,
+            default_expense_account_id=instance.default_expense_account_id,
+            default_vat_account_id=instance.default_vat_account_id,
+            default_customer_account_id=instance.default_customer_account_id,
+            default_supplier_account_id=instance.default_supplier_account_id,
+            default_cash_account_id=instance.default_cash_account_id,
+            default_bank_account_id=instance.default_bank_account_id,
         )
 
 @strawberry.type
@@ -170,8 +235,11 @@ class PayrollSummaryItem:
 @strawberry.type
 class EmploymentContract:
     id: int
-    user_id: int
+    user_id: Optional[int]
     company_id: int
+    company: Optional["Company"]
+    department_id: Optional[int]
+    department: Optional["Department"]
     contract_type: str
     contract_number: Optional[str]
     start_date: datetime.date
@@ -197,20 +265,47 @@ class EmploymentContract:
     position_id: Optional[int]
     position_title: Optional[str]
     position: Optional["Position"]
+    # Нови полета за трудов договор
+    employee_name: Optional[str]
+    employee_egn: Optional[str]
+    status: str
+    signed_at: Optional[datetime.datetime]
+
+    @strawberry.field
+    async def annexes(self, info: strawberry.Info) -> List["ContractAnnex"]:
+        """Връща списък с всички анекси за този договор"""
+        from sqlalchemy import select
+        from backend.database.models import ContractAnnex
+        db = info.context["db"]
+        stmt = select(ContractAnnex).where(
+            ContractAnnex.contract_id == self.id
+        ).order_by(ContractAnnex.effective_date.desc())
+        result = await db.execute(stmt)
+        annexes = result.scalars().all()
+        return [ContractAnnex.from_instance(a) for a in annexes]
 
     @classmethod
     def from_instance(cls, instance: models.EmploymentContract) -> "EmploymentContract":
         position = None
         position_title = None
+        department = None
+        company = None
         if hasattr(instance, 'position_id') and instance.position_id:
             from backend.database.models import Position
             position = instance.position
             if position:
                 position_title = position.title
+        if hasattr(instance, 'department_id') and instance.department_id:
+            from backend.database.models import Department
+            department = instance.department
+        if hasattr(instance, 'company_id') and instance.company_id:
+            from backend.database.models import Company
+            company = instance.company
         return cls(
             id=instance.id,
-            user_id=instance.user_id,
+            user_id=getattr(instance, 'user_id', None),
             company_id=instance.company_id,
+            department_id=getattr(instance, 'department_id', None),
             contract_type=instance.contract_type,
             contract_number=instance.contract_number if hasattr(instance, "contract_number") else None,
             start_date=instance.start_date,
@@ -236,6 +331,13 @@ class EmploymentContract:
             position_id=getattr(instance, 'position_id', None),
             position_title=position_title,
             position=Position.from_instance(position) if position else None,
+            department=Department.from_instance(department) if department else None,
+            company=Company.from_instance(company) if company else None,
+            # Нови полета
+            employee_name=getattr(instance, 'employee_name', None),
+            employee_egn=getattr(instance, 'employee_egn', None),
+            status=getattr(instance, 'status', 'draft') or 'draft',
+            signed_at=getattr(instance, 'signed_at', None),
         )
 
 @strawberry.type
@@ -1649,6 +1751,24 @@ class Batch:
     storage_zone_id: Optional[int]
 
     @strawberry.field
+    def available_stock(self) -> Decimal:
+        """Returns quantity only for active batches with positive stock"""
+        if self.status == "active" and self.quantity > 0:
+            return self.quantity
+        return Decimal("0")
+
+    @strawberry.field
+    def is_expired(self) -> bool:
+        """Check if batch is expired"""
+        return datetime.date.today() > self.expiry_date
+
+    @strawberry.field
+    def days_until_expiry(self) -> int:
+        """Days until expiry (negative if expired)"""
+        delta = self.expiry_date - datetime.date.today()
+        return delta.days
+
+    @strawberry.field
     async def ingredient(self, info: strawberry.Info) -> Ingredient:
         result = await info.context["dataloaders"]["ingredient_by_id"].load(self.ingredient_id)
         return Ingredient.from_instance(result)
@@ -1679,6 +1799,56 @@ class Batch:
             invoice_number=instance.invoice_number,
             storage_zone_id=instance.storage_zone_id
         )
+
+@strawberry.type
+class StockConsumptionLog:
+    id: int
+    ingredient_id: int
+    batch_id: int
+    quantity: Decimal
+    reason: str
+    production_order_id: Optional[int]
+    notes: Optional[str]
+    created_by: int
+    created_at: datetime.datetime
+
+    @strawberry.field
+    async def ingredient(self, info: strawberry.Info) -> "Ingredient":
+        result = await info.context["dataloaders"]["ingredient_by_id"].load(self.ingredient_id)
+        return Ingredient.from_instance(result)
+
+    @strawberry.field
+    async def batch(self, info: strawberry.Info) -> "Batch":
+        result = await info.context["dataloaders"]["batch_by_id"].load(self.batch_id)
+        return Batch.from_instance(result)
+
+    @strawberry.field
+    async def creator(self, info: strawberry.Info) -> "User":
+        result = await info.context["dataloaders"]["user_by_id"].load(self.created_by)
+        return User.from_instance(result)
+
+    @classmethod
+    def from_instance(cls, instance: models.StockConsumptionLog) -> "StockConsumptionLog":
+        return cls(
+            id=instance.id,
+            ingredient_id=instance.ingredient_id,
+            batch_id=instance.batch_id,
+            quantity=instance.quantity,
+            reason=instance.reason,
+            production_order_id=instance.production_order_id,
+            notes=instance.notes,
+            created_by=instance.created_by,
+            created_at=instance.created_at,
+        )
+
+@strawberry.type
+class FefoSuggestion:
+    batch_id: int
+    batch_number: str
+    available_quantity: Decimal
+    quantity_to_take: Decimal
+    expiry_date: datetime.date
+    days_until_expiry: int
 
 @strawberry.type
 class RecipeIngredient:
@@ -1789,6 +1959,7 @@ class RecipeStep:
 class Recipe:
     id: int
     name: str
+    category: Optional[str]
     description: Optional[str]
     yield_quantity: Decimal
     yield_unit: str
@@ -1800,6 +1971,39 @@ class Recipe:
     standard_quantity: Decimal
     instructions: Optional[str]
     company_id: int
+    
+    # PRICING FIELDS
+    selling_price: Optional[Decimal]
+    cost_price: Optional[Decimal]
+    markup_percentage: Decimal
+    premium_amount: Decimal
+    portions: int
+    last_price_update: Optional[datetime.datetime]
+    price_calculated_at: Optional[datetime.datetime]
+
+    @strawberry.field
+    def markup_amount(self) -> Decimal:
+        """Изчислена стойност на маржа в лв"""
+        if not self.cost_price or not self.markup_percentage or self.markup_percentage == 0:
+            return Decimal("0")
+        return self.cost_price * self.markup_percentage / 100
+
+    @strawberry.field
+    def final_price(self) -> Decimal:
+        """Крайна продажна цена"""
+        base = self.cost_price or Decimal("0")
+        markup = Decimal("0")
+        if self.cost_price and self.markup_percentage and self.markup_percentage != 0:
+            markup = self.cost_price * self.markup_percentage / 100
+        premium = self.premium_amount or Decimal("0")
+        return base + markup + premium
+
+    @strawberry.field
+    def portion_price(self) -> Optional[Decimal]:
+        """Цена за 1 порция"""
+        if self.portions and self.portions > 0:
+            return self.final_price() / self.portions
+        return None
 
     @strawberry.field
     async def sections(self, info: strawberry.Info) -> List[RecipeSection]:
@@ -1829,6 +2033,7 @@ class Recipe:
         return cls(
             id=instance.id,
             name=instance.name,
+            category=instance.category,
             description=instance.description,
             yield_quantity=instance.yield_quantity or Decimal("1.0"),
             yield_unit=instance.yield_unit or "br",
@@ -1839,8 +2044,81 @@ class Recipe:
             production_deadline_days=instance.production_deadline_days,
             standard_quantity=instance.standard_quantity or Decimal("1.0"),
             instructions=instance.instructions,
-            company_id=instance.company_id
+            company_id=instance.company_id,
+            # PRICING
+            selling_price=instance.selling_price,
+            cost_price=instance.cost_price,
+            markup_percentage=instance.markup_percentage or Decimal("0"),
+            premium_amount=instance.premium_amount or Decimal("0"),
+            portions=instance.portions or 1,
+            last_price_update=instance.last_price_update,
+            price_calculated_at=instance.price_calculated_at
         )
+
+
+@strawberry.type
+class PriceHistory:
+    id: int
+    recipe_id: int
+    old_price: Optional[Decimal]
+    new_price: Optional[Decimal]
+    old_cost: Optional[Decimal]
+    new_cost: Optional[Decimal]
+    old_markup: Optional[Decimal]
+    new_markup: Optional[Decimal]
+    old_premium: Optional[Decimal]
+    new_premium: Optional[Decimal]
+    changed_by: int
+    changed_at: datetime.datetime
+    reason: Optional[str]
+
+    @strawberry.field
+    async def recipe(self, info: strawberry.Info) -> Optional[Recipe]:
+        result = await info.context["dataloaders"]["recipe_by_id"].load(self.recipe_id)
+        return Recipe.from_instance(result) if result else None
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> Optional[User]:
+        result = await info.context["dataloaders"]["user_by_id"].load(self.changed_by)
+        return User.from_instance(result) if result else None
+
+    @classmethod
+    def from_instance(cls, instance: models.PriceHistory) -> "PriceHistory":
+        return cls(
+            id=instance.id,
+            recipe_id=instance.recipe_id,
+            old_price=instance.old_price,
+            new_price=instance.new_price,
+            old_cost=instance.old_cost,
+            new_cost=instance.new_cost,
+            old_markup=instance.old_markup,
+            new_markup=instance.new_markup,
+            old_premium=instance.old_premium,
+            new_premium=instance.new_premium,
+            changed_by=instance.changed_by,
+            changed_at=instance.changed_at,
+            reason=instance.reason
+        )
+
+
+@strawberry.type
+class RecipeCostResult:
+    recipe_id: int
+    cost_price: Decimal
+    markup_amount: Decimal
+    premium_amount: Decimal
+    final_price: Decimal
+
+
+@strawberry.type
+class RecalculateResult:
+    recipe_id: int
+    recipe_name: str
+    cost_price: Decimal
+    markup_amount: Decimal
+    final_price: Decimal
+    portion_price: Decimal
+
 
 @strawberry.type
 class Workstation:
@@ -2168,8 +2446,11 @@ class InvoiceItem:
     quantity: Decimal
     unit: str
     unit_price: Decimal
+    unit_price_with_vat: Optional[Decimal]
     discount_percent: Decimal
     total: Decimal
+    expiration_date: Optional[datetime.date]
+    batch_number: Optional[str]
 
     @strawberry.field
     async def ingredient(self, info: strawberry.Info) -> Optional[Ingredient]:
@@ -2196,8 +2477,11 @@ class InvoiceItem:
             quantity=instance.quantity,
             unit=instance.unit or "br",
             unit_price=instance.unit_price,
+            unit_price_with_vat=instance.unit_price_with_vat,
             discount_percent=instance.discount_percent or Decimal("0"),
-            total=instance.total
+            total=instance.total,
+            expiration_date=instance.expiration_date,
+            batch_number=instance.batch_number
         )
 
 
@@ -2692,6 +2976,12 @@ class Account:
 
 
 @strawberry.type
+class AutoMatchResult:
+    matched_count: int
+    unmatched_count: int
+
+
+@strawberry.type
 class AccountingEntry:
     id: int
     date: datetime.date
@@ -2707,6 +2997,36 @@ class AccountingEntry:
     company_id: int
     created_by: Optional[int]
     created_at: datetime.datetime
+
+    @strawberry.field
+    async def debit_account(self, info: strawberry.Info) -> Optional[Account]:
+        if not self.debit_account_id:
+            return None
+        result = await info.context["dataloaders"]["account_by_id"].load(self.debit_account_id)
+        return Account.from_instance(result) if result else None
+
+    @strawberry.field
+    async def credit_account(self, info: strawberry.Info) -> Optional[Account]:
+        if not self.credit_account_id:
+            return None
+        result = await info.context["dataloaders"]["account_by_id"].load(self.credit_account_id)
+        return Account.from_instance(result) if result else None
+
+    @strawberry.field
+    async def invoice(self, info: strawberry.Info) -> Optional["Invoice"]:
+        if not self.invoice_id:
+            return None
+        from backend.database.models import Invoice
+        db = info.context["db"]
+        result = await db.get(Invoice, self.invoice_id)
+        return Invoice.from_instance(result) if result else None
+
+    @strawberry.field
+    async def creator(self, info: strawberry.Info) -> Optional["User"]:
+        if not self.created_by:
+            return None
+        result = await info.context["dataloaders"]["user_by_id"].load(self.created_by)
+        return User.from_instance(result) if result else None
 
     @classmethod
     def from_instance(cls, instance: models.AccountingEntry) -> "AccountingEntry":

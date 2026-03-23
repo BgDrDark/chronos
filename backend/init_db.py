@@ -68,6 +68,46 @@ async def init_db():
             await conn.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS production_deadline_days INTEGER"))
             await conn.execute(text("ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS production_deadline TIMESTAMP WITHOUT TIME ZONE"))
             
+            # Company Accounting Settings - Счетоводни настройки за фирмата
+            await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS default_sales_account_id INTEGER"))
+            await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS default_expense_account_id INTEGER"))
+            await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS default_vat_account_id INTEGER"))
+            await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS default_customer_account_id INTEGER"))
+            await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS default_supplier_account_id INTEGER"))
+            await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS default_cash_account_id INTEGER"))
+            await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS default_bank_account_id INTEGER"))
+            
+            # Recipe Pricing Fields - Цени за рецепти
+            await conn.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS category VARCHAR(100)"))
+            await conn.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS selling_price NUMERIC(10, 2)"))
+            await conn.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10, 2)"))
+            await conn.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS markup_percentage NUMERIC(5, 2) DEFAULT 0"))
+            await conn.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS premium_amount NUMERIC(10, 2) DEFAULT 0"))
+            await conn.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS portions INTEGER DEFAULT 1"))
+            await conn.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS last_price_update TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS price_calculated_at TIMESTAMP"))
+            
+            # Price History Table - История на цените
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS price_history (
+                    id SERIAL PRIMARY KEY,
+                    recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+                    old_price NUMERIC(10, 2),
+                    new_price NUMERIC(10, 2),
+                    old_cost NUMERIC(10, 2),
+                    new_cost NUMERIC(10, 2),
+                    old_markup NUMERIC(5, 2),
+                    new_markup NUMERIC(5, 2),
+                    old_premium NUMERIC(10, 2),
+                    new_premium NUMERIC(10, 2),
+                    changed_by INTEGER NOT NULL REFERENCES users(id),
+                    changed_at TIMESTAMP DEFAULT NOW(),
+                    reason VARCHAR(255)
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_price_history_recipe ON price_history(recipe_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_price_history_date ON price_history(changed_at)"))
+            
             logger.info("Проверка/Добавяне на липсващи колони (Full Schema Update) завърши.")
         except Exception as e:
             logger.warning(f"Грешка при опит за добавяне на колони: {e}")
@@ -168,6 +208,22 @@ async def init_db():
         result = await session.execute(select(ContractTemplate).limit(1))
         existing_templates = result.scalars().first()
         
+        # Вземаме или създаваме default company за шаблоните
+        company_result = await session.execute(select(Company).limit(1))
+        default_company = company_result.scalar_one_or_none()
+        
+        if not default_company:
+            # Създаваме default company ако не съществува
+            default_company = Company(
+                name="Demo Company",
+                eik="1234567890",
+                bulstat="BG123456789",
+                mol_name="System Admin"
+            )
+            session.add(default_company)
+            await session.flush()
+            logger.info(f"Създадена default компания: {default_company.id}")
+        
         if not existing_templates:
             logger.info("Създаване на TRZ шаблони...")
             
@@ -213,7 +269,7 @@ async def init_db():
             
             for template_data in contract_templates_data:
                 template = ContractTemplate(
-                    company_id=1,  # Default company
+                    company_id=default_company.id,  # Default company
                     name=template_data["name"],
                     description=template_data["description"],
                     contract_type=template_data["contract_type"],
@@ -279,7 +335,7 @@ async def init_db():
             
             for template_data in annex_templates_data:
                 template = AnnexTemplate(
-                    company_id=1,
+                    company_id=default_company.id,
                     name=template_data["name"],
                     description=template_data["description"],
                     change_type=template_data["change_type"],
@@ -328,7 +384,7 @@ async def init_db():
             
             for clause_data in clause_templates_data:
                 clause = ClauseTemplate(
-                    company_id=1,
+                    company_id=default_company.id,
                     title=clause_data["title"],
                     content=clause_data["content"],
                     category=clause_data["category"],

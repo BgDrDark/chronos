@@ -11,12 +11,30 @@ import sqlalchemy as sa
 
 
 revision: str = 'add_saft_accounting_tables'
-down_revision: Union[str, Sequence[str], None] = 'f0a9e3381fd5'
+down_revision: Union[str, Sequence[str], None] = 'add_invoices_table'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Create cash_journal_entries table first (needed for accounting_entries FK)
+    op.create_table(
+        'cash_journal_entries',
+        sa.Column('id', sa.Integer(), primary_key=True),
+        sa.Column('date', sa.Date(), nullable=False),
+        sa.Column('operation_type', sa.String(20), nullable=False),
+        sa.Column('amount', sa.Numeric(12, 2), nullable=False),
+        sa.Column('description', sa.Text(), nullable=True),
+        sa.Column('reference_type', sa.String(20), nullable=True),
+        sa.Column('reference_id', sa.Integer(), nullable=True),
+        sa.Column('payment_method', sa.String(50), nullable=True),
+        sa.Column('company_id', sa.Integer(), sa.ForeignKey('companies.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('created_by', sa.Integer(), sa.ForeignKey('users.id'), nullable=True),
+        sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'))
+    )
+    op.create_index('ix_cash_journal_entries_date', 'cash_journal_entries', ['date'])
+    op.create_index('ix_cash_journal_entries_company', 'cash_journal_entries', ['company_id'])
+    
     # Add type field to invoices for proforma support
     op.execute("""
         ALTER TABLE invoices 
@@ -158,6 +176,8 @@ def downgrade() -> None:
     op.drop_index('ix_bank_accounts_company', 'bank_accounts')
     op.drop_index('ix_cash_receipts_company', 'cash_receipts')
     op.drop_index('ix_invoice_corrections_company', 'invoice_corrections')
+    op.drop_index('ix_cash_journal_entries_company', 'cash_journal_entries')
+    op.drop_index('ix_cash_journal_entries_date', 'cash_journal_entries')
     
     # Drop tables
     op.drop_table('vat_registers')
@@ -167,3 +187,4 @@ def downgrade() -> None:
     op.drop_table('bank_accounts')
     op.drop_table('cash_receipts')
     op.drop_table('invoice_corrections')
+    op.drop_table('cash_journal_entries')

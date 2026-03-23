@@ -8,6 +8,7 @@ from backend.graphql import types
 from backend import crud, schemas
 from backend.config import settings
 from backend.services.payroll_calculator import PayrollCalculator
+from backend.exceptions import AuthenticationException, PermissionDeniedException
 
 @strawberry.type
 class Query:
@@ -20,6 +21,59 @@ class Query:
         current_user = info.context["current_user"]
         if current_user:
             return types.User.from_instance(current_user)
+        return None
+
+    @strawberry.field
+    async def employment_contracts(
+        self,
+        info: strawberry.Info,
+        company_id: Optional[int] = None,
+        status: Optional[str] = None
+    ) -> List[types.EmploymentContract]:
+        """Връща списък с трудови договори"""
+        from sqlalchemy import select
+        from backend.database.models import EmploymentContract
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        
+        if current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Operation not permitted")
+        
+        stmt = select(EmploymentContract)
+        
+        # Filter by company
+        if company_id:
+            stmt = stmt.where(EmploymentContract.company_id == company_id)
+        elif current_user.role.name != "super_admin":
+            stmt = stmt.where(EmploymentContract.company_id == current_user.company_id)
+        
+        # Filter by status
+        if status:
+            stmt = stmt.where(EmploymentContract.status == status)
+        
+        stmt = stmt.order_by(EmploymentContract.created_at.desc())
+        
+        result = await db.execute(stmt)
+        contracts = result.scalars().all()
+        return [types.EmploymentContract.from_instance(c) for c in contracts]
+
+    @strawberry.field
+    async def employment_contract(
+        self,
+        info: strawberry.Info,
+        id: int
+    ) -> Optional[types.EmploymentContract]:
+        """Връща конкретен трудов договор"""
+        from sqlalchemy import select
+        from backend.database.models import EmploymentContract
+        db = info.context["db"]
+        
+        stmt = select(EmploymentContract).where(EmploymentContract.id == id)
+        result = await db.execute(stmt)
+        contract = result.scalar_one_or_none()
+        
+        if contract:
+            return types.EmploymentContract.from_instance(contract)
         return None
 
     @strawberry.field
@@ -1365,6 +1419,106 @@ class Query:
         return [types.Batch.from_instance(b) for b in res.scalars().all()]
 
     @strawberry.field
+    async def get_fefo_suggestion(
+        self,
+        ingredient_id: int,
+        quantity: Decimal,
+        info: strawberry.Info
+    ) -> List[types.FefoSuggestion]:
+        """Предложение за изразходване по FEFO"""
+        db = info.context["db"]
+        from backend.database.models import Batch
+        from sqlalchemy import select
+        import datetime
+
+        stmt = select(Batch).where(
+            Batch.ingredient_id == ingredient_id,
+            Batch.status == "active",
+            Batch.quantity > 0
+        ).order_by(Batch.expiry_date.asc())
+        
+        result = await db.execute(stmt)
+        batches = result.scalars().all()
+        
+        suggestions = []
+        remaining = quantity
+        today = datetime.date.today()
+
+        for batch in batches:
+            if remaining <= 0: break
+            
+            to_take = min(batch.quantity, remaining)
+            suggestions.append(types.FefoSuggestion(
+                batch_id=batch.id,
+                batch_number=batch.batch_number or f"ID-{batch.id}",
+                available_quantity=batch.quantity,
+                quantity_to_take=to_take,
+                expiry_date=batch.expiry_date,
+                days_until_expiry=(batch.expiry_date - today).days
+            ))
+            remaining -= to_take
+            
+        return suggestions
+
+    @strawberry.field
+    async def stock_consumption_logs(
+        self,
+        info: strawberry.Info,
+        ingredient_id: Optional[int] = None,
+        batch_id: Optional[int] = None,
+        start_date: Optional[datetime.date] = None,
+        end_date: Optional[datetime.date] = None
+    ) -> List[types.StockConsumptionLog]:
+        """История на изразходването на стока"""
+        db = info.context["db"]
+        from backend.database.models import StockConsumptionLog
+        from sqlalchemy import select, desc
+
+        stmt = select(StockConsumptionLog)
+        
+        if ingredient_id:
+            stmt = stmt.where(StockConsumptionLog.ingredient_id == ingredient_id)
+        if batch_id:
+            stmt = stmt.where(StockConsumptionLog.batch_id == batch_id)
+        if start_date:
+            stmt = stmt.where(StockConsumptionLog.created_at >= start_date)
+        if end_date:
+            stmt = stmt.where(StockConsumptionLog.created_at <= end_date)
+            
+        stmt = stmt.order_by(desc(StockConsumptionLog.created_at))
+        
+        result = await db.execute(stmt)
+        logs = result.scalars().all()
+        return [types.StockConsumptionLog.from_instance(l) for l in logs]
+
+    @strawberry.field
+    async def ingredient_batches_with_stock(
+        self,
+        info: strawberry.Info,
+        ingredient_id: int
+    ) -> List[types.Batch]:
+        """Get active batches with available stock for a specific ingredient"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise AuthenticationException("Не сте автентикирани")
+        
+        from backend.database.models import Batch, Ingredient
+        stmt = select(Batch).join(Ingredient).where(
+            Batch.ingredient_id == ingredient_id,
+            Batch.status == "active",
+            Batch.quantity > 0
+        )
+        
+        if current_user.role.name != "super_admin":
+            stmt = stmt.where(Ingredient.company_id == current_user.company_id)
+        
+        stmt = stmt.order_by(Batch.expiry_date.asc())  # FEFO - earliest expiry first
+        
+        res = await db.execute(stmt)
+        return [types.Batch.from_instance(b) for b in res.scalars().all()]
+
+    @strawberry.field
     async def recipes(self, info: strawberry.Info) -> List[types.Recipe]:
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -1377,6 +1531,56 @@ class Query:
             
         res = await db.execute(stmt)
         return [types.Recipe.from_instance(r) for r in res.scalars().all()]
+
+    @strawberry.field
+    async def recipes_with_prices(
+        self,
+        info: strawberry.Info,
+        category_id: Optional[int] = None
+    ) -> List[types.Recipe]:
+        """Всички рецепти с цени"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise Exception("Not authenticated")
+        
+        from backend.database.models import Recipe
+        stmt = select(Recipe)
+        if current_user.role.name != "super_admin":
+            stmt = stmt.where(Recipe.company_id == current_user.company_id)
+        
+        if category_id:
+            stmt = stmt.where(Recipe.category_id == category_id)
+        
+        res = await db.execute(stmt)
+        return [types.Recipe.from_instance(r) for r in res.scalars().all()]
+
+    @strawberry.field
+    async def price_history(
+        self,
+        info: strawberry.Info,
+        recipe_id: int,
+        limit: int = 20
+    ) -> List[types.PriceHistory]:
+        """История на промените на цената"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise Exception("Not authenticated")
+        
+        from backend.database.models import PriceHistory, Recipe
+        from sqlalchemy import desc
+        
+        recipe = await db.get(Recipe, recipe_id)
+        if not recipe or recipe.company_id != current_user.company_id:
+            raise Exception("Рецепта не е намерена")
+        
+        stmt = select(PriceHistory).where(
+            PriceHistory.recipe_id == recipe_id
+        ).order_by(desc(PriceHistory.changed_at)).limit(limit)
+        
+        res = await db.execute(stmt)
+        return [types.PriceHistory.from_instance(h) for h in res.scalars().all()]
 
     @strawberry.field
     async def workstations(self, info: strawberry.Info) -> List[types.Workstation]:

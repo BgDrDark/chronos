@@ -8,6 +8,7 @@ Create Date: 2026-02-05 10:00:00.000000
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+import datetime
 
 # revision identifiers
 revision = 'rbac_001'
@@ -180,7 +181,7 @@ def upgrade() -> None:
             sa.column('created_at', sa.DateTime)
         ),
         [
-            {'name': name, 'resource': resource, 'action': action, 'description': description, 'created_at': sa.func.now()}
+            {'name': name, 'resource': resource, 'action': action, 'description': description, 'created_at': datetime.datetime.now()}
             for name, resource, action, description in permissions_data
         ]
     )

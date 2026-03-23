@@ -62,7 +62,12 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = create_engine(str(settings.DATABASE_URL).replace("postgresql+asyncpg", "postgresql+psycopg"))
+    # Use the URL from config if set, otherwise use settings
+    db_url = config.get_main_option("sqlalchemy.url") or str(settings.DATABASE_URL)
+    # Replace asyncpg driver with psycopg2 for sync operations
+    if "asyncpg" in db_url:
+        db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+    connectable = create_engine(db_url)
 
     with connectable.connect() as connection:
         context.configure(

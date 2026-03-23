@@ -3,6 +3,7 @@ import enum
 import sys
 import os
 from decimal import Decimal
+from typing import Optional, List
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
@@ -159,6 +160,15 @@ class Company(Base):
     vat_number = Column(String, unique=True, nullable=True) # ДДС номер
     address = Column(String, nullable=True) # Седалище и адрес на управление
     mol_name = Column(String, nullable=True) # МОЛ
+    
+    # Default accounting accounts for automation
+    default_sales_account_id = Column(Integer, nullable=True)  # 701 - Приходи от продажби
+    default_expense_account_id = Column(Integer, nullable=True)  # 601 - Разходи за материали
+    default_vat_account_id = Column(Integer, nullable=True)  # 453 - ДДС
+    default_customer_account_id = Column(Integer, nullable=True)  # 411 - Вземания от клиенти
+    default_supplier_account_id = Column(Integer, nullable=True)  # 401 - Задължения към доставчици
+    default_cash_account_id = Column(Integer, nullable=True)  # 501 - Каса
+    default_bank_account_id = Column(Integer, nullable=True)  # 503 - Банкови сметки
 
     users = relationship("User", back_populates="company_rel")
     departments = relationship("Department", back_populates="company")
@@ -952,10 +962,30 @@ class Batch(Base):
     supplier = relationship("Supplier")
     receiver = relationship("User", foreign_keys=[received_by])
 
+class StockConsumptionLog(Base):
+    """Лог за изразходване на стока"""
+    __tablename__ = "stock_consumption_logs"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    ingredient_id: Mapped[int] = mapped_column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=False)
+    batch_id: Mapped[int] = mapped_column(Integer, ForeignKey("batches.id", ondelete="CASCADE"), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    reason: Mapped[str] = mapped_column(String(50), nullable=False)  # "manual", "production", "expiry", "damaged", "quality_check"
+    production_order_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("production_orders.id", ondelete="SET NULL"), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    
+    ingredient: Mapped["Ingredient"] = relationship("Ingredient")
+    batch: Mapped["Batch"] = relationship("Batch")
+    production_order: Mapped[Optional["ProductionOrder"]] = relationship("ProductionOrder")
+    creator: Mapped["User"] = relationship("User")
+
 class Recipe(Base):
     __tablename__ = "recipes"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
+    category = Column(String(100), nullable=True)  # Категория на рецептата
     description = Column(String, nullable=True)
     yield_quantity = Column(Numeric(12, 2), default=1.0)
     yield_unit = Column(String(20), default="br")
@@ -967,6 +997,15 @@ class Recipe(Base):
     standard_quantity = Column(Numeric(12, 2), default=1.0) # Стандартно количество за производство
     instructions = Column(Text, nullable=True)
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    
+    # PRICING FIELDS
+    selling_price = Column(Numeric(10, 2), nullable=True)  # Продажна цена
+    cost_price = Column(Numeric(10, 2), nullable=True)  # Себестойност (изчислена)
+    markup_percentage = Column(Numeric(5, 2), default=0)  # Марж %
+    premium_amount = Column(Numeric(10, 2), default=0)  # Надценка (лв)
+    portions = Column(Integer, default=1)  # Брой порции
+    last_price_update = Column(DateTime, nullable=True)  # Кога е обновена цената
+    price_calculated_at = Column(DateTime, nullable=True)  # Кога е изчислена себестойността
 
     company = relationship("Company", backref="recipes")
     sections = relationship("RecipeSection", back_populates="recipe", cascade="all, delete-orphan")
@@ -1095,6 +1134,27 @@ class ProductionScrapLog(Base):
     created_at = Column(DateTime, default=sofia_now)
     
     task = relationship("ProductionTask")
+    user = relationship("User")
+
+
+class PriceHistory(Base):
+    """История на промените на цените на рецепти"""
+    __tablename__ = "price_history"
+    id = Column(Integer, primary_key=True, index=True)
+    recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+    old_price = Column(Numeric(10, 2))
+    new_price = Column(Numeric(10, 2))
+    old_cost = Column(Numeric(10, 2))
+    new_cost = Column(Numeric(10, 2))
+    old_markup = Column(Numeric(5, 2))
+    new_markup = Column(Numeric(5, 2))
+    old_premium = Column(Numeric(10, 2))
+    new_premium = Column(Numeric(10, 2))
+    changed_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    changed_at = Column(DateTime, default=sofia_now)
+    reason = Column(String(255))
+    
+    recipe = relationship("Recipe")
     user = relationship("User")
 
 
@@ -1398,8 +1458,8 @@ class EmploymentContract(Base):
     __tablename__ = "employment_contracts"
 
     id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    company_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # user_id е nullable заради TRZ договори - може да се създаде договор ПРЕДИ потребителят да е регистриран
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     contract_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "full_time", "part_time", "contractor", "internship"
     contract_number: Mapped[str] = mapped_column(String(50), nullable=True)  # Уникален номер на договора
@@ -1428,6 +1488,13 @@ class EmploymentContract(Base):
     # Връзка към шаблон
     template_id: Mapped[int] = mapped_column(Integer, ForeignKey("contract_templates.id", ondelete="SET NULL"), nullable=True)
     position_id: Mapped[int] = mapped_column(Integer, ForeignKey("positions.id", ondelete="SET NULL"), nullable=True)
+    department_id: Mapped[int] = mapped_column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+    
+    # Нови полета за трудов договор (преди регистрация)
+    employee_name: Mapped[str] = mapped_column(String(200), nullable=True)  # Име на служителя (преди регистрация)
+    employee_egn: Mapped[str] = mapped_column(String(10), nullable=True)  # ЕГН (преди регистрация)
+    status: Mapped[str] = mapped_column(String(20), default='draft')  # draft/signed/linked
+    signed_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)  # Дата на подписване
     
     created_at = Column(DateTime, default=sofia_now)
     updated_at = Column(DateTime, nullable=True, onupdate=sofia_now)
@@ -1435,6 +1502,7 @@ class EmploymentContract(Base):
     user = relationship("User", backref="employment_contracts")
     company = relationship("Company", backref="employment_contracts")
     position = relationship("Position", backref="employment_contracts")
+    department = relationship("Department", backref="employment_contracts")
 
 
 class ContractAnnex(Base):
@@ -1924,8 +1992,11 @@ class InvoiceItem(Base):
     quantity = Column(Numeric(12, 3), nullable=False)
     unit = Column(String(20), default="br")
     unit_price = Column(Numeric(12, 2), nullable=False)
+    unit_price_with_vat = Column(Numeric(12, 2), nullable=True)
     discount_percent = Column(Numeric(5, 2), default=0)
     total = Column(Numeric(12, 2), nullable=False)
+    expiration_date = Column(Date, nullable=True)
+    batch_number = Column(String(50), nullable=True)
     
     invoice = relationship("Invoice", back_populates="items")
     ingredient = relationship("Ingredient", backref="invoice_items")

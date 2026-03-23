@@ -1,14 +1,14 @@
 """Add position_id to employment_contracts
 
 Revision ID: add_position_id_to_contracts
-Revises: add_surname_contract_number
+Revises: fdf892bc6900
 Create Date: 2026-03-17
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = 'add_position_id_to_contracts'
-down_revision = 'add_surname_contract_number'
+down_revision = 'fdf892bc6900'
 branch_labels = None
 depends_on = None
 

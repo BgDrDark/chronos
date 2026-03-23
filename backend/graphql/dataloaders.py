@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database.models import Role, Position, Department, EmploymentContract, User
 from backend.database.models import Supplier, Ingredient, Batch, StorageZone, Recipe, RecipeSection
+from backend.database.models import Account
 
 async def load_users(db: AsyncSession, keys: Sequence[int]) -> List[User]:
     stmt = select(User).where(User.id.in_(keys))
@@ -69,6 +70,12 @@ async def load_recipe_sections(db: AsyncSession, keys: Sequence[int]) -> List[Re
     sections = {s.id: s for s in res.scalars().all()}
     return [sections.get(key) for key in keys]
 
+async def load_accounts(db: AsyncSession, keys: Sequence[int]) -> List[Account]:
+    stmt = select(Account).where(Account.id.in_(keys))
+    res = await db.execute(stmt)
+    accounts = {a.id: a for a in res.scalars().all()}
+    return [accounts.get(key) for key in keys]
+
 async def load_invoice_items(db: AsyncSession, keys: Sequence[int]) -> List:
     from backend.database.models import InvoiceItem
     stmt = select(InvoiceItem).where(InvoiceItem.invoice_id.in_(keys))
@@ -91,4 +98,5 @@ def create_dataloaders(db: AsyncSession):
         "recipe_by_id": DataLoader[int, Recipe](load_fn=lambda keys: load_recipes(db, keys)),
         "recipe_sections_by_recipe_id": DataLoader[int, RecipeSection](load_fn=lambda keys: load_recipe_sections(db, keys)),
         "invoice_items_by_invoice_id": DataLoader[int, List](load_fn=lambda keys: load_invoice_items(db, keys)),
+        "account_by_id": DataLoader[int, Account](load_fn=lambda keys: load_accounts(db, keys)),
     }

@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { 
   TextField, Button, Box, Alert, CircularProgress, 
   MenuItem, FormControl, InputLabel, Select, Grid,
-  FormControlLabel, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions,
-  IconButton
+  Checkbox, Dialog, DialogTitle, DialogContent, DialogActions,
+  IconButton, Typography
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import { useForm, useWatch, Controller } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { gql, useMutation, useQuery } from '@apollo/client';
@@ -258,6 +258,15 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
   const [savingDepartment, setSavingDepartment] = useState(false);
   const [savingPosition, setSavingPosition] = useState(false);
 
+  // Local state for checkboxes (like FleetPage - direct onChange)
+  const [passwordForceChange, setPasswordForceChange] = useState(false);
+  const [taxResident, setTaxResident] = useState(true);
+  const [hasIncomeTax, setHasIncomeTax] = useState(true);
+  const [insuranceContributor, setInsuranceContributor] = useState(true);
+  const [dangerousWork, setDangerousWork] = useState(false);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(null);
+
   const { data: orgData, loading: orgLoading, refetch: refetchOrg } = useQuery<OrgData>(GET_ORG_DATA);
 
   const [createCompany] = useMutation(CREATE_COMPANY_MUTATION);
@@ -269,8 +278,6 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
     handleSubmit,
     reset,
     control,
-    watch,
-    setValue,
     formState: { errors, isSubmitting },
   } = useForm<CreateUserFormData>({
     resolver: zodResolver(createUserSchema),
@@ -313,9 +320,6 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
       dangerousWork: false,
     },
   });
-
-  const selectedCompanyId = useWatch({ name: 'companyId', defaultValue: null });
-  const selectedDepartmentId = useWatch({ name: 'departmentId', defaultValue: null });
 
   const filteredDepartments = orgData?.departments.filter((d) => 
     selectedCompanyId ? d.companyId === selectedCompanyId : true
@@ -590,11 +594,14 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
             />
           </FormControl>
         </Grid>
-        <Grid size={{ xs: 12, sm: 4 }} display="flex" alignItems="center">
-          <FormControlLabel
-            control={<Checkbox checked={!!watch('passwordForceChange')} onChange={e => setValue('passwordForceChange', e.target.checked)} />}
-            label="Задължителна смяна на парола"
-          />
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Checkbox
+              checked={passwordForceChange}
+              onChange={(e) => setPasswordForceChange(e.target.checked)}
+            />
+            <Typography variant="body2">Задължителна смяна на парола</Typography>
+          </Box>
         </Grid>
 
         {/* --- СЕКЦИЯ 3: ОРГАНИЗАЦИОННИ --- */}
@@ -605,11 +612,22 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
               name="companyId"
               control={control}
               render={({ field }) => (
-                <Select {...field} label="Фирма" value={field.value ?? ''} endAdornment={
-                  <IconButton size="small" onClick={() => setCompanyDialogOpen(true)} sx={{ mr: 4 }}>
-                    <AddIcon />
-                  </IconButton>
-                }>
+                <Select 
+                  {...field} 
+                  label="Фирма" 
+                  value={field.value ?? ''} 
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    field.onChange(value);
+                    setSelectedCompanyId(value ? Number(value) : null);
+                    setSelectedDepartmentId(null);
+                  }}
+                  endAdornment={
+                    <IconButton size="small" onClick={() => setCompanyDialogOpen(true)} sx={{ mr: 4 }}>
+                      <AddIcon />
+                    </IconButton>
+                  }
+                >
                   <MenuItem value=""><em>Няма</em></MenuItem>
                   {orgData?.companies.map((c) => (
                     <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
@@ -626,11 +644,21 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
               name="departmentId"
               control={control}
               render={({ field }) => (
-                <Select {...field} label="Отдел" value={field.value ?? ''} endAdornment={
-                  <IconButton size="small" onClick={() => setDepartmentDialogOpen(true)} sx={{ mr: 4 }}>
-                    <AddIcon />
-                  </IconButton>
-                }>
+                <Select 
+                  {...field} 
+                  label="Отдел" 
+                  value={field.value ?? ''} 
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    field.onChange(value);
+                    setSelectedDepartmentId(value ? Number(value) : null);
+                  }}
+                  endAdornment={
+                    <IconButton size="small" onClick={() => setDepartmentDialogOpen(true)} sx={{ mr: 4 }}>
+                      <AddIcon />
+                    </IconButton>
+                  }
+                >
                   <MenuItem value=""><em>Няма</em></MenuItem>
                   {filteredDepartments.map((d) => (
                     <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>
@@ -759,24 +787,33 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
             size="small"
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 4 }} display="flex" alignItems="center">
-          <FormControlLabel
-            control={<Checkbox checked={!!watch('taxResident')} onChange={e => setValue('taxResident', e.target.checked)} />}
-            label="Данъчен резидент"
-          />
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Checkbox
+              checked={taxResident}
+              onChange={(e) => setTaxResident(e.target.checked)}
+            />
+            <Typography variant="body2">Данъчен резидент</Typography>
+          </Box>
         </Grid>
         
         <Grid size={{ xs: 12, sm: 6 }}>
-          <FormControlLabel
-            control={<Checkbox checked={!!watch('hasIncomeTax')} onChange={e => setValue('hasIncomeTax', e.target.checked)} />}
-            label="Удържай ДОД (10%)"
-          />
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Checkbox
+              checked={hasIncomeTax}
+              onChange={(e) => setHasIncomeTax(e.target.checked)}
+            />
+            <Typography variant="body2">Удържай ДОД (10%)</Typography>
+          </Box>
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <FormControlLabel
-            control={<Checkbox checked={!!watch('insuranceContributor')} onChange={e => setValue('insuranceContributor', e.target.checked)} />}
-            label="Осигурено лице"
-          />
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Checkbox
+              checked={insuranceContributor}
+              onChange={(e) => setInsuranceContributor(e.target.checked)}
+            />
+            <Typography variant="body2">Осигурено лице</Typography>
+          </Box>
         </Grid>
 
         {/* --- СЕКЦИЯ 5: ТРЗ СПЕЦИФИЧНИ (НАДБАВКИ) --- */}
@@ -817,11 +854,14 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
             placeholder="Напр. I, II, III"
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
-          <FormControlLabel
-            control={<Checkbox checked={!!watch('dangerousWork')} onChange={e => setValue('dangerousWork', e.target.checked)} />}
-            label="Вредни условия на труд"
-          />
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Checkbox
+              checked={dangerousWork}
+              onChange={(e) => setDangerousWork(e.target.checked)}
+            />
+            <Typography variant="body2">Вредни условия на труд</Typography>
+          </Box>
         </Grid>
       </Grid>
 

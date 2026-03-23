@@ -85,4 +85,5 @@ reportlab
 webauthn==2.7.0
 slowapi==0.1.9
 starlette-csrf
+qrcode==7.4.2
 

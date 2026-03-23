@@ -22,6 +22,7 @@ import GatewayAdminPage from './pages/GatewayAdminPage';
 import MyCardPage from './pages/MyCardPage';
 import WarehousePage from './pages/WarehousePage';
 import RecipesPage from './pages/RecipesPage';
+import MenuPricingPage from './pages/MenuPricingPage';
 import OrdersPage from './pages/OrdersPage';
 import ProductionControlPage from './pages/ProductionControlPage';
 import AccountingPage from './pages/AccountingPage';
@@ -350,6 +351,14 @@ function App() {
           }
         />
         <Route
+          path="/admin/menu-pricing"
+          element={
+            <AdminRoute>
+              <MenuPricingPage />
+            </AdminRoute>
+          }
+        />
+        <Route
           path="/admin/orders"
           element={
             <AdminRoute>
@@ -572,6 +581,16 @@ function App() {
           element={
             <AdminRoute>
               <PayrollPage tab="annexes" />
+            </AdminRoute>
+          }
+        />
+        
+        {/* Трудови договори */}
+        <Route
+          path="/admin/payroll/contracts"
+          element={
+            <AdminRoute>
+              <PayrollPage tab="contracts" />
             </AdminRoute>
           }
         />

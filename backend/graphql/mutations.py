@@ -19,7 +19,8 @@ from backend.utils.error_handling import (
 from backend.graphql.inputs import (
     UserCreateInput, RoleCreateInput, UpdateUserInput,
     LeaveRequestInput, UpdateLeaveRequestStatusInput,
-    CompanyCreateInput, CompanyUpdateInput, DepartmentCreateInput, DepartmentUpdateInput, PositionCreateInput,
+    CompanyCreateInput, CompanyUpdateInput, CompanyAccountingSettingsInput,
+    DepartmentCreateInput, DepartmentUpdateInput, PositionCreateInput,
     SmtpSettingsInput, BonusCreateInput, MonthlyWorkDaysInput,
     PasswordSettingsInput, VehicleCreateInput, VehicleUpdateInput,
     VehicleMileageInput, VehicleFuelInput, VehicleRepairInput,
@@ -611,7 +612,36 @@ class Mutation:
             bulstat=input.bulstat,
             vat_number=input.vat_number,
             address=input.address,
-            mol_name=input.mol_name
+            mol_name=input.mol_name,
+            default_sales_account_id=input.default_sales_account_id,
+            default_expense_account_id=input.default_expense_account_id,
+            default_vat_account_id=input.default_vat_account_id,
+            default_customer_account_id=input.default_customer_account_id,
+            default_supplier_account_id=input.default_supplier_account_id,
+            default_cash_account_id=input.default_cash_account_id,
+            default_bank_account_id=input.default_bank_account_id,
+        )
+        return types.Company.from_instance(company)
+
+    @strawberry.mutation
+    async def update_company_accounting_settings(
+        self, input: CompanyAccountingSettingsInput, info: strawberry.Info
+    ) -> types.Company:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise permission_denied("Операцията не е позволена")
+
+        company = await crud.update_company(
+            db,
+            company_id=input.company_id,
+            default_sales_account_id=input.default_sales_account_id,
+            default_expense_account_id=input.default_expense_account_id,
+            default_vat_account_id=input.default_vat_account_id,
+            default_customer_account_id=input.default_customer_account_id,
+            default_supplier_account_id=input.default_supplier_account_id,
+            default_cash_account_id=input.default_cash_account_id,
+            default_bank_account_id=input.default_bank_account_id,
         )
         return types.Company.from_instance(company)
 
@@ -2181,6 +2211,118 @@ class Mutation:
         return types.Batch.from_instance(batch)
 
     @strawberry.mutation
+    async def consume_from_batch(
+        self,
+        batch_id: int,
+        quantity: Decimal,
+        reason: str,
+        info: strawberry.Info,
+        notes: Optional[str] = None,
+    ) -> types.Batch:
+        """Ръчно изразходване от конкретна партида"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user: raise unauthorized()
+
+        from backend.database.models import Batch, StockConsumptionLog
+        
+        batch = await db.get(Batch, batch_id)
+        if not batch: raise not_found("Партидата не е намерена")
+        
+        if batch.quantity < quantity:
+            raise bad_request(f"Недостатъчно количество в партидата (Налично: {batch.quantity})")
+
+        # 1. Намали количеството на партидата
+        batch.quantity -= quantity
+        if batch.quantity == 0:
+            batch.status = "depleted"
+
+        # 2. Създай лог
+        log = StockConsumptionLog(
+            ingredient_id=batch.ingredient_id,
+            batch_id=batch.id,
+            quantity=quantity,
+            reason=reason,
+            notes=notes,
+            created_by=current_user.id
+        )
+        db.add(log)
+        
+        try:
+            await db.commit()
+            await db.refresh(batch)
+            return types.Batch.from_instance(batch)
+        except Exception as e:
+            await db.rollback()
+            raise handle_db_error(e)
+
+    @strawberry.mutation
+    async def auto_consume_fefo(
+        self,
+        ingredient_id: int,
+        quantity: Decimal,
+        reason: str,
+        info: strawberry.Info,
+        notes: Optional[str] = None,
+    ) -> List[types.StockConsumptionLog]:
+        """Автоматично изразходване по FEFO (First Expired, First Out)"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user: raise unauthorized()
+
+        from backend.database.models import Batch, StockConsumptionLog
+        from sqlalchemy import select
+
+        # Вземи активни партиди, подредени по срок на годност
+        stmt = select(Batch).where(
+            Batch.ingredient_id == ingredient_id,
+            Batch.status == "active",
+            Batch.quantity > 0
+        ).order_by(Batch.expiry_date.asc())
+        
+        result = await db.execute(stmt)
+        batches = result.scalars().all()
+        
+        total_available = sum(b.quantity for b in batches)
+        if total_available < quantity:
+            raise bad_request(f"Недостатъчна наличност (Общо: {total_available})")
+
+        remaining_to_consume = quantity
+        logs = []
+
+        for batch in batches:
+            if remaining_to_consume <= 0:
+                break
+            
+            consume_qty = min(batch.quantity, remaining_to_consume)
+            
+            # Намали партидата
+            batch.quantity -= consume_qty
+            if batch.quantity == 0:
+                batch.status = "depleted"
+            
+            # Лог
+            log = StockConsumptionLog(
+                ingredient_id=ingredient_id,
+                batch_id=batch.id,
+                quantity=consume_qty,
+                reason=reason,
+                notes=notes,
+                created_by=current_user.id
+            )
+            db.add(log)
+            logs.append(log)
+            
+            remaining_to_consume -= consume_qty
+
+        try:
+            await db.commit()
+            return [types.StockConsumptionLog.from_instance(l) for l in logs]
+        except Exception as e:
+            await db.rollback()
+            raise handle_db_error(e)
+
+    @strawberry.mutation
     async def create_recipe(self, input: inputs.RecipeInput, info: strawberry.Info) -> types.Recipe:
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -2253,6 +2395,178 @@ class Mutation:
         await db.commit()
         await db.refresh(recipe)
         return types.Recipe.from_instance(recipe)
+
+    @strawberry.mutation
+    async def update_recipe_price(
+        self,
+        recipe_id: int,
+        input: inputs.RecipePriceUpdateInput,
+        info: strawberry.Info
+    ) -> types.Recipe:
+        """Обнови цена на рецепта"""
+        from backend.database import models
+        from backend.services.recipe_cost_calculator import RecipeCostCalculator
+        
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise unauthorized("Не сте автентикирани")
+        
+        recipe = await db.get(models.Recipe, recipe_id)
+        if not recipe:
+            raise not_found("Рецепта не е намерена")
+        
+        if recipe.company_id != current_user.company_id:
+            raise permission_denied("Нямате права")
+        
+        # Запиши в историята
+        history = models.PriceHistory(
+            recipe_id=recipe_id,
+            old_price=recipe.selling_price,
+            old_cost=recipe.cost_price,
+            old_markup=recipe.markup_percentage,
+            old_premium=recipe.premium_amount,
+            new_markup=input.markup_percentage,
+            new_premium=input.premium_amount,
+            changed_by=current_user.id,
+            reason=input.reason
+        )
+        
+        # Актуализирай рецептата
+        if input.markup_percentage is not None:
+            recipe.markup_percentage = input.markup_percentage
+        
+        if input.premium_amount is not None:
+            recipe.premium_amount = input.premium_amount
+        
+        if input.portions is not None:
+            recipe.portions = input.portions
+        
+        # Изчислени новата продажна цена
+        cost = recipe.cost_price or Decimal("0")
+        recipe.selling_price = RecipeCostCalculator.calculate_final_price(
+            cost,
+            recipe.markup_percentage,
+            recipe.premium_amount
+        )
+        recipe.last_price_update = sofia_now()
+        
+        # Update new price in history
+        history.new_price = recipe.selling_price
+        history.new_cost = recipe.cost_price
+        
+        db.add(history)
+        await db.commit()
+        await db.refresh(recipe)
+        
+        return types.Recipe.from_instance(recipe)
+
+    @strawberry.mutation
+    async def calculate_recipe_cost(
+        self,
+        recipe_id: int,
+        info: strawberry.Info
+    ) -> types.RecipeCostResult:
+        """Изчисли себестойността на рецепта"""
+        from backend.database import models
+        from backend.services.recipe_cost_calculator import RecipeCostCalculator
+        
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise unauthorized("Не сте автентикирани")
+        
+        recipe = await db.get(models.Recipe, recipe_id)
+        if not recipe:
+            raise not_found("Рецепта не е намерена")
+        
+        if recipe.company_id != current_user.company_id:
+            raise permission_denied("Нямате права")
+        
+        cost = RecipeCostCalculator.calculate_recipe_cost(db, recipe_id)
+        
+        final_price = RecipeCostCalculator.calculate_final_price(
+            cost,
+            recipe.markup_percentage,
+            recipe.premium_amount
+        )
+        
+        markup_amount = RecipeCostCalculator.calculate_markup_amount(
+            cost,
+            recipe.markup_percentage
+        )
+        
+        # Обнови себестойността в рецептата
+        recipe.cost_price = cost
+        recipe.price_calculated_at = sofia_now()
+        recipe.selling_price = final_price
+        recipe.last_price_update = sofia_now()
+        
+        await db.commit()
+        await db.refresh(recipe)
+        
+        return types.RecipeCostResult(
+            recipe_id=recipe_id,
+            cost_price=cost,
+            markup_amount=markup_amount,
+            premium_amount=recipe.premium_amount or Decimal("0"),
+            final_price=final_price
+        )
+
+    @strawberry.mutation
+    async def recalculate_all_recipe_costs(
+        self,
+        info: strawberry.Info
+    ) -> List[types.RecalculateResult]:
+        """Преизчисли себестойността на всички рецепти"""
+        from backend.database import models
+        from sqlalchemy import select
+        from backend.services.recipe_cost_calculator import RecipeCostCalculator
+        
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise unauthorized("Не сте автентикирани")
+        
+        stmt = select(models.Recipe).where(
+            models.Recipe.company_id == current_user.company_id
+        )
+        res = await db.execute(stmt)
+        
+        results: List[types.RecalculateResult] = []
+        
+        for recipe in res.scalars().all():
+            cost = RecipeCostCalculator.calculate_recipe_cost(db, recipe.id)
+            recipe.cost_price = cost
+            recipe.price_calculated_at = sofia_now()
+            
+            markup_amount = Decimal("0")
+            final_price = Decimal("0")
+            portion_price = Decimal("0")
+            
+            if recipe.markup_percentage or recipe.premium_amount:
+                markup_amount = RecipeCostCalculator.calculate_markup_amount(cost, recipe.markup_percentage)
+                final_price = RecipeCostCalculator.calculate_final_price(
+                    cost,
+                    recipe.markup_percentage,
+                    recipe.premium_amount
+                )
+                portions = recipe.portions or 1
+                portion_price = final_price / portions if portions > 0 else final_price
+                recipe.selling_price = final_price
+                recipe.last_price_update = sofia_now()
+            
+            results.append(types.RecalculateResult(
+                recipe_id=recipe.id,
+                recipe_name=recipe.name,
+                cost_price=cost,
+                markup_amount=markup_amount,
+                final_price=final_price,
+                portion_price=portion_price
+            ))
+        
+        await db.commit()
+        return results
 
     @strawberry.mutation
     async def create_workstation(self, name: str, description: Optional[str], company_id: int,
@@ -2963,8 +3277,11 @@ class Mutation:
                 quantity=item.quantity,
                 unit=item.unit,
                 unit_price=item.unit_price,
+                unit_price_with_vat=item.unit_price_with_vat,
                 discount_percent=item.discount_percent,
-                total=item_total
+                total=item_total,
+                expiration_date=datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
+                batch_number=item.batch_number
             )
             db.add(invoice_item)
 
@@ -2994,6 +3311,16 @@ class Mutation:
             )
             db.add(cash_entry)
 
+        # Auto-create accounting entries
+        company = await db.get(models.Company, invoice.company_id)
+        if company and invoice_data.status in ["paid", "sent"]:
+            from backend.services.accounting_service import AccountingService
+            accounting_service = AccountingService(db)
+            entries = await accounting_service.create_invoice_entries(invoice, company, current_user)
+            if entries:
+                for entry in entries:
+                    db.add(entry)
+
         await db.commit()
         return types.Invoice.from_instance(invoice)
 
@@ -3019,6 +3346,30 @@ class Mutation:
 
         if current_user.role.name != "super_admin" and invoice.company_id != current_user.company_id:
             raise permission_denied("Not authorized")
+
+        # Validate status transition
+        current_status = invoice.status
+        new_status = invoice_data.status
+
+        ALLOWED_TRANSITIONS = {
+            'draft': ['sent', 'paid', 'cancelled'],
+            'sent': ['paid', 'cancelled'],
+            'paid': ['cancelled'],  # Allow cancellation of paid invoices
+            'overdue': ['paid', 'cancelled'],
+            'cancelled': []  # Final status - no transitions allowed
+        }
+
+        if new_status != current_status:
+            allowed = ALLOWED_TRANSITIONS.get(current_status, [])
+            if new_status not in allowed:
+                from backend.utils.error_handling import bad_request
+                allowed_text = ', '.join([f"'{s}'" for s in allowed]) if allowed else 'няма'
+                raise bad_request(f"Не може да промените статуса от '{current_status}' на '{new_status}'. Позволени: {allowed_text}")
+
+            # Special protection: only super_admin can cancel paid invoices
+            if current_status == 'paid' and new_status == 'cancelled' and current_user.role.name != "super_admin":
+                from backend.utils.error_handling import permission_denied as pd
+                raise pd("Не можете да анулирате платена фактура. Свържете се с администратор.")
 
         # Update basic fields
         invoice.type = invoice_data.type
@@ -3075,8 +3426,11 @@ class Mutation:
                 quantity=item.quantity,
                 unit=item.unit,
                 unit_price=item.unit_price,
+                unit_price_with_vat=item.unit_price_with_vat,
                 discount_percent=item.discount_percent,
-                total=item_total
+                total=item_total,
+                expiration_date=datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
+                batch_number=item.batch_number
             )
             db.add(invoice_item)
 
@@ -3117,6 +3471,25 @@ class Mutation:
                 existing.amount = total
                 existing.date = invoice_data.payment_date or invoice_data.date
                 db.add(existing)
+
+        # Auto-create accounting entries when status changes to paid/sent
+        company = await db.get(models.Company, invoice.company_id)
+        if company and invoice_data.status in ["paid", "sent"]:
+            # Check if entries already exist
+            existing_accounting = await db.execute(
+                select(models.AccountingEntry).where(
+                    models.AccountingEntry.invoice_id == invoice.id
+                )
+            )
+            existing_acct_entries = existing_accounting.scalars().all()
+            
+            if not existing_acct_entries:
+                from backend.services.accounting_service import AccountingService
+                accounting_service = AccountingService(db)
+                entries = await accounting_service.create_invoice_entries(invoice, company, current_user)
+                if entries:
+                    for entry in entries:
+                        db.add(entry)
 
         await db.commit()
         await db.refresh(invoice)
@@ -3238,8 +3611,11 @@ class Mutation:
             quantity=batch.quantity,
             unit=ingredient.unit,
             unit_price=unit_price,
+            unit_price_with_vat=batch.price_with_vat,
             discount_percent=Decimal("0"),
-            total=subtotal
+            total=subtotal,
+            expiration_date=batch.expiry_date,
+            batch_number=batch.batch_number
         )
         db.add(invoice_item)
 
@@ -3271,14 +3647,19 @@ class Mutation:
         total_subtotal = Decimal("0")
 
         # 1. Create Batches
-        for item_input in items:
+        for idx, item_input in enumerate(items):
             ingredient = await db.get(models.Ingredient, item_input.ingredient_id)
             if not ingredient:
                 continue
 
+            # Auto-generate batch number if not provided
+            batch_number = item_input.batch_number
+            if not batch_number:
+                batch_number = f"{date.strftime('%Y%m%d')}-{idx + 1:03d}"
+
             new_batch = models.Batch(
                 ingredient_id=item_input.ingredient_id,
-                batch_number=item_input.batch_number,
+                batch_number=batch_number,
                 quantity=item_input.quantity,
                 expiry_date=item_input.expiry_date,
                 supplier_id=supplier_id,
@@ -3303,7 +3684,9 @@ class Mutation:
                     "quantity": item_input.quantity,
                     "unit": ingredient.unit,
                     "unit_price": unit_price,
-                    "total": item_total
+                    "total": item_total,
+                    "batch_number": batch_number,
+                    "expiration_date": item_input.expiry_date
                 })
 
         # 2. Optionally Create Invoice
@@ -3340,7 +3723,9 @@ class Mutation:
                     unit=item_data["unit"],
                     unit_price=item_data["unit_price"],
                     discount_percent=Decimal("0"),
-                    total=item_data["total"]
+                    total=item_data["total"],
+                    batch_number=item_data.get("batch_number"),
+                    expiration_date=item_data.get("expiration_date")
                 )
                 db.add(inv_item)
 
@@ -3916,8 +4301,11 @@ class Mutation:
                 quantity=Decimal(str(item.quantity)),
                 unit=item.unit,
                 unit_price=Decimal(str(item.unit_price)),
+                unit_price_with_vat=item.unit_price_with_vat,
                 discount_percent=item.discount_percent or Decimal("0"),
-                total=item_total
+                total=item_total,
+                expiration_date=datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
+                batch_number=item.batch_number
             )
             db.add(db_item)
 
@@ -4000,8 +4388,11 @@ class Mutation:
                 quantity=item.quantity,
                 unit=item.unit,
                 unit_price=item.unit_price,
+                unit_price_with_vat=item.unit_price_with_vat,
                 discount_percent=item.discount_percent,
-                total=item_total
+                total=item.total,
+                expiration_date=item.expiration_date,
+                batch_number=item.batch_number
             )
             db.add(new_item)
 
@@ -4396,6 +4787,89 @@ class Mutation:
         await db.commit()
         await db.refresh(transaction)
         return types.BankTransaction.from_instance(transaction)
+
+    @strawberry.mutation
+    async def unmatch_bank_transaction(
+            self,
+            transaction_id: int,
+            info: strawberry.Info
+    ) -> Optional[types.BankTransaction]:
+        """Unmatch a bank transaction from an invoice"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise unauthorized("Не сте автентикирани")
+
+        from backend.database import models
+
+        transaction = await db.get(models.BankTransaction, transaction_id)
+        if not transaction:
+            raise not_found("Банковата транзакция не е намерена")
+
+        if transaction.company_id != current_user.company_id:
+            raise permission_denied("Нямате права")
+
+        transaction.invoice_id = None
+        transaction.matched = False
+
+        await db.commit()
+        await db.refresh(transaction)
+        return types.BankTransaction.from_instance(transaction)
+
+    @strawberry.mutation
+    async def auto_match_bank_transactions(
+            self,
+            bank_account_id: int,
+            info: strawberry.Info
+    ) -> types.AutoMatchResult:
+        """Automatically match bank transactions to invoices based on amount and reference"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise unauthorized("Не сте автентикирани")
+
+        from backend.database import models
+        from sqlalchemy import select
+
+        bank_account = await db.get(models.BankAccount, bank_account_id)
+        if not bank_account:
+            raise not_found("Банковата сметка не е намерена")
+
+        if bank_account.company_id != current_user.company_id:
+            raise permission_denied("Нямате права")
+
+        unmatched_transactions = await db.execute(
+            select(models.BankTransaction).where(
+                models.BankTransaction.bank_account_id == bank_account_id,
+                models.BankTransaction.matched == False,
+                models.BankTransaction.invoice_id.is_(None)
+            )
+        )
+        transactions = unmatched_transactions.scalars().all()
+
+        unpaid_invoices = await db.execute(
+            select(models.Invoice).where(
+                models.Invoice.company_id == current_user.company_id,
+                models.Invoice.status.in_(["sent", "paid"])
+            )
+        )
+        invoices = unpaid_invoices.scalars().all()
+
+        matched_count = 0
+        for tx in transactions:
+            for inv in invoices:
+                if (tx.type == "credit" and Number(tx.amount) == Number(inv.total)) or \
+                   (tx.type == "debit" and Number(tx.amount) == Number(inv.total)):
+                    if not inv.bank_transactions:
+                        tx.invoice_id = inv.id
+                        tx.matched = True
+                        matched_count += 1
+                        break
+
+        await db.commit()
+
+        unmatched_count = len(transactions) - matched_count
+        return types.AutoMatchResult(matched_count=matched_count, unmatched_count=unmatched_count)
 
     @strawberry.mutation
     async def create_account(
@@ -6098,6 +6572,242 @@ class Mutation:
         await db.commit()
         return True
 
+    # ============ Contract Template Section CRUD ============
+
+    @strawberry.mutation
+    async def add_section_to_contract_template(
+        self,
+        template_id: int,
+        section: inputs.ContractTemplateSectionInput,
+        info: strawberry.Info = None
+    ) -> types.ContractTemplateSection:
+        """Добавя секция към шаблон за договор"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ContractTemplate, ContractTemplateSection, ContractTemplateVersion
+        
+        template = await db.get(ContractTemplate, template_id)
+        if not template:
+            raise Exception("Template not found")
+        
+        # Намираме текущата версия
+        stmt = select(ContractTemplateVersion).where(
+            ContractTemplateVersion.template_id == template_id,
+            ContractTemplateVersion.is_current == True
+        )
+        result = await db.execute(stmt)
+        current_version = result.scalar_one_or_none()
+        
+        if not current_version:
+            raise Exception("No current version found")
+        
+        # Създаваме секцията
+        new_section = ContractTemplateSection(
+            template_id=template_id,
+            version_id=current_version.id,
+            title=section.title,
+            content=section.content,
+            order_index=section.order_index,
+            is_required=section.is_required
+        )
+        db.add(new_section)
+        await db.commit()
+        await db.refresh(new_section)
+        
+        return types.ContractTemplateSection(
+            id=new_section.id,
+            template_id=new_section.template_id,
+            version_id=new_section.version_id,
+            title=new_section.title,
+            content=new_section.content,
+            order_index=new_section.order_index,
+            is_required=new_section.is_required
+        )
+
+    @strawberry.mutation
+    async def update_section_in_contract_template(
+        self,
+        section_id: int,
+        section: inputs.ContractTemplateSectionUpdateInput,
+        info: strawberry.Info = None
+    ) -> types.ContractTemplateSection:
+        """Обновява секция в шаблон за договор"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ContractTemplateSection
+        
+        db_section = await db.get(ContractTemplateSection, section_id)
+        if not db_section:
+            raise Exception("Section not found")
+        
+        if section.title is not None:
+            db_section.title = section.title
+        if section.content is not None:
+            db_section.content = section.content
+        if section.order_index is not None:
+            db_section.order_index = section.order_index
+        if section.is_required is not None:
+            db_section.is_required = section.is_required
+        
+        await db.commit()
+        await db.refresh(db_section)
+        
+        return types.ContractTemplateSection(
+            id=db_section.id,
+            template_id=db_section.template_id,
+            version_id=db_section.version_id,
+            title=db_section.title,
+            content=db_section.content,
+            order_index=db_section.order_index,
+            is_required=db_section.is_required
+        )
+
+    @strawberry.mutation
+    async def delete_section_from_contract_template(
+        self,
+        section_id: int,
+        info: strawberry.Info = None
+    ) -> bool:
+        """Изтрива секция от шаблон за договор"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ContractTemplateSection
+        
+        db_section = await db.get(ContractTemplateSection, section_id)
+        if not db_section:
+            raise Exception("Section not found")
+        
+        await db.delete(db_section)
+        await db.commit()
+        return True
+
+    # ============ Annex Template Section CRUD ============
+
+    @strawberry.mutation
+    async def add_section_to_annex_template(
+        self,
+        template_id: int,
+        section: inputs.AnnexTemplateSectionInput,
+        info: strawberry.Info = None
+    ) -> types.AnnexTemplateSection:
+        """Добавя секция към шаблон за анекс"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import AnnexTemplate, AnnexTemplateSection, AnnexTemplateVersion
+        
+        template = await db.get(AnnexTemplate, template_id)
+        if not template:
+            raise Exception("Template not found")
+        
+        # Намираме текущата версия
+        stmt = select(AnnexTemplateVersion).where(
+            AnnexTemplateVersion.template_id == template_id,
+            AnnexTemplateVersion.is_current == True
+        )
+        result = await db.execute(stmt)
+        current_version = result.scalar_one_or_none()
+        
+        if not current_version:
+            raise Exception("No current version found")
+        
+        # Създаваме секцията
+        new_section = AnnexTemplateSection(
+            template_id=template_id,
+            version_id=current_version.id,
+            title=section.title,
+            content=section.content,
+            order_index=section.order_index,
+            is_required=section.is_required
+        )
+        db.add(new_section)
+        await db.commit()
+        await db.refresh(new_section)
+        
+        return types.AnnexTemplateSection(
+            id=new_section.id,
+            template_id=new_section.template_id,
+            version_id=new_section.version_id,
+            title=new_section.title,
+            content=new_section.content,
+            order_index=new_section.order_index,
+            is_required=new_section.is_required
+        )
+
+    @strawberry.mutation
+    async def update_section_in_annex_template(
+        self,
+        section_id: int,
+        section: inputs.AnnexTemplateSectionUpdateInput,
+        info: strawberry.Info = None
+    ) -> types.AnnexTemplateSection:
+        """Обновява секция в шаблон за анекс"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import AnnexTemplateSection
+        
+        db_section = await db.get(AnnexTemplateSection, section_id)
+        if not db_section:
+            raise Exception("Section not found")
+        
+        if section.title is not None:
+            db_section.title = section.title
+        if section.content is not None:
+            db_section.content = section.content
+        if section.order_index is not None:
+            db_section.order_index = section.order_index
+        if section.is_required is not None:
+            db_section.is_required = section.is_required
+        
+        await db.commit()
+        await db.refresh(db_section)
+        
+        return types.AnnexTemplateSection(
+            id=db_section.id,
+            template_id=db_section.template_id,
+            version_id=db_section.version_id,
+            title=db_section.title,
+            content=db_section.content,
+            order_index=db_section.order_index,
+            is_required=db_section.is_required
+        )
+
+    @strawberry.mutation
+    async def delete_section_from_annex_template(
+        self,
+        section_id: int,
+        info: strawberry.Info = None
+    ) -> bool:
+        """Изтрива секция от шаблон за анекс"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import AnnexTemplateSection
+        
+        db_section = await db.get(AnnexTemplateSection, section_id)
+        if not db_section:
+            raise Exception("Section not found")
+        
+        await db.delete(db_section)
+        await db.commit()
+        return True
+
     # === Sign Annex (updated) ===
 
     @strawberry.mutation
@@ -6149,6 +6859,32 @@ class Mutation:
                         contract.holiday_rate = annex.holiday_rate
         else:
             annex.status = "pending"
+        
+        await db.commit()
+        await db.refresh(annex)
+        return types.ContractAnnex.from_instance(annex)
+
+    @strawberry.mutation
+    async def reject_contract_annex(
+        self,
+        annex_id: int,
+        reason: str,
+        info: strawberry.Info = None
+    ) -> types.ContractAnnex:
+        """Отхвърля анекс"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin", "employee"]:
+            raise Exception("Not authorized")
+
+        from backend.database.models import ContractAnnex
+        
+        annex = await db.get(ContractAnnex, annex_id)
+        if not annex:
+            raise Exception("Annex not found")
+        
+        annex.status = "rejected"
+        annex.rejection_reason = reason
         
         await db.commit()
         await db.refresh(annex)
@@ -6228,4 +6964,225 @@ class Mutation:
         
         generator = NAPReportsGenerator(db, company_id, year)
         return await generator.generate_monthly_declaration(month)
+
+    @strawberry.mutation
+    async def create_employment_contract(
+        self,
+        input: inputs.EmploymentContractCreateInput,
+        info: strawberry.Info
+    ) -> types.EmploymentContract:
+        """Създава нов трудов договор"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise permission_denied("Not authorized")
+        
+        from backend.database.models import EmploymentContract
+        
+        company_id = input.company_id
+        if not company_id and current_user.company_id:
+            company_id = current_user.company_id
+        
+        if not company_id:
+            raise bad_request("ID на фирмата е задължително")
+        
+        contract = EmploymentContract(
+            employee_name=input.employee_name,
+            employee_egn=input.employee_egn,
+            company_id=company_id,
+            department_id=input.department_id,
+            position_id=input.position_id,
+            user_id=None,
+            contract_type=input.contract_type,
+            contract_number=input.contract_number,
+            start_date=input.start_date,
+            end_date=input.end_date,
+            base_salary=input.base_salary,
+            work_hours_per_week=input.work_hours_per_week,
+            status="draft",
+        )
+        
+        db.add(contract)
+        await db.commit()
+        await db.refresh(contract)
+        
+        return types.EmploymentContract.from_instance(contract)
+
+    @strawberry.mutation
+    async def sign_employment_contract(
+        self,
+        id: int,
+        info: strawberry.Info
+    ) -> types.EmploymentContract:
+        """Маркира трудов договор като подписан"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise permission_denied("Not authorized")
+        
+        from backend.database.models import EmploymentContract
+        from datetime import datetime as dt
+        
+        contract = await db.get(EmploymentContract, id)
+        if not contract:
+            raise not_found("Договорът не е намерен")
+        
+        if contract.status == "signed":
+            raise bad_request("Договорът вече е подписан")
+        
+        contract.status = "signed"
+        contract.signed_at = dt.now()
+        
+        await db.commit()
+        await db.refresh(contract)
+        
+        return types.EmploymentContract.from_instance(contract)
+
+    @strawberry.mutation
+    async def link_employment_contract_to_user(
+        self,
+        contract_id: int,
+        user_id: int,
+        info: strawberry.Info
+    ) -> types.EmploymentContract:
+        """Свързва трудов договор с потребител"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise permission_denied("Not authorized")
+        
+        from backend.database.models import EmploymentContract, User
+        
+        contract = await db.get(EmploymentContract, contract_id)
+        if not contract:
+            raise not_found("Договорът не е намерен")
+        
+        user = await db.get(User, user_id)
+        if not user:
+            raise not_found("Потребителят не е намерен")
+        
+        if contract.status != "signed":
+            raise bad_request("Договорът трябва първо да бъде подписан")
+        
+        contract.user_id = user_id
+        contract.status = "linked"
+        
+        await db.commit()
+        await db.refresh(contract)
+        
+        return types.EmploymentContract.from_instance(contract)
+
+    @strawberry.mutation
+    async def generate_contract_number(
+        self,
+        company_id: int,
+        info: strawberry.Info
+    ) -> str:
+        """Генерира уникален номер на трудов договор"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise permission_denied("Not authorized")
+        
+        from backend.database.models import EmploymentContract, Company
+        
+        company = await db.get(Company, company_id)
+        if not company:
+            raise not_found("Фирмата не е намерена")
+        
+        current_year = datetime.datetime.now().year
+        
+        result = await db.execute(
+            select(EmploymentContract).where(
+                EmploymentContract.company_id == company_id
+            )
+        )
+        all_contracts = result.scalars().all()
+        
+        year_contracts = [c for c in all_contracts if c.created_at and c.created_at.year == current_year]
+        sequence = len(year_contracts) + 1
+        
+        company_code = company.eik if company.eik else str(company_id)
+        contract_number = f"TRZ-{company_code}-{current_year}-{sequence:04d}"
+        
+        return contract_number
+
+    @strawberry.mutation
+    async def get_contract_pdf_url(
+        self,
+        contract_id: int,
+        info: strawberry.Info
+    ) -> str:
+        """Връща URL за изтегляне на PDF на трудов договор"""
+        from backend.config import settings
+        
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise permission_denied("Not authorized")
+        
+        from backend.database.models import EmploymentContract
+        
+        contract = await db.get(EmploymentContract, contract_id)
+        if not contract:
+            raise not_found("Договорът не е намерен")
+        
+        base_url = getattr(settings, 'API_URL', 'https://dev.oblak24.org')
+        return f"{base_url}/export/contract/{contract_id}/pdf"
+
+    @strawberry.mutation
+    async def get_annex_pdf_url(
+        self,
+        annex_id: int,
+        info: strawberry.Info
+    ) -> str:
+        """Връща URL за изтегляне на PDF на допълнително споразумение"""
+        from backend.config import settings
+        
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise permission_denied("Not authorized")
+        
+        from backend.database.models import ContractAnnex
+        
+        annex = await db.get(ContractAnnex, annex_id)
+        if not annex:
+            raise not_found("Споразумението не е намерено")
+        
+        base_url = getattr(settings, 'API_URL', 'https://dev.oblak24.org')
+        return f"{base_url}/export/annex/{annex_id}/pdf"
+
+    @strawberry.mutation
+    async def get_invoice_pdf_url(
+        self,
+        invoice_id: int,
+        info: strawberry.Info
+    ) -> str:
+        """Връща URL за изтегляне на PDF на фактура"""
+        from backend.config import settings
+        
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        
+        if not current_user:
+            raise unauthorized("Not authenticated")
+        
+        from backend.database.models import Invoice
+        
+        invoice = await db.get(Invoice, invoice_id)
+        if not invoice:
+            raise not_found("Фактурата не е намерена")
+        
+        if invoice.company_id != current_user.company_id:
+            raise permission_denied("Нямате достъп до тази фактура")
+        
+        base_url = getattr(settings, 'API_URL', 'https://dev.oblak24.org')
+        return f"{base_url}/export/invoice/{invoice_id}/pdf"
 

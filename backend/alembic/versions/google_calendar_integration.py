@@ -77,7 +77,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(['account_id'], ['google_calendar_accounts.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('user_id', 'google_event_id')
+        sa.UniqueConstraint('account_id', 'google_event_id')
     )
     op.create_index(op.f('ix_google_calendar_events_id'), 'google_calendar_events', ['id'], unique=False)
     op.create_index('ix_google_calendar_events_google_event_id', 'google_calendar_events', ['google_event_id'], unique=False)

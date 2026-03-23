@@ -74,6 +74,7 @@ MODULE_MAPPING = {
     "updateInvoice": "accounting",
     "deleteInvoice": "accounting",
     "createInvoiceFromBatch": "accounting",
+    "getInvoicePdfUrl": "accounting",
 
     # Warehouse / Confectionery
     "suppliers": "confectionery",

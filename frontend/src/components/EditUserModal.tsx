@@ -8,7 +8,6 @@ import {
   Alert,
   CircularProgress,
   Switch,
-  FormControlLabel,
   MenuItem,
   FormControl,
   InputLabel,
@@ -17,7 +16,7 @@ import {
   Checkbox
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
-import { useForm, useWatch, Controller } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { gql, useMutation, useQuery } from '@apollo/client';
@@ -118,13 +117,21 @@ const style = {
 const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refetchUsers }) => {
   const [apiError, setApiError] = useState('');
 
+  // Local state for checkboxes (like FleetPage - direct onChange)
+  const [isActive, setIsActive] = useState(true);
+  const [passwordForceChange, setPasswordForceChange] = useState(false);
+  const [taxResident, setTaxResident] = useState(true);
+  const [hasIncomeTax, setHasIncomeTax] = useState(true);
+  const [insuranceContributor, setInsuranceContributor] = useState(true);
+  const [dangerousWork, setDangerousWork] = useState(false);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(null);
+
   const {
     register,
     handleSubmit,
     reset,
     control,
-    watch,
-    setValue,
     formState: { isSubmitting },
   } = useForm<UpdateUserFormData>({
     resolver: zodResolver(updateUserSchema),
@@ -136,6 +143,14 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
   useEffect(() => {
     if (user && open) {
       const contract = user.employmentContract;
+      // Set local checkbox states from user data
+      setIsActive(user.isActive ?? true);
+      setPasswordForceChange(false);
+      setTaxResident(true);
+      setHasIncomeTax(contract?.hasIncomeTax ?? true);
+      setInsuranceContributor(contract?.insuranceContributor ?? true);
+      setDangerousWork(contract?.dangerousWork ?? false);
+      
       reset({
         id: user.id ? Number(user.id) : undefined,
         email: '', // Keep email empty for privacy
@@ -179,9 +194,6 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
       });
     }
   }, [user, open, reset]);
-
-  const selectedCompanyId = useWatch({ name: 'companyId', defaultValue: null });
-  const selectedDepartmentId = useWatch({ name: 'departmentId', defaultValue: null });
 
   const filteredDepartments = orgData?.departments.filter((d) => 
     selectedCompanyId ? d.companyId === selectedCompanyId : true
@@ -335,15 +347,23 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 />
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, sm: 4 }} display="flex" flexDirection="column">
-                <FormControlLabel
-                    control={<Switch checked={!!watch('isActive')} onChange={e => setValue('isActive', e.target.checked)} size="small" />}
-                    label={<Typography variant="body2">Активен акаунт</Typography>}
-                />
-                <FormControlLabel
-                    control={<Checkbox checked={!!watch('passwordForceChange')} onChange={e => setValue('passwordForceChange', e.target.checked)} size="small" />}
-                    label={<Typography variant="body2">Смяна на парола</Typography>}
-                />
+            <Grid size={{ xs: 12, sm: 4 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <Switch
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                    size="small"
+                  />
+                  <Typography variant="body2" sx={{ ml: 1 }}>Активен акаунт</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Checkbox
+                    checked={passwordForceChange}
+                    onChange={(e) => setPasswordForceChange(e.target.checked)}
+                    size="small"
+                  />
+                  <Typography variant="body2">Смяна на парола</Typography>
+                </Box>
             </Grid>
 
             {/* --- СЕКЦИЯ 3: ОРГАНИЗАЦИЯ --- */}
@@ -354,7 +374,17 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                   name="companyId"
                   control={control}
                   render={({ field }) => (
-                    <Select {...field} label="Фирма" value={field.value ?? ''}>
+                    <Select 
+                      {...field} 
+                      label="Фирма" 
+                      value={field.value ?? ''} 
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        field.onChange(value);
+                        setSelectedCompanyId(value ? Number(value) : null);
+                        setSelectedDepartmentId(null);
+                      }}
+                    >
                       <MenuItem value=""><em>Няма</em></MenuItem>
                       {orgData?.companies.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
                     </Select>
@@ -369,7 +399,16 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                   name="departmentId"
                   control={control}
                   render={({ field }) => (
-                    <Select {...field} label="Отдел" value={field.value ?? ''}>
+                    <Select 
+                      {...field} 
+                      label="Отдел" 
+                      value={field.value ?? ''} 
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        field.onChange(value);
+                        setSelectedDepartmentId(value ? Number(value) : null);
+                      }}
+                    >
                       <MenuItem value=""><em>Няма</em></MenuItem>
                       {filteredDepartments.map((d) => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
                     </Select>
@@ -459,23 +498,35 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
             <Grid size={{ xs: 12, sm: 4 }}>
               <TextField fullWidth label="Фиксиран аванс" type="number" {...register('monthlyAdvanceAmount', { valueAsNumber: true })} size="small" />
             </Grid>
-            <Grid size={{ xs: 12, sm: 4 }} display="flex" alignItems="center">
-              <FormControlLabel
-                control={<Checkbox checked={!!watch('taxResident')} onChange={e => setValue('taxResident', e.target.checked)} size="small" />}
-                label={<Typography variant="body2">Данъчен резидент</Typography>}
-              />
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Checkbox
+                  checked={taxResident}
+                  onChange={(e) => setTaxResident(e.target.checked)}
+                  size="small"
+                />
+                <Typography variant="body2">Данъчен резидент</Typography>
+              </Box>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControlLabel
-                control={<Checkbox checked={!!watch('hasIncomeTax')} onChange={e => setValue('hasIncomeTax', e.target.checked)} size="small" />}
-                label={<Typography variant="body2">Удържай ДОД (10%)</Typography>}
-              />
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Checkbox
+                  checked={hasIncomeTax}
+                  onChange={(e) => setHasIncomeTax(e.target.checked)}
+                  size="small"
+                />
+                <Typography variant="body2">Удържай ДОД (10%)</Typography>
+              </Box>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControlLabel
-                control={<Checkbox checked={!!watch('insuranceContributor')} onChange={e => setValue('insuranceContributor', e.target.checked)} size="small" />}
-                label={<Typography variant="body2">Осигурено лице</Typography>}
-              />
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Checkbox
+                  checked={insuranceContributor}
+                  onChange={(e) => setInsuranceContributor(e.target.checked)}
+                  size="small"
+                />
+                <Typography variant="body2">Осигурено лице</Typography>
+              </Box>
             </Grid>
 
             {/* --- СЕКЦИЯ 5: ТРЗ СПЕЦИФИЧНИ --- */}
@@ -494,11 +545,15 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="Трудов клас / Категория" {...register('workClass')} size="small" placeholder="Напр. I, II, III" />
             </Grid>
-            <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
-              <FormControlLabel
-                control={<Checkbox checked={!!watch('dangerousWork')} onChange={e => setValue('dangerousWork', e.target.checked)} size="small" />}
-                label={<Typography variant="body2">Вредни условия на труд</Typography>}
-              />
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Checkbox
+                  checked={dangerousWork}
+                  onChange={(e) => setDangerousWork(e.target.checked)}
+                  size="small"
+                />
+                <Typography variant="body2">Вредни условия на труд</Typography>
+              </Box>
             </Grid>
           </Grid>
 

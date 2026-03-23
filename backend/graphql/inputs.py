@@ -167,6 +167,24 @@ class CompanyUpdateInput:
     vat_number: Optional[str] = None
     address: Optional[str] = None
     mol_name: Optional[str] = None
+    default_sales_account_id: Optional[int] = None
+    default_expense_account_id: Optional[int] = None
+    default_vat_account_id: Optional[int] = None
+    default_customer_account_id: Optional[int] = None
+    default_supplier_account_id: Optional[int] = None
+    default_cash_account_id: Optional[int] = None
+    default_bank_account_id: Optional[int] = None
+
+@strawberry.input
+class CompanyAccountingSettingsInput:
+    company_id: int
+    default_sales_account_id: Optional[int] = None
+    default_expense_account_id: Optional[int] = None
+    default_vat_account_id: Optional[int] = None
+    default_customer_account_id: Optional[int] = None
+    default_supplier_account_id: Optional[int] = None
+    default_cash_account_id: Optional[int] = None
+    default_bank_account_id: Optional[int] = None
 
 @strawberry.input
 class SupplierInput:
@@ -452,7 +470,10 @@ class InvoiceItemInput:
     quantity: Decimal
     unit: str = "br"
     unit_price: Decimal
+    unit_price_with_vat: Optional[Decimal] = None
     discount_percent: Decimal = Decimal("0")
+    expiration_date: Optional[str] = None
+    batch_number: Optional[str] = None
 
 
 @strawberry.input
@@ -648,9 +669,24 @@ class RecipeInput:
     steps: List[RecipeStepInput] = strawberry.field(default_factory=list)
 
 
+@strawberry.input
+class RecipePriceUpdateInput:
+    """Input за обновяне на цена на рецепта"""
+    markup_percentage: Optional[Decimal] = None
+    premium_amount: Optional[Decimal] = None
+    portions: Optional[int] = None
+    reason: Optional[str] = None
+
 
 @strawberry.input
+class RecipePriceInput:
+    """Input за изчисление на цена"""
+    recipe_id: int
+    markup_percentage: Optional[Decimal] = None
+    premium_amount: Optional[Decimal] = None
 
+
+@strawberry.input
 class ProductionOrderInput:
 
     recipe_id: int
@@ -963,3 +999,74 @@ class VehicleTripUpdateInput:
     distance: Optional[float] = None
     trip_type: Optional[str] = None
     notes: Optional[str] = None
+
+
+@strawberry.input
+class EmploymentContractCreateInput:
+    """Input за създаване на трудов договор"""
+    employee_name: str = strawberry.field(description="Име на служителя (преди регистрация)")
+    employee_egn: str = strawberry.field(description="ЕГН на служителя")
+    company_id: Optional[int] = strawberry.field(default=None, description="ID на фирмата")
+    department_id: Optional[int] = strawberry.field(default=None, description="ID на отдела")
+    position_id: Optional[int] = strawberry.field(default=None, description="ID на длъжността")
+    contract_type: str = strawberry.field(description="Тип на договора (full_time/part_time/contractor/internship)")
+    contract_number: Optional[str] = strawberry.field(default=None, description="Номер на договора")
+    start_date: datetime.date = strawberry.field(description="Начална дата")
+    end_date: Optional[datetime.date] = strawberry.field(default=None, description="Крайна дата")
+    base_salary: Optional[float] = strawberry.field(default=None, description="Основна заплата")
+    work_hours_per_week: int = strawberry.field(default=40, description="Работни часове на седмица")
+    job_description: Optional[str] = strawberry.field(default=None, description="Трудова характеристика")
+
+
+@strawberry.input
+class EmploymentContractUpdateInput:
+    """Input за обновяване на трудов договор"""
+    employee_name: Optional[str] = strawberry.field(default=None, description="Име на служителя")
+    employee_egn: Optional[str] = strawberry.field(default=None, description="ЕГН на служителя")
+    company_id: Optional[int] = strawberry.field(default=None, description="ID на фирмата")
+    department_id: Optional[int] = strawberry.field(default=None, description="ID на отдела")
+    position_id: Optional[int] = strawberry.field(default=None, description="ID на длъжността")
+    contract_number: Optional[str] = strawberry.field(default=None, description="Номер на договора")
+    start_date: Optional[datetime.date] = strawberry.field(default=None, description="Начална дата")
+    end_date: Optional[datetime.date] = strawberry.field(default=None, description="Крайна дата")
+    base_salary: Optional[float] = strawberry.field(default=None, description="Основна заплата")
+    work_hours_per_week: Optional[int] = strawberry.field(default=None, description="Работни часове на седмица")
+    job_description: Optional[str] = strawberry.field(default=None, description="Трудова характеристика")
+
+
+# ============ TRZ Template Section Inputs ============
+
+@strawberry.input
+class ContractTemplateSectionInput:
+    """Input за създаване на секция в шаблон за договор"""
+    title: str = strawberry.field(description="Заглавие на секцията")
+    content: str = strawberry.field(description="Съдържание (HTML/текст)")
+    order_index: int = strawberry.field(default=0, description="Ред на секцията")
+    is_required: bool = strawberry.field(default=False, description="Задължителна секция")
+
+
+@strawberry.input
+class ContractTemplateSectionUpdateInput:
+    """Input за обновяване на секция в шаблон за договор"""
+    title: Optional[str] = strawberry.field(default=None, description="Заглавие на секцията")
+    content: Optional[str] = strawberry.field(default=None, description="Съдържание (HTML/текст)")
+    order_index: Optional[int] = strawberry.field(default=None, description="Ред на секцията")
+    is_required: Optional[bool] = strawberry.field(default=None, description="Задължителна секция")
+
+
+@strawberry.input
+class AnnexTemplateSectionInput:
+    """Input за създаване на секция в шаблон за анекс"""
+    title: str = strawberry.field(description="Заглавие на секцията")
+    content: str = strawberry.field(description="Съдържание (HTML/текст)")
+    order_index: int = strawberry.field(default=0, description="Ред на секцията")
+    is_required: bool = strawberry.field(default=False, description="Задължителна секция")
+
+
+@strawberry.input
+class AnnexTemplateSectionUpdateInput:
+    """Input за обновяване на секция в шаблон за анекс"""
+    title: Optional[str] = strawberry.field(default=None, description="Заглавие на секцията")
+    content: Optional[str] = strawberry.field(default=None, description="Съдържание (HTML/текст)")
+    order_index: Optional[int] = strawberry.field(default=None, description="Ред на секцията")
+    is_required: Optional[bool] = strawberry.field(default=None, description="Задължителна секция")

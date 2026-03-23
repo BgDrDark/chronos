@@ -51,6 +51,13 @@ export interface Company {
   vatNumber?: string | null;
   address?: string | null;
   molName?: string | null;
+  defaultSalesAccountId?: number | null;
+  defaultExpenseAccountId?: number | null;
+  defaultVatAccountId?: number | null;
+  defaultCustomerAccountId?: number | null;
+  defaultSupplierAccountId?: number | null;
+  defaultCashAccountId?: number | null;
+  defaultBankAccountId?: number | null;
 }
 
 export interface Department {
@@ -91,6 +98,13 @@ export interface EmploymentContract {
   dangerousWork?: boolean;
   position?: Position | null;
   paymentDay?: number | null;
+  // Нови полета за трудов договор
+  employeeName?: string | null;
+  employeeEgn?: string | null;
+  status?: 'draft' | 'signed' | 'linked';
+  signedAt?: string | null;
+  userId?: number | null;
+  annexes?: ContractAnnex[];
 }
 
 export interface UpdateUserInput {
@@ -322,6 +336,10 @@ export interface Workstation {
 export interface Recipe {
   id: number;
   name: string;
+  defaultPieces?: number | null;
+  ingredients?: RecipeIngredient[] | null;
+  sections?: RecipeSection[] | null;
+  category?: string | null;
 }
 
 export interface RecipeIngredient {
@@ -595,6 +613,8 @@ export interface Transaction {
   type?: string;
   reference?: string;
   matched?: boolean;
+  invoiceId?: number | null;
+  bankAccountId?: number | null;
 }
 
 export interface Register {
@@ -841,6 +861,33 @@ export interface Batch {
   storageZoneId?: number | null;
   ingredient?: Ingredient | null;
   supplier?: Supplier | null;
+  availableStock?: number;
+  isExpired?: boolean;
+  daysUntilExpiry?: number;
+}
+
+export interface StockConsumptionLog {
+  id: number;
+  ingredientId: number;
+  batchId: number;
+  quantity: number;
+  reason: string;
+  productionOrderId?: number | null;
+  notes?: string | null;
+  createdBy: number;
+  createdAt: string;
+  ingredient?: Ingredient;
+  batch?: Batch;
+  creator?: User;
+}
+
+export interface FefoSuggestion {
+  batchId: number;
+  batchNumber: string;
+  availableQuantity: number;
+  quantityToTake: number;
+  expiryDate: string;
+  daysUntilExpiry: number;
 }
 
 export interface Ingredient {
@@ -1103,4 +1150,152 @@ export interface AccessLog {
 export interface Company {
   id: number;
   name: string;
+}
+
+export type ContractStatus = 'draft' | 'signed' | 'linked';
+
+export type ContractType = 'full_time' | 'part_time' | 'contractor' | 'internship';
+
+export interface LaborContractAnnex {
+  id: number;
+  annexNumber: string | null;
+  effectiveDate: string;
+  baseSalary: number | null;
+  changeType: string | null;
+  changeDescription: string | null;
+  status: ContractStatus;
+  isSigned: boolean;
+  signedAt: string | null;
+  signedByEmployee: boolean;
+  signedByEmployer: boolean;
+  createdAt: string;
+}
+
+export interface LaborContract {
+  id: number;
+  employeeName: string | null;
+  employeeEgn: string | null;
+  contractNumber: string | null;
+  contractType: ContractType;
+  startDate: string;
+  endDate: string | null;
+  baseSalary: number | null;
+  workHoursPerWeek: number;
+  status: ContractStatus;
+  signedAt: string | null;
+  userId: number | null;
+  company: Company | null;
+  department: { id: number; name: string } | null;
+  position: { id: number; title: string } | null;
+  annexes: LaborContractAnnex[];
+}
+
+export interface CreateLaborContractInput {
+  employeeName: string;
+  employeeEgn: string;
+  companyId: number;
+  contractType: ContractType;
+  contractNumber?: string | null;
+  startDate: string;
+  endDate?: string | null;
+  baseSalary?: number | null;
+  workHoursPerWeek?: number;
+  jobDescription?: string | null;
+}
+
+export interface LaborContractFormData {
+  companyId: number | null;
+  departmentId: number | null;
+  positionId: number | null;
+  employeeName: string;
+  employeeEgn: string;
+  contractNumber: string;
+  contractType: ContractType;
+  startDate: string;
+  endDate: string;
+  baseSalary: string;
+  workHoursPerWeek: string;
+  jobDescription: string;
+}
+
+export interface LaborContractListFilters {
+  companyId?: number;
+  status?: ContractStatus;
+}
+
+export interface AccountingEntry {
+  id: number;
+  date: string;
+  entryNumber: string;
+  description: string | null;
+  debitAccountId: number;
+  creditAccountId: number;
+  debitAccount?: Account | null;
+  creditAccount?: Account | null;
+  amount: number;
+  vatAmount: number;
+  invoiceId: number | null;
+  invoice?: Invoice | null;
+  bankTransactionId: number | null;
+  cashJournalId: number | null;
+  companyId: number;
+  createdBy: number | null;
+  creator?: User | null;
+  createdAt: string;
+}
+
+export interface RecipeWithPrice extends Recipe {
+  sellingPrice: number | null;
+  costPrice: number | null;
+  markupPercentage: number | null;
+  premiumAmount: number | null;
+  portions: number | null;
+  lastPriceUpdate: string | null;
+  priceCalculatedAt: string | null;
+  markupAmount: number | null;
+  finalPrice: number | null;
+  portionPrice: number | null;
+  category?: string | null;
+}
+
+export interface PriceHistory {
+  id: number;
+  recipeId: number;
+  oldSellingPrice: number | null;
+  newSellingPrice: number | null;
+  oldMarkupPercentage: number | null;
+  newMarkupPercentage: number | null;
+  oldPremiumAmount: number | null;
+  newPremiumAmount: number | null;
+  oldCostPrice: number | null;
+  newCostPrice: number | null;
+  reason: string | null;
+  createdAt: string;
+  user?: { id: number; firstName?: string | null; lastName?: string | null; email: string } | null;
+}
+
+export interface RecipeCostResult {
+  recipeId: number;
+  recipeName: string;
+  costPrice: number;
+  markupAmount: number;
+  finalPrice: number;
+  portionPrice: number;
+}
+
+export interface RecalculateResult {
+  recipeId: number;
+  recipeName: string;
+  costPrice: number;
+  markupAmount: number;
+  finalPrice: number;
+  portionPrice: number;
+}
+
+export interface RecipePriceUpdateInput {
+  recipeId: number;
+  markupPercentage?: number | null;
+  premiumAmount?: number | null;
+  portions?: number | null;
+  reason?: string | null;
 }

@@ -14,10 +14,12 @@ import {
   Upload as ImportIcon,
   ContentCopy as CopyIcon,
   ExpandMore as ExpandMoreIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { CREATE_RECIPE, CREATE_WORKSTATION, DELETE_RECIPE } from '../graphql/confectioneryMutations';
 import { ME_QUERY } from '../graphql/queries';
+import { getErrorMessage } from '../types';
 import { type FullRecipe, type Workstation, type Ingredient, type RecipeSection, type RecipeStep, type RecipeIngredient } from '../types';
 import { type SxProps, type Theme } from '@mui/material';
 
@@ -250,6 +252,48 @@ const RecipesPage: React.FC = () => {
     setOpenRecipeModal(true);
   };
 
+  // Edit recipe
+  const handleEditRecipe = (recipe: FullRecipe) => {
+    const copiedSections = recipe.sections?.map((section: RecipeSection) => ({
+      type: section.sectionType || 'dough',
+      name: section.name || '',
+      shelfLifeDays: section.shelfLifeDays || null,
+      wastePercentage: section.wastePercentage || 0,
+      ingredients: section.ingredients?.map((i: RecipeIngredient) => ({
+        ingredientId: i.ingredient?.id?.toString() || '',
+        quantityGross: i.quantityGross?.toString() || '',
+      })) || [],
+      steps: section.steps?.map((s: RecipeStep) => ({
+        workstationId: s.workstation?.id?.toString() || '',
+        name: s.name || '',
+        stepOrder: s.stepOrder || 1,
+        estimatedDurationMinutes: s.estimatedDurationMinutes?.toString() || '',
+      })) || []
+    })) || [
+      { type: 'dough', name: 'Блат - ', shelfLifeDays: null, wastePercentage: 10, ingredients: [], steps: [] },
+      { type: 'cream', name: 'Крем - ', shelfLifeDays: null, wastePercentage: 5, ingredients: [], steps: [] },
+      { type: 'decoration', name: 'Декор - ', shelfLifeDays: null, wastePercentage: 15, ingredients: [], steps: [] }
+    ];
+
+    setRecipeForm({
+      ...recipeForm,
+      name: recipe.name,
+      description: recipe.description || '',
+      yieldQuantity: recipe.yieldQuantity?.toString() || '1',
+      yieldUnit: recipe.yieldUnit || 'br',
+      shelfLifeDays: recipe.shelfLifeDays?.toString() || '7',
+      shelfLifeFrozenDays: recipe.shelfLifeFrozenDays?.toString() || '30',
+      productionDeadlineDays: recipe.productionDeadlineDays?.toString() || '',
+      defaultPieces: recipe.defaultPieces || 12,
+      currentPieces: recipe.defaultPieces || 12,
+      standardQuantity: recipe.standardQuantity?.toString() || '1',
+      instructions: recipe.instructions || '',
+      sections: copiedSections
+    });
+    setSelectedRecipe(null);
+    setOpenRecipeModal(true);
+  };
+
   // Import recipes from JSON - simplified for now
   const handleImportRecipes = () => {
     // Placeholder - to be implemented with new section structure
@@ -347,7 +391,12 @@ const RecipesPage: React.FC = () => {
 
   // Handle pieces change (+/-) with recalculation
   const handlePiecesChange = (newPieces: number) => {
-    if (newPieces <= 0) return;
+    const MIN_PIECES = 1;
+    const MAX_PIECES = 1000;
+    
+    if (newPieces < MIN_PIECES) newPieces = MIN_PIECES;
+    if (newPieces > MAX_PIECES) newPieces = MAX_PIECES;
+    
     const oldPieces = recipeForm.currentPieces;
     const ratio = newPieces / oldPieces;
     
@@ -362,13 +411,9 @@ const RecipesPage: React.FC = () => {
     setRecipeForm({
       ...recipeForm,
       currentPieces: newPieces,
+      defaultPieces: newPieces,
       sections: updatedSections
     });
-  };
-
-  // Reset to default pieces
-  const handleResetPieces = () => {
-    handlePiecesChange(recipeForm.defaultPieces);
   };
 
   // Update section name when recipe name changes
@@ -466,6 +511,8 @@ const RecipesPage: React.FC = () => {
   const { data: userData } = useQuery(ME_QUERY);
   const user = userData?.me;
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleAddRecipe = async () => {
     const errors = validateRecipe();
     setValidationErrors(errors);
@@ -474,7 +521,13 @@ const RecipesPage: React.FC = () => {
       return;
     }
     
-    if (!user?.companyId) return;
+    if (!user?.companyId) {
+      setSaveError("Вашият профил не е свързан с фирма");
+      return;
+    }
+    
+    setSaveError(null);
+    
     try {
       const sections = recipeForm.sections.map((section, idx) => ({
         sectionType: section.type,
@@ -507,7 +560,7 @@ const RecipesPage: React.FC = () => {
             yieldUnit: recipeForm.yieldUnit,
             shelfLifeDays: parseInt(recipeForm.shelfLifeDays),
             shelfLifeFrozenDays: parseInt(recipeForm.shelfLifeFrozenDays),
-            productionDeadlineDays: recipeForm.productionDeadlineDays ? parseInt(recipeForm.productionDeadlineDays) : null,
+            productionTimeDays: recipeForm.productionDeadlineDays ? parseInt(recipeForm.productionDeadlineDays) : 1,
             defaultPieces: recipeForm.defaultPieces,
             standardQuantity: parseFloat(recipeForm.standardQuantity),
             instructions: recipeForm.instructions,
@@ -519,7 +572,9 @@ const RecipesPage: React.FC = () => {
       setOpenRecipeModal(false);
       refetch();
     } catch (err) {
-      console.error(err);
+      const errorMessage = getErrorMessage(err);
+      setSaveError(errorMessage);
+      console.error('Save recipe error:', err);
     }
   };
 
@@ -614,7 +669,7 @@ const RecipesPage: React.FC = () => {
                     <Box>
                       <Typography variant="h6" color="primary">{recipe.name}</Typography>
                       <Typography variant="body2" color="textSecondary">
-                        Добив: {recipe.yieldQuantity} {recipe.yieldUnit} | Срок: {recipe.shelfLifeDays} дни
+                        Бр. парчета: {recipe.defaultPieces || 12} | Срок: {recipe.shelfLifeDays} дни
                       </Typography>
                     </Box>
                     <Tooltip title="Копирай рецептата като основа за нова" arrow>
@@ -726,7 +781,7 @@ const RecipesPage: React.FC = () => {
                     label="Бр. парчета"
                     value={recipeForm.currentPieces.toString()}
                     onChange={(value) => handlePiecesChange(parseInt(value) || 1)}
-                    tooltip="Брой парчета/бройки от продукта"
+                    tooltip="Брой парчета/броики от продукта. Променя количеството на всички съставки пропорционално."
                     type="number"
                   />
                   <Button 
@@ -739,11 +794,6 @@ const RecipesPage: React.FC = () => {
                     size="small"
                     onClick={() => handlePiecesChange(recipeForm.currentPieces + 1)}
                   >+</Button>
-                  <Button 
-                    variant="contained" 
-                    size="small"
-                    onClick={handleResetPieces}
-                  >Default</Button>
                 </Box>
               </Grid>
               <Grid size={{ xs: 6, sm: 3 }}>
@@ -937,9 +987,16 @@ const RecipesPage: React.FC = () => {
             );
           })}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenRecipeModal(false)}>Отказ</Button>
-          <Button onClick={handleAddRecipe} variant="contained" disabled={!recipeForm.name}>Запази Рецепта</Button>
+        <DialogActions sx={{ flexDirection: 'column', alignItems: 'stretch', p: 2 }}>
+          {saveError && (
+            <Typography color="error" sx={{ mb: 1, textAlign: 'center' }}>
+              {saveError}
+            </Typography>
+          )}
+          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+            <Button onClick={() => { setOpenRecipeModal(false); setSaveError(null); }}>Отказ</Button>
+            <Button onClick={handleAddRecipe} variant="contained" disabled={!recipeForm.name}>Запази Рецепта</Button>
+          </Box>
         </DialogActions>
       </Dialog>
 
@@ -952,60 +1009,81 @@ const RecipesPage: React.FC = () => {
         <DialogContent dividers>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <Typography variant="subtitle2" color="textSecondary">Добив</Typography>
-              <Typography variant="h6">{selectedRecipe?.yieldQuantity} {selectedRecipe?.yieldUnit}</Typography>
+              <Typography variant="subtitle2" color="textSecondary">Бр. парчета</Typography>
+              <Typography variant="h6">{selectedRecipe?.defaultPieces || 12}</Typography>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <Typography variant="subtitle2" color="textSecondary">Срок на годност</Typography>
               <Typography variant="h6">{selectedRecipe?.shelfLifeDays} дни</Typography>
             </Grid>
             
-            <Grid size={{ xs: 12 }}>
-              <Divider sx={{ my: 1 }} />
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>Съставки</Typography>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Съставка</TableCell>
-                    <TableCell align="right">Брутно</TableCell>
-                    <TableCell align="right">Нетно</TableCell>
-                    <TableCell align="right">% Отпадък</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {(selectedRecipe?.ingredients || []).map((ing: RecipeIngredient, idx: number) => {
-                    const netQty = ing.quantityNet ?? 0;
-                    const waste = ing.quantityGross > 0 ? ((ing.quantityGross - netQty) / ing.quantityGross * 100).toFixed(1) : '0';
-                    return (
+            {/* Тегло за 1 парче */}
+            {(() => {
+              const pieces = selectedRecipe?.defaultPieces || 12;
+              let totalWeight = 0;
+              selectedRecipe?.sections?.forEach((section: RecipeSection) => {
+                section.ingredients?.forEach((ing: RecipeIngredient) => {
+                  totalWeight += Number(ing.quantityGross) || 0;
+                });
+              });
+              const weightPerPiece = pieces > 0 ? (totalWeight / pieces).toFixed(1) : 0;
+              return (
+                <Grid size={{ xs: 12 }}>
+                  <Box sx={{ mt: 2, p: 2, bgcolor: '#e3f2fd', borderRadius: 2 }}>
+                    <Typography variant="subtitle2" color="primary">
+                      Общо тегло: {totalWeight.toFixed(1)} гр | Тегло за 1 парче: {weightPerPiece} гр
+                    </Typography>
+                  </Box>
+                </Grid>
+              );
+            })()}
+            
+            {selectedRecipe?.sections?.map((section: RecipeSection, sectionIdx: number) => (
+              <Grid size={{ xs: 12 }} key={sectionIdx}>
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  {section.sectionType === 'dough' ? '🫓' : section.sectionType === 'cream' ? '🍰' : '🎂'} {section.name || section.sectionType}
+                  {section.wastePercentage > 0 && (
+                    <Typography component="span" variant="caption" color="textSecondary" sx={{ ml: 1 }}>
+                      (Отпадък: {section.wastePercentage}%)
+                    </Typography>
+                  )}
+                </Typography>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Съставка</TableCell>
+                      <TableCell align="right">Количество</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(section.ingredients || []).map((ing: RecipeIngredient, idx: number) => (
                       <TableRow key={idx}>
-                        <TableCell>{ing.ingredient.name}</TableCell>
-                        <TableCell align="right">{ing.quantityGross} {ing.ingredient.unit}</TableCell>
-                        <TableCell align="right">{ing.quantityNet} {ing.ingredient.unit}</TableCell>
-                        <TableCell align="right">{waste}%</TableCell>
+                        <TableCell>{ing.ingredient?.name}</TableCell>
+                        <TableCell align="right">{ing.quantityGross} {ing.ingredient?.unit}</TableCell>
                       </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, mt: 2 }}>Стъпки</Typography>
-              {(selectedRecipe?.steps?.length ?? 0) > 0 ? (
-                <List>
-                  {(selectedRecipe?.steps || []).map((step: RecipeStep, idx: number) => (
-                    <ListItem key={idx} sx={{ borderBottom: '1px solid #eee' }}>
-                      <ListItemText 
-                        primary={`${idx + 1}. ${step.name}`} 
-                        secondary={step.estimatedDurationMinutes ? `~${step.estimatedDurationMinutes} мин` : ''}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              ) : (
-                <Typography color="textSecondary">Няма дефинирани стъпки</Typography>
-              )}
-            </Grid>
+                    ))}
+                  </TableBody>
+                </Table>
+                {section.steps && section.steps.length > 0 && (
+                  <List dense sx={{ mt: 1 }}>
+                    {section.steps.map((step: RecipeStep, idx: number) => (
+                      <ListItem key={idx} sx={{ borderBottom: '1px solid #eee', py: 0.5 }}>
+                        <ListItemText 
+                          primary={`${idx + 1}. ${step.name}`} 
+                          secondary={step.workstation ? `📍 ${step.workstation.name}` : ''}
+                        />
+                        {step.estimatedDurationMinutes && (
+                          <Typography variant="caption" color="textSecondary">
+                            ~{step.estimatedDurationMinutes} мин
+                          </Typography>
+                        )}
+                      </ListItem>
+                    ))}
+                  </List>
+                )}
+              </Grid>
+            ))}
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -1021,6 +1099,9 @@ const RecipesPage: React.FC = () => {
             }
           }}>
             Изтрий
+          </Button>
+          <Button startIcon={<EditIcon />} variant="contained" onClick={() => handleEditRecipe(selectedRecipe!)}>
+            Редактирай
           </Button>
           <Button onClick={() => setSelectedRecipe(null)}>Затвори</Button>
         </DialogActions>

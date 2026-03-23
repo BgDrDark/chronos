@@ -261,3 +261,90 @@ export const BULK_ADD_BATCHES = gql`
     }
   }
 `;
+
+export const UPDATE_RECIPE_PRICE = gql`
+  mutation UpdateRecipePrice($recipeId: Int!, $input: RecipePriceUpdateInput!) {
+    updateRecipePrice(recipeId: $recipeId, input: $input) {
+      id
+      sellingPrice
+      costPrice
+      markupPercentage
+      premiumAmount
+      markupAmount
+      finalPrice
+      portionPrice
+    }
+  }
+`;
+
+export const CALCULATE_RECIPE_COST = gql`
+  mutation CalculateRecipeCost($recipeId: Int!) {
+    calculateRecipeCost(recipeId: $recipeId) {
+      recipeId
+      recipeName
+      costPrice
+      markupAmount
+      finalPrice
+      portionPrice
+    }
+  }
+`;
+
+export const RECALCULATE_ALL_RECIPE_COSTS = gql`
+  mutation RecalculateAllRecipeCosts {
+    recalculateAllRecipeCosts {
+      recipeId
+      recipeName
+      costPrice
+      markupAmount
+      finalPrice
+      portionPrice
+    }
+  }
+`;
+
+export const GET_RECIPES_WITH_PRICES = gql`
+  query GetRecipesWithPrices {
+    recipesWithPrices {
+      id
+      name
+      category
+      defaultPieces
+      sellingPrice
+      costPrice
+      markupPercentage
+      premiumAmount
+      portions
+      lastPriceUpdate
+      priceCalculatedAt
+      markupAmount
+      finalPrice
+      portionPrice
+    }
+  }
+`;
+
+export const GET_PRICE_HISTORY = gql`
+  query GetPriceHistory($recipeId: Int!) {
+    priceHistory(recipeId: $recipeId) {
+      id
+      recipeId
+      oldSellingPrice
+      newSellingPrice
+      oldMarkupPercentage
+      newMarkupPercentage
+      oldPremiumAmount
+      newPremiumAmount
+      oldCostPrice
+      newCostPrice
+      reason
+      createdAt
+      user {
+        id
+        firstName
+        lastName
+        email
+      }
+    }
+  }
+`;

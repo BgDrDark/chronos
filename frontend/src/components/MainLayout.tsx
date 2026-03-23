@@ -31,6 +31,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   Work as WorkIcon,
+  AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useApolloClient } from '@apollo/client';
@@ -286,6 +287,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
         { text: 'ТРЗ Настройки', path: '/admin/payroll/trz-settings', visible: true },
         { text: 'Шаблони', path: '/admin/payroll/templates', visible: true },
         { text: 'Допълнителни споразумения', path: '/admin/payroll/annexes', visible: true },
+        { text: 'Трудови договори', path: '/admin/payroll/contracts', visible: true },
         { text: 'Плащания', path: '/admin/payroll/payments', visible: true },
         { text: 'Празници', path: '/admin/payroll/declarations', visible: true },
         { text: 'Справки', path: '/admin/payroll/reports', visible: true },
@@ -305,6 +307,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
         { text: 'Сметкоплан', path: '/admin/accounting/accounts', visible: true },
         { text: 'Касов дневник', path: '/admin/accounting/cash-journal', visible: true },
         { text: 'Операции', path: '/admin/accounting/operations', visible: true },
+        { text: 'Счетоводни записи', path: '/admin/accounting/accounting-entries', visible: true },
         { text: 'ДДС регистри', path: '/admin/accounting/vat', visible: true },
         { text: 'SAF-T', path: '/admin/accounting/saft', visible: true },
         { text: 'Дневен отчет', path: '/admin/accounting/daily', visible: true },
@@ -340,6 +343,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     },
     { text: 'Склад', icon: <WarehouseIcon />, path: '/admin/warehouse', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Рецепти', icon: <RecipeIcon />, path: '/admin/recipes', visible: isAdmin && isEnabled('confectionery') },
+    { text: 'Цени Рецепти', icon: <MoneyIcon />, path: '/admin/menu-pricing', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Поръчки', icon: <OrderIcon />, path: '/admin/orders', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Контрол', icon: <TaskIcon />, path: '/admin/production/control', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Логистика', icon: <LogisticsIcon />, path: '/admin/logistics', visible: isAdmin },

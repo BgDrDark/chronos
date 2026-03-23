@@ -1933,7 +1933,14 @@ async def update_company(
     bulstat: Optional[str] = None,
     vat_number: Optional[str] = None,
     address: Optional[str] = None,
-    mol_name: Optional[str] = None
+    mol_name: Optional[str] = None,
+    default_sales_account_id: Optional[int] = None,
+    default_expense_account_id: Optional[int] = None,
+    default_vat_account_id: Optional[int] = None,
+    default_customer_account_id: Optional[int] = None,
+    default_supplier_account_id: Optional[int] = None,
+    default_cash_account_id: Optional[int] = None,
+    default_bank_account_id: Optional[int] = None,
 ):
     company = await get_company(db, company_id)
     if not company:
@@ -1945,6 +1952,13 @@ async def update_company(
     if vat_number is not None: company.vat_number = vat_number
     if address is not None: company.address = address
     if mol_name is not None: company.mol_name = mol_name
+    if default_sales_account_id is not None: company.default_sales_account_id = default_sales_account_id
+    if default_expense_account_id is not None: company.default_expense_account_id = default_expense_account_id
+    if default_vat_account_id is not None: company.default_vat_account_id = default_vat_account_id
+    if default_customer_account_id is not None: company.default_customer_account_id = default_customer_account_id
+    if default_supplier_account_id is not None: company.default_supplier_account_id = default_supplier_account_id
+    if default_cash_account_id is not None: company.default_cash_account_id = default_cash_account_id
+    if default_bank_account_id is not None: company.default_bank_account_id = default_bank_account_id
     
     db.add(company)
     await db.commit()

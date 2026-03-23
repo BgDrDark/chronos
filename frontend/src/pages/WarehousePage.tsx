@@ -42,11 +42,15 @@ import {
   Warning as WarningIcon,
   QrCodeScanner as ScanIcon,
   Search as SearchIcon,
+  RemoveShoppingCart as ConsumeIcon,
+  History as HistoryIcon,
+  TrendingDown as TrendingDownIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { CREATE_INGREDIENT, UPDATE_INGREDIENT, UPDATE_BATCH, CREATE_SUPPLIER, UPDATE_SUPPLIER, CREATE_STORAGE_ZONE, UPDATE_STORAGE_ZONE, UPDATE_BATCH_STATUS, START_INVENTORY_SESSION, ADD_INVENTORY_ITEM, COMPLETE_INVENTORY_SESSION, BULK_ADD_BATCHES } from '../graphql/confectioneryMutations';
 import { ME_QUERY, INVENTORY_SESSIONS_QUERY, INVENTORY_SESSION_ITEMS_QUERY, INVENTORY_BY_BARCODE_QUERY, INGREDIENTS_QUERY } from '../graphql/queries';
-import { getErrorMessage, type Ingredient, type Batch, type Supplier, type StorageZone, type InventorySession, type InventorySessionItem } from '../types';
+import { CONSUME_FROM_BATCH, AUTO_CONSUME_FEFO, GET_FEFO_SUGGESTION, GET_CONSUMPTION_LOGS } from '../graphql/warehouseMutations';
+import { getErrorMessage, type Ingredient, type Batch, type Supplier, type StorageZone, type InventorySession, type InventorySessionItem, type StockConsumptionLog, type FefoSuggestion } from '../types';
 import { type SxProps, type Theme } from '@mui/material';
 
 interface BatchItem {
@@ -297,6 +301,23 @@ const WarehousePage: React.FC = () => {
     expiryWarningDays: '3',
   });
 
+  // Consumption tab state
+  const [consumptionMode, setConsumptionMode] = useState<'fefo' | 'manual'>('fefo');
+  const [consumptionIngredientId, setConsumptionIngredientId] = useState<string>('');
+  const [consumptionQuantity, setConsumptionQuantity] = useState<string>('');
+  const [consumptionReason, setConsumptionReason] = useState<string>('manual');
+  const [consumptionNotes, setConsumptionNotes] = useState<string>('');
+  const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
+  const [consumptionError, setConsumptionError] = useState<string | null>(null);
+  const [consumptionSuccess, setConsumptionSuccess] = useState<string | null>(null);
+
+  const [logFilters, setLogFilters] = useState({
+    ingredientId: '',
+    batchId: '',
+    startDate: '',
+    endDate: '',
+  });
+
   // Validation state
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
@@ -453,6 +474,27 @@ const WarehousePage: React.FC = () => {
   const [inventorySearch, setInventorySearch] = useState<string>('');
   const [inventoryQuantity, setInventoryQuantity] = useState<string>('');
 
+  // Consumption mutations
+  const [consumeFromBatch] = useMutation(CONSUME_FROM_BATCH);
+  const [autoConsumeFefo] = useMutation(AUTO_CONSUME_FEFO);
+
+  // Consumption queries
+  const { data: fefoData } = useQuery(GET_FEFO_SUGGESTION, {
+    variables: { ingredientId: parseInt(consumptionIngredientId) || 0, quantity: parseFloat(consumptionQuantity) || 0 },
+    skip: !consumptionIngredientId || !consumptionQuantity || parseFloat(consumptionQuantity) <= 0,
+    fetchPolicy: 'network-only',
+  });
+
+  const { data: logsData, refetch: refetchLogs, loading: logsLoading } = useQuery(GET_CONSUMPTION_LOGS, {
+    variables: {
+      ingredientId: logFilters.ingredientId ? parseInt(logFilters.ingredientId) : undefined,
+      batchId: logFilters.batchId ? parseInt(logFilters.batchId) : undefined,
+      startDate: logFilters.startDate || undefined,
+      endDate: logFilters.endDate || undefined,
+    },
+    fetchPolicy: 'cache-and-network',
+  });
+
   const { data: barcodeData } = useQuery(INVENTORY_BY_BARCODE_QUERY, {
     variables: { barcode: inventorySearch || '' },
     skip: !inventorySearch || inventorySearch.length < 3
@@ -603,11 +645,11 @@ const WarehousePage: React.FC = () => {
           date: batchForm.invoiceDate,
           createInvoice: batchForm.createInvoice,
           items: batchForm.items.map(item => ({
-            ingredient_id: parseInt(item.ingredientId),
+            ingredientId: parseInt(item.ingredientId),
             quantity: parseFloat(item.quantity),
-            expiry_date: item.expiryDate,
-            batch_number: item.batchNumber || null,
-            storage_zone_id: item.storageZoneId ? parseInt(item.storageZoneId) : null,
+            expiryDate: item.expiryDate,
+            batchNumber: item.batchNumber || null,
+            storageZoneId: item.storageZoneId ? parseInt(item.storageZoneId) : null,
           })),
         },
       });
@@ -881,6 +923,84 @@ const WarehousePage: React.FC = () => {
     }
   };
 
+  // Consumption handlers
+  const handleConsumeFefo = async () => {
+    if (!consumptionIngredientId || !consumptionQuantity) {
+      setConsumptionError('Моля, изберете артикул и въведете количество');
+      return;
+    }
+
+    const qty = parseFloat(consumptionQuantity);
+    if (qty <= 0) {
+      setConsumptionError('Количеството трябва да е по-голямо от 0');
+      return;
+    }
+
+    try {
+      setConsumptionError(null);
+      await autoConsumeFefo({
+        variables: {
+          ingredientId: parseInt(consumptionIngredientId),
+          quantity: qty,
+          reason: consumptionReason,
+          notes: consumptionNotes || null,
+        },
+      });
+
+      setConsumptionSuccess(`Успешно изразходвани ${qty} бр.`);
+      setConsumptionQuantity('');
+      setConsumptionNotes('');
+      setConsumptionReason('manual');
+      refetch();
+      refetchLogs();
+    } catch (err) {
+      setConsumptionError(getErrorMessage(err));
+    }
+  };
+
+  const handleConsumeManual = async () => {
+    if (!selectedBatchId || !consumptionQuantity) {
+      setConsumptionError('Моля, изберете партида и въведете количество');
+      return;
+    }
+
+    const qty = parseFloat(consumptionQuantity);
+    if (qty <= 0) {
+      setConsumptionError('Количеството трябва да е по-голямо от 0');
+      return;
+    }
+
+    try {
+      setConsumptionError(null);
+      await consumeFromBatch({
+        variables: {
+          batchId: selectedBatchId,
+          quantity: qty,
+          reason: consumptionReason,
+          notes: consumptionNotes || null,
+        },
+      });
+
+      setConsumptionSuccess(`Успешно изразходвани ${qty} бр. от партида`);
+      setConsumptionQuantity('');
+      setConsumptionNotes('');
+      setSelectedBatchId(null);
+      refetch();
+      refetchLogs();
+    } catch (err) {
+      setConsumptionError(getErrorMessage(err));
+    }
+  };
+
+  const handleSelectBatch = (batchId: number) => {
+    setSelectedBatchId(batchId);
+  };
+
+  const clearConsumptionMessages = () => {
+    setConsumptionError(null);
+    setConsumptionSuccess(null);
+  };
+
   if (loading || loadingUser) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
   if (error) return <Typography color="error">Грешка при зареждане на данните: {error.message}</Typography>;
 
@@ -992,6 +1112,7 @@ const WarehousePage: React.FC = () => {
         >
           <Tab icon={<InventoryIcon />} label="Наличности" />
           <Tab icon={<QrCodeIcon />} label="Партиди" />
+          <Tab icon={<ConsumeIcon />} label="Изразходване" />
           <Tab icon={<SupplierIcon />} label="Доставчици" />
           <Tab icon={<ZoneIcon />} label="Зони за съхранение" />
           <Tab icon={<ScanIcon />} label="Инвентаризация" />
@@ -1145,8 +1266,352 @@ const WarehousePage: React.FC = () => {
             </Table>
           </TableContainer>
         </TabPanel>
-        {/* Доставчици */}
+        {/* Изразходване */}
         <TabPanel value={tabValue} index={2}>
+          <Box sx={{ p: 2 }}>
+            {consumptionError && (
+              <Alert severity="error" onClose={clearConsumptionMessages} sx={{ mb: 2 }}>
+                {consumptionError}
+              </Alert>
+            )}
+            {consumptionSuccess && (
+              <Alert severity="success" onClose={clearConsumptionMessages} sx={{ mb: 2 }}>
+                {consumptionSuccess}
+              </Alert>
+            )}
+
+            {/* Mode Selection */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom>Режим на изразходване</Typography>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button
+                  variant={consumptionMode === 'fefo' ? 'contained' : 'outlined'}
+                  startIcon={<TrendingDownIcon />}
+                  onClick={() => setConsumptionMode('fefo')}
+                >
+                  Автоматично (FEFO)
+                </Button>
+                <Button
+                  variant={consumptionMode === 'manual' ? 'contained' : 'outlined'}
+                  startIcon={<QrCodeIcon />}
+                  onClick={() => setConsumptionMode('manual')}
+                >
+                  Ръчно (по партида)
+                </Button>
+              </Box>
+            </Box>
+
+            <Grid container spacing={3}>
+              {/* Left Column - Form */}
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                    {consumptionMode === 'fefo' ? 'Автоматично изразходване (FEFO)' : 'Ръчно изразходване'}
+                  </Typography>
+
+                  {/* Ingredient Selection */}
+                  <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                    <InputLabel>Артикул</InputLabel>
+                    <Select
+                      value={consumptionIngredientId}
+                      label="Артикул"
+                      onChange={(e) => setConsumptionIngredientId(e.target.value)}
+                    >
+                      {data?.ingredients.map((ing: Ingredient) => (
+                        <MenuItem key={ing.id} value={ing.id}>
+                          {ing.name} ({ing.currentStock} {ing.unit})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  {/* Quantity */}
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Количество"
+                    type="number"
+                    value={consumptionQuantity}
+                    onChange={(e) => setConsumptionQuantity(e.target.value)}
+                    sx={{ mb: 2 }}
+                    inputProps={{ min: 0, step: 0.001 }}
+                  />
+
+                  {/* Reason */}
+                  <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                    <InputLabel>Причина</InputLabel>
+                    <Select
+                      value={consumptionReason}
+                      label="Причина"
+                      onChange={(e) => setConsumptionReason(e.target.value)}
+                    >
+                      <MenuItem value="manual">Ръчно</MenuItem>
+                      <MenuItem value="production">Производство</MenuItem>
+                      <MenuItem value="expiry">Изтекъл срок</MenuItem>
+                      <MenuItem value="damaged">Повредено</MenuItem>
+                      <MenuItem value="quality_check">Качествена проверка</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  {/* Notes */}
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Бележки"
+                    multiline
+                    rows={2}
+                    value={consumptionNotes}
+                    onChange={(e) => setConsumptionNotes(e.target.value)}
+                    sx={{ mb: 2 }}
+                  />
+
+                  {/* Execute Button */}
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="warning"
+                    onClick={consumptionMode === 'fefo' ? handleConsumeFefo : handleConsumeManual}
+                    disabled={!consumptionIngredientId || !consumptionQuantity}
+                  >
+                    Изразходвай
+                  </Button>
+                </Paper>
+              </Grid>
+
+              {/* Right Column - FEFO Suggestions or Batch Selection */}
+              <Grid size={{ xs: 12, md: 6 }}>
+                {consumptionMode === 'fefo' ? (
+                  <Paper sx={{ p: 2 }}>
+                    <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                      FEFO предложение
+                    </Typography>
+                    {!consumptionIngredientId || !consumptionQuantity ? (
+                      <Typography color="text.secondary">
+                        Изберете артикул и въведете количество за да видите предложение
+                      </Typography>
+                    ) : fefoData?.getFefoSuggestion?.length === 0 ? (
+                      <Typography color="warning.main">
+                        Няма налични партиди за този артикул
+                      </Typography>
+                    ) : (
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Партида</TableCell>
+                              <TableCell align="right">Налично</TableCell>
+                              <TableCell align="right">Ще се вземе</TableCell>
+                              <TableCell>Срок годност</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {fefoData?.getFefoSuggestion?.map((s: FefoSuggestion, idx: number) => (
+                              <TableRow key={idx}>
+                                <TableCell>{s.batchNumber}</TableCell>
+                                <TableCell align="right">{s.availableQuantity.toFixed(3)}</TableCell>
+                                <TableCell align="right">{s.quantityToTake.toFixed(3)}</TableCell>
+                                <TableCell>
+                                  <Chip
+                                    size="small"
+                                    label={`${s.daysUntilExpiry} дни`}
+                                    color={s.daysUntilExpiry <= 7 ? 'error' : s.daysUntilExpiry <= 30 ? 'warning' : 'default'}
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+                  </Paper>
+                ) : (
+                  <Paper sx={{ p: 2 }}>
+                    <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                      Избор на партида
+                    </Typography>
+                    {!consumptionIngredientId ? (
+                      <Typography color="text.secondary">
+                        Първо изберете артикул
+                      </Typography>
+                    ) : (
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Партида</TableCell>
+                              <TableCell align="right">Количество</TableCell>
+                              <TableCell>Срок годност</TableCell>
+                              <TableCell>Избери</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {data?.batches
+                              ?.filter((b: Batch) => 
+                                b.ingredientId === parseInt(consumptionIngredientId) && 
+                                b.status === 'active' && 
+                                Number(b.quantity) > 0
+                              )
+                              .map((b: Batch) => (
+                                <TableRow 
+                                  key={b.id}
+                                  sx={{ 
+                                    bgcolor: selectedBatchId === b.id ? 'action.selected' : 'inherit',
+                                    cursor: 'pointer'
+                                  }}
+                                  onClick={() => handleSelectBatch(b.id)}
+                                >
+                                  <TableCell>{b.batchNumber}</TableCell>
+                                  <TableCell align="right">{Number(b.quantity).toFixed(3)}</TableCell>
+                                  <TableCell>
+                                    {b.expiryDate ? new Date(b.expiryDate).toLocaleDateString('bg-BG') : '-'}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip 
+                                      size="small" 
+                                      label={selectedBatchId === b.id ? 'Избрана' : 'Избери'} 
+                                      color={selectedBatchId === b.id ? 'primary' : 'default'}
+                                    />
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            {data?.batches?.filter((b: Batch) => 
+                              b.ingredientId === parseInt(consumptionIngredientId) && 
+                              b.status === 'active' && 
+                              Number(b.quantity) > 0
+                            ).length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={4} align="center">
+                                  Няма налични партиди
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+                  </Paper>
+                )}
+              </Grid>
+            </Grid>
+
+            {/* Consumption History */}
+            <Box sx={{ mt: 4 }}>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                <HistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                История на изразходванията
+              </Typography>
+
+              {/* Filters */}
+              <Paper sx={{ p: 2, mb: 2 }}>
+                <Grid container spacing={2} alignItems="center">
+                  <Grid size={{ xs: 12, sm: 3 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="От дата"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={logFilters.startDate}
+                      onChange={(e) => setLogFilters({ ...logFilters, startDate: e.target.value })}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 3 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="До дата"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={logFilters.endDate}
+                      onChange={(e) => setLogFilters({ ...logFilters, endDate: e.target.value })}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 3 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Филтрирай по артикул</InputLabel>
+                      <Select
+                        value={logFilters.ingredientId}
+                        label="Филтрирай по артикул"
+                        onChange={(e) => setLogFilters({ ...logFilters, ingredientId: e.target.value })}
+                      >
+                        <MenuItem value="">Всички</MenuItem>
+                        {data?.ingredients.map((ing: Ingredient) => (
+                          <MenuItem key={ing.id} value={ing.id}>{ing.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 3 }}>
+                    <Button fullWidth variant="outlined" onClick={() => refetchLogs()}>
+                      Обнови
+                    </Button>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {logsLoading ? (
+                <CircularProgress />
+              ) : (
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Дата</TableCell>
+                        <TableCell>Артикул</TableCell>
+                        <TableCell>Партида</TableCell>
+                        <TableCell align="right">Количество</TableCell>
+                        <TableCell>Причина</TableCell>
+                        <TableCell>Потребител</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {logsData?.stockConsumptionLogs?.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} align="center">
+                            Няма записи за изразходване
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        logsData?.stockConsumptionLogs?.map((log: StockConsumptionLog) => (
+                          <TableRow key={log.id}>
+                            <TableCell>
+                              {new Date(log.createdAt).toLocaleString('bg-BG')}
+                            </TableCell>
+                            <TableCell>{log.ingredient?.name || '-'}</TableCell>
+                            <TableCell>{log.batch?.batchNumber || '-'}</TableCell>
+                            <TableCell align="right">
+                              <Typography color="error.main" fontWeight="bold">
+                                -{log.quantity.toFixed(3)}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                size="small" 
+                                label={
+                                  log.reason === 'manual' ? 'Ръчно' :
+                                  log.reason === 'production' ? 'Производство' :
+                                  log.reason === 'expiry' ? 'Изтекъл срок' :
+                                  log.reason === 'damaged' ? 'Повредено' :
+                                  log.reason === 'quality_check' ? 'Качествена проверка' :
+                                  log.reason
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {log.creator?.firstName} {log.creator?.lastName}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Box>
+          </Box>
+        </TabPanel>
+        {/* Доставчици */}
+        <TabPanel value={tabValue} index={3}>
           <TableContainer>
             <Table>
               <TableHead>
@@ -1188,7 +1653,7 @@ const WarehousePage: React.FC = () => {
           </Box>
         </TabPanel>
         {/* Зони за съхранение */}
-        <TabPanel value={tabValue} index={3}>
+        <TabPanel value={tabValue} index={4}>
           <Grid container spacing={2}>
             {data?.storageZones.map((z: StorageZone) => (
               <Grid size={{ xs: 12, sm: 4 }} key={z.id}>
@@ -1233,7 +1698,7 @@ const WarehousePage: React.FC = () => {
           </Box>
         </TabPanel>
         {/* Инвентаризация */}
-        <TabPanel value={tabValue} index={4}>
+        <TabPanel value={tabValue} index={5}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12 }}>
               <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
@@ -1596,12 +2061,13 @@ const WarehousePage: React.FC = () => {
                   </TableHead>
                   <TableBody>
                     {batchForm.items.map((item, index) => {
-                      const ing = data?.ingredients.find((i: Ingredient) => i.id.toString() === item.ingredientId);
+                      const ingId = typeof item.ingredientId === 'string' ? parseInt(item.ingredientId) : item.ingredientId;
+                      const ing = data?.ingredients?.find((i: Ingredient) => i.id === ingId);
                       return (
                         <TableRow key={index}>
-                          <TableCell>{ing?.name}</TableCell>
-                          <TableCell align="right">{item.quantity} {ing?.unit}</TableCell>
-                          <TableCell>{new Date(item.expiryDate).toLocaleDateString('bg-BG')}</TableCell>
+                          <TableCell>{ing?.name || `ID: ${item.ingredientId}`}</TableCell>
+                          <TableCell align="right">{item.quantity} {ing?.unit || ''}</TableCell>
+                          <TableCell>{item.expiryDate ? new Date(item.expiryDate).toLocaleDateString('bg-BG') : '-'}</TableCell>
                           <TableCell>{item.batchNumber || '-'}</TableCell>
                           <TableCell align="right">
                             <IconButton size="small" color="error" onClick={() => handleRemoveItemFromBatch(index)}>

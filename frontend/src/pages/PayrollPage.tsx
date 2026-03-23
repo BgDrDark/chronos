@@ -11,7 +11,7 @@ import ReceiptIcon from '@mui/icons-material/Receipt';
 import AddIcon from '@mui/icons-material/Add';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import { useQuery, useMutation, gql, useLazyQuery } from '@apollo/client';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useWatch, FormProvider } from 'react-hook-form';
 import { useCurrency } from '../currencyContext';
 import { 
   type PayrollLegalSettings, 
@@ -28,6 +28,7 @@ import {
   type ContractAnnex,
   getErrorMessage
 } from '../types';
+import EmploymentContractsList from '../components/EmploymentContractsList';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PrintIcon from '@mui/icons-material/Print';
 import SecurityIcon from '@mui/icons-material/Security';
@@ -154,6 +155,70 @@ const CREATE_ADVANCE_MUTATION = gql`
   mutation CreateAdvance($userId: Int!, $amount: Float!, $paymentDate: Date!, $description: String) {
     createAdvancePayment(userId: $userId, amount: $amount, paymentDate: $paymentDate, description: $description) {
       id
+    }
+  }
+`;
+
+// Employment Contract Queries
+export const GET_EMPLOYMENT_CONTRACTS = gql`
+  query GetEmploymentContracts($companyId: Int, $status: String) {
+    employmentContracts(companyId: $companyId, status: $status) {
+      id
+      employeeName
+      employeeEgn
+      contractNumber
+      contractType
+      startDate
+      endDate
+      baseSalary
+      workHoursPerWeek
+      status
+      signedAt
+      userId
+      company {
+        id
+        name
+      }
+      annexes {
+        id
+        annexNumber
+        effectiveDate
+        baseSalary
+        changeType
+        changeDescription
+        status
+        isSigned
+      }
+    }
+  }
+`;
+
+export const CREATE_EMPLOYMENT_CONTRACT = gql`
+  mutation CreateEmploymentContract($input: EmploymentContractCreateInput!) {
+    createEmploymentContract(input: $input) {
+      id
+      employeeName
+      status
+    }
+  }
+`;
+
+export const SIGN_EMPLOYMENT_CONTRACT = gql`
+  mutation SignEmploymentContract($id: Int!) {
+    signEmploymentContract(id: $id) {
+      id
+      status
+      signedAt
+    }
+  }
+`;
+
+export const LINK_CONTRACT_TO_USER = gql`
+  mutation LinkContractToUser($contractId: Int!, $userId: Int!) {
+    linkEmploymentContractToUser(contractId: $contractId, userId: $userId) {
+      id
+      status
+      userId
     }
   }
 `;
@@ -488,6 +553,67 @@ const DELETE_CLAUSE_TEMPLATE = gql`
   }
 `;
 
+// --- Section CRUD Mutations ---
+const ADD_SECTION_TO_CONTRACT_TEMPLATE = gql`
+  mutation AddSectionToContractTemplate(
+    $templateId: Int!,
+    $section: ContractTemplateSectionInput!
+  ) {
+    addSectionToContractTemplate(templateId: $templateId, section: $section) {
+      id
+      title
+      content
+      orderIndex
+      isRequired
+    }
+  }
+`;
+
+const UPDATE_SECTION_IN_CONTRACT_TEMPLATE = gql`
+  mutation UpdateSectionInContractTemplate(
+    $sectionId: Int!,
+    $section: ContractTemplateSectionUpdateInput!
+  ) {
+    updateSectionInContractTemplate(sectionId: $sectionId, section: $section) {
+      id
+      title
+      content
+      orderIndex
+      isRequired
+    }
+  }
+`;
+
+const ADD_SECTION_TO_ANNEX_TEMPLATE = gql`
+  mutation AddSectionToAnnexTemplate(
+    $templateId: Int!,
+    $section: AnnexTemplateSectionInput!
+  ) {
+    addSectionToAnnexTemplate(templateId: $templateId, section: $section) {
+      id
+      title
+      content
+      orderIndex
+      isRequired
+    }
+  }
+`;
+
+const UPDATE_SECTION_IN_ANNEX_TEMPLATE = gql`
+  mutation UpdateSectionInAnnexTemplate(
+    $sectionId: Int!,
+    $section: AnnexTemplateSectionUpdateInput!
+  ) {
+    updateSectionInAnnexTemplate(sectionId: $sectionId, section: $section) {
+      id
+      title
+      content
+      orderIndex
+      isRequired
+    }
+  }
+`;
+
 const SIGN_CONTRACT_ANNEX = gql`
   mutation SignContractAnnex($annexId: Int!) {
     signContractAnnex(annexId: $annexId) {
@@ -504,8 +630,9 @@ const PayrollLegalSettings: React.FC = () => {
     const { data, loading, refetch } = useQuery(GET_PAYROLL_LEGAL_SETTINGS);
     const [updateLegal, { loading: updating }] = useMutation(UPDATE_PAYROLL_LEGAL_MUTATION);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [defaultTaxResident, setDefaultTaxResident] = useState(true);
 
-    const { control, handleSubmit, reset, watch, setValue } = useForm<PayrollLegalSettings>({
+    const { control, handleSubmit, reset, setValue } = useForm<PayrollLegalSettings>({
         defaultValues: {
             maxInsuranceBase: 3750.0,
             employeeInsuranceRate: 13.78,
@@ -520,8 +647,14 @@ const PayrollLegalSettings: React.FC = () => {
     React.useEffect(() => {
         if (data?.payrollLegalSettings) {
             reset(data.payrollLegalSettings);
+            setDefaultTaxResident(data.payrollLegalSettings.defaultTaxResident ?? true);
         }
     }, [data, reset]);
+
+    const handleDefaultTaxResidentChange = (checked: boolean) => {
+        setDefaultTaxResident(checked);
+        setValue('defaultTaxResident', checked);
+    };
 
     type LegalFormData = PayrollLegalSettings;
     const onSubmitLegal = async (formData: LegalFormData) => {
@@ -591,10 +724,13 @@ const PayrollLegalSettings: React.FC = () => {
                             )} />
                         </Grid>
                         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                            <FormControlLabel
-                                control={<Checkbox checked={!!watch('defaultTaxResident')} onChange={e => setValue('defaultTaxResident', e.target.checked)} />}
-                                label="Данъчен резидент (Default)"
-                            />
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <Checkbox 
+                                    checked={defaultTaxResident}
+                                    onChange={e => handleDefaultTaxResidentChange(e.target.checked)}
+                                />
+                                <Typography variant="body2">Данъчен резидент (Default)</Typography>
+                            </Box>
                         </Grid>
                     </Grid>
                     {message && <Alert severity={message.type} sx={{ mt: 2 }}>{message.text}</Alert>}
@@ -896,16 +1032,11 @@ const GlobalPayrollSettings: React.FC = () => {
     const { data, loading } = useQuery(GET_GLOBAL_CONFIG_QUERY);
     const [updateConfig, { loading: updating }] = useMutation(UPDATE_GLOBAL_CONFIG_MUTATION);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const { refreshCurrency } = useCurrency();
+    const [hasTaxDeduction, setHasTaxDeduction] = useState(false);
+    const [hasHealthInsurance, setHasHealthInsurance] = useState(false);
 
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
-    const { data: workDaysData } = useQuery(GET_MONTHLY_WORK_DAYS, {
-      variables: { year: currentYear, month: currentMonth }
-    });
-
-    const { control, handleSubmit, reset, watch, setValue, getValues } = useForm<PayrollLegalSettings>({
+    const { control, handleSubmit, reset, setValue } = useForm<PayrollLegalSettings>({
         defaultValues: {
             hourlyRate: 0,
             monthlySalary: 0,
@@ -920,49 +1051,11 @@ const GlobalPayrollSettings: React.FC = () => {
         }
     });
 
-    const watchedSalary = watch('monthlySalary');
-    const autoSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    React.useEffect(() => {
-        const workDays = workDaysData?.monthlyWorkDays?.daysCount || 22;
-        const salary = watchedSalary ?? 0;
-        if (salary > 0) {
-            const calculatedRate = (salary / workDays) / 8;
-            const rate = parseFloat(calculatedRate.toFixed(4));
-            setValue('hourlyRate', rate);
-
-            if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-            setSaveStatus('saving');
-            autoSaveTimer.current = setTimeout(async () => {
-                try {
-                    const vals = getValues();
-                    await updateConfig({
-                        variables: {
-                            hourlyRate: rate.toString(),
-                            monthlySalary: salary.toString(),
-                            overtimeMultiplier: String(vals.overtimeMultiplier ?? ''),
-                            standardHoursPerDay: Math.round((vals.standardHoursWeekly ?? 40) / 5),
-                            currency: vals.currency,
-                            annualLeaveDays: parseInt(String(vals.annualLeaveDays ?? 0)),
-                            taxPercent: String(vals.taxPercent ?? 0),
-                            healthInsurancePercent: String(vals.healthInsurancePercent ?? 0),
-                            hasTaxDeduction: vals.hasTaxDeduction ?? false,
-                            hasHealthInsurance: vals.hasHealthInsurance ?? false
-                        }
-                    });
-                    setSaveStatus('saved');
-                    setTimeout(() => setSaveStatus('idle'), 3000);
-                } catch (e) { 
-                    console.error("Global auto-save failed", e); 
-                    setSaveStatus('error');
-                }
-            }, 2000);
-        }
-    }, [watchedSalary, workDaysData, setValue, getValues, updateConfig]);
-
     React.useEffect(() => {
         if (data?.globalPayrollConfig) {
             const conf = data.globalPayrollConfig;
+            setHasTaxDeduction(conf.hasTaxDeduction ?? false);
+            setHasHealthInsurance(conf.hasHealthInsurance ?? false);
             reset({
                 hourlyRate: conf.hourlyRate,
                 monthlySalary: conf.monthlySalary,
@@ -972,11 +1065,11 @@ const GlobalPayrollSettings: React.FC = () => {
                 standardHoursWeekly: conf.standardHoursPerDay * 5,
                 taxPercent: conf.taxPercent,
                 healthInsurancePercent: conf.healthInsurancePercent,
-                hasTaxDeduction: conf.hasTaxDeduction,
-                hasHealthInsurance: conf.hasHealthInsurance
+                hasTaxDeduction: conf.hasTaxDeduction ?? false,
+                hasHealthInsurance: conf.hasHealthInsurance ?? false
             });
         }
-    }, [data, reset]);
+    }, [data, reset, setHasTaxDeduction, setHasHealthInsurance]);
 
     type GlobalFormData = PayrollLegalSettings;
     const onSubmitGlobal = async (formData: GlobalFormData) => {
@@ -1055,26 +1148,38 @@ const GlobalPayrollSettings: React.FC = () => {
                         </Grid>
                         
                         <Grid size={{ xs: 6, md: 3 }}>
-                            <FormControlLabel
-                                control={<Checkbox checked={!!watch('hasTaxDeduction')} onChange={e => setValue('hasTaxDeduction', e.target.checked)} />}
-                                label="ДДФЛ"
-                            />
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <Checkbox 
+                                    checked={hasTaxDeduction}
+                                    onChange={e => {
+                                        setHasTaxDeduction(e.target.checked);
+                                        setValue('hasTaxDeduction', e.target.checked);
+                                    }}
+                                />
+                                <Typography variant="body2">ДДФЛ</Typography>
+                            </Box>
                         </Grid>
                         <Grid size={{ xs: 6, md: 3 }}>
                             <Controller name="taxPercent" control={control} render={({ field }) => (
-                                <TextField {...field} fullWidth label="ДДФЛ %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!watch('hasTaxDeduction')} />
+                                <TextField {...field} fullWidth label="ДДФЛ %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!hasTaxDeduction} />
                             )} />
                         </Grid>
                         
                         <Grid size={{ xs: 6, md: 3 }}>
-                            <FormControlLabel
-                                control={<Checkbox checked={!!watch('hasHealthInsurance')} onChange={e => setValue('hasHealthInsurance', e.target.checked)} />}
-                                label="Осигуровки"
-                            />
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <Checkbox 
+                                    checked={hasHealthInsurance}
+                                    onChange={e => {
+                                        setHasHealthInsurance(e.target.checked);
+                                        setValue('hasHealthInsurance', e.target.checked);
+                                    }}
+                                />
+                                <Typography variant="body2">Осигуровки</Typography>
+                            </Box>
                         </Grid>
                         <Grid size={{ xs: 6, md: 3 }}>
                             <Controller name="healthInsurancePercent" control={control} render={({ field }) => (
-                                <TextField {...field} fullWidth label="Осигуровки %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!watch('hasHealthInsurance')} />
+                                <TextField {...field} fullWidth label="Осигуровки %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!hasHealthInsurance} />
                             )} />
                         </Grid>
                     </Grid>
@@ -1082,22 +1187,6 @@ const GlobalPayrollSettings: React.FC = () => {
                     
                     <Box sx={{ mt: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
                         <Button type="submit" variant="contained" disabled={updating}>Запази Глобалните Настройки</Button>
-                        
-                        {saveStatus === 'saving' && (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'info.main' }}>
-                                <CloudSyncIcon sx={{ animation: 'spin 2s linear infinite', '@keyframes spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } } }} />
-                                <Typography variant="caption">Записване...</Typography>
-                            </Box>
-                        )}
-                        {saveStatus === 'saved' && (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'success.main' }}>
-                                <CheckCircleIcon fontSize="small" />
-                                <Typography variant="caption">Глобалните промени са записани автоматично</Typography>
-                            </Box>
-                        )}
-                        {saveStatus === 'error' && (
-                            <Typography variant="caption" color="error">Грешка при автоматичен запис</Typography>
-                        )}
                     </Box>
                 </Box>
             </CardContent>
@@ -1226,9 +1315,9 @@ const AdvanceLoanManager: React.FC = () => {
 
 const PayrollSettings: React.FC = () => {
   const { data, loading } = useQuery(GET_DATA_QUERY);
-  const { data: globalData } = useQuery(GET_GLOBAL_CONFIG_QUERY); // Fetch globals to use as defaults
+  const { data: globalData } = useQuery(GET_GLOBAL_CONFIG_QUERY);
   const [mode, setMode] = useState<'user' | 'position'>('user');
-  const { currency } = useCurrency(); // Get global currency
+  const { currency } = useCurrency();
   
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
@@ -1245,8 +1334,10 @@ const PayrollSettings: React.FC = () => {
   
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [hasTaxDeduction, setHasTaxDeductionLocal] = useState(false);
+  const [hasHealthInsurance, setHasHealthInsuranceLocal] = useState(false);
 
-  const { control, handleSubmit, reset, watch, setValue, getValues } = useForm<PayrollLegalSettings>({
+  const methods = useForm<PayrollLegalSettings>({
     defaultValues: {
       targetId: '',
       hourlyRate: 0,
@@ -1263,8 +1354,9 @@ const PayrollSettings: React.FC = () => {
     }
   });
 
-  const selectedTargetId = watch('targetId');
-  const watchedSalary = watch('monthlySalary');
+  const { control, handleSubmit, reset, setValue, getValues } = methods;
+  const selectedTargetId = useWatch({ control, name: 'targetId' });
+  const watchedSalary = useWatch({ control, name: 'monthlySalary' });
   const autoSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-calculate hourly rate when salary changes and auto-save
@@ -1370,8 +1462,9 @@ const PayrollSettings: React.FC = () => {
     }
 
     if (config) {
-        // Use individual config
         const dailyHours = config.standardHoursPerDay || 8;
+        setHasTaxDeductionLocal(config.hasTaxDeduction ?? false);
+        setHasHealthInsuranceLocal(config.hasHealthInsurance ?? false);
         reset({
             targetId: selectedTargetId,
             hourlyRate: config.hourlyRate,
@@ -1387,8 +1480,9 @@ const PayrollSettings: React.FC = () => {
             hasHealthInsurance: config.hasHealthInsurance
         });
     } else if (globalData?.globalPayrollConfig) {
-        // Fallback to Global Defaults if no individual config
         const g = globalData.globalPayrollConfig;
+        setHasTaxDeductionLocal(g.hasTaxDeduction ?? false);
+        setHasHealthInsuranceLocal(g.hasHealthInsurance ?? false);
         reset({
             targetId: selectedTargetId,
             hourlyRate: g.hourlyRate,
@@ -1404,7 +1498,8 @@ const PayrollSettings: React.FC = () => {
             hasHealthInsurance: g.hasHealthInsurance
         });
     } else {
-        // Hard fallback
+        setHasTaxDeductionLocal(false);
+        setHasHealthInsuranceLocal(false);
         reset({
             targetId: selectedTargetId,
             hourlyRate: 0,
@@ -1420,7 +1515,7 @@ const PayrollSettings: React.FC = () => {
             hasHealthInsurance: false 
         });
     }
-  }, [selectedTargetId, mode, data, globalData, reset]);
+  }, [selectedTargetId, mode, data, globalData, reset, setHasTaxDeductionLocal, setHasHealthInsuranceLocal]);
 
   type IndividualFormData = PayrollLegalSettings;
   const onSubmitIndividual = async (formData: IndividualFormData) => {
@@ -1465,6 +1560,7 @@ const PayrollSettings: React.FC = () => {
   if (loading) return <CircularProgress />;
 
   return (
+    <FormProvider {...methods}>
     <Box sx={{ maxWidth: 900 }}>
       <Box sx={{ mb: 3 }}>
         <Button 
@@ -1591,26 +1687,38 @@ const PayrollSettings: React.FC = () => {
               </Grid>
               
               <Grid size={{ xs: 6, md: 3 }}>
-                  <FormControlLabel
-                      control={<Checkbox checked={!!watch('hasTaxDeduction')} onChange={e => setValue('hasTaxDeduction', e.target.checked)} />}
-                      label="ДДФЛ"
-                  />
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Checkbox 
+                          checked={hasTaxDeduction}
+                          onChange={e => {
+                              setHasTaxDeductionLocal(e.target.checked);
+                              setValue('hasTaxDeduction', e.target.checked);
+                          }}
+                      />
+                      <Typography variant="body2">ДДФЛ</Typography>
+                  </Box>
               </Grid>
               <Grid size={{ xs: 6, md: 3 }}>
                   <Controller name="taxPercent" control={control} render={({ field }) => (
-                      <TextField {...field} fullWidth label="ДДФЛ %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!watch('hasTaxDeduction')} />
+                      <TextField {...field} fullWidth label="ДДФЛ %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!hasTaxDeduction} />
                   )} />
               </Grid>
               
               <Grid size={{ xs: 6, md: 3 }}>
-                  <FormControlLabel
-                      control={<Checkbox checked={!!watch('hasHealthInsurance')} onChange={e => setValue('hasHealthInsurance', e.target.checked)} />}
-                      label="Осигуровки"
-                  />
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Checkbox 
+                          checked={hasHealthInsurance}
+                          onChange={e => {
+                              setHasHealthInsuranceLocal(e.target.checked);
+                              setValue('hasHealthInsurance', e.target.checked);
+                          }}
+                      />
+                      <Typography variant="body2">Осигуровки</Typography>
+                  </Box>
               </Grid>
               <Grid size={{ xs: 6, md: 3 }}>
                   <Controller name="healthInsurancePercent" control={control} render={({ field }) => (
-                      <TextField {...field} fullWidth label="Осигуровки %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!watch('hasHealthInsurance')} />
+                      <TextField {...field} fullWidth label="Осигуровки %" type="number" margin="dense" size="small" inputProps={{ step: "0.01" }} disabled={!hasHealthInsurance} />
                   )} />
               </Grid>
             </Grid>
@@ -1704,6 +1812,7 @@ const PayrollSettings: React.FC = () => {
         </Card>
       )}
     </Box>
+    </FormProvider>
   );
 };
 
@@ -1817,6 +1926,7 @@ const HolidaySettings: React.FC = () => {
     'settings': 0,
     'templates': 4,
     'annexes': 5,
+    'contracts': 6,
   };
 
   interface Props {
@@ -1855,6 +1965,7 @@ const HolidaySettings: React.FC = () => {
       {tabValue === 3 && <PayrollReports />}
       {tabValue === 4 && <TemplatesSettings />}
       {tabValue === 5 && <AnnexesSettings />}
+      {tabValue === 6 && <EmploymentContractsList />}
     </Container>
   );
 };
@@ -1878,8 +1989,16 @@ const TemplatesSettings: React.FC = () => {
   const [createClauseTemplate] = useMutation(CREATE_CLAUSE_TEMPLATE);
   const [deleteClauseTemplate] = useMutation(DELETE_CLAUSE_TEMPLATE);
 
+  // Section mutations
+  const [addSectionToContractTemplate] = useMutation(ADD_SECTION_TO_CONTRACT_TEMPLATE);
+  const [updateSectionInContractTemplate] = useMutation(UPDATE_SECTION_IN_CONTRACT_TEMPLATE);
+  const [addSectionToAnnexTemplate] = useMutation(ADD_SECTION_TO_ANNEX_TEMPLATE);
+  const [updateSectionInAnnexTemplate] = useMutation(UPDATE_SECTION_IN_ANNEX_TEMPLATE);
+
   const [openDialog, setOpenDialog] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<ContractTemplate | AnnexTemplate | ClauseTemplate | null>(null);
+  const [openSectionDialog, setOpenSectionDialog] = useState<boolean>(false);
+  const [editingSection, setEditingSection] = useState<{ id?: number; title: string; content: string; orderIndex: number; isRequired: boolean } | null>(null);
 
   const contractTypes = [
     { value: 'full_time', label: 'Пълно работно време' },
@@ -1947,6 +2066,78 @@ const TemplatesSettings: React.FC = () => {
         setSuccess('Клаузата е изтрита');
         await refetchClauses();
       }
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  };
+
+  const handleOpenSectionDialog = (section?: { id?: number; title: string; content: string; orderIndex: number; isRequired: boolean }) => {
+    setEditingSection(section || { title: '', content: '', orderIndex: 0, isRequired: false });
+    setOpenSectionDialog(true);
+  };
+
+  const handleSaveSection = async (templateId: number) => {
+    if (!editingSection) return;
+    setError(null);
+    try {
+      if (templateType === 'contracts') {
+        if (editingSection.id) {
+          await updateSectionInContractTemplate({
+            variables: {
+              sectionId: editingSection.id,
+              section: {
+                title: editingSection.title,
+                content: editingSection.content,
+                orderIndex: editingSection.orderIndex,
+                isRequired: editingSection.isRequired
+              }
+            }
+          });
+        } else {
+          await addSectionToContractTemplate({
+            variables: {
+              templateId,
+              section: {
+                title: editingSection.title,
+                content: editingSection.content,
+                orderIndex: editingSection.orderIndex,
+                isRequired: editingSection.isRequired
+              }
+            }
+          });
+        }
+        await refetchContracts();
+      } else if (templateType === 'annexes') {
+        if (editingSection.id) {
+          await updateSectionInAnnexTemplate({
+            variables: {
+              sectionId: editingSection.id,
+              section: {
+                title: editingSection.title,
+                content: editingSection.content,
+                orderIndex: editingSection.orderIndex,
+                isRequired: editingSection.isRequired
+              }
+            }
+          });
+        } else {
+          await addSectionToAnnexTemplate({
+            variables: {
+              templateId,
+              section: {
+                title: editingSection.title,
+                content: editingSection.content,
+                orderIndex: editingSection.orderIndex,
+                isRequired: editingSection.isRequired
+              }
+            }
+          });
+        }
+        await refetchAnnexes();
+      }
+      setSuccess(editingSection.id ? 'Секцията е обновена' : 'Секцията е добавена');
+      setOpenSectionDialog(false);
+      setEditingSection(null);
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -2125,7 +2316,8 @@ const TemplatesSettings: React.FC = () => {
                           </Typography>
                         )}
                       </Box>
-                      <Box>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button size="small" variant="outlined" onClick={() => handleOpenSectionDialog()}>Добав секция</Button>
                         <Button size="small" color="error" onClick={() => handleDelete(template.id)}>Изтрий</Button>
                       </Box>
                     </Box>
@@ -2154,7 +2346,8 @@ const TemplatesSettings: React.FC = () => {
                           Вид промяна: {template.changeType}
                         </Typography>
                       </Box>
-                      <Box>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button size="small" variant="outlined" onClick={() => handleOpenSectionDialog()}>Добав секция</Button>
                         <Button size="small" color="error" onClick={() => handleDelete(template.id)}>Изтрий</Button>
                       </Box>
                     </Box>
@@ -2194,14 +2387,76 @@ const TemplatesSettings: React.FC = () => {
       )}
 
       {openDialog && (
-        <Card variant="outlined" sx={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 1000, width: 500, maxHeight: '90vh', overflow: 'auto', p: 2 }}>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            {editingItem ? 'Редактирай' : 'Създай нов'} {templateType === 'contracts' ? 'шаблон' : templateType === 'annexes' ? 'шаблон за анекс' : 'клауза'}
-          </Typography>
-          {renderForm()}
+        <Card sx={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 1000, width: '90%', maxWidth: 600, maxHeight: '90vh', overflow: 'auto' }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              {editingItem ? 'Редактирай' : 'Създай нов'} {templateType === 'contracts' ? 'шаблон' : templateType === 'annexes' ? 'шаблон за анекс' : 'клауза'}
+            </Typography>
+            {renderForm()}
+          </CardContent>
         </Card>
       )}
       {openDialog && <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 999 }} onClick={() => setOpenDialog(false)} />}
+
+      {/* Section Dialog */}
+      {openSectionDialog && editingSection && (
+        <Card sx={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 1000, width: '90%', maxWidth: 600, maxHeight: '90vh', overflow: 'auto' }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              {editingSection.id ? 'Редактирай секция' : 'Нова секция'}
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                label="Заглав"
+                value={editingSection.title}
+                onChange={(e) => setEditingSection({ ...editingSection, title: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                label="Съдържание"
+                value={editingSection.content}
+                onChange={(e) => setEditingSection({ ...editingSection, content: e.target.value })}
+                multiline
+                rows={4}
+                fullWidth
+              />
+              <TextField
+                label="Ред"
+                type="number"
+                value={editingSection.orderIndex}
+                onChange={(e) => setEditingSection({ ...editingSection, orderIndex: parseInt(e.target.value) || 0 })}
+                fullWidth
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={editingSection.isRequired}
+                    onChange={(e) => setEditingSection({ ...editingSection, isRequired: e.target.checked })}
+                  />
+                }
+                label="Задължителна секция"
+              />
+              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                <Button variant="outlined" onClick={() => { setOpenSectionDialog(false); setEditingSection(null); }}>
+                  Отказ
+                </Button>
+                <Button variant="contained" onClick={() => {
+                  const selectedTemplate = templateType === 'contracts' 
+                    ? contractData?.contractTemplates?.[0] 
+                    : annexData?.annexTemplates?.[0];
+                  if (selectedTemplate?.id) {
+                    handleSaveSection(selectedTemplate.id);
+                  }
+                }}>
+                  Запиши
+                </Button>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+      {openSectionDialog && <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 999 }} onClick={() => { setOpenSectionDialog(false); setEditingSection(null); }} />}
+
     </Box>
   );
 };
@@ -2211,7 +2466,6 @@ const AnnexesSettings: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [itemType, setItemType] = useState<'contracts' | 'annexes'>('contracts');
   const [openAnnexDialog, setOpenAnnexDialog] = useState(false);
   const [selectedContractId, setSelectedContractId] = useState<number | ''>('');
   const [annexForm, setAnnexForm] = useState({
@@ -2228,7 +2482,7 @@ const AnnexesSettings: React.FC = () => {
     variables: { status: statusFilter }
   });
 
-  const { data: contractData, loading: contractLoading, refetch: refetchContracts } = useQuery(GET_CONTRACTS);
+  const { data: contractData } = useQuery(GET_CONTRACTS);
 
   const [signAnnex] = useMutation(SIGN_CONTRACT_ANNEX);
   const [createAnnex] = useMutation(CREATE_CONTRACT_ANNEX);
@@ -2306,164 +2560,102 @@ const AnnexesSettings: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" fontWeight="bold">Договори</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button variant="contained" color="primary" onClick={() => window.location.href = '/admin/users?new=true'}>
-            Нов договор
-          </Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenAnnexDialog(true)}>
-            Нов анекс
-          </Button>
-        </Box>
+        <Typography variant="h5" fontWeight="bold">Допълнителни споразумения (Анекси)</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenAnnexDialog(true)}>
+          Нов анекс
+        </Button>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
       <Box sx={{ mb: 3, display: 'flex', gap: 1 }}>
-        <Button variant={itemType === 'contracts' ? 'contained' : 'outlined'} onClick={() => setItemType('contracts')}>
-          Договори
+        <Button variant={statusFilter === null ? 'contained' : 'outlined'} onClick={() => setStatusFilter(null)}>
+          Всички
         </Button>
-        <Button variant={itemType === 'annexes' ? 'contained' : 'outlined'} onClick={() => setItemType('annexes')}>
-          Анекси
+        <Button variant={statusFilter === 'draft' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('draft')}>
+          Чернови
+        </Button>
+        <Button variant={statusFilter === 'pending' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('pending')}>
+          Чакащи
+        </Button>
+        <Button variant={statusFilter === 'signed' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('signed')}>
+          Подписани
         </Button>
       </Box>
 
-      {itemType === 'contracts' && (
-        <Box>
-          {contractLoading ? <CircularProgress /> : activeContracts.length === 0 ? (
-            <Alert severity="info">Няма намерени активни договори</Alert>
-          ) : (
-            activeContracts.map((user: User) => user.employmentContract && (
-              <Card key={user.employmentContract.id} variant="outlined" sx={{ mb: 2 }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Box>
-                      <Typography variant="h6">
-                        {user.firstName} {user.lastName}
-                        <Chip label={user.employmentContract.contractType === 'full_time' ? 'Пълен работен ден' : user.employmentContract.contractType === 'part_time' ? 'Непълен работен ден' : 'Договор за услуга'} size="small" sx={{ ml: 1 }} />
+      {annexLoading ? <CircularProgress /> : (
+        annexData?.annexes?.length === 0 ? (
+          <Alert severity="info">Няма намерени анекси</Alert>
+        ) : (
+          annexData?.annexes?.map((annex: ContractAnnex) => (
+            <Card key={annex.id} variant="outlined" sx={{ mb: 2 }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <Box>
+                    <Typography variant="h6">
+                      Анекс №{annex.annexNumber || annex.id}
+                      <Chip 
+                        label={getStatusLabel(annex.status)} 
+                        size="small" 
+                        color={getStatusColor(annex.status)} 
+                        sx={{ ml: 1 }} 
+                      />
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Дата: {annex.effectiveDate}
+                    </Typography>
+                    {annex.changeType && (
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Вид: {annex.changeType}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        ЕГН: {user.pin}
+                    )}
+                    {annex.baseSalary && (
+                      <Typography variant="body2" color="primary.main">
+                        Нова заплата: {Number(annex.baseSalary).toFixed(2)} лв.
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Договор №{user.employmentContract.contractNumber} от {user.employmentContract.startDate}
-                      </Typography>
-                      {user.employmentContract.position && (
-                        <Typography variant="body2" color="primary.main">
-                          Позиция: {user.employmentContract.position.title}
-                        </Typography>
-                      )}
-                      {user.employmentContract.baseSalary && (
-                        <Typography variant="body2" color="primary.main">
-                          Заплата: {Number(user.employmentContract.baseSalary).toFixed(2)} лв.
-                        </Typography>
-                      )}
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button size="small" variant="outlined" onClick={() => window.location.href = `/admin/users?edit=${user.id}`}>
-                        Редактирай
-                      </Button>
-                    </Box>
+                    )}
                   </Box>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </Box>
-      )}
-
-      {itemType === 'annexes' && (
-        <Box>
-          <Box sx={{ mb: 3, display: 'flex', gap: 1 }}>
-            <Button variant={statusFilter === null ? 'contained' : 'outlined'} onClick={() => setStatusFilter(null)}>
-              Всички
-            </Button>
-            <Button variant={statusFilter === 'draft' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('draft')}>
-              Чернови
-            </Button>
-            <Button variant={statusFilter === 'pending' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('pending')}>
-              Чакащи
-            </Button>
-            <Button variant={statusFilter === 'signed' ? 'contained' : 'outlined'} onClick={() => setStatusFilter('signed')}>
-              Подписани
-            </Button>
-          </Box>
-
-          {annexLoading ? <CircularProgress /> : (
-            annexData?.annexes?.length === 0 ? (
-              <Alert severity="info">Няма намерени анекси</Alert>
-            ) : (
-              annexData?.annexes?.map((annex: ContractAnnex) => (
-                <Card key={annex.id} variant="outlined" sx={{ mb: 2 }}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <Box>
-                        <Typography variant="h6">
-                          Анекс №{annex.annexNumber || annex.id}
-                          <Chip 
-                            label={getStatusLabel(annex.status)} 
-                            size="small" 
-                            color={getStatusColor(annex.status)} 
-                            sx={{ ml: 1 }} 
-                          />
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Дата: {annex.effectiveDate}
-                        </Typography>
-                        {annex.changeType && (
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            Вид: {annex.changeType}
-                          </Typography>
-                        )}
-                        {annex.baseSalary && (
-                          <Typography variant="body2" color="primary.main">
-                            Нова заплата: {Number(annex.baseSalary).toFixed(2)} лв.
-                          </Typography>
-                        )}
-                      </Box>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button 
-                          size="small" 
-                          variant="outlined" 
-                          startIcon={<PrintIcon />}
-                          onClick={() => {
-                            const printWindow = window.open(`/api/export/trz/annex/${annex.id}/pdf`, '_blank');
-                            printWindow?.addEventListener('load', () => {
-                              printWindow.print();
-                            });
-                          }}
-                        >
-                          Принтирай
-                        </Button>
-                        <Button 
-                          size="small" 
-                          variant="outlined" 
-                          startIcon={<FileDownloadIcon />}
-                          component="a"
-                          href={`/api/export/trz/annex/${annex.id}/pdf`}
-                          target="_blank"
-                        >
-                          PDF
-                        </Button>
-                        {!annex.isSigned && annex.status !== 'signed' && (
-                          <Button size="small" variant="contained" onClick={() => handleSign(annex.id)}>
-                            Подпиши
-                          </Button>
-                        )}
-                        {annex.isSigned && (
-                          <Typography variant="body2" color="success.main">
-                            Подписан: {annex.signedAt ? new Date(annex.signedAt).toLocaleDateString() : ''}
-                          </Typography>
-                        )}
-                      </Box>
-                    </Box>
-                  </CardContent>
-                </Card>
-              ))
-            )
-          )}
-        </Box>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button 
+                      size="small" 
+                      variant="outlined" 
+                      startIcon={<PrintIcon />}
+                      onClick={() => {
+                        const printWindow = window.open(`/api/export/trz/annex/${annex.id}/pdf`, '_blank');
+                        printWindow?.addEventListener('load', () => {
+                          printWindow.print();
+                        });
+                      }}
+                    >
+                      Принтирай
+                    </Button>
+                    <Button 
+                      size="small" 
+                      variant="outlined" 
+                      startIcon={<FileDownloadIcon />}
+                      component="a"
+                      href={`/api/export/trz/annex/${annex.id}/pdf`}
+                      target="_blank"
+                    >
+                      PDF
+                    </Button>
+                    {!annex.isSigned && annex.status !== 'signed' && (
+                      <Button size="small" variant="contained" onClick={() => handleSign(annex.id)}>
+                        Подпиши
+                      </Button>
+                    )}
+                    {annex.isSigned && (
+                      <Typography variant="body2" color="success.main">
+                        Подписан: {annex.signedAt ? new Date(annex.signedAt).toLocaleDateString() : ''}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          ))
+        )
       )}
 
       {/* New Annex Dialog */}
@@ -2511,7 +2703,7 @@ const AnnexesSettings: React.FC = () => {
             />
             <TextField
               fullWidth
-              label="Работни часа/седмица"
+              label="Работни часове/седмица"
               type="number"
               value={annexForm.workHoursPerWeek}
               onChange={(e) => setAnnexForm({ ...annexForm, workHoursPerWeek: e.target.value })}

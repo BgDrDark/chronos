@@ -24,7 +24,13 @@ def anyio_backend():
 @pytest.fixture(scope="session")
 async def setup_test_database():
     """Create a test database and drop it after tests."""
-    default_db_url_sync = str(settings.DATABASE_URL).replace("postgresql+asyncpg", "postgresql").replace("chronosdb", "postgres")
+    db_url = str(settings.DATABASE_URL)
+    default_db_url_sync = db_url.replace("postgresql+asyncpg", "postgresql")
+    # Extract database name and replace with 'postgres'
+    if "/" in default_db_url_sync:
+        base_url = default_db_url_sync.rsplit("/", 1)[0]
+        default_db_url_sync = f"{base_url}/postgres"
+    
     conn = None
     try:
         conn = psycopg.connect(default_db_url_sync)
@@ -38,25 +44,17 @@ async def setup_test_database():
         if conn:
             conn.close()
     
-    # Create tables via Alembic head
-    from alembic.config import Config
-    from alembic import command
-    import os
+    # Create tables using SQLAlchemy create_all (bypasses broken migrations)
+    from sqlalchemy import create_engine
+    from backend.database.models import Base
     
-    # Alembic needs a sync URL
-    test_db_url_sync = str(settings.DATABASE_URL).replace("postgresql+asyncpg", "postgresql").replace("chronosdb", TEST_DB_NAME)
+    test_db_url_sync = db_url.replace("postgresql+asyncpg", "postgresql").rsplit("/", 1)[0] + f"/{TEST_DB_NAME}"
+    sync_engine = create_engine(test_db_url_sync)
     
-    # Path to alembic.ini
-    alembic_ini_path = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
-    alembic_cfg = Config(alembic_ini_path)
-    
-    # Ensure script_location is correct
-    alembic_cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "..", "alembic"))
-    alembic_cfg.set_main_option("sqlalchemy.url", test_db_url_sync)
-    
-    # Run migrations
-    command.upgrade(alembic_cfg, "head")
-    print(f"Migrated database {TEST_DB_NAME} to head")
+    # Create all tables from models
+    Base.metadata.create_all(bind=sync_engine)
+    sync_engine.dispose()
+    print(f"Created tables in database {TEST_DB_NAME}")
 
     yield
     
@@ -82,7 +80,8 @@ async def setup_test_database():
 @pytest.fixture(name="test_db")
 async def test_db_fixture(setup_test_database):
     """Provides an AsyncSession for each test."""
-    test_db_url = str(settings.DATABASE_URL).replace("chronosdb", TEST_DB_NAME)
+    db_url = str(settings.DATABASE_URL)
+    test_db_url = db_url.rsplit("/", 1)[0] + f"/{TEST_DB_NAME}"
     engine = create_async_engine(test_db_url, future=True)
     
     TestingSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

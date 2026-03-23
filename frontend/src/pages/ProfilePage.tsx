@@ -13,6 +13,7 @@ import EmailIcon from '@mui/icons-material/Email';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import DescriptionIcon from '@mui/icons-material/Description';
+import ContractIcon from '@mui/icons-material/Assignment';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import axios from 'axios';
@@ -21,6 +22,7 @@ import { formatDate } from '../utils/dateUtils';
 import PushNotificationManager from '../components/PushNotificationManager';
 import MyQrCard from '../components/MyQrCard';
 import DocumentManager from '../components/DocumentManager';
+import ContractDossier from '../components/ContractDossier';
 
 const GET_USER_PROFILE = gql`
   query GetUserProfile($id: Int) {
@@ -241,6 +243,7 @@ const ProfilePage: React.FC = () => {
             <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
                 <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)}>
                     <Tab icon={<PersonIcon />} label="Лични данни" iconPosition="start" />
+                    <Tab icon={<ContractIcon />} label="Трудов договор" iconPosition="start" />
                     <Tab icon={<DescriptionIcon />} label="Документи" iconPosition="start" />
                     <Tab icon={<SettingsIcon />} label="Настройки и Сигурност" iconPosition="start" />
                 </Tabs>
@@ -324,13 +327,18 @@ const ProfilePage: React.FC = () => {
                 </>
             )}
 
-            {/* TAB 1: Documents (Digital Dossier) */}
+            {/* TAB 1: Contract Dossier */}
             {activeTab === 1 && (
+                <ContractDossier userId={user.id} />
+            )}
+
+            {/* TAB 2: Documents (Digital Dossier) */}
+            {activeTab === 2 && (
                 <DocumentManager userId={user.id} isAdmin={isAdmin} />
             )}
 
-            {/* TAB 2: Settings & Security */}
-            {activeTab === 2 && (
+            {/* TAB 3: Settings & Security */}
+            {activeTab === 3 && (
                 <Grid container spacing={3}>
                     <Grid size={{ xs: 12, md: 4 }}>
                         <MyQrCard 

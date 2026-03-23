@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   Container, Typography, Box, Paper, Button, Grid, TextField, MenuItem,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Chip, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress,
-  List, ListItem, ListItemText, Divider, Select, InputAdornment
+  List, ListItem, ListItemText, Divider, Select, InputAdornment, Alert
 } from '@mui/material';
 import {
   AddShoppingCart as OrderIcon,
@@ -14,9 +14,46 @@ import {
   PointOfSale as SaleIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, gql } from '@apollo/client';
-import { CREATE_PRODUCTION_ORDER, UPDATE_PRODUCTION_ORDER_STATUS, CONFIRM_PRODUCTION_ORDER } from '../graphql/confectioneryMutations';
+import { CREATE_PRODUCTION_ORDER, UPDATE_PRODUCTION_ORDER_STATUS, CONFIRM_PRODUCTION_ORDER, GET_RECIPES_WITH_PRICES } from '../graphql/confectioneryMutations';
 import { ME_QUERY } from '../graphql/queries';
 import { QRCodeSVG } from 'qrcode.react';
+import { type RecipeWithPrice, type ProductionOrder, type Recipe, type ProductionTask, type RecipeIngredient, getErrorMessage } from '../types';
+
+interface LabelData {
+  qrCodeContent: string;
+  batchNumber: string;
+  productName: string;
+  quantity: number;
+  expiryDate: string;
+}
+
+interface ProductionRecordIngredient {
+  id: number;
+  ingredientName: string;
+  batchNumber: string;
+  expiryDate: string;
+  quantityUsed: number;
+  unit: string;
+}
+
+interface ProductionRecordWorker {
+  id: number;
+  userName: string;
+  workstationName: string;
+  startedAt: string;
+  completedAt: string;
+}
+
+interface QuickSaleForm {
+  recipeId: string;
+  pieces: number;
+  quantity: string;
+  clientName: string;
+  clientPhone: string;
+  paymentMethod: string;
+  price: string;
+  notes: string;
+}
 
 const GENERATE_LABEL = gql`
   mutation GenerateLabel($orderId: Int!) {
@@ -70,6 +107,15 @@ const GET_ORDERS_AND_RECIPES = gql`
   }
 `;
 
+const CREATE_QUICK_SALE = gql`
+  mutation CreateQuickSale($input: QuickSaleInput!) {
+    createQuickSale(input: $input) {
+      id
+      status
+    }
+  }
+`;
+
 const GET_PRODUCTION_RECORD = gql`
   query GetProductionRecord($orderId: Int!) {
     productionRecordByOrder(orderId: $orderId) {
@@ -99,17 +145,18 @@ const GET_PRODUCTION_RECORD = gql`
 const OrdersPage: React.FC = () => {
   const [openModal, setOpenModal] = useState(false);
   const [openSaleModal, setOpenSaleModal] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<any>(null);
-  const [labelData, setLabelData] = useState<any>(null);
+  const [selectedOrder, setSelectedOrder] = useState<ProductionOrder | null>(null);
+  const [labelData, setLabelData] = useState<LabelData | null>(null);
   const [historyOrderId, setHistoryOrderId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
-  // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Quick sale form state
-  const [saleForm, setSaleForm] = useState({
+  const [saleForm, setSaleForm] = useState<QuickSaleForm>({
     recipeId: '',
+    pieces: 12,
     quantity: '1',
     clientName: '',
     clientPhone: '',
@@ -118,40 +165,33 @@ const OrdersPage: React.FC = () => {
     notes: ''
   });
 
-  const { data, loading, error, refetch } = useQuery(GET_ORDERS_AND_RECIPES);
+  const { data, loading, error: queryError, refetch } = useQuery(GET_ORDERS_AND_RECIPES);
+  const { data: recipesWithPricesData } = useQuery(GET_RECIPES_WITH_PRICES);
   const { data: recordData } = useQuery(GET_PRODUCTION_RECORD, {
     variables: { orderId: historyOrderId },
     skip: !historyOrderId
   });
+  
   const [createOrder] = useMutation(CREATE_PRODUCTION_ORDER);
   const [updateOrderStatus] = useMutation(UPDATE_PRODUCTION_ORDER_STATUS);
   const [generateLabel] = useMutation(GENERATE_LABEL);
   const [confirmOrder] = useMutation(CONFIRM_PRODUCTION_ORDER);
-
-  const CREATE_QUICK_SALE = gql`
-    mutation CreateQuickSale($input: QuickSaleInput!) {
-      createQuickSale(input: $input) {
-        id
-        status
-      }
-    }
-  `;
   const [createQuickSale] = useMutation(CREATE_QUICK_SALE);
+
+  const recipesWithPrices = useMemo(() => recipesWithPricesData?.recipesWithPrices || [] as RecipeWithPrice[], [recipesWithPricesData]);
 
   const filteredOrders = useMemo(() => {
     if (!data?.productionOrders) return [];
     
-    let orders = data.productionOrders;
+    let orders: ProductionOrder[] = data.productionOrders;
     
-    // Filter by status
     if (statusFilter !== 'all') {
-      orders = orders.filter((o: any) => o.status === statusFilter);
+      orders = orders.filter((o) => o.status === statusFilter);
     }
     
-    // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      orders = orders.filter((o: any) => 
+      orders = orders.filter((o) => 
         o.id.toString().includes(query) ||
         o.recipe?.name?.toLowerCase().includes(query) ||
         o.notes?.toLowerCase().includes(query)
@@ -166,12 +206,51 @@ const OrdersPage: React.FC = () => {
       const result = await generateLabel({ variables: { orderId } });
       setLabelData(result.data.generateLabel);
     } catch (err) {
-      console.error(err);
+      setError(getErrorMessage(err));
     }
   };
 
+  const handleRecipeSelect = useCallback((recipeId: string) => {
+    const recipe = (recipesWithPrices as RecipeWithPrice[]).find((r: RecipeWithPrice) => r.id === parseInt(recipeId));
+    const defaultPieces = recipe?.defaultPieces || 12;
+    if (recipe?.finalPrice) {
+      const quantity = parseFloat(saleForm.quantity) || 1;
+      const totalPrice = recipe.finalPrice * quantity;
+      setSaleForm(prev => ({
+        ...prev,
+        recipeId,
+        pieces: defaultPieces,
+        price: totalPrice.toFixed(2)
+      }));
+    } else {
+      setSaleForm(prev => ({ ...prev, recipeId, pieces: defaultPieces }));
+    }
+  }, [recipesWithPrices, saleForm.quantity]);
+
+  const handleQuantityChange = useCallback((quantity: string) => {
+    const qty = parseFloat(quantity) || 1;
+    const recipeId = saleForm.recipeId;
+    
+    if (recipeId) {
+      const recipe = (recipesWithPrices as RecipeWithPrice[]).find((r: RecipeWithPrice) => r.id === parseInt(recipeId));
+      if (recipe?.finalPrice) {
+        const totalPrice = recipe.finalPrice * qty;
+        setSaleForm(prev => ({
+          ...prev,
+          quantity,
+          price: totalPrice.toFixed(2)
+        }));
+      } else {
+        setSaleForm(prev => ({ ...prev, quantity }));
+      }
+    } else {
+      setSaleForm(prev => ({ ...prev, quantity }));
+    }
+  }, [recipesWithPrices, saleForm.recipeId]);
+
   const handleQuickSale = async () => {
     if (!user?.companyId || !saleForm.recipeId) return;
+    
     try {
       await createQuickSale({
         variables: {
@@ -190,6 +269,7 @@ const OrdersPage: React.FC = () => {
       setOpenSaleModal(false);
       setSaleForm({
         recipeId: '',
+        pieces: 12,
         quantity: '1',
         clientName: '',
         clientPhone: '',
@@ -197,9 +277,11 @@ const OrdersPage: React.FC = () => {
         price: '',
         notes: ''
       });
+      setSuccessMessage('Продажбата е осъществена успешно');
       refetch();
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      console.error(err);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -217,7 +299,6 @@ const OrdersPage: React.FC = () => {
   const handleSubmit = async () => {
     if (!user?.companyId) return;
     try {
-      // Combine date and time
       const dueDateTime = `${form.dueDate}T${form.dueTime}:00Z`;
 
       await createOrder({
@@ -234,7 +315,7 @@ const OrdersPage: React.FC = () => {
       setOpenModal(false);
       refetch();
     } catch (err) {
-      console.error(err);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -260,14 +341,14 @@ const OrdersPage: React.FC = () => {
     }
   };
 
-  const getOrderPriority = (order: any) => {
+  const getOrderPriority = (order: ProductionOrder) => {
     if (order.status === 'completed') return 'normal';
-    const dueDate = new Date(order.dueDate);
+    const dueDate = new Date(order.dueDate || '');
     const now = new Date();
     const diffHours = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60);
     
-    if (diffHours < 0) return 'overdue'; // Просрочена
-    if (diffHours < 24) return 'soon'; // Скоро изтича
+    if (diffHours < 0) return 'overdue';
+    if (diffHours < 24) return 'soon';
     return 'normal';
   };
 
@@ -281,7 +362,7 @@ const OrdersPage: React.FC = () => {
       });
       refetch();
     } catch (err) {
-      console.error(err);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -290,12 +371,12 @@ const OrdersPage: React.FC = () => {
       await confirmOrder({ variables: { id: orderId } });
       refetch();
     } catch (err) {
-      console.error(err);
+      setError(getErrorMessage(err));
     }
   };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
-  if (error) return <Typography color="error">Грешка: {error.message}</Typography>;
+  if (queryError) return <Typography color="error">Грешка: {getErrorMessage(queryError)}</Typography>;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -317,6 +398,18 @@ const OrdersPage: React.FC = () => {
           </Button>
         </Box>
       </Box>
+
+      {error && (
+        <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {successMessage && (
+        <Alert severity="success" onClose={() => setSuccessMessage(null)} sx={{ mb: 2 }}>
+          {successMessage}
+        </Alert>
+      )}
 
       {/* Search and Filter */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
@@ -364,7 +457,7 @@ const OrdersPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredOrders.map((order: any) => {
+            {filteredOrders.map((order) => {
               const priority = getOrderPriority(order);
               return (
               <TableRow 
@@ -392,7 +485,7 @@ const OrdersPage: React.FC = () => {
                 <TableCell>
                   <Chip 
                     label={getStatusLabel(order.status)} 
-                    color={getStatusColor(order.status) as any} 
+                    color={getStatusColor(order.status)} 
                     size="small" 
                   />
                 </TableCell>
@@ -432,7 +525,7 @@ const OrdersPage: React.FC = () => {
                 value={form.recipeId}
                 onChange={e => setForm({...form, recipeId: e.target.value})}
               >
-                {data?.recipes.map((r: any) => (
+                {data?.recipes.map((r: Recipe) => (
                   <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>
                 ))}
               </TextField>
@@ -492,7 +585,7 @@ const OrdersPage: React.FC = () => {
 
       {/* Modal: Бърза продажба */}
       <Dialog open={openSaleModal} onClose={() => setOpenSaleModal(false)} fullWidth maxWidth="sm">
-        <DialogTitle>💰 Бърза продажба</DialogTitle>
+        <DialogTitle>Бърза продажба</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid size={{ xs: 12 }}>
@@ -501,20 +594,55 @@ const OrdersPage: React.FC = () => {
                 select
                 label="Продукт"
                 value={saleForm.recipeId}
-                onChange={e => setSaleForm({...saleForm, recipeId: e.target.value})}
+                onChange={e => handleRecipeSelect(e.target.value)}
               >
-                {data?.recipes.map((r: any) => (
-                  <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>
+                {recipesWithPrices.map((r: RecipeWithPrice) => (
+                  <MenuItem key={r.id} value={r.id}>
+                    {r.name}
+                    {r.finalPrice ? ` - ${r.finalPrice.toFixed(2)} лв.` : ' - без цена'}
+                  </MenuItem>
                 ))}
               </TextField>
             </Grid>
+            {saleForm.recipeId && (
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="textSecondary" sx={{ minWidth: 100 }}>
+                    Бр. парчета:
+                  </Typography>
+                  <TextField
+                    size="small"
+                    type="number"
+                    value={saleForm.pieces}
+                    inputProps={{ min: 1, max: 1000 }}
+                    onChange={e => {
+                      let newPieces = parseInt(e.target.value) || 1;
+                      if (newPieces < 1) newPieces = 1;
+                      if (newPieces > 1000) newPieces = 1000;
+                      setSaleForm(prev => ({ ...prev, pieces: newPieces }));
+                    }}
+                    sx={{ width: 80 }}
+                  />
+                  <Button 
+                    variant="outlined" 
+                    size="small"
+                    onClick={() => setSaleForm(prev => ({ ...prev, pieces: Math.max(1, prev.pieces - 1) }))}
+                  >-</Button>
+                  <Button 
+                    variant="outlined" 
+                    size="small"
+                    onClick={() => setSaleForm(prev => ({ ...prev, pieces: Math.min(1000, prev.pieces + 1) }))}
+                  >+</Button>
+                </Box>
+              </Grid>
+            )}
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
-                label="Количество"
+                label="Брой поръчки"
                 type="number"
                 value={saleForm.quantity}
-                onChange={e => setSaleForm({...saleForm, quantity: e.target.value})}
+                onChange={e => handleQuantityChange(e.target.value)}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -523,10 +651,19 @@ const OrdersPage: React.FC = () => {
                 label="Цена (лв)"
                 type="number"
                 value={saleForm.price}
-                onChange={e => setSaleForm({...saleForm, price: e.target.value})}
+                onChange={e => setSaleForm(prev => ({...prev, price: e.target.value}))}
                 InputProps={{
                   startAdornment: <InputAdornment position="start">лв</InputAdornment>,
                 }}
+                helperText={
+                  saleForm.recipeId && (() => {
+                    const recipe = (recipesWithPrices as RecipeWithPrice[]).find((r: RecipeWithPrice) => r.id === parseInt(saleForm.recipeId));
+                    if (recipe?.finalPrice) {
+                      return `Единична цена: ${recipe.finalPrice.toFixed(2)} лв. | ${saleForm.pieces} парчета`;
+                    }
+                    return null;
+                  })()
+                }
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
@@ -535,7 +672,7 @@ const OrdersPage: React.FC = () => {
                 select
                 label="Начин на плащане"
                 value={saleForm.paymentMethod}
-                onChange={e => setSaleForm({...saleForm, paymentMethod: e.target.value})}
+                onChange={e => setSaleForm(prev => ({...prev, paymentMethod: e.target.value}))}
               >
                 <MenuItem value="В брой">В брой</MenuItem>
                 <MenuItem value="Карта">Карта</MenuItem>
@@ -547,7 +684,7 @@ const OrdersPage: React.FC = () => {
                 fullWidth
                 label="Клиент (име)"
                 value={saleForm.clientName}
-                onChange={e => setSaleForm({...saleForm, clientName: e.target.value})}
+                onChange={e => setSaleForm(prev => ({...prev, clientName: e.target.value}))}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -565,7 +702,7 @@ const OrdersPage: React.FC = () => {
                 multiline
                 rows={2}
                 value={saleForm.notes}
-                onChange={e => setSaleForm({...saleForm, notes: e.target.value})}
+                onChange={e => setSaleForm(prev => ({...prev, notes: e.target.value}))}
               />
             </Grid>
           </Grid>
@@ -579,7 +716,7 @@ const OrdersPage: React.FC = () => {
             disabled={!saleForm.recipeId}
             startIcon={<SaleIcon />}
           >
-            ✅ Продай
+            Продай
           </Button>
         </DialogActions>
       </Dialog>
@@ -603,8 +740,8 @@ const OrdersPage: React.FC = () => {
               <Typography variant="subtitle2" color="textSecondary">Статус</Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Select
-                  value={selectedOrder?.status}
-                  onChange={(e) => handleUpdateOrderStatus(selectedOrder?.id, e.target.value)}
+                  value={selectedOrder?.status || ''}
+                  onChange={(e) => selectedOrder?.id && handleUpdateOrderStatus(selectedOrder.id, e.target.value)}
                   sx={{ minWidth: 200 }}
                 >
                   <MenuItem value="awaiting_stock">Чака продукти</MenuItem>
@@ -617,7 +754,7 @@ const OrdersPage: React.FC = () => {
                   <Button 
                     variant="contained" 
                     color="success"
-                    onClick={() => handleConfirmOrder(selectedOrder?.id)}
+                    onClick={() => selectedOrder?.id && handleConfirmOrder(selectedOrder.id)}
                   >
                     Потвърди за транспорт
                   </Button>
@@ -644,15 +781,15 @@ const OrdersPage: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {selectedOrder?.recipe?.ingredients?.map((ing: any, idx: number) => {
-                    const needed = ing.quantityNet * selectedOrder.quantity;
-                    const available = ing.ingredient.currentStock || 0;
+                  {selectedOrder?.recipe?.ingredients?.map((ing: RecipeIngredient, idx: number) => {
+                    const needed = (ing.quantityNet || 0) * (selectedOrder?.quantity || 0);
+                    const available = ing.ingredient?.currentStock || 0;
                     const isEnough = available >= needed;
                     return (
                       <TableRow key={idx}>
-                        <TableCell>{ing.ingredient.name}</TableCell>
-                        <TableCell align="right">{needed} {ing.ingredient.unit}</TableCell>
-                        <TableCell align="right">{available} {ing.ingredient.unit}</TableCell>
+                        <TableCell>{ing.ingredient?.name}</TableCell>
+                        <TableCell align="right">{needed.toFixed(3)} {ing.ingredient?.unit}</TableCell>
+                        <TableCell align="right">{available.toFixed(3)} {ing.ingredient?.unit}</TableCell>
                         <TableCell>
                           <Chip 
                             label={isEnough ? 'Достатъчно' : 'Няма'} 
@@ -670,16 +807,16 @@ const OrdersPage: React.FC = () => {
             <Grid size={{ xs: 12 }}>
               <Divider sx={{ my: 1 }} />
               <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>Задачи</Typography>
-              {selectedOrder?.tasks?.length > 0 ? (
+              {(selectedOrder?.tasks?.length ?? 0) > 0 ? (
                 <List>
-                  {selectedOrder.tasks.map((task: any, idx: number) => (
+                  {selectedOrder?.tasks?.map((task: ProductionTask, idx: number) => (
                     <ListItem key={idx} sx={{ borderBottom: '1px solid #eee' }}>
                       <ListItemText 
                         primary={`${task.workstation?.name || 'Станция ' + (idx + 1)}`}
                         secondary={
                           task.status === 'pending' ? 'Чака' :
-                          task.status === 'in_progress' ? `В прогрес от: ${new Date(task.startedAt).toLocaleTimeString('bg-BG')}` :
-                          task.status === 'completed' ? `Приключена: ${new Date(task.completedAt).toLocaleString('bg-BG')}` : ''
+                          task.status === 'in_progress' ? `В прогрес от: ${task.startedAt ? new Date(task.startedAt).toLocaleTimeString('bg-BG') : '?'}` :
+                          task.status === 'completed' ? `Приключена: ${task.completedAt ? new Date(task.completedAt).toLocaleString('bg-BG') : '?'}` : 'В изчакване'
                         }
                       />
                       <Chip 
@@ -768,7 +905,7 @@ const OrdersPage: React.FC = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {recordData.productionRecordByOrder.workers.map((worker: any) => (
+                      {recordData.productionRecordByOrder.workers.map((worker: ProductionRecordWorker) => (
                         <TableRow key={worker.id}>
                           <TableCell>{worker.userName}</TableCell>
                           <TableCell>{worker.workstationName}</TableCell>
@@ -797,7 +934,7 @@ const OrdersPage: React.FC = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {recordData.productionRecordByOrder.ingredients.map((ing: any) => (
+                      {recordData.productionRecordByOrder.ingredients.map((ing: ProductionRecordIngredient) => (
                         <TableRow key={ing.id}>
                           <TableCell>{ing.ingredientName}</TableCell>
                           <TableCell>{ing.batchNumber}</TableCell>

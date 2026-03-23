@@ -1,7 +1,7 @@
-"""add_recipe_standard_quantity_and_workstation_fields
+"""add_recipe_workstation_fields
 
-Revision ID: add_recipe_standard_quantity_and_workstation_fields
-Revises: 
+Revision ID: add_recipe_workstation_fields
+Revises: ea76c81c7703
 Create Date: 2026-02-15 12:00:00.000000
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'add_recipe_standard_quantity_and_workstation_fields'
+revision = 'add_recipe_workstation_fields'
 down_revision = 'ea76c81c7703'
 branch_labels = None
 depends_on = None

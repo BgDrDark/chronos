@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AccountingSummary, Account, Transaction, Register, AccountingLog, Ingredient } from '../types';
+import { AccountingSummary, Account, Transaction, Register, AccountingLog, Ingredient, AccountingEntry, getErrorMessage } from '../types';
 import {
   Container,
   Typography,
@@ -29,17 +29,22 @@ import {
   InputLabel,
   IconButton,
   Tooltip,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
   ExpandMore as ExpandMoreIcon,
+  Print as PrintIcon,
 } from '@mui/icons-material';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
-import { useQuery, useMutation, gql } from '@apollo/client';
+import { useQuery, useMutation, useLazyQuery, gql } from '@apollo/client';
 import { 
   type CashJournalEntry, type Supplier
 } from '../types';
@@ -125,6 +130,30 @@ const ValidatedTextField: React.FC<ValidatedTextFieldProps> = ({
   );
 };
 
+// Helper function to get Bulgarian text for invoice status
+const getInvoiceStatusText = (status: string): string => {
+  const statusMap: Record<string, string> = {
+    'draft': 'Чернова',
+    'sent': 'Изпратена',
+    'paid': 'Платена',
+    'overdue': 'Просрочена',
+    'cancelled': 'Анулирана'
+  };
+  return statusMap[status] || status;
+};
+
+// Helper function to get Chip color for invoice status
+const getInvoiceStatusColor = (status: string): 'default' | 'primary' | 'secondary' | 'success' | 'error' | 'info' | 'warning' => {
+  const colorMap: Record<string, 'default' | 'primary' | 'secondary' | 'success' | 'error' | 'info' | 'warning'> = {
+    'draft': 'default',
+    'sent': 'info',
+    'paid': 'success',
+    'overdue': 'warning',
+    'cancelled': 'error'
+  };
+  return colorMap[status] || 'default';
+};
+
 const GET_INVOICES = gql`
   query GetInvoices($type: String, $status: String, $search: String) {
     invoices(type: $type, status: $status, search: $search) {
@@ -164,6 +193,7 @@ const GET_INVOICES = gql`
       }
       items {
         id
+        ingredientId
         name
         quantity
         unit
@@ -200,6 +230,23 @@ const GET_INGREDIENTS = gql`
   }
 `;
 
+const GET_INGREDIENT_BATCHES_WITH_STOCK = gql`
+  query GetIngredientBatchesWithStock($ingredientId: Int!) {
+    ingredientBatchesWithStock(ingredientId: $ingredientId) {
+      id
+      batchNumber
+      quantity
+      availableStock
+      expiryDate
+      status
+      supplier {
+        id
+        name
+      }
+    }
+  }
+`;
+
 const CREATE_INVOICE = gql`
   mutation CreateInvoice($invoiceData: InvoiceInput!) {
     createInvoice(invoiceData: $invoiceData) {
@@ -221,6 +268,12 @@ const UPDATE_INVOICE = gql`
 const DELETE_INVOICE = gql`
   mutation DeleteInvoice($id: Int!) {
     deleteInvoice(id: $id)
+  }
+`;
+
+const GET_INVOICE_PDF_URL = gql`
+  mutation GetInvoicePdfUrl($invoiceId: Int!) {
+    getInvoicePdfUrl(invoiceId: $invoiceId)
   }
 `;
 
@@ -390,6 +443,37 @@ const GENERATE_YEARLY_SUMMARY = gql`
   }
 `;
 
+const GET_ACCOUNTING_ENTRIES = gql`
+  query GetAccountingEntries($startDate: String, $endDate: String, $accountId: Int, $search: String) {
+    accountingEntries(startDate: $startDate, endDate: $endDate, accountId: $accountId, search: $search) {
+      id
+      date
+      entryNumber
+      description
+      debitAccountId
+      creditAccountId
+      debitAccount {
+        id
+        code
+        name
+      }
+      creditAccount {
+        id
+        code
+        name
+      }
+      amount
+      vatAmount
+      invoiceId
+      invoice {
+        id
+        number
+      }
+      createdAt
+    }
+  }
+`;
+
 // ============== NEW ACCOUNTING QUERIES ==============
 
 const GET_PROFORMA_INVOICES = gql`
@@ -464,6 +548,35 @@ const GET_BANK_TRANSACTIONS = gql`
       reference
       invoiceId
       matched
+    }
+  }
+`;
+
+const MATCH_BANK_TRANSACTION = gql`
+  mutation MatchBankTransaction($transactionId: Int!, $invoiceId: Int!) {
+    matchBankTransaction(transactionId: $transactionId, invoiceId: $invoiceId) {
+      id
+      matched
+      invoiceId
+    }
+  }
+`;
+
+const UNMATCH_BANK_TRANSACTION = gql`
+  mutation UnmatchBankTransaction($transactionId: Int!) {
+    unmatchBankTransaction(transactionId: $transactionId) {
+      id
+      matched
+      invoiceId
+    }
+  }
+`;
+
+const AUTO_MATCH_BANK_TRANSACTIONS = gql`
+  mutation AutoMatchBankTransactions($bankAccountId: Int!) {
+    autoMatchBankTransactions(bankAccountId: $bankAccountId) {
+      matchedCount
+      unmatchedCount
     }
   }
 `;
@@ -580,6 +693,13 @@ interface InvoiceItem {
   id?: number;
   ingredientId?: number | null;
   batchId?: number | null;
+  batch?: {
+    id: number;
+    batchNumber?: string | null;
+    expiryDate?: string | null;
+    availableStock?: number;
+    supplier?: { id: number; name: string } | null;
+  } | null;
   batchNumber?: string | null;
   expirationDate?: string | null;
   name: string;
@@ -633,6 +753,7 @@ const tabMap: Record<string, number> = {
   'accounts': 10,
   'vat': 11,
   'saft': 12,
+  'accounting-entries': 13,
 };
 
 export default function AccountingPage({ tab }: Props) {
@@ -649,6 +770,14 @@ export default function AccountingPage({ tab }: Props) {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [itemBatches, setItemBatches] = useState<Record<number, Array<{
+    id: number;
+    batchNumber: string | null;
+    expiryDate: string | null;
+    availableStock: number;
+    supplier: { id: number; name: string } | null;
+  }>>>({});
+  const [loadingBatchItemIndex, setLoadingBatchItemIndex] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     type: 'incoming',
     documentType: 'ФАКТУРА',
@@ -681,9 +810,22 @@ export default function AccountingPage({ tab }: Props) {
   const { data: suppliersData } = useQuery(GET_SUPPLIERS);
   const { data: ingredientsData } = useQuery(GET_INGREDIENTS);
 
+  const [loadIngredientBatches, { data: batchesData }] = useLazyQuery(GET_INGREDIENT_BATCHES_WITH_STOCK);
+
+  useEffect(() => {
+    if (batchesData?.ingredientBatchesWithStock && loadingBatchItemIndex !== null) {
+      setItemBatches(prev => ({
+        ...prev,
+        [loadingBatchItemIndex]: batchesData.ingredientBatchesWithStock
+      }));
+      setLoadingBatchItemIndex(null);
+    }
+  }, [batchesData, loadingBatchItemIndex]);
+
   const [createInvoice] = useMutation(CREATE_INVOICE);
   const [updateInvoice] = useMutation(UPDATE_INVOICE);
   const [deleteInvoice] = useMutation(DELETE_INVOICE);
+  const [getInvoicePdfUrl] = useMutation(GET_INVOICE_PDF_URL);
 
   const handleOpenDetailsDialog = (invoice: Invoice) => {
     setSelectedInvoice(invoice);
@@ -693,6 +835,35 @@ export default function AccountingPage({ tab }: Props) {
   const handleCloseDetailsDialog = () => {
     setDetailsDialogOpen(false);
     setSelectedInvoice(null);
+  };
+
+  const handlePrintInvoice = async (invoiceId: number) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://dev.oblak24.org';
+      const csrfToken = document.cookie.split('; ').find(row => row.startsWith('csrf_token='))?.split('=')[1];
+      
+      const response = await fetch(`${apiUrl}/export/invoice/${invoiceId}/pdf`, {
+        headers: {
+          'X-CSRFToken': csrfToken || '',
+        },
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to load PDF');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const printWindow = window.open(url, '_blank');
+      
+      if (printWindow) {
+        printWindow.focus();
+      }
+    } catch (err) {
+      console.error('Error printing invoice:', err);
+      alert('Грешка при принтиране на фактура');
+    }
   };
 
   const calculateTotals = () => {
@@ -1375,7 +1546,7 @@ function ProformaTab() {
                   <TableCell align="right">{Number(inv.total).toFixed(2)} лв.</TableCell>
                   <TableCell>{inv.vatRate}%</TableCell>
                   <TableCell>
-                    <Chip label={inv.status} color="info" size="small" />
+                    <Chip label={getInvoiceStatusText(inv.status)} color={getInvoiceStatusColor(inv.status)} size="small" />
                   </TableCell>
                 </TableRow>
               ))}
@@ -1450,7 +1621,7 @@ function CorrectionsTab() {
                   <TableCell>#{corr.originalInvoiceId}</TableCell>
                   <TableCell>{corr.clientName}</TableCell>
                   <TableCell align="right">{Number(corr.total).toFixed(2)} лв.</TableCell>
-                  <TableCell><Chip label={corr.status} size="small" /></TableCell>
+                  <TableCell><Chip label={getInvoiceStatusText(corr.status)} color={getInvoiceStatusColor(corr.status)} size="small" /></TableCell>
                 </TableRow>
               ))}
               {corrections.length === 0 && (
@@ -1472,19 +1643,30 @@ function BankTab() {
   const [accountId, setAccountId] = useState<number | null>(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [showMatched, setShowMatched] = useState<boolean | undefined>(undefined);
   const [openAccountDialog, setOpenAccountDialog] = useState(false);
   const [openTransactionDialog, setOpenTransactionDialog] = useState(false);
+  const [openMatchDialog, setOpenMatchDialog] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   
   const { data: accountsData, loading: loadingAccounts } = useQuery(GET_BANK_ACCOUNTS);
   const { data: transactionsData, loading: loadingTransactions, refetch } = useQuery(GET_BANK_TRANSACTIONS, {
-    variables: { bankAccountId: accountId || undefined, startDate: startDate || undefined, endDate: endDate || undefined },
+    variables: { bankAccountId: accountId || undefined, startDate: startDate || undefined, endDate: endDate || undefined, matched: showMatched },
+  });
+
+  const { data: invoicesData } = useQuery(GET_INVOICES, {
+    variables: { type: undefined, status: undefined },
   });
 
   const [createAccount] = useMutation(CREATE_BANK_ACCOUNT);
   const [createTransaction] = useMutation(CREATE_BANK_TRANSACTION);
+  const [matchTransaction] = useMutation(MATCH_BANK_TRANSACTION);
+  const [unmatchTransaction] = useMutation(UNMATCH_BANK_TRANSACTION);
+  const [autoMatchTransactions] = useMutation(AUTO_MATCH_BANK_TRANSACTIONS);
 
   const accounts = accountsData?.bankAccounts || [];
   const transactions = transactionsData?.bankTransactions || [];
+  const invoices = invoicesData?.invoices || [];
 
   const [accountForm, setAccountForm] = useState({
     iban: '', bic: '', bankName: '', accountType: 'current', isDefault: false, currency: 'BGN'
@@ -1530,6 +1712,47 @@ function BankTab() {
       console.error(err);
     }
   };
+
+  const handleMatchTransaction = async (transactionId: number, invoiceId: number) => {
+    try {
+      await matchTransaction({ variables: { transactionId, invoiceId } });
+      refetch();
+      setOpenMatchDialog(false);
+      setSelectedTransaction(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleUnmatchTransaction = async (transactionId: number) => {
+    try {
+      await unmatchTransaction({ variables: { transactionId } });
+      refetch();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAutoMatch = async () => {
+    if (!accountId) return;
+    try {
+      const result = await autoMatchTransactions({ variables: { bankAccountId: accountId } });
+      if (result.data?.autoMatchBankTransactions) {
+        alert(`Съпоставени: ${result.data.autoMatchBankTransactions.matchedCount}, Не съпоставени: ${result.data.autoMatchBankTransactions.unmatchedCount}`);
+      }
+      refetch();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleOpenMatchDialog = (tx: Transaction) => {
+    setSelectedTransaction(tx);
+    setOpenMatchDialog(true);
+  };
+
+  const matchedCount = transactions.filter((tx: Transaction) => tx.matched).length;
+  const unmatchedCount = transactions.filter((tx: Transaction) => !tx.matched).length;
 
   return (
     <Box>
@@ -1585,7 +1808,7 @@ function BankTab() {
 
       {activeTab === 1 && (
         <Box>
-          <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
             <FormControl size="small" sx={{ minWidth: 200 }}>
               <InputLabel>Сметка</InputLabel>
               <Select value={accountId || ''} label="Сметка" onChange={(e) => setAccountId(e.target.value as number)}>
@@ -1596,10 +1819,30 @@ function BankTab() {
             </FormControl>
             <TextField size="small" label="От дата" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
             <TextField size="small" label="До дата" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Съпоставени</InputLabel>
+              <Select value={showMatched === undefined ? '' : showMatched ? 'matched' : 'unmatched'} label="Съпоставени" onChange={(e) => {
+                const val = e.target.value;
+                setShowMatched(val === 'matched' ? true : val === 'unmatched' ? false : undefined);
+              }}>
+                <MenuItem value="">Всички</MenuItem>
+                <MenuItem value="matched">Само съпоставени</MenuItem>
+                <MenuItem value="unmatched">Само не съпоставени</MenuItem>
+              </Select>
+            </FormControl>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenTransactionDialog(true)} disabled={!accountId}>
               Нова транзакция
             </Button>
+            <Button variant="outlined" startIcon={<EditIcon />} onClick={handleAutoMatch} disabled={!accountId}>
+              Автоматично съпоставяне
+            </Button>
           </Box>
+          {accountId && (
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+              <Chip label={`Съпоставени: ${matchedCount}`} color="success" />
+              <Chip label={`Не съпоставени: ${unmatchedCount}`} color="warning" />
+            </Box>
+          )}
           {loadingTransactions ? <CircularProgress /> : (
             <TableContainer component={Paper}>
               <Table>
@@ -1611,6 +1854,7 @@ function BankTab() {
                     <TableCell>Описание</TableCell>
                     <TableCell>Референция</TableCell>
                     <TableCell>Съответства</TableCell>
+                    <TableCell>Действия</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1621,12 +1865,29 @@ function BankTab() {
                       <TableCell align="right">{Number(tx.amount).toFixed(2)} лв.</TableCell>
                       <TableCell>{tx.description}</TableCell>
                       <TableCell>{tx.reference}</TableCell>
-                      <TableCell>{tx.matched ? '✅' : '❌'}</TableCell>
+                      <TableCell>
+                        {tx.matched ? (
+                          <Chip label={`✅ ${tx.invoiceId || ''}`} size="small" color="success" />
+                        ) : (
+                          <Chip label="❌ Не" size="small" color="warning" variant="outlined" />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {tx.matched ? (
+                          <Button size="small" color="error" onClick={() => handleUnmatchTransaction(tx.id)}>
+                            Премахни
+                          </Button>
+                        ) : (
+                          <Button size="small" variant="contained" onClick={() => handleOpenMatchDialog(tx)}>
+                            Съпостави
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                   {transactions.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} align="center">Няма транзакции</TableCell>
+                      <TableCell colSpan={7} align="center">Няма транзакции</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -1698,6 +1959,71 @@ function BankTab() {
         <DialogActions>
           <Button onClick={() => setOpenTransactionDialog(false)}>Отказ</Button>
           <Button onClick={handleSaveTransaction} variant="contained">Запази</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Match Transaction Dialog */}
+      <Dialog open={openMatchDialog} onClose={() => setOpenMatchDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Съпостави транзакция #{selectedTransaction?.id}</DialogTitle>
+        <DialogContent dividers>
+          {selectedTransaction && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="body2" color="text.secondary">Транзакция:</Typography>
+              <Typography variant="body1">
+                {selectedTransaction.type === 'credit' ? 'Приход' : 'Разход'} - {Number(selectedTransaction.amount).toFixed(2)} лв.
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Референция: {selectedTransaction.reference || '-'}
+              </Typography>
+            </Box>
+          )}
+          <Typography variant="subtitle2" sx={{ mb: 2 }}>Избери фактура:</Typography>
+          <FormControl fullWidth size="small">
+            <InputLabel>Фактура</InputLabel>
+            <Select
+              label="Фактура"
+              onChange={(e) => {
+                if (selectedTransaction && e.target.value) {
+                  handleMatchTransaction(selectedTransaction.id, e.target.value as number);
+                }
+              }}
+            >
+              {invoices
+                .filter((inv: Invoice) => Math.abs(Number(inv.total) - Number(selectedTransaction?.amount)) < 0.01)
+                .map((inv: Invoice) => (
+                  <MenuItem key={inv.id} value={inv.id}>
+                    {inv.number} - {inv.supplier?.name || inv.clientName || '-'} - {Number(inv.total).toFixed(2)} лв.
+                  </MenuItem>
+                ))}
+            </Select>
+          </FormControl>
+          {invoices.filter((inv: Invoice) => Math.abs(Number(inv.total) - Number(selectedTransaction?.amount)) < 0.01).length === 0 && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Няма намерени фактури със същата сума. Опитайте ръчно да изберете фактура.
+            </Alert>
+          )}
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="caption" color="text.secondary">
+            Или изберете ръчно от списъка по-долу:
+          </Typography>
+          <List dense sx={{ maxHeight: 200, overflow: 'auto' }}>
+            {invoices.slice(0, 10).map((inv: Invoice) => (
+              <ListItem 
+                key={inv.id} 
+                disablePadding
+                sx={{ cursor: 'pointer' }}
+                onClick={() => selectedTransaction && handleMatchTransaction(selectedTransaction.id, inv.id)}
+              >
+                <ListItemText
+                  primary={`${inv.number} - ${inv.supplier?.name || inv.clientName || '-'}`}
+                  secondary={`${Number(inv.total).toFixed(2)} лв. - ${new Date(inv.date).toLocaleDateString('bg-BG')}`}
+                />
+              </ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenMatchDialog(false)}>Затвори</Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -2169,10 +2495,21 @@ function SAFTTab() {
   const handleRemoveItem = (index: number) => {
     const newItems = [...formData.items];
     newItems.splice(index, 1);
+    const newBatches = { ...itemBatches };
+    delete newBatches[index];
+    setItemBatches(newBatches);
     setFormData({ ...formData, items: newItems });
   };
 
-  const handleItemChange = (index: number, field: keyof InvoiceItem, value: string | number) => {
+  const loadBatchesForIngredient = (ingredientId: number, itemIndex: number) => {
+    if (!ingredientId) return;
+    setLoadingBatchItemIndex(itemIndex);
+    loadIngredientBatches({ variables: { ingredientId } }).catch((err: unknown) => {
+      console.error('Грешка при зареждане на партиди:', getErrorMessage(err));
+    });
+  };
+
+  const handleItemChange = (index: number, field: keyof InvoiceItem, value: string | number | null) => {
     const newItems = [...formData.items];
     newItems[index] = { ...newItems[index], [field]: value };
 
@@ -2183,6 +2520,21 @@ function SAFTTab() {
         newItems[index].unit = ingredient.unit;
         newItems[index].unitPrice = Number(ingredient.currentPrice) || 0;
         newItems[index].unitPriceWithVat = Number(ingredient.currentPrice) ? Number(ingredient.currentPrice) * 1.20 : null;
+        newItems[index].batchId = null;
+        newItems[index].batch = null;
+        loadBatchesForIngredient(Number(value), index);
+      }
+    }
+
+    if (field === 'batchId' && value) {
+      const batches = itemBatches[index];
+      if (batches) {
+        const selectedBatch = batches.find(b => b.id === Number(value));
+        if (selectedBatch) {
+          newItems[index].batch = selectedBatch;
+          newItems[index].batchNumber = selectedBatch.batchNumber;
+          newItems[index].expirationDate = selectedBatch.expiryDate;
+        }
       }
     }
 
@@ -2308,8 +2660,8 @@ function SAFTTab() {
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Paper sx={{ width: '100%', mb: 2, p: 2 }}>
-        {tabValue === 0 && <IncomingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} handleOpenDetailsDialog={handleOpenDetailsDialog} handleDelete={handleDelete} />}
-        {tabValue === 1 && <OutgoingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} handleDelete={handleDelete} />}
+        {tabValue === 0 && <IncomingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} handleOpenDetailsDialog={handleOpenDetailsDialog} handleDelete={handleDelete} handlePrintInvoice={handlePrintInvoice} />}
+        {tabValue === 1 && <OutgoingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} handleDelete={handleDelete} handlePrintInvoice={handlePrintInvoice} />}
         {tabValue === 2 && <CashJournalTab />}
         {tabValue === 3 && <OperationLogsTab />}
         {tabValue === 4 && <DailySummaryTab />}
@@ -2321,6 +2673,7 @@ function SAFTTab() {
         {tabValue === 10 && <AccountsTab />}
         {tabValue === 11 && <VATTab />}
         {tabValue === 12 && <SAFTTab />}
+        {tabValue === 13 && <AccountingEntriesTab />}
       </Paper>
 
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
@@ -2500,20 +2853,68 @@ function SAFTTab() {
                 
                 {errors.items && <Alert severity="error" sx={{ mb: 2 }}>{errors.items}</Alert>}
                 
-                {formData.items.map((item, index) => (
+                {formData.items.map((item, index) => {
+                  const batchesForItem = itemBatches[index] || [];
+                  return (
                   <Paper key={index} sx={{ p: 2, mb: 2 }}>
                     <Grid container spacing={2} alignItems="center">
                       <Grid size={{ xs: 12, sm: 3 }}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="Наименование"
-                          value={item.name}
-                          onChange={(e) => handleItemChange(index, 'name', e.target.value)}
-                          error={!!errors[`item_${index}`]}
-                          helperText={errors[`item_${index}`]}
-                        />
+                        {editingInvoice ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Артикул"
+                            value={item.name || '-'}
+                            disabled
+                            InputProps={{ readOnly: true }}
+                          />
+                        ) : (
+                          <FormControl fullWidth size="small">
+                            <InputLabel>Артикул</InputLabel>
+                            <Select
+                              value={item.ingredientId || ''}
+                              label="Артикул"
+                              onChange={(e) => handleItemChange(index, 'ingredientId', e.target.value)}
+                              error={!!errors[`item_${index}`]}
+                            >
+                              {ingredientsData?.ingredients?.map((ing: Ingredient) => (
+                                <MenuItem key={ing.id} value={ing.id}>
+                                  {ing.name} ({ing.unit})
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
                       </Grid>
+                      {formData.type === 'incoming' && item.ingredientId && (
+                        <Grid size={{ xs: 12, sm: 3 }}>
+                          <FormControl fullWidth size="small">
+                            <InputLabel>Партида (наличност)</InputLabel>
+                            <Select
+                              value={item.batchId || ''}
+                              label="Партида (наличност)"
+                              onChange={(e) => handleItemChange(index, 'batchId', e.target.value)}
+                            >
+                              <MenuItem value="">
+                                <em>Без партида</em>
+                              </MenuItem>
+                              {batchesForItem.map((batch) => (
+                                <MenuItem key={batch.id} value={batch.id}>
+                                  {batch.batchNumber || `Партида #${batch.id}`} - 
+                                  {batch.availableStock?.toFixed(3)} бр. - 
+                                  до {batch.expiryDate ? new Date(batch.expiryDate).toLocaleDateString('bg-BG') : '-'}
+                                  {batch.supplier ? ` (${batch.supplier.name})` : ''}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          {batchesForItem.length > 0 && (
+                            <Typography variant="caption" color="info.main" sx={{ mt: 0.5, display: 'block' }}>
+                              Наличност: {batchesForItem.reduce((sum, b) => sum + (b.availableStock || 0), 0).toFixed(3)} {item.unit}
+                            </Typography>
+                          )}
+                        </Grid>
+                      )}
                       <Grid size={{ xs: 6, sm: 2 }}>
                         <TextField
                           fullWidth
@@ -2557,37 +2958,29 @@ function SAFTTab() {
                           onChange={(e) => handleItemChange(index, 'unitPriceWithVat', e.target.value)}
                         />
                       </Grid>
-                      <Grid size={{ xs: 6, sm: 2 }}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="Партида №"
-                          value={item.batchNumber || ''}
-                          onChange={(e) => handleItemChange(index, 'batchNumber', e.target.value)}
-                        />
-                      </Grid>
-                      <Grid size={{ xs: 6, sm: 2 }}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="Срок годност"
-                          type="date"
-                          value={item.expirationDate || ''}
-                          onChange={(e) => handleItemChange(index, 'expirationDate', e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Grid>
                       <Grid size={{ xs: 6, sm: 1 }}>
                         <IconButton color="error" onClick={() => handleRemoveItem(index)}>
                           <DeleteIcon />
                         </IconButton>
                       </Grid>
                     </Grid>
-                    <Typography variant="caption" color="text.secondary">
+                    {item.batch && (
+                      <Chip 
+                        size="small" 
+                        label={`Партида: ${item.batch.batchNumber || '#'+item.batch.id} | 
+                          ${item.batch.availableStock?.toFixed(3)} ${item.unit} | 
+                          до ${item.batch.expiryDate ? new Date(item.batch.expiryDate).toLocaleDateString('bg-BG') : '-'}`}
+                        sx={{ mt: 1 }}
+                        color="success"
+                        variant="outlined"
+                      />
+                    )}
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                       Общо: {(item.quantity * item.unitPrice).toFixed(2)} лв. (със ДДС: {(item.quantity * (item.unitPriceWithVat || item.unitPrice * 1.2)).toFixed(2)} лв.)
                     </Typography>
                   </Paper>
-                ))}
+                );
+                })}
               </Box>
             </Grid>
           </Grid>
@@ -2611,20 +3004,31 @@ function SAFTTab() {
               <Grid size={{ xs: 12, md: 6 }}>
                 <Box sx={{ p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
                   <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>ИЗДАТЕЛ</Typography>
-                  <Typography variant="body2">Сладкарница "Планински Кладенец"</Typography>
-                  <Typography variant="body2">ул. "Пирин" №15, гр. София</Typography>
-                  <Typography variant="body2">ЕИК: 123456789</Typography>
-                  <Typography variant="body2">ИН по ЗДДС: BG1234567890</Typography>
-                </Box>
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Box sx={{ p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-                  <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>ПОЛУЧАТЕЛ</Typography>
                   {selectedInvoice.type === 'incoming' && selectedInvoice.supplier ? (
                     <>
                       <Typography variant="body2">{selectedInvoice.supplier.name}</Typography>
                       <Typography variant="body2">ЕИК: {(selectedInvoice.supplier as any)?.eik || '-'}</Typography>
                       <Typography variant="body2">ИН по ЗДДС: {(selectedInvoice.supplier as any)?.vatNumber || '-'}</Typography>
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="body2">Сладкарница "Планински Кладенец"</Typography>
+                      <Typography variant="body2">ул. "Пирин" №15, гр. София</Typography>
+                      <Typography variant="body2">ЕИК: 123456789</Typography>
+                      <Typography variant="body2">ИН по ЗДДС: BG1234567890</Typography>
+                    </>
+                  )}
+                </Box>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Box sx={{ p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+                  <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>ПОЛУЧАТЕЛ</Typography>
+                  {selectedInvoice.type === 'incoming' ? (
+                    <>
+                      <Typography variant="body2">Сладкарница "Планински Кладенец"</Typography>
+                      <Typography variant="body2">ул. "Пирин" №15, гр. София</Typography>
+                      <Typography variant="body2">ЕИК: 123456789</Typography>
+                      <Typography variant="body2">ИН по ЗДДС: BG1234567890</Typography>
                     </>
                   ) : (
                     <>
@@ -2717,7 +3121,7 @@ function SAFTTab() {
                 <Typography variant="body2">Начин на плащане: {selectedInvoice.paymentMethod || '-'}</Typography>
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="body2">Статус: <Chip label={selectedInvoice.status} size="small" /></Typography>
+                <Typography variant="body2">Статус: <Chip label={getInvoiceStatusText(selectedInvoice.status)} color={getInvoiceStatusColor(selectedInvoice.status)} size="small" /></Typography>
               </Grid>
             </Grid>
           )}
@@ -2733,12 +3137,187 @@ function SAFTTab() {
 
 // Wrapper components for sub-menu pages that need props from main component
 
-function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDetailsDialog, handleDelete }: { 
+function AccountingEntriesTab() {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [accountId, setAccountId] = useState<number | null>(null);
+  const [search, setSearch] = useState('');
+
+  const { data, loading, error, refetch } = useQuery(GET_ACCOUNTING_ENTRIES, {
+    variables: {
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      accountId: accountId || undefined,
+      search: search || undefined,
+    },
+  });
+
+  const { data: accountsData } = useQuery(GET_ACCOUNTS);
+
+  const entries = data?.accountingEntries || [];
+  const accounts = accountsData?.accounts || [];
+
+  const totalDebit = entries.reduce((sum: number, entry: AccountingEntry) => sum + Number(entry.amount), 0);
+  const totalVat = entries.reduce((sum: number, entry: AccountingEntry) => sum + Number(entry.vatAmount), 0);
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField
+          size="small"
+          type="date"
+          label="От дата"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          sx={{ width: 150 }}
+        />
+        <TextField
+          size="small"
+          type="date"
+          label="До дата"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          sx={{ width: 150 }}
+        />
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <InputLabel>Филтрирай по сметка</InputLabel>
+          <Select
+            value={accountId || ''}
+            label="Филтрирай по сметка"
+            onChange={(e) => setAccountId(e.target.value as number || null)}
+          >
+            <MenuItem value="">Всички сметки</MenuItem>
+            {accounts.map((acc: Account) => (
+              <MenuItem key={acc.id} value={acc.id}>
+                {acc.code} - {acc.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <TextField
+          size="small"
+          label="Търси"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ width: 200 }}
+        />
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => refetch()}
+        >
+          Обнови
+        </Button>
+      </Box>
+
+      {loading ? (
+        <CircularProgress />
+      ) : error ? (
+        <Alert severity="error">Грешка при зареждане на счетоводните записи</Alert>
+      ) : (
+        <>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+            <Chip label={`Общо записи: ${entries.length}`} />
+            <Chip label={`Обща сума: ${totalDebit.toFixed(2)} лв.`} color="primary" />
+            <Chip label={`ДДС: ${totalVat.toFixed(2)} лв.`} color="secondary" />
+          </Box>
+
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ bgcolor: 'grey.100' }}>
+                  <TableCell>№</TableCell>
+                  <TableCell>Дата</TableCell>
+                  <TableCell>№ на запис</TableCell>
+                  <TableCell>Описание</TableCell>
+                  <TableCell>Дебит сметка</TableCell>
+                  <TableCell>Кредит сметка</TableCell>
+                  <TableCell align="right">Сума</TableCell>
+                  <TableCell align="right">ДДС</TableCell>
+                  <TableCell>Фактура</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {entries.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} align="center">Няма счетоводни записи</TableCell>
+                  </TableRow>
+                ) : (
+                  entries.map((entry: AccountingEntry) => (
+                    <TableRow key={entry.id} hover>
+                      <TableCell>{entry.id}</TableCell>
+                      <TableCell>{new Date(entry.date).toLocaleDateString('bg-BG')}</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}>{entry.entryNumber}</TableCell>
+                      <TableCell>{entry.description || '-'}</TableCell>
+                      <TableCell>
+                        {entry.debitAccount ? (
+                          <Chip
+                            size="small"
+                            label={`${entry.debitAccount.code} ${entry.debitAccount.name}`}
+                            variant="outlined"
+                            color="success"
+                          />
+                        ) : (
+                          entry.debitAccountId
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {entry.creditAccount ? (
+                          <Chip
+                            size="small"
+                            label={`${entry.creditAccount.code} ${entry.creditAccount.name}`}
+                            variant="outlined"
+                            color="warning"
+                          />
+                        ) : (
+                          entry.creditAccountId
+                        )}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                        {Number(entry.amount).toFixed(2)} лв.
+                      </TableCell>
+                      <TableCell align="right">
+                        {Number(entry.vatAmount) > 0 ? (
+                          <Typography variant="caption" color="secondary">
+                            {Number(entry.vatAmount).toFixed(2)} лв.
+                          </Typography>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {entry.invoice ? (
+                          <Chip
+                            size="small"
+                            label={entry.invoice.number}
+                            variant="outlined"
+                            onClick={() => {}}
+                          />
+                        ) : entry.invoiceId ? (
+                          <Typography variant="caption">#{entry.invoiceId}</Typography>
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
+      )}
+    </Box>
+  );
+}
+
+function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDetailsDialog, handleDelete, handlePrintInvoice }: { 
   search: string; 
   setSearch: (s: string) => void; 
   handleOpenDialog: (invoice?: Invoice) => void; 
   handleOpenDetailsDialog: (invoice: Invoice) => void;
   handleDelete: (id: number) => void;
+  handlePrintInvoice: (id: number) => void;
 }) {
   const { data, loading, error } = useQuery(GET_INVOICES, {
     variables: { type: 'incoming', search: search || undefined },
@@ -2766,8 +3345,9 @@ function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
                   <TableCell>{invoice.batch && typeof invoice.batch === 'object' ? ((invoice.batch as unknown as { expiryDate?: string }).expiryDate ? new Date((invoice.batch as unknown as { expiryDate: string }).expiryDate).toLocaleDateString('bg-BG') : '-') : '-'}</TableCell>
                   <TableCell align="right">{Number(invoice.total).toFixed(2)} лв.</TableCell>
                   <TableCell>{Number(invoice.vatRate)}%</TableCell>
-                  <TableCell><Chip label={invoice.status} size="small" /></TableCell>
+                  <TableCell><Chip label={getInvoiceStatusText(invoice.status)} color={getInvoiceStatusColor(invoice.status)} size="small" /></TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Tooltip title="PDF"><IconButton size="small" onClick={() => handlePrintInvoice(invoice.id)}><PrintIcon /></IconButton></Tooltip>
                     <Tooltip title="Редактирай"><IconButton size="small" onClick={() => handleOpenDialog(invoice)}><EditIcon /></IconButton></Tooltip>
                     <Tooltip title="Изтрий"><IconButton size="small" onClick={() => handleDelete(invoice.id)}><DeleteIcon /></IconButton></Tooltip>
                   </TableCell>
@@ -2781,11 +3361,12 @@ function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
   );
 }
 
-function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog, handleDelete }: { 
+function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog, handleDelete, handlePrintInvoice }: { 
   search: string; 
   setSearch: (s: string) => void; 
   handleOpenDialog: (invoice?: Invoice) => void;
   handleDelete: (id: number) => void;
+  handlePrintInvoice: (id: number) => void;
 }) {
   const { data, loading, error } = useQuery(GET_INVOICES, {
     variables: { type: 'outgoing', search: search || undefined },
@@ -2813,8 +3394,9 @@ function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog, handleDelete
                   <TableCell>{invoice.batch && typeof invoice.batch === 'object' ? ((invoice.batch as unknown as { expiryDate?: string }).expiryDate ? new Date((invoice.batch as unknown as { expiryDate: string }).expiryDate).toLocaleDateString('bg-BG') : '-') : '-'}</TableCell>
                   <TableCell align="right">{Number(invoice.total).toFixed(2)} лв.</TableCell>
                   <TableCell>{Number(invoice.vatRate)}%</TableCell>
-                  <TableCell><Chip label={invoice.status} size="small" /></TableCell>
+                  <TableCell><Chip label={getInvoiceStatusText(invoice.status)} color={getInvoiceStatusColor(invoice.status)} size="small" /></TableCell>
                   <TableCell>
+                    <Tooltip title="PDF"><IconButton size="small" onClick={() => handlePrintInvoice(invoice.id)}><PrintIcon /></IconButton></Tooltip>
                     <Tooltip title="Редактирай"><IconButton size="small" onClick={() => handleOpenDialog(invoice)}><EditIcon /></IconButton></Tooltip>
                     <Tooltip title="Изтрий"><IconButton size="small" onClick={() => handleDelete(invoice.id)}><DeleteIcon /></IconButton></Tooltip>
                   </TableCell>

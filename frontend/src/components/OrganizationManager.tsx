@@ -3,7 +3,8 @@ import {
   Box, Typography, Grid, Card, CardContent, Button, 
   TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   List, ListItem, ListItemText, IconButton,
-  MenuItem, Divider, CircularProgress, Alert
+  MenuItem, Divider, CircularProgress, Alert,
+  FormControl, InputLabel, Select
 } from '@mui/material';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { useForm, Controller } from 'react-hook-form';
@@ -12,7 +13,9 @@ import EditIcon from '@mui/icons-material/Edit';
 import BusinessIcon from '@mui/icons-material/Business';
 import GroupsIcon from '@mui/icons-material/Groups';
 import BadgeIcon from '@mui/icons-material/Badge';
-import { type Company, type Department, type Position, type User } from '../types';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import SettingsIcon from '@mui/icons-material/Settings';
+import { type Company, type Department, type Position, type User, type Account } from '../types';
 
 // --- GraphQL ---
 const GET_STRUCTURE_QUERY = gql`
@@ -25,6 +28,13 @@ const GET_STRUCTURE_QUERY = gql`
       vatNumber
       address
       molName
+      defaultSalesAccountId
+      defaultExpenseAccountId
+      defaultVatAccountId
+      defaultCustomerAccountId
+      defaultSupplierAccountId
+      defaultCashAccountId
+      defaultBankAccountId
     }
     departments {
       id
@@ -93,14 +103,43 @@ const CREATE_POSITION = gql`
   }
 `;
 
+const GET_ACCOUNTS = gql`
+  query GetAccounts {
+    accounts {
+      id
+      code
+      name
+      type
+    }
+  }
+`;
+
+const UPDATE_COMPANY_ACCOUNTING_SETTINGS = gql`
+  mutation UpdateCompanyAccountingSettings($input: CompanyAccountingSettingsInput!) {
+    updateCompanyAccountingSettings(input: $input) {
+      id
+      name
+      defaultSalesAccountId
+      defaultExpenseAccountId
+      defaultVatAccountId
+      defaultCustomerAccountId
+      defaultSupplierAccountId
+      defaultCashAccountId
+      defaultBankAccountId
+    }
+  }
+`;
+
 const OrganizationManager: React.FC = () => {
   const { data, loading, error, refetch } = useQuery(GET_STRUCTURE_QUERY);
+  const { data: accountsData } = useQuery(GET_ACCOUNTS);
   
   const [createCompany] = useMutation(CREATE_COMPANY);
   const [updateCompany] = useMutation(UPDATE_COMPANY);
   const [createDepartment] = useMutation(CREATE_DEPARTMENT);
   const [updateDepartment] = useMutation(UPDATE_DEPARTMENT);
   const [createPosition] = useMutation(CREATE_POSITION);
+  const [updateCompanyAccountingSettings] = useMutation(UPDATE_COMPANY_ACCOUNTING_SETTINGS);
 
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -110,6 +149,8 @@ const OrganizationManager: React.FC = () => {
   const [openDeptDialog, setOpenDeptDialog] = useState(false);
   const [openEditDeptDialog, setOpenEditDeptDialog] = useState(false);
   const [openPosDialog, setOpenPosDialog] = useState(false);
+  const [openAccountingSettingsDialog, setOpenAccountingSettingsDialog] = useState(false);
+  const [selectedCompanyForSettings, setSelectedCompanyForSettings] = useState<Company | null>(null);
 
   // Form Management
   const companyForm = useForm({
@@ -319,6 +360,41 @@ const OrganizationManager: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
+
+        {/* ACCOUNTING SETTINGS */}
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Card variant="outlined" sx={{ height: '100%' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <AccountBalanceIcon color="warning" />
+                    <Typography variant="h6">Счетоводни Настройки</Typography>
+                </Box>
+                <IconButton color="warning" onClick={() => { 
+                  if (data?.companies?.length > 0) {
+                    setSelectedCompanyForSettings(data.companies[0]);
+                    setOpenAccountingSettingsDialog(true);
+                  }
+                }}>
+                  <SettingsIcon />
+                </IconButton>
+              </Box>
+              <Divider sx={{ mb: 2 }} />
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Настройте подразбиращи се сметки за автоматично счетоводно записване при създаване на фактури.
+              </Typography>
+              {data?.companies?.[0] && (
+                <Box sx={{ p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Typography variant="caption" color="text.secondary">Фирма:</Typography>
+                  <Typography variant="body2" fontWeight="bold">{data.companies[0].name}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {data.companies[0].defaultSalesAccountId ? `Продажби: сметка #${data.companies[0].defaultSalesAccountId}` : 'Продажби: не е настроена'}
+                  </Typography>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
 
       {/* --- DIALOGS --- */}
@@ -412,6 +488,170 @@ const OrganizationManager: React.FC = () => {
                 <Button type="submit" variant="contained">Създай</Button>
             </DialogActions>
         </Box>
+      </Dialog>
+
+      {/* Accounting Settings Dialog */}
+      <Dialog open={openAccountingSettingsDialog} onClose={() => setOpenAccountingSettingsDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Счетоводни Настройки за {selectedCompanyForSettings?.name}</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Тези сметки ще се използват автоматично при генериране на счетоводни записи от фактури.
+          </Alert>
+          {selectedCompanyForSettings && accountsData?.accounts && (
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Сметка за Продажби (Приход)</InputLabel>
+                  <Select
+                    value={selectedCompanyForSettings.defaultSalesAccountId || ''}
+                    label="Сметка за Продажби (Приход)"
+                    onChange={(e) => setSelectedCompanyForSettings({ ...selectedCompanyForSettings, defaultSalesAccountId: e.target.value as number || null })}
+                  >
+                    <MenuItem value=""><em>Не е избрана</em></MenuItem>
+                    {accountsData.accounts
+                      .filter((a: Account) => a.type === 'revenue')
+                      .map((a: Account) => (
+                        <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Сметка за Разходи</InputLabel>
+                  <Select
+                    value={selectedCompanyForSettings.defaultExpenseAccountId || ''}
+                    label="Сметка за Разходи"
+                    onChange={(e) => setSelectedCompanyForSettings({ ...selectedCompanyForSettings, defaultExpenseAccountId: e.target.value as number || null })}
+                  >
+                    <MenuItem value=""><em>Не е избрана</em></MenuItem>
+                    {accountsData.accounts
+                      .filter((a: Account) => a.type === 'expense')
+                      .map((a: Account) => (
+                        <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Сметка за ДДС</InputLabel>
+                  <Select
+                    value={selectedCompanyForSettings.defaultVatAccountId || ''}
+                    label="Сметка за ДДС"
+                    onChange={(e) => setSelectedCompanyForSettings({ ...selectedCompanyForSettings, defaultVatAccountId: e.target.value as number || null })}
+                  >
+                    <MenuItem value=""><em>Не е избрана</em></MenuItem>
+                    {accountsData.accounts
+                      .filter((a: Account) => a.type === 'liability')
+                      .map((a: Account) => (
+                        <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Сметка за Клиенти</InputLabel>
+                  <Select
+                    value={selectedCompanyForSettings.defaultCustomerAccountId || ''}
+                    label="Сметка за Клиенти"
+                    onChange={(e) => setSelectedCompanyForSettings({ ...selectedCompanyForSettings, defaultCustomerAccountId: e.target.value as number || null })}
+                  >
+                    <MenuItem value=""><em>Не е избрана</em></MenuItem>
+                    {accountsData.accounts
+                      .filter((a: Account) => a.type === 'asset')
+                      .map((a: Account) => (
+                        <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Сметка за Доставчици</InputLabel>
+                  <Select
+                    value={selectedCompanyForSettings.defaultSupplierAccountId || ''}
+                    label="Сметка за Доставчици"
+                    onChange={(e) => setSelectedCompanyForSettings({ ...selectedCompanyForSettings, defaultSupplierAccountId: e.target.value as number || null })}
+                  >
+                    <MenuItem value=""><em>Не е избрана</em></MenuItem>
+                    {accountsData.accounts
+                      .filter((a: Account) => a.type === 'liability')
+                      .map((a: Account) => (
+                        <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Сметка за Каса</InputLabel>
+                  <Select
+                    value={selectedCompanyForSettings.defaultCashAccountId || ''}
+                    label="Сметка за Каса"
+                    onChange={(e) => setSelectedCompanyForSettings({ ...selectedCompanyForSettings, defaultCashAccountId: e.target.value as number || null })}
+                  >
+                    <MenuItem value=""><em>Не е избрана</em></MenuItem>
+                    {accountsData.accounts
+                      .filter((a: Account) => a.type === 'asset')
+                      .map((a: Account) => (
+                        <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Сметка за Банка</InputLabel>
+                  <Select
+                    value={selectedCompanyForSettings.defaultBankAccountId || ''}
+                    label="Сметка за Банка"
+                    onChange={(e) => setSelectedCompanyForSettings({ ...selectedCompanyForSettings, defaultBankAccountId: e.target.value as number || null })}
+                  >
+                    <MenuItem value=""><em>Не е избрана</em></MenuItem>
+                    {accountsData.accounts
+                      .filter((a: Account) => a.type === 'asset')
+                      .map((a: Account) => (
+                        <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAccountingSettingsDialog(false)}>Отказ</Button>
+          <Button 
+            variant="contained" 
+            onClick={async () => {
+              if (!selectedCompanyForSettings) return;
+              try {
+                await updateCompanyAccountingSettings({
+                  variables: {
+                    input: {
+                      companyId: selectedCompanyForSettings.id,
+                      defaultSalesAccountId: selectedCompanyForSettings.defaultSalesAccountId || null,
+                      defaultExpenseAccountId: selectedCompanyForSettings.defaultExpenseAccountId || null,
+                      defaultVatAccountId: selectedCompanyForSettings.defaultVatAccountId || null,
+                      defaultCustomerAccountId: selectedCompanyForSettings.defaultCustomerAccountId || null,
+                      defaultSupplierAccountId: selectedCompanyForSettings.defaultSupplierAccountId || null,
+                      defaultCashAccountId: selectedCompanyForSettings.defaultCashAccountId || null,
+                      defaultBankAccountId: selectedCompanyForSettings.defaultBankAccountId || null,
+                    }
+                  }
+                });
+                setOpenAccountingSettingsDialog(false);
+                refetch();
+              } catch (err) {
+                console.error(err);
+              }
+            }}
+          >
+            Запази
+          </Button>
+        </DialogActions>
       </Dialog>
 
     </Box>

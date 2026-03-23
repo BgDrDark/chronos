@@ -122,23 +122,30 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
+    token = None
+    
+    # --- 0. Check query parameter first (for PDF export) ---
+    query_token = request.query_params.get("token")
+    
     # --- 1. Try API Key Header (X-API-Key) ---
     api_key = request.headers.get("X-API-Key")
     if api_key:
         key_obj = await crud.verify_api_key(db, api_key)
         if key_obj:
-            # Return the owner of the key
             user = await crud.get_user_by_id(db, key_obj.user_id)
             if user and user.is_active:
                 return schemas.User.model_validate(user)
         raise credentials_exception
 
-    # --- 2. Try JWT (Cookies or Bearer) ---
-    token = request.cookies.get("access_token")
-    if not token:
-        authorization = request.headers.get("Authorization")
-        if authorization and authorization.startswith("Bearer "):
-            token = authorization.split(" ")[1]
+    # --- 2. Try JWT from query param, cookies or Bearer ---
+    if query_token:
+        token = query_token
+    else:
+        token = request.cookies.get("access_token")
+        if not token:
+            authorization = request.headers.get("Authorization")
+            if authorization and authorization.startswith("Bearer "):
+                token = authorization.split(" ")[1]
             
     if not token:
         raise credentials_exception
@@ -147,7 +154,6 @@ async def get_current_user(
     if payload is None:
         raise credentials_exception
         
-    # Ensure it's an access token
     if payload.get("type") != "access":
         raise credentials_exception
         
