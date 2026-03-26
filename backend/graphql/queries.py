@@ -3,12 +3,15 @@ import datetime
 from typing import List, Optional
 from decimal import Decimal
 from sqlalchemy import select, Time, desc
-
 from backend.graphql import types
-from backend import crud, schemas
+from backend import crud
 from backend.config import settings
 from backend.services.payroll_calculator import PayrollCalculator
-from backend.exceptions import AuthenticationException, PermissionDeniedException
+from backend.exceptions import (
+    AuthenticationException,
+    PermissionDeniedException,
+    NotFoundException,
+)
 
 @strawberry.type
 class Query:
@@ -37,9 +40,14 @@ class Query:
         current_user = info.context["current_user"]
         
         if current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise AuthenticationException(detail="Трябва да сте администратор за достъп до договорите")
         
-        stmt = select(EmploymentContract)
+        from sqlalchemy.orm import selectinload
+        stmt = select(EmploymentContract).options(
+            selectinload(EmploymentContract.company),
+            selectinload(EmploymentContract.position),
+            selectinload(EmploymentContract.department)
+        )
         
         # Filter by company
         if company_id:
@@ -65,10 +73,15 @@ class Query:
     ) -> Optional[types.EmploymentContract]:
         """Връща конкретен трудов договор"""
         from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
         from backend.database.models import EmploymentContract
         db = info.context["db"]
         
-        stmt = select(EmploymentContract).where(EmploymentContract.id == id)
+        stmt = select(EmploymentContract).options(
+            selectinload(EmploymentContract.company),
+            selectinload(EmploymentContract.position),
+            selectinload(EmploymentContract.department)
+        ).where(EmploymentContract.id == id)
         result = await db.execute(stmt)
         contract = result.scalar_one_or_none()
         
@@ -102,7 +115,7 @@ class Query:
         # Allow admin, super_admin, accountant, and manager
         allowed_roles = ["admin", "super_admin", "accountant", "manager"]
         if current_user is None or current_user.role.name not in allowed_roles:
-            raise Exception("Operation not permitted for this user role")
+            raise PermissionDeniedException()
         
         # Isolation: Non-super_admin sees only their company
         company_id = None
@@ -118,16 +131,32 @@ class Query:
         )
 
     @strawberry.field
+    async def all_users(
+        self, 
+        info: strawberry.Info,
+        search: Optional[str] = None
+    ) -> List[types.User]:
+        """Връща всички потребители като плосък списък (за старите компоненти)"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin", "accountant", "manager"]:
+            raise PermissionDeniedException.for_action("view records")
+            
+        company_id = current_user.company_id if current_user.role.name != "super_admin" else None
+        db_users = await crud.get_users(db, skip=0, limit=1000, search=search, company_id=company_id)
+        return [types.User.from_instance(u) for u in db_users]
+
+    @strawberry.field
     async def user(self, info: strawberry.Info, id: Optional[int] = None) -> Optional[types.User]:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None:
-            raise Exception("Not authenticated")
+            raise AuthenticationException()
             
         target_id = id if id is not None else current_user.id
         
         if current_user.role.name not in ["admin", "super_admin"] and current_user.id != target_id:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("access")
             
         db_user = await crud.get_user_by_id(db, target_id)
         if db_user:
@@ -140,7 +169,7 @@ class Query:
         current_user = info.context["current_user"]
         allowed_roles = ["admin", "super_admin", "accountant", "manager"]
         if current_user is None or current_user.role.name not in allowed_roles:
-            raise Exception("Operation not permitted for this user role")
+            raise PermissionDeniedException.for_action("access roles")
         db_roles = await crud.get_roles(db)
         return [types.Role.from_instance(role) for role in db_roles]
     
@@ -151,7 +180,7 @@ class Query:
         
         # Access check
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-             raise Exception("Not authorized")
+             raise PermissionDeniedException.for_action("access")
              
         gps = await crud.get_global_setting(db, "kiosk_require_gps") != "false"
         net = await crud.get_global_setting(db, "kiosk_require_same_network") != "false"
@@ -197,7 +226,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-             raise Exception("Not authorized")
+             raise PermissionDeniedException.for_action("access")
              
         max_ins = await crud.get_global_setting(db, "payroll_max_insurance_base")
         ins_rate = await crud.get_global_setting(db, "payroll_employee_insurance_rate")
@@ -224,7 +253,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         company_id = current_user.company_id if current_user.role.name != "super_admin" else None
         
@@ -259,7 +288,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import ContractTemplate
         template = await db.get(ContractTemplate, id)
@@ -288,7 +317,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import ContractTemplateVersion
         stmt = select(ContractTemplateVersion).where(
@@ -321,7 +350,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         company_id = current_user.company_id if current_user.role.name != "super_admin" else None
         
@@ -353,7 +382,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import AnnexTemplate
         template = await db.get(AnnexTemplate, id)
@@ -379,7 +408,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import AnnexTemplateVersion
         stmt = select(AnnexTemplateVersion).where(
@@ -409,7 +438,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise AuthenticationException(detail="Трябва да се автентикирате")
         
         company_id = current_user.company_id if current_user.role.name != "super_admin" else None
         
@@ -438,7 +467,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import ContractAnnex, EmploymentContract, User
         stmt = select(ContractAnnex).join(EmploymentContract).join(User)
@@ -466,7 +495,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("view records")
             
         from backend.database.models import (
             User, EmploymentContract, PayrollDeduction, SickLeaveRecord, 
@@ -483,17 +512,14 @@ class Query:
             
         if user_ids:
             stmt = stmt.where(User.id.in_(user_ids))
-        
         result = await db.execute(stmt)
         users = result.scalars().all()
         target_ids = [u.id for u in users]
-        
         if not target_ids: return []
 
         # 2. BULK LOAD everything in parallel queries
         # Isolation: Filter settings by company_id if not super_admin
         company_id = current_user.company_id if current_user.role.name != "super_admin" else None
-        
         schedule_stmt = select(PayrollPaymentSchedule).where(PayrollPaymentSchedule.active == True)
         deductions_stmt = select(PayrollDeduction).where(PayrollDeduction.is_active == True)
         
@@ -502,7 +528,10 @@ class Query:
             deductions_stmt = deductions_stmt.where(PayrollDeduction.company_id == company_id)
         
         # B) User-specific records
-        contracts_stmt = select(EmploymentContract).where(EmploymentContract.user_id.in_(target_ids), EmploymentContract.is_active == True)
+        from sqlalchemy.orm import selectinload
+        contracts_stmt = select(EmploymentContract).options(
+            selectinload(EmploymentContract.user)
+        ).where(EmploymentContract.user_id.in_(target_ids), EmploymentContract.is_active == True)
         sick_stmt = select(SickLeaveRecord).where(SickLeaveRecord.user_id.in_(target_ids), SickLeaveRecord.start_date >= start_date, SickLeaveRecord.end_date <= end_date)
         advances_stmt = select(AdvancePayment).where(AdvancePayment.user_id.in_(target_ids), AdvancePayment.payment_date >= start_date, AdvancePayment.payment_date <= end_date, AdvancePayment.is_processed == False)
         loans_stmt = select(ServiceLoan).where(ServiceLoan.user_id.in_(target_ids), ServiceLoan.is_active == True, ServiceLoan.remaining_amount > 0)
@@ -575,7 +604,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted for this user role")
+            raise PermissionDeniedException.for_action("view records")
         db_role = await crud.get_role_by_id(db, id)
         if db_role:
             return types.Role.from_instance(db_role)
@@ -639,7 +668,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted for this user role")
+            raise PermissionDeniedException.for_action("view records")
         
         # Convert aware to naive UTC to match DB TIMESTAMP WITHOUT TIME ZONE
         query_start = start_date
@@ -679,7 +708,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view records")
             
         reqs = await crud.get_leave_requests(db, status="pending")
         return [types.LeaveRequest.from_instance(r) for r in reqs]
@@ -689,7 +718,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view records")
             
         reqs = await crud.get_leave_requests(db, status=status)
         return [types.LeaveRequest.from_instance(r) for r in reqs]
@@ -700,10 +729,10 @@ class Query:
         current_user = info.context["current_user"]
         
         if current_user is None:
-             raise Exception("Not authenticated")
+             raise AuthenticationException(detail="Трябва да се автентикирате")
              
         if current_user.id != user_id and current_user.role.name not in ["admin", "super_admin"]:
-             raise Exception("Operation not permitted")
+             raise PermissionDeniedException.for_action("view records")
              
         balance = await crud.get_leave_balance(db, user_id, year)
         return types.LeaveBalance.from_instance(balance)
@@ -713,7 +742,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise Exception("Not authenticated")
+            raise AuthenticationException(detail="Трябва да се автентикирате")
         
         res = await crud.get_companies(db)
         return [types.Company.from_instance(c) for c in res]
@@ -723,7 +752,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise Exception("Not authenticated")
+            raise AuthenticationException(detail="Трябва да се автентикирате")
             
         res = await crud.get_departments(db, company_id)
         return [types.Department.from_instance(d) for d in res]
@@ -733,7 +762,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise Exception("Not authenticated")
+            raise AuthenticationException(detail="Трябва да се автентикирате")
             
         res = await crud.get_positions(db, department_id)
         return [types.Position.from_instance(p) for p in res]
@@ -774,7 +803,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view records")
 
         from sqlalchemy import select, and_
         from sqlalchemy.orm import selectinload
@@ -909,7 +938,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-             raise Exception("Operation not permitted")
+             raise PermissionDeniedException.for_action("view records")
 
         server = await crud.get_global_setting(db, "smtp_server")
         port = await crud.get_global_setting(db, "smtp_port")
@@ -938,7 +967,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view records")
 
         from backend.database.models import NotificationSetting
         stmt = select(NotificationSetting).where(NotificationSetting.company_id == company_id)
@@ -950,7 +979,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view records")
 
         from backend.database.models import NotificationSetting
         stmt = select(NotificationSetting).where(
@@ -972,7 +1001,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-             raise Exception("Operation not permitted")
+             raise PermissionDeniedException.for_action("view records")
 
         from backend.services.payroll_calculator import PayrollCalculator
         calculator = PayrollCalculator(db)
@@ -1087,7 +1116,7 @@ class Query:
         target_user_id = current_user.id
         if user_id:
             if current_user.role.name not in ["admin", "super_admin"] and current_user.id != user_id:
-                raise Exception("Operation not permitted")
+                raise PermissionDeniedException.for_action("view weekly summary")
             target_user_id = user_id
             
         ref_date = date if date else datetime.datetime.now().date()
@@ -1139,7 +1168,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view active sessions")
         
         sessions = await crud.get_active_sessions(db, skip=skip, limit=limit)
         return [types.UserSession.from_instance(s) for s in sessions]
@@ -1155,7 +1184,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view audit logs")
         
         from sqlalchemy import select, desc
         from backend.database.models import AuditLog as DbAuditLog
@@ -1182,7 +1211,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view swap requests")
         res = await crud.get_all_pending_swaps(db)
         return [types.ShiftSwapRequest.from_instance(s) for s in res]
 
@@ -1191,7 +1220,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view management stats")   
 
         from sqlalchemy import func, extract
         from backend.database.models import Payslip, TimeLog, WorkSchedule, Shift, User
@@ -1244,7 +1273,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view schedule templates")
         res = await crud.get_schedule_templates(db)
         return [types.ScheduleTemplate.from_instance(t) for t in res]
 
@@ -1253,7 +1282,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view schedule template")  
         res = await crud.get_schedule_template(db, id)
         return types.ScheduleTemplate.from_instance(res) if res else None
 
@@ -1269,7 +1298,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view payroll forecast")
         
         # 1. Get All Active Users
         users = await crud.get_users(db, limit=1000)
@@ -1305,7 +1334,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view API keys")
         
         res = await crud.get_api_keys(db)
         return [types.APIKey.from_instance(k) for k in res]
@@ -1315,7 +1344,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view webhooks")   
         
         res = await crud.get_webhooks(db)
         return [types.Webhook.from_instance(w) for w in res]
@@ -1333,7 +1362,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name != "super_admin":
-            raise Exception("Operation not permitted")
+            raise PermissionDeniedException.for_action("view password settings")
             
         return types.PasswordSettings(
             min_length=int(await crud.get_global_setting(db, "pwd_min_length") or "8"),
@@ -1350,7 +1379,7 @@ class Query:
     async def storage_zones(self, info: strawberry.Info) -> List[types.StorageZone]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import StorageZone
         stmt = select(StorageZone)
@@ -1364,7 +1393,7 @@ class Query:
     async def suppliers(self, info: strawberry.Info) -> List[types.Supplier]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import Supplier
         stmt = select(Supplier)
@@ -1378,7 +1407,7 @@ class Query:
     async def ingredients(self, info: strawberry.Info, search: Optional[str] = None) -> List[types.Ingredient]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import Ingredient
         stmt = select(Ingredient)
@@ -1400,7 +1429,7 @@ class Query:
     ) -> List[types.Batch]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import Batch, Ingredient
         stmt = select(Batch).join(Ingredient)
@@ -1412,9 +1441,7 @@ class Query:
             stmt = stmt.where(Batch.ingredient_id == ingredient_id)
         if status:
             stmt = stmt.where(Batch.status == status)
-            
         stmt = stmt.order_by(Batch.expiry_date.asc()) # FEFO logic
-        
         res = await db.execute(stmt)
         return [types.Batch.from_instance(b) for b in res.scalars().all()]
 
@@ -1473,7 +1500,6 @@ class Query:
         db = info.context["db"]
         from backend.database.models import StockConsumptionLog
         from sqlalchemy import select, desc
-
         stmt = select(StockConsumptionLog)
         
         if ingredient_id:
@@ -1484,9 +1510,7 @@ class Query:
             stmt = stmt.where(StockConsumptionLog.created_at >= start_date)
         if end_date:
             stmt = stmt.where(StockConsumptionLog.created_at <= end_date)
-            
         stmt = stmt.order_by(desc(StockConsumptionLog.created_at))
-        
         result = await db.execute(stmt)
         logs = result.scalars().all()
         return [types.StockConsumptionLog.from_instance(l) for l in logs]
@@ -1501,7 +1525,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException("Не сте автентикирани")
+            raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import Batch, Ingredient
         stmt = select(Batch).join(Ingredient).where(
@@ -1522,7 +1546,7 @@ class Query:
     async def recipes(self, info: strawberry.Info) -> List[types.Recipe]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import Recipe
         stmt = select(Recipe)
@@ -1542,7 +1566,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise Exception("Not authenticated")
+            raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import Recipe
         stmt = select(Recipe)
@@ -1566,14 +1590,14 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise Exception("Not authenticated")
+            raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import PriceHistory, Recipe
         from sqlalchemy import desc
         
         recipe = await db.get(Recipe, recipe_id)
         if not recipe or recipe.company_id != current_user.company_id:
-            raise Exception("Рецепта не е намерена")
+            raise not_found("Рецепта не е намерена")
         
         stmt = select(PriceHistory).where(
             PriceHistory.recipe_id == recipe_id
@@ -1586,7 +1610,7 @@ class Query:
     async def workstations(self, info: strawberry.Info) -> List[types.Workstation]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import Workstation
         stmt = select(Workstation)
@@ -1600,7 +1624,7 @@ class Query:
     async def production_orders(self, info: strawberry.Info, status: Optional[str] = None) -> List[types.ProductionOrder]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import ProductionOrder
         stmt = select(ProductionOrder)
@@ -1619,7 +1643,7 @@ class Query:
     async def terminal_orders(self, info: strawberry.Info, workstation_id: int) -> List[types.TerminalOrder]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import ProductionOrder, ProductionTask, Recipe
         stmt = select(ProductionOrder).where(
@@ -1657,39 +1681,10 @@ class Query:
         return orders
 
     @strawberry.field
-    async def generate_label(self, order_id: int, info: strawberry.Info) -> types.LabelData:
-        db = info.context["db"]
-        from backend.database.models import ProductionOrder, Recipe, sofia_now
-        
-        order = await db.get(ProductionOrder, order_id)
-        if not order: raise Exception("Order not found")
-        
-        recipe = await db.get(Recipe, order.recipe_id)
-        now = sofia_now()
-        expiry = now.date() + datetime.timedelta(days=recipe.shelf_life_days)
-        
-        # Batch number logic: ORDER-ID-DATE
-        batch_num = f"PRD-{order.id}-{now.strftime('%y%m%d')}"
-        
-        # Collect allergens from ingredients (simplified for this example)
-        # In a real app, we'd loop through recipe.ingredients
-        
-        return types.LabelData(
-            product_name=recipe.name,
-            batch_number=batch_num,
-            production_date=now,
-            expiry_date=expiry,
-            allergens=recipe.allergens or ["Виж документацията на рецептата"],
-            storage_conditions="Съхранение от 2°C до 6°C",
-            qr_code_content=f"BATCH:{batch_num}|PROD:{recipe.name}",
-            quantity=f"{order.quantity} {recipe.yield_unit}"
-        )
-
-    @strawberry.field
     async def production_records(self, info: strawberry.Info, order_id: Optional[int] = None) -> List[types.ProductionRecord]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import ProductionRecord
         stmt = select(ProductionRecord)
@@ -1710,7 +1705,7 @@ class Query:
     async def production_record_by_order(self, order_id: int, info: strawberry.Info) -> Optional[types.ProductionRecord]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import ProductionRecord, ProductionOrder
         stmt = select(ProductionRecord).where(ProductionRecord.order_id == order_id)
@@ -1728,7 +1723,7 @@ class Query:
     async def inventory_sessions(self, info: strawberry.Info, status: Optional[str] = None) -> List[types.InventorySession]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import InventorySession
         stmt = select(InventorySession)
@@ -1747,7 +1742,7 @@ class Query:
     async def inventory_session_items(self, session_id: int, info: strawberry.Info) -> List[types.InventoryItem]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import InventorySession, InventoryItem
         
@@ -1765,7 +1760,7 @@ class Query:
         """Get ingredient by barcode for inventory scanning"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import Ingredient, Batch
         from sqlalchemy import select, func
@@ -1783,8 +1778,8 @@ class Query:
             Batch.status == "active"
         )
         res = await db.execute(stmt)
-        system_qty = res.scalar() or 0
-        
+        system_qty = Decimal(res.scalar() or 0)
+
         # Return a simple object with the info
         return types.InventoryItem(
             id=0,
@@ -1809,7 +1804,7 @@ class Query:
         """Get all invoices, optionally filtered by type and status"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Invoice
         stmt = select(Invoice)
@@ -1837,7 +1832,7 @@ class Query:
         """Get a single invoice by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Invoice
         invoice = await db.get(Invoice, id)
@@ -1854,7 +1849,7 @@ class Query:
         """Get a single invoice by number"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Invoice
         stmt = select(Invoice).where(Invoice.number == number)
@@ -1880,7 +1875,7 @@ class Query:
         """Get cash journal entries, optionally filtered"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import CashJournalEntry
         import datetime
@@ -1913,7 +1908,7 @@ class Query:
         """Get operation logs, optionally filtered"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import OperationLog
         import datetime
@@ -1945,7 +1940,7 @@ class Query:
         """Get daily summaries, optionally filtered by date range"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import DailySummary
         import datetime
@@ -1974,7 +1969,7 @@ class Query:
         """Get monthly summaries, optionally filtered by year range"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import MonthlySummary
         stmt = select(MonthlySummary)
@@ -2002,7 +1997,7 @@ class Query:
         """Get yearly summaries, optionally filtered by year range"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import YearlySummary
         stmt = select(YearlySummary)
@@ -2030,7 +2025,7 @@ class Query:
         """Get all proforma invoices"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Invoice
         stmt = select(Invoice).where(Invoice.type == "proforma")
@@ -2061,10 +2056,11 @@ class Query:
         """Get all invoice corrections (credit/debit notes)"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import InvoiceCorrection
-        stmt = select(InvoiceCorrection)
+        from sqlalchemy.orm import selectinload
+        stmt = select(InvoiceCorrection).options(selectinload(InvoiceCorrection.original_invoice))
 
         if current_user.role.name != "super_admin":
             stmt = stmt.where(InvoiceCorrection.company_id == current_user.company_id)
@@ -2084,10 +2080,16 @@ class Query:
         """Get a single invoice correction by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import InvoiceCorrection
-        correction = await db.get(InvoiceCorrection, id)
+        from sqlalchemy.orm import selectinload
+        stmt = select(InvoiceCorrection).options(
+            selectinload(InvoiceCorrection.original_invoice)
+        ).where(InvoiceCorrection.id == id)
+        res = await db.execute(stmt)
+        correction = res.scalar_one_or_none()
+        
         if not correction:
             return None
 
@@ -2107,7 +2109,7 @@ class Query:
         """Get all cash receipts"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import CashReceipt
         stmt = select(CashReceipt)
@@ -2132,7 +2134,7 @@ class Query:
         """Get a single cash receipt by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import CashReceipt
         receipt = await db.get(CashReceipt, id)
@@ -2153,7 +2155,7 @@ class Query:
         """Get all bank accounts"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import BankAccount
         stmt = select(BankAccount)
@@ -2174,7 +2176,7 @@ class Query:
         """Get a single bank account by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import BankAccount
         account = await db.get(BankAccount, id)
@@ -2198,7 +2200,7 @@ class Query:
         """Get all bank transactions"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import BankTransaction
         stmt = select(BankTransaction)
@@ -2225,7 +2227,7 @@ class Query:
         """Get a single bank transaction by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import BankTransaction
         transaction = await db.get(BankTransaction, id)
@@ -2247,7 +2249,7 @@ class Query:
         """Get all accounts (chart of accounts)"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Account
         stmt = select(Account)
@@ -2270,7 +2272,7 @@ class Query:
         """Get a single account by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Account
         account = await db.get(Account, id)
@@ -2287,7 +2289,7 @@ class Query:
         """Get a single account by code"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Account
         stmt = select(Account).where(Account.code == code)
@@ -2313,7 +2315,7 @@ class Query:
         """Get all accounting entries"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import AccountingEntry
         stmt = select(AccountingEntry)
@@ -2343,7 +2345,7 @@ class Query:
         """Get a single accounting entry by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import AccountingEntry
         entry = await db.get(AccountingEntry, id)
@@ -2365,7 +2367,7 @@ class Query:
         """Get all VAT registers"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import VATRegister
         stmt = select(VATRegister)
@@ -2388,7 +2390,7 @@ class Query:
         """Get a single VAT register by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import VATRegister
         vat_register = await db.get(VATRegister, id)
@@ -2405,7 +2407,7 @@ class Query:
         """Get all gateways"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Gateway
         stmt = select(Gateway)
@@ -2426,7 +2428,7 @@ class Query:
         """Get a single gateway by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Gateway
         gateway = await db.get(Gateway, id)
@@ -2445,7 +2447,7 @@ class Query:
         """Get all terminals"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Terminal, Gateway
         stmt = select(Terminal)
@@ -2472,7 +2474,7 @@ class Query:
         """Get a single terminal by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Terminal
         terminal = await db.get(Terminal, id)
@@ -2486,7 +2488,7 @@ class Query:
         """Get all printers for a gateway"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
 
         from backend.database.models import Printer
         stmt = select(Printer).where(Printer.gateway_id == gateway_id)
@@ -2500,7 +2502,9 @@ class Query:
         """Get gateway statistics"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if current_user.role.name != "super_admin":
+            raise AuthenticationException
 
         from backend.database.models import Gateway, Terminal, Printer
         from sqlalchemy import func
@@ -2530,7 +2534,7 @@ class Query:
         db = info.context["db"]
         from backend.database import models
         user = info.context["current_user"]
-        if not user: raise Exception("Not authenticated")
+        if not user: raise AuthenticationException
         
         stmt = select(models.AccessZone)
         if user.role.name != "super_admin":
@@ -2544,7 +2548,7 @@ class Query:
         db = info.context["db"]
         from backend.database import models
         user = info.context["current_user"]
-        if not user: raise Exception("Not authenticated")
+        if not user: raise AuthenticationException()
         
         query = select(models.AccessDoor).join(models.AccessZone)
         if user.role.name != "super_admin":
@@ -2560,7 +2564,7 @@ class Query:
         db = info.context["db"]
         from backend.database import models
         user = info.context["current_user"]
-        if not user: raise Exception("Not authenticated")
+        if not user: raise AuthenticationException()
         
         query = select(models.AccessCode)
         if user.role.name != "super_admin":
@@ -2580,7 +2584,7 @@ class Query:
         db = info.context["db"]
         from backend.database import models
         user = info.context["current_user"]
-        if not user: raise Exception("Not authenticated")
+        if not user: raise AuthenticationException()
         
         query = select(models.AccessLog).order_by(models.AccessLog.timestamp.desc()).limit(limit)
         if user.role.name != "super_admin":
@@ -2603,7 +2607,7 @@ class Query:
         """Get production orders for a specific day (by production_deadline)"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException()
         
         from backend.database.models import ProductionOrder
         from datetime import datetime, timedelta
@@ -2637,7 +2641,7 @@ class Query:
         """Get overdue production orders (production_deadline < now)"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException()
         
         from backend.database.models import ProductionOrder
         from datetime import datetime
@@ -2656,3 +2660,108 @@ class Query:
         
         res = await db.execute(stmt)
         return [types.ProductionOrder.from_instance(o) for o in res.scalars().all()]
+
+    # ========== FLEET MANAGEMENT QUERIES ==========
+
+    @strawberry.field
+    async def vehicles(self, info: strawberry.Info, company_id: Optional[int] = None) -> List[types.Vehicle]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user: raise AuthenticationException()
+        
+        from backend.database.models import Vehicle
+        stmt = select(Vehicle)
+        
+        if company_id:
+            stmt = stmt.where(Vehicle.company_id == company_id)
+        elif current_user.role.name != "super_admin":
+            stmt = stmt.where(Vehicle.company_id == current_user.company_id)
+            
+        res = await db.execute(stmt)
+        return [types.Vehicle.from_instance(v) for v in res.scalars().all()]
+
+    @strawberry.field
+    async def vehicle(self, info: strawberry.Info, id: int) -> Optional[types.Vehicle]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user: raise AuthenticationException()
+        
+        from backend.database.models import Vehicle
+        vehicle = await db.get(Vehicle, id)
+        
+        if vehicle and current_user.role.name != "super_admin":
+            if vehicle.company_id != current_user.company_id:
+                return None
+                
+        return types.Vehicle.from_instance(vehicle) if vehicle else None
+
+    @strawberry.field
+    async def vehicle_types(self, info: strawberry.Info) -> List[types.VehicleType]:
+        db = info.context["db"]
+        from backend.database.models import VehicleType
+        res = await db.execute(select(VehicleType))
+        return [types.VehicleType.from_instance(vt) for vt in res.scalars().all()]
+
+    @strawberry.field
+    async def vehicle_documents(self, info: strawberry.Info, vehicle_id: int) -> List[types.VehicleDocument]:
+        db = info.context["db"]
+        from backend.database.models import VehicleDocument
+        stmt = select(VehicleDocument).where(VehicleDocument.vehicle_id == vehicle_id)
+        res = await db.execute(stmt)
+        return [types.VehicleDocument.from_instance(d) for d in res.scalars().all()]
+
+    @strawberry.field
+    async def vehicle_mileage(self, info: strawberry.Info, vehicle_id: int) -> List[types.VehicleMileage]:
+        db = info.context["db"]
+        from backend.database.models import VehicleMileage
+        stmt = select(VehicleMileage).where(VehicleMileage.vehicle_id == vehicle_id).order_by(VehicleMileage.date.desc())
+        res = await db.execute(stmt)
+        return [types.VehicleMileage.from_instance(m) for m in res.scalars().all()]
+
+    @strawberry.field
+    async def vehicle_fuel_logs(self, info: strawberry.Info, vehicle_id: int) -> List[types.VehicleFuel]:
+        db = info.context["db"]
+        from backend.database.models import VehicleFuel
+        stmt = select(VehicleFuel).where(VehicleFuel.vehicle_id == vehicle_id).order_by(VehicleFuel.date.desc())
+        res = await db.execute(stmt)
+        return [types.VehicleFuel.from_instance(f) for f in res.scalars().all()]
+
+    @strawberry.field
+    async def vehicle_repairs(self, info: strawberry.Info, vehicle_id: int) -> List[types.VehicleRepair]:
+        db = info.context["db"]
+        from backend.database.models import VehicleRepair
+        stmt = select(VehicleRepair).where(VehicleRepair.vehicle_id == vehicle_id).order_by(VehicleRepair.repair_date.desc())
+        res = await db.execute(stmt)
+        return [types.VehicleRepair.from_instance(r) for r in res.scalars().all()] if hasattr(res, "scalars") else []
+
+    @strawberry.field
+    async def vehicle_insurances(self, info: strawberry.Info, vehicle_id: int) -> List[types.VehicleInsurance]:
+        db = info.context["db"]
+        from backend.database.models import VehicleInsurance
+        stmt = select(VehicleInsurance).where(VehicleInsurance.vehicle_id == vehicle_id).order_by(VehicleInsurance.start_date.desc())
+        res = await db.execute(stmt)
+        return [types.VehicleInsurance.from_instance(i) for i in res.scalars().all()]
+
+    @strawberry.field
+    async def vehicle_inspections(self, info: strawberry.Info, vehicle_id: int) -> List[types.VehicleInspection]:
+        db = info.context["db"]
+        from backend.database.models import VehicleInspection
+        stmt = select(VehicleInspection).where(VehicleInspection.vehicle_id == vehicle_id).order_by(VehicleInspection.inspection_date.desc())
+        res = await db.execute(stmt)
+        return [types.VehicleInspection.from_instance(i) for i in res.scalars().all()]
+
+    @strawberry.field
+    async def vehicle_drivers(self, info: strawberry.Info, vehicle_id: int) -> List[types.VehicleDriver]:
+        db = info.context["db"]
+        from backend.database.models import VehicleDriver
+        stmt = select(VehicleDriver).where(VehicleDriver.vehicle_id == vehicle_id).order_by(VehicleDriver.assigned_from.desc())
+        res = await db.execute(stmt)
+        return [types.VehicleDriver.from_instance(d) for d in res.scalars().all()]
+
+    @strawberry.field
+    async def vehicle_trips(self, info: strawberry.Info, vehicle_id: int) -> List[types.VehicleTrip]:
+        db = info.context["db"]
+        from backend.database.models import VehicleTrip
+        stmt = select(VehicleTrip).where(VehicleTrip.vehicle_id == vehicle_id).order_by(VehicleTrip.start_time.desc())
+        res = await db.execute(stmt)
+        return [types.VehicleTrip.from_instance(t) for t in res.scalars().all()]

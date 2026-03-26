@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
+import { ErrorProvider } from './context/ErrorContext';
 import MainLayout from './components/MainLayout';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
@@ -87,9 +88,10 @@ function App() {
   }
 
   return (
-    <MainLayout>
-      <Routes>
-        <Route path="/" element={<DashboardPage />} />
+    <ErrorProvider>
+      <MainLayout>
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/:id" element={<ProfilePage />} />
         <Route path="/settings" element={<SettingsPage />} />
@@ -594,8 +596,9 @@ function App() {
             </AdminRoute>
           }
         />
-      </Routes>
-    </MainLayout>
+        </Routes>
+      </MainLayout>
+    </ErrorProvider>
   );
 }
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AccountingSummary, Account, Transaction, Register, AccountingLog, Ingredient, AccountingEntry, getErrorMessage } from '../types';
+import { useCurrency, formatCurrencyValue } from '../currencyContext';
 import {
   Container,
   Typography,
@@ -28,11 +29,12 @@ import {
   FormControl,
   InputLabel,
   IconButton,
-  Tooltip,
   List,
   ListItem,
   ListItemText,
   Divider,
+  InputAdornment,
+  Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -46,6 +48,8 @@ import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import { useQuery, useMutation, useLazyQuery, gql } from '@apollo/client';
+import { InfoIcon } from '../components/ui/InfoIcon';
+import { useError, extractErrorMessage } from '../context/ErrorContext';
 import { 
   type CashJournalEntry, type Supplier
 } from '../types';
@@ -78,56 +82,62 @@ const ValidatedTextField: React.FC<ValidatedTextFieldProps> = ({
 }) => {
   const showError = !!error;
   const hasValue = value !== '' && value !== null && value !== undefined;
+
+  const endAdornment = tooltip ? (
+    <InputAdornment position="end">
+      <InfoIcon helpText={tooltip} />
+    </InputAdornment>
+  ) : InputProps?.endAdornment;
   
   return (
-    <Tooltip title={tooltip || ''} arrow placement="top">
-      <TextField
-        label={label}
-        value={value}
-        onChange={(e) => {
-          if (type === 'number') {
-            onChange(e.target.value.replace(/[^0-9.]/g, ''));
-          } else {
-            onChange(e.target.value);
-          }
-        }}
-        placeholder={placeholder}
-        error={showError}
-        helperText={error}
-        required={required}
-        type={type}
-        select={select}
-        size={size}
-        fullWidth={fullWidth}
-        disabled={disabled}
-        multiline={multiline}
-        rows={rows}
-        InputLabelProps={InputLabelProps}
-        sx={sx}
-        InputProps={{
-          ...InputProps,
-          sx: {
-            ...InputProps?.sx,
-            '& .MuiOutlinedInput-root': {
-              '&.Mui-error': {
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'error.main',
-                  borderWidth: 2,
-                },
+    <TextField
+      label={label}
+      value={value}
+      onChange={(e) => {
+        if (type === 'number') {
+          onChange(e.target.value.replace(/[^0-9.]/g, ''));
+        } else {
+          onChange(e.target.value);
+        }
+      }}
+      placeholder={placeholder}
+      error={showError}
+      helperText={error}
+      required={required}
+      type={type}
+      select={select}
+      size={size}
+      fullWidth={fullWidth}
+      disabled={disabled}
+      multiline={multiline}
+      rows={rows}
+      InputLabelProps={InputLabelProps}
+      sx={sx}
+      slotProps={{
+        input: { endAdornment }
+      }}
+      InputProps={{
+        sx: {
+          ...InputProps?.sx,
+          '& .MuiOutlinedInput-root': {
+            '&.Mui-error': {
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'error.main',
+                borderWidth: 2,
               },
-              ...(hasValue && !showError && {
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'success.main',
-                  borderWidth: 2,
-                },
-              }),
             },
+            ...(hasValue && !showError && {
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'success.main',
+                borderWidth: 2,
+              },
+            }),
           },
-        }}
-      >
-        {children}
-      </TextField>
-    </Tooltip>
+        },
+      }}
+    >
+      {children}
+    </TextField>
   );
 };
 
@@ -768,11 +778,17 @@ const tabMap: Record<string, number> = {
 export default function AccountingPage({ tab }: Props) {
   const initialTab = tab ? (tabMap[tab] ?? 0) : 0;
   const [tabValue, setTabValue] = useState(initialTab);
+  const { currency } = useCurrency();
+  const { showError, showSuccess } = useError();
   
   useEffect(() => {
     const newTab = tab ? (tabMap[tab] ?? 0) : 0;
     setTabValue(newTab);
   }, [tab]);
+
+  const formatPrice = (value: number | string | null | undefined): string => {
+    return formatCurrencyValue(value, currency);
+  };
   
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -858,8 +874,13 @@ export default function AccountingPage({ tab }: Props) {
         credentials: 'include'
       });
       
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '/login';
+        return;
+      }
+      
       if (!response.ok) {
-        throw new Error('Failed to load PDF');
+        throw new Error(`Failed to load PDF: ${response.status}`);
       }
       
       const blob = await response.blob();
@@ -870,8 +891,7 @@ export default function AccountingPage({ tab }: Props) {
         printWindow.focus();
       }
     } catch (err) {
-      console.error('Error printing invoice:', err);
-      alert('Грешка при принтиране на фактура');
+      alert('Грешка при принтиране на фактура: ' + getErrorMessage(err));
     }
   };
 
@@ -940,8 +960,9 @@ function CashJournalTab() {
       try {
         await deleteCashEntry({ variables: { id } });
         refetch();
+        showSuccess('Операцията е изтрита успешно');
       } catch (err) {
-        console.error(err);
+        showError(extractErrorMessage(err));
       }
     }
   };
@@ -968,12 +989,12 @@ function CashJournalTab() {
         <Box sx={{ display: 'flex', gap: 4 }}>
           <Box sx={{ p: 2, bgcolor: '#ffebee', borderRadius: 1, flex: 1 }}>
             <Typography variant="subtitle2">Входящи фактури (Разход)</Typography>
-            <Typography variant="h5" color="error.main">{totalIncoming.toFixed(2)} лв.</Typography>
+            <Typography variant="h5" color="error.main">{formatPrice(totalIncoming)}</Typography>
             <Typography variant="body2" color="text.secondary">{incomingInvoices.length} бр.</Typography>
           </Box>
           <Box sx={{ p: 2, bgcolor: '#e8f5e9', borderRadius: 1, flex: 1 }}>
             <Typography variant="subtitle2">Изходящи фактури (Приход)</Typography>
-            <Typography variant="h5" color="success.main">{totalOutgoing.toFixed(2)} лв.</Typography>
+            <Typography variant="h5" color="success.main">{formatPrice(totalOutgoing)}</Typography>
             <Typography variant="body2" color="text.secondary">{outgoingInvoices.length} бр.</Typography>
           </Box>
         </Box>
@@ -999,7 +1020,7 @@ function CashJournalTab() {
                     <TableCell>{inv.number}</TableCell>
                     <TableCell>{new Date(inv.date).toLocaleDateString('bg-BG')}</TableCell>
                     <TableCell>{inv.supplier?.name || '-'}</TableCell>
-                    <TableCell align="right" sx={{ color: 'error.main' }}>{Number(inv.total).toFixed(2)} лв.</TableCell>
+                    <TableCell align="right" sx={{ color: 'error.main' }}>{formatPrice(Number(inv.total))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1028,7 +1049,7 @@ function CashJournalTab() {
                     <TableCell>{inv.number}</TableCell>
                     <TableCell>{new Date(inv.date).toLocaleDateString('bg-BG')}</TableCell>
                     <TableCell>{inv.clientName || '-'}</TableCell>
-                    <TableCell align="right" sx={{ color: 'success.main' }}>{Number(inv.total).toFixed(2)} лв.</TableCell>
+                    <TableCell align="right" sx={{ color: 'success.main' }}>{formatPrice(Number(inv.total))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1057,7 +1078,7 @@ function CashJournalTab() {
                     <TableCell>{inv.number}</TableCell>
                     <TableCell>{new Date(inv.date).toLocaleDateString('bg-BG')}</TableCell>
                     <TableCell>{inv.clientName || '-'}</TableCell>
-                    <TableCell align="right" sx={{ color: 'error.main' }}>{Number(inv.total).toFixed(2)} лв.</TableCell>
+                    <TableCell align="right" sx={{ color: 'error.main' }}>{formatPrice(Number(inv.total))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1121,7 +1142,7 @@ function CashJournalTab() {
                   <TableCell>
                     <Chip label={entry.operationType === 'income' ? 'Приход' : 'Разход'} color={entry.operationType === 'income' ? 'success' : 'error'} size="small" />
                   </TableCell>
-                  <TableCell align="right">{Number(entry.amount).toFixed(2)} лв.</TableCell>
+                  <TableCell align="right">{formatPrice(Number(entry.amount))}</TableCell>
                   <TableCell>{entry.description}</TableCell>
                   <TableCell>{entry.creator?.firstName} {entry.creator?.lastName}</TableCell>
                   <TableCell>
@@ -1322,12 +1343,12 @@ function DailySummaryTab() {
                 <TableRow key={summary.id}>
                   <TableCell>{summary.date ? new Date(summary.date).toLocaleDateString('bg-BG') : '-'}</TableCell>
                   <TableCell align="right">{summary.invoicesCount}</TableCell>
-                  <TableCell align="right">{(summary.invoicesTotal ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right" sx={{ color: 'success.main' }}>+{(summary.cashIncome ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right" sx={{ color: 'error.main' }}>-{(summary.cashExpense ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold', color: (summary.cashBalance ?? 0) >= 0 ? 'success.main' : 'error.main' }}>{(summary.cashBalance ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right">{(summary.vatCollected ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right">{summary.vatPaid.toFixed(2)} лв.</TableCell>
+                  <TableCell align="right">{formatPrice(summary.invoicesTotal ?? 0)}</TableCell>
+                  <TableCell align="right" sx={{ color: 'success.main' }}>+{formatPrice(summary.cashIncome ?? 0)}</TableCell>
+                  <TableCell align="right" sx={{ color: 'error.main' }}>-{formatPrice(summary.cashExpense ?? 0)}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 'bold', color: (summary.cashBalance ?? 0) >= 0 ? 'success.main' : 'error.main' }}>{formatPrice(summary.cashBalance ?? 0)}</TableCell>
+                  <TableCell align="right">{formatPrice(summary.vatCollected ?? 0)}</TableCell>
+                  <TableCell align="right">{formatPrice(summary.vatPaid)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1408,12 +1429,12 @@ function MonthlyReportTab() {
                   <TableCell align="right">{summary.invoicesCount}</TableCell>
                   <TableCell align="right">{summary.incomingInvoicesCount}</TableCell>
                   <TableCell align="right">{summary.outgoingInvoicesCount}</TableCell>
-                  <TableCell align="right">{(summary.invoicesTotal ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right" sx={{ color: 'success.main' }}>+{(summary.cashIncome ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right" sx={{ color: 'error.main' }}>-{(summary.cashExpense ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold', color: (summary.cashBalance ?? 0) >= 0 ? 'success.main' : 'error.main' }}>{(summary.cashBalance ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right">{(summary.vatCollected ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right">{(summary.vatPaid ?? 0).toFixed(2)} лв.</TableCell>
+                  <TableCell align="right">{formatPrice(summary.invoicesTotal ?? 0)}</TableCell>
+                  <TableCell align="right" sx={{ color: 'success.main' }}>+{formatPrice(summary.cashIncome ?? 0)}</TableCell>
+                  <TableCell align="right" sx={{ color: 'error.main' }}>-{formatPrice(summary.cashExpense ?? 0)}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 'bold', color: (summary.cashBalance ?? 0) >= 0 ? 'success.main' : 'error.main' }}>{formatPrice(summary.cashBalance ?? 0)}</TableCell>
+                  <TableCell align="right">{formatPrice(summary.vatCollected ?? 0)}</TableCell>
+                  <TableCell align="right">{formatPrice(summary.vatPaid ?? 0)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1490,12 +1511,12 @@ function YearlyReportTab() {
                   <TableCell align="right">{summary.invoicesCount}</TableCell>
                   <TableCell align="right">{summary.incomingInvoicesCount}</TableCell>
                   <TableCell align="right">{summary.outgoingInvoicesCount}</TableCell>
-                  <TableCell align="right">{(summary.invoicesTotal ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right" sx={{ color: 'success.main' }}>+{(summary.cashIncome ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right" sx={{ color: 'error.main' }}>-{(summary.cashExpense ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold', color: (summary.cashBalance ?? 0) >= 0 ? 'success.main' : 'error.main' }}>{(summary.cashBalance ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right">{(summary.vatCollected ?? 0).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right">{(summary.vatPaid ?? 0).toFixed(2)} лв.</TableCell>
+                  <TableCell align="right">{formatPrice(summary.invoicesTotal ?? 0)}</TableCell>
+                  <TableCell align="right" sx={{ color: 'success.main' }}>+{formatPrice(summary.cashIncome ?? 0)}</TableCell>
+                  <TableCell align="right" sx={{ color: 'error.main' }}>-{formatPrice(summary.cashExpense ?? 0)}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 'bold', color: (summary.cashBalance ?? 0) >= 0 ? 'success.main' : 'error.main' }}>{formatPrice(summary.cashBalance ?? 0)}</TableCell>
+                  <TableCell align="right">{formatPrice(summary.vatCollected ?? 0)}</TableCell>
+                  <TableCell align="right">{formatPrice(summary.vatPaid ?? 0)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1552,7 +1573,7 @@ function ProformaTab() {
                   <TableCell>{inv.number}</TableCell>
                   <TableCell>{new Date(inv.date).toLocaleDateString('bg-BG')}</TableCell>
                   <TableCell>{inv.clientName}</TableCell>
-                  <TableCell align="right">{Number(inv.total).toFixed(2)} лв.</TableCell>
+                  <TableCell align="right">{formatPrice(Number(inv.total))}</TableCell>
                   <TableCell>{inv.vatRate}%</TableCell>
                   <TableCell>
                     <Chip label={getInvoiceStatusText(inv.status)} color={getInvoiceStatusColor(inv.status)} size="small" />
@@ -1629,7 +1650,7 @@ function CorrectionsTab() {
                   <TableCell>{new Date(corr.date).toLocaleDateString('bg-BG')}</TableCell>
                   <TableCell>#{corr.originalInvoiceId}</TableCell>
                   <TableCell>{corr.clientName}</TableCell>
-                  <TableCell align="right">{Number(corr.total).toFixed(2)} лв.</TableCell>
+                  <TableCell align="right">{formatPrice(Number(corr.total))}</TableCell>
                   <TableCell><Chip label={getInvoiceStatusText(corr.status)} color={getInvoiceStatusColor(corr.status)} size="small" /></TableCell>
                 </TableRow>
               ))}
@@ -1871,7 +1892,7 @@ function BankTab() {
                     <TableRow key={tx.id} sx={{ backgroundColor: tx.type === 'credit' ? '#e8f5e9' : '#ffebee' }}>
                       <TableCell>{new Date(tx.date).toLocaleDateString('bg-BG')}</TableCell>
                       <TableCell><Chip label={tx.type === 'credit' ? 'Приход' : 'Разход'} color={tx.type === 'credit' ? 'success' : 'error'} size="small" /></TableCell>
-                      <TableCell align="right">{Number(tx.amount).toFixed(2)} лв.</TableCell>
+                      <TableCell align="right">{formatPrice(Number(tx.amount))}</TableCell>
                       <TableCell>{tx.description}</TableCell>
                       <TableCell>{tx.reference}</TableCell>
                       <TableCell>
@@ -1979,7 +2000,7 @@ function BankTab() {
             <Box sx={{ mb: 3 }}>
               <Typography variant="body2" color="text.secondary">Транзакция:</Typography>
               <Typography variant="body1">
-                {selectedTransaction.type === 'credit' ? 'Приход' : 'Разход'} - {Number(selectedTransaction.amount).toFixed(2)} лв.
+                {selectedTransaction.type === 'credit' ? 'Приход' : 'Разход'} - {formatPrice(Number(selectedTransaction.amount))}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Референция: {selectedTransaction.reference || '-'}
@@ -2001,7 +2022,7 @@ function BankTab() {
                 .filter((inv: Invoice) => Math.abs(Number(inv.total) - Number(selectedTransaction?.amount)) < 0.01)
                 .map((inv: Invoice) => (
                   <MenuItem key={inv.id} value={inv.id}>
-                    {inv.number} - {inv.supplier?.name || inv.clientName || '-'} - {Number(inv.total).toFixed(2)} лв.
+                    {inv.number} - {inv.supplier?.name || inv.clientName || '-'} - {formatPrice(Number(inv.total))}
                   </MenuItem>
                 ))}
             </Select>
@@ -2025,7 +2046,7 @@ function BankTab() {
               >
                 <ListItemText
                   primary={`${inv.number} - ${inv.supplier?.name || inv.clientName || '-'}`}
-                  secondary={`${Number(inv.total).toFixed(2)} лв. - ${new Date(inv.date).toLocaleDateString('bg-BG')}`}
+                  secondary={`${formatPrice(Number(inv.total))} - ${new Date(inv.date).toLocaleDateString('bg-BG')}`}
                 />
               </ListItem>
             ))}
@@ -2227,15 +2248,15 @@ function VATTab() {
               {registers.map((reg: Register) => (
                 <TableRow key={reg.id}>
                   <TableCell sx={{ fontWeight: 'bold' }}>{monthNames[reg.periodMonth - 1]} {reg.periodYear}</TableCell>
-                  <TableCell align="right">{Number(reg.vatCollected20).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right">{Number(reg.vatCollected9).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right">{Number(reg.vatPaid20).toFixed(2)} лв.</TableCell>
-                  <TableCell align="right">{Number(reg.vatPaid9).toFixed(2)} лв.</TableCell>
+                  <TableCell align="right">{formatPrice(Number(reg.vatCollected20))}</TableCell>
+                  <TableCell align="right">{formatPrice(Number(reg.vatCollected9))}</TableCell>
+                  <TableCell align="right">{formatPrice(Number(reg.vatPaid20))}</TableCell>
+                  <TableCell align="right">{formatPrice(Number(reg.vatPaid9))}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 'bold', color: reg.vatDue > 0 ? 'error.main' : 'success.main' }}>
-                    {Number(reg.vatDue).toFixed(2)} лв.
+                    {formatPrice(Number(reg.vatDue))}
                   </TableCell>
                   <TableCell align="right" sx={{ color: reg.vatCredit > 0 ? 'success.main' : 'text.default' }}>
-                    {Number(reg.vatCredit).toFixed(2)} лв.
+                    {formatPrice(Number(reg.vatCredit))}
                   </TableCell>
                 </TableRow>
               ))}
@@ -2406,11 +2427,11 @@ function SAFTTab() {
               <TableBody>
                 <TableRow>
                   <TableCell>Януари 2026</TableCell>
-                  <TableCell>Големи (&gt;300 млн. лв. оборот)</TableCell>
+                  <TableCell>Големи (&gt;300 млн. € оборот)</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell>Януари 2028</TableCell>
-                  <TableCell>Средни (&gt;15 млн. лв. оборот)</TableCell>
+                  <TableCell>Средни (&gt;15 млн. € оборот)</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell>Януари 2030</TableCell>
@@ -2658,8 +2679,9 @@ function SAFTTab() {
       try {
         await deleteInvoice({ variables: { id } });
         refetch();
+        showSuccess('Фактурата е изтрита успешно');
       } catch (err) {
-        console.error('Error deleting invoice:', err);
+        showError(extractErrorMessage(err));
       }
     }
   };
@@ -2670,7 +2692,7 @@ function SAFTTab() {
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Paper sx={{ width: '100%', mb: 2, p: 2 }}>
         {tabValue === 0 && <IncomingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} handleOpenDetailsDialog={handleOpenDetailsDialog} handleDelete={handleDelete} handlePrintInvoice={handlePrintInvoice} />}
-        {tabValue === 1 && <OutgoingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} handleDelete={handleDelete} handlePrintInvoice={handlePrintInvoice} />}
+        {tabValue === 1 && <OutgoingInvoicesTab search={search} setSearch={setSearch} handleOpenDialog={handleOpenDialog} handleOpenDetailsDialog={handleOpenDetailsDialog} handleDelete={handleDelete} handlePrintInvoice={handlePrintInvoice} />}
         {tabValue === 2 && <CashJournalTab />}
         {tabValue === 3 && <OperationLogsTab />}
         {tabValue === 4 && <DailySummaryTab />}
@@ -2834,19 +2856,19 @@ function SAFTTab() {
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 6, sm: 3 }}>
                     <Typography variant="caption" display="block">Сума без ДДС</Typography>
-                    <Typography variant="h6">{subtotal.toFixed(2)} лв.</Typography>
+                    <Typography variant="h6">{formatPrice(subtotal)}</Typography>
                   </Grid>
                   <Grid size={{ xs: 6, sm: 3 }}>
                     <Typography variant="caption" display="block">Отстъпка</Typography>
-                    <Typography variant="h6">{discountAmount.toFixed(2)} лв.</Typography>
+                    <Typography variant="h6">{formatPrice(discountAmount)}</Typography>
                   </Grid>
                   <Grid size={{ xs: 6, sm: 3 }}>
                     <Typography variant="caption" display="block">ДДС ({formData.vatRate}%)</Typography>
-                    <Typography variant="h6">{vatAmount.toFixed(2)} лв.</Typography>
+                    <Typography variant="h6">{formatPrice(vatAmount)}</Typography>
                   </Grid>
                   <Grid size={{ xs: 6, sm: 3 }}>
                     <Typography variant="caption" display="block">ОБЩО</Typography>
-                    <Typography variant="h5" fontWeight="bold">{total.toFixed(2)} лв.</Typography>
+                    <Typography variant="h5" fontWeight="bold">{formatPrice(total)}</Typography>
                   </Grid>
                 </Grid>
               </Box>
@@ -2985,7 +3007,7 @@ function SAFTTab() {
                       />
                     )}
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      Общо: {(item.quantity * item.unitPrice).toFixed(2)} лв. (със ДДС: {(item.quantity * (item.unitPriceWithVat || item.unitPrice * 1.2)).toFixed(2)} лв.)
+                      Общо: {formatPrice(item.quantity * item.unitPrice)} (със ДДС: {formatPrice(item.quantity * (item.unitPriceWithVat || item.unitPrice * 1.2))})
                     </Typography>
                   </Paper>
                 );
@@ -3127,7 +3149,7 @@ function SAFTTab() {
                       <TableRow sx={{ bgcolor: 'grey.200', fontWeight: 'bold' }}>
                         <TableCell colSpan={7} align="right"><strong>ОБЩО:</strong></TableCell>
                         <TableCell align="right"><strong>{Number(selectedInvoice.total).toFixed(2)}</strong></TableCell>
-                        <TableCell>лв.</TableCell>
+                        <TableCell>€</TableCell>
                         <TableCell></TableCell>
                       </TableRow>
                     </TableBody>
@@ -3167,6 +3189,11 @@ function AccountingEntriesTab() {
   const [endDate, setEndDate] = useState('');
   const [accountId, setAccountId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const { currency } = useCurrency();
+
+  const formatPrice = (value: number | string | null | undefined): string => {
+    return formatCurrencyValue(value, currency);
+  };
 
   const { data, loading, error, refetch } = useQuery(GET_ACCOUNTING_ENTRIES, {
     variables: {
@@ -3245,8 +3272,8 @@ function AccountingEntriesTab() {
         <>
           <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
             <Chip label={`Общо записи: ${entries.length}`} />
-            <Chip label={`Обща сума: ${totalDebit.toFixed(2)} лв.`} color="primary" />
-            <Chip label={`ДДС: ${totalVat.toFixed(2)} лв.`} color="secondary" />
+            <Chip label={`Обща сума: ${formatPrice(totalDebit)}`} color="primary" />
+            <Chip label={`ДДС: ${formatPrice(totalVat)}`} color="secondary" />
           </Box>
 
           <TableContainer component={Paper}>
@@ -3301,12 +3328,12 @@ function AccountingEntriesTab() {
                         )}
                       </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                        {Number(entry.amount).toFixed(2)} лв.
+                        {formatPrice(Number(entry.amount))}
                       </TableCell>
                       <TableCell align="right">
                         {Number(entry.vatAmount) > 0 ? (
                           <Typography variant="caption" color="secondary">
-                            {Number(entry.vatAmount).toFixed(2)} лв.
+                            {formatPrice(Number(entry.vatAmount))}
                           </Typography>
                         ) : '-'}
                       </TableCell>
@@ -3344,10 +3371,15 @@ function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
   handleDelete: (id: number) => void;
   handlePrintInvoice: (id: number) => void;
 }) {
+  const { currency } = useCurrency();
   const { data, loading, error } = useQuery(GET_INVOICES, {
     variables: { type: 'incoming', search: search || undefined },
   });
   const invoices: Invoice[] = data?.invoices || [];
+
+  const formatPrice = (value: number | string | null | undefined): string => {
+    return formatCurrencyValue(value, currency);
+  };
   
   return (
     <Box>
@@ -3368,7 +3400,7 @@ function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
                   <TableCell>{invoice.supplier?.name || '-'}</TableCell>
                   <TableCell>{invoice.batch && typeof invoice.batch === 'object' ? (invoice.batch as unknown as { batchNumber?: string }).batchNumber || '-' : '-'}</TableCell>
                   <TableCell>{invoice.batch && typeof invoice.batch === 'object' ? ((invoice.batch as unknown as { expiryDate?: string }).expiryDate ? new Date((invoice.batch as unknown as { expiryDate: string }).expiryDate).toLocaleDateString('bg-BG') : '-') : '-'}</TableCell>
-                  <TableCell align="right">{Number(invoice.total).toFixed(2)} лв.</TableCell>
+                  <TableCell align="right">{formatPrice(Number(invoice.total))}</TableCell>
                   <TableCell>{Number(invoice.vatRate)}%</TableCell>
                   <TableCell><Chip label={getInvoiceStatusText(invoice.status)} color={getInvoiceStatusColor(invoice.status)} size="small" /></TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
@@ -3386,17 +3418,23 @@ function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
   );
 }
 
-function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog, handleDelete, handlePrintInvoice }: { 
+function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDetailsDialog, handleDelete, handlePrintInvoice }: { 
   search: string; 
   setSearch: (s: string) => void; 
   handleOpenDialog: (invoice?: Invoice) => void;
+  handleOpenDetailsDialog: (invoice: Invoice) => void;
   handleDelete: (id: number) => void;
   handlePrintInvoice: (id: number) => void;
 }) {
+  const { currency } = useCurrency();
   const { data, loading, error } = useQuery(GET_INVOICES, {
     variables: { type: 'outgoing', search: search || undefined },
   });
   const invoices: Invoice[] = data?.invoices || [];
+
+  const formatPrice = (value: number | string | null | undefined): string => {
+    return formatCurrencyValue(value, currency);
+  };
   
   return (
     <Box>
@@ -3410,17 +3448,17 @@ function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog, handleDelete
             <TableHead><TableRow><TableCell /><TableCell>Номер</TableCell><TableCell>Дата</TableCell><TableCell>Клиент</TableCell><TableCell>Партида</TableCell><TableCell>Срок годност</TableCell><TableCell align="right">Сума</TableCell><TableCell>ДДС</TableCell><TableCell>Статус</TableCell><TableCell>Действия</TableCell></TableRow></TableHead>
             <TableBody>
               {invoices.map((invoice) => (
-                <TableRow key={invoice.id}>
+                <TableRow key={invoice.id} hover onClick={() => handleOpenDetailsDialog(invoice)} sx={{ cursor: 'pointer' }}>
                   <TableCell><IconButton size="small"><ExpandMoreIcon /></IconButton></TableCell>
                   <TableCell>{invoice.number}</TableCell>
                   <TableCell>{new Date(invoice.date).toLocaleDateString('bg-BG')}</TableCell>
                   <TableCell>{invoice.clientName || '-'}</TableCell>
                   <TableCell>{invoice.batch && typeof invoice.batch === 'object' ? (invoice.batch as unknown as { batchNumber?: string }).batchNumber || '-' : '-'}</TableCell>
                   <TableCell>{invoice.batch && typeof invoice.batch === 'object' ? ((invoice.batch as unknown as { expiryDate?: string }).expiryDate ? new Date((invoice.batch as unknown as { expiryDate: string }).expiryDate).toLocaleDateString('bg-BG') : '-') : '-'}</TableCell>
-                  <TableCell align="right">{Number(invoice.total).toFixed(2)} лв.</TableCell>
+                  <TableCell align="right">{formatPrice(Number(invoice.total))}</TableCell>
                   <TableCell>{Number(invoice.vatRate)}%</TableCell>
                   <TableCell><Chip label={getInvoiceStatusText(invoice.status)} color={getInvoiceStatusColor(invoice.status)} size="small" /></TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <Tooltip title="PDF"><IconButton size="small" onClick={() => handlePrintInvoice(invoice.id)}><PrintIcon /></IconButton></Tooltip>
                     <Tooltip title="Редактирай"><IconButton size="small" onClick={() => handleOpenDialog(invoice)}><EditIcon /></IconButton></Tooltip>
                     <Tooltip title="Изтрий"><IconButton size="small" onClick={() => handleDelete(invoice.id)}><DeleteIcon /></IconButton></Tooltip>

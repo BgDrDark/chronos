@@ -26,96 +26,45 @@ def get_error_message(error: Exception) -> str:
     return str(error)
 
 
-def handle_db_error(error: Exception) -> HTTPException:
+def handle_db_error(error: Exception) -> Exception:
     """
     Обработка на грешки от базата данни.
-    Връща HTTPException с коректен status code и съобщение.
+    Връща DatabaseException с коректен error_code и съобщение.
+    
+    Забележка: Сега връща DatabaseException вместо HTTPException,
+    тъй като exception_handler в main.py автоматично го конвертира.
     """
+    from backend.exceptions import DatabaseException
+    
     error_str = str(error).lower()
     
-    if "duplicate key" in error_str:
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Записът вече съществува"
-        )
+    if "duplicate key" in error_str or "unique constraint" in error_str:
+        return DatabaseException.duplicate("Запис")
     
     if "foreign key" in error_str:
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Невалидна референция"
-        )
+        return DatabaseException.foreign_key("референция")
     
     if "not null" in error_str:
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Задължително поле липсва"
-        )
-    
-    if "unique constraint" in error_str:
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Записът вече съществува"
-        )
+        return DatabaseException.constraint("Задължително поле липсва")
     
     if "check constraint" in error_str:
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Невалидна стойност"
-        )
+        return DatabaseException.constraint("Проверка за валидност")
     
     logger.error(f"Database error: {error}")
-    return HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Грешка в базата данни"
+    return DatabaseException(
+        detail="Грешка в базата данни",
+        original_error=error
     )
 
 
-def handle_validation_error(error: Exception) -> HTTPException:
-    """Обработка на грешки при валидация"""
-    return HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail=get_error_message(error)
-    )
-
-
-def permission_denied(detail: str = "Нямате права за това действие") -> HTTPException:
-    """Създаване на HTTPException за липса на права"""
-    return HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail=detail
-    )
-
-
-def not_found(detail: str = "Ресурсът не е намерен") -> HTTPException:
-    """Създаване на HTTPException за ненамерен ресурс"""
-    return HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=detail
-    )
-
-
-def bad_request(detail: str = "Невалидни данни") -> HTTPException:
-    """Създаване на HTTPException за лоша заявка"""
-    return HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail=detail
-    )
-
-
-def unauthorized(detail: str = "Не сте автентикирани") -> HTTPException:
-    """Създаване на HTTPException за неавтентикиран потребител"""
-    return HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail=detail
-    )
-
-
-def internal_server_error(detail: str = "Вътрешна грешка на сървъра") -> HTTPException:
-    """Създаване на HTTPException за вътрешна грешка"""
-    return HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=detail
-    )
+def handle_validation_error(error: Exception) -> Exception:
+    """
+    Обработка на грешки при валидация.
+    Връща ValidationException.
+    """
+    from backend.exceptions import ValidationException
+    
+    return ValidationException(detail=get_error_message(error))
 
 
 def log_error(error: Exception, context: Optional[str] = None) -> None:
@@ -124,3 +73,39 @@ def log_error(error: Exception, context: Optional[str] = None) -> None:
         logger.error(f"{context}: {error}", exc_info=True)
     else:
         logger.error(str(error), exc_info=True)
+
+
+# =============================================================================
+# BACKWARDS COMPATIBILITY - DEPRECATED
+# =============================================================================
+# Следните функции са deprecated и ще бъдат премахнати.
+# Използвай директно exceptions.py
+
+def permission_denied(detail: str = "Нямате права за това действие") -> HTTPException:
+    """DEPRECATED: Използвай PermissionDeniedException"""
+    from backend.exceptions import PermissionDeniedException
+    return PermissionDeniedException(detail=detail)
+
+
+def not_found(detail: str = "Ресурсът не е намерен") -> HTTPException:
+    """DEPRECATED: Използвай NotFoundException"""
+    from backend.exceptions import NotFoundException
+    return NotFoundException(detail=detail)
+
+
+def bad_request(detail: str = "Невалидни данни") -> HTTPException:
+    """DEPRECATED: Използвай ValidationException"""
+    from backend.exceptions import ValidationException
+    return ValidationException(detail=detail)
+
+
+def unauthorized(detail: str = "Не сте автентикирани") -> HTTPException:
+    """DEPRECATED: Използвай AuthenticationException"""
+    from backend.exceptions import AuthenticationException
+    return AuthenticationException(detail=detail)
+
+
+def internal_server_error(detail: str = "Вътрешна грешка на сървъра") -> HTTPException:
+    """DEPRECATED: Използвай CHRONOSException"""
+    from backend.exceptions import CHRONOSException
+    return CHRONOSException(detail=detail)

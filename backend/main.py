@@ -4,7 +4,7 @@ from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from strawberry.fastapi import GraphQLRouter
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette_csrf import CSRFMiddleware
+from starlette_csrf.middleware import CSRFMiddleware
 from backend.routers import auth, export, system, kiosk, webauthn, google, documents, notifications, warehouse, gateway, terminal, trz_export
 from backend.graphql.schema import schema
 from backend.database.database import get_db
@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI):
 # Force reload context - 2026-01-06 23:25
 app = FastAPI(
     title="Chronos API", 
-    version="1.3.0.0", 
+    version="3.4.7.0", 
     lifespan=lifespan,
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None
@@ -143,14 +143,23 @@ async def concurrent_modification_exception_handler(request: Request, exc: Concu
 # CHRONOS Custom Exception Handlers
 @app.exception_handler(CHRONOSException)
 async def chronos_exception_handler(request: Request, exc: CHRONOSException):
-    """Handle CHRONOS custom exceptions"""
-    logger.error(f"CHRONOS error in {request.method} {request.url}: {exc.detail}")
+    """Handle CHRONOS custom exceptions
+    
+    Returns consistent error format:
+    {
+        "error": "ERROR_CODE",
+        "message": "Human readable message",
+        "timestamp": "2024-01-01T12:00:00",
+        "context": {...}
+    }
+    """
+    logger.error(
+        f"CHRONOS error [{exc.error_code}] in {request.method} {request.url}: {exc.detail}",
+        extra={"original_error": str(exc.original_error) if exc.original_error else None}
+    )
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "error": exc.__class__.__name__,
-            "message": exc.detail
-        }
+        content=exc.to_dict()
     )
 
 @app.get("/health")
@@ -159,7 +168,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "Chronos API",
-        "version": "1.3.0.0"
+        "version": "3.4.7.0"
     }
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -183,7 +192,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: blob: https://lh3.googleusercontent.com https://ssl.gstatic.com; "
             "font-src 'self' data: https://fonts.gstatic.com; "
-            "connect-src 'self' https://dev.oblak24.org http://localhost:14240 http://localhost:5173 http://192.168.1.92:4173 http://192.168.1.92:5173 http://192.168.1.92:14240 https://accounts.google.com https://oauth2.googleapis.com https://play.google.com; "
+            "connect-src 'self' https://chronos.oblak24.org http://localhost:14240 http://192.168.1.92:14240 https://accounts.google.com https://oauth2.googleapis.com https://play.google.com; "
             "frame-src https://accounts.google.com; "
             "frame-ancestors 'none'; "
             "object-src 'none';"
@@ -220,8 +229,8 @@ app.add_middleware(
 # Configure CORS - specific origins only
 ALLOWED_ORIGINS = [
     "https://dev.oblak24.org",
-    "https://oblak24.org",
-    "https://auth.oblak24.org",
+    "https://chronos.oblak24.org",
+    "https://auth.chronos.oblak24.org",
     "https://auth.dev.oblak24.org",
     "http://localhost:5173",
     "http://localhost:14240",

@@ -84,18 +84,139 @@ from typing import Optional
 def process(data: dict[str, int]):
 ```
 
-### Error Handling
+### Error Handling - exceptions.py
+
+Използвай централизираните exceptions от `backend/exceptions.py`:
+
 ```python
-# ❌ НЕ - използвай raise Exception
-raise Exception("Грешка")
+from backend.exceptions import (
+    NotFoundException,
+    PermissionDeniedException,
+    ValidationException,
+    DatabaseException,
+    AuthenticationException,
+)
 
-# ✅ ДА - използвай helpers от error_handling.py
-from backend.utils.error_handling import bad_request, not_found, permission_denied
-
-raise not_found("Рецептата не е намерена")
-raise bad_request("Невалидни данни")
-raise permission_denied("Нямате права")
+# ✅ ДА - използвай presets за конкретни грешки
+raise NotFoundException.user(user_id=123)
+raise NotFoundException.recipe(recipe_id=456)
+raise ValidationException.field("email", "Невалиден формат")
+raise PermissionDeniedException.for_resource("invoice", "delete")
 ```
+
+**Presets за NotFoundException:**
+```python
+NotFoundException.user(user_id=123)
+NotFoundException.vehicle(vehicle_id=1)
+NotFoundException.recipe(recipe_id=1)
+NotFoundException.ingredient(ingredient_id=1)
+NotFoundException.order(order_id=1)
+NotFoundException.request(request_id=1)
+NotFoundException.session(session_id=1)
+NotFoundException.record("Invoice", invoice_id=1)
+NotFoundException.resource("warehouse", warehouse_id=1)
+```
+
+**Presets за ValidationException:**
+```python
+ValidationException.field("email", "Невалиден формат")
+ValidationException.required_field("password")
+ValidationException.email("Липсва @")
+ValidationException.password("Твърде кратка")
+```
+
+**Presets за PermissionDeniedException:**
+```python
+PermissionDeniedException.for_resource("invoice", "edit")
+PermissionDeniedException.for_action("approve")
+```
+
+**Presets за DatabaseException:**
+```python
+DatabaseException.duplicate("Потребител")
+DatabaseException.foreign_key("company_id")
+DatabaseException.constraint("unique_email")
+```
+
+### Error Handling - backwards compatibility
+
+За постепенна миграция, aliases-ите работят:
+
+```python
+from backend.exceptions import not_found, bad_request, permission_denied
+
+# Работи, но е deprecated
+raise not_found("User not found")
+raise bad_request("Invalid data")
+raise permission_denied("No rights")
+```
+
+### Error Handling - error_handling.py utilities
+
+Използвай utils за специфични случаи:
+
+```python
+from backend.utils.error_handling import handle_db_error, get_error_message
+
+# Обработка на DB грешки
+try:
+    await db.execute(stmt)
+except Exception as e:
+    raise handle_db_error(e)
+
+# Извличане на съобщение от грешка
+error_msg = get_error_message(exception)
+```
+
+### Error Response формат
+
+Всички грешки връщат консистентен формат:
+
+```json
+{
+    "error": "USER_NOT_FOUND",
+    "message": "Потребител не е намерен (ID: 123)",
+    "timestamp": "2024-01-01T12:00:00",
+    "context": {
+        "resource": "user",
+        "id": 123
+    }
+}
+```
+
+### Error Handling - Frontend
+
+Използвай `useError` hook за показване на грешки и успешни съобщения:
+
+```typescript
+// ✅ ДА - използвай централизирания ErrorContext
+import { useError, extractErrorMessage } from '../context/ErrorContext';
+
+const MyComponent = () => {
+  const { showError, showSuccess, showWarning } = useError();
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteMutation({ variables: { id } });
+      showSuccess('Записът е изтрит успешно');
+    } catch (error) {
+      showError(extractErrorMessage(error));
+    }
+  };
+};
+```
+
+**Налични методи:**
+- `showError(message)` - Червено съобщение за грешки
+- `showSuccess(message)` - Зелено съобщение за успех
+- `showWarning(message)` - Жълто съобщение за предупреждения
+- `showInfo(message)` - Синьо съобщение за информация
+
+**extractErrorMessage()** - извлича съобщението от различни формати:
+- GraphQL errors (`error.graphQLErrors[0].message`)
+- Regular errors (`error.message`)
+- String errors
+- Fallback: `'Възникна грешка'`
 
 ### Strawberry GraphQL параметри
 ```python
@@ -114,11 +235,56 @@ async def update_recipe(
 ):
 ```
 
+### SQLAlchemy и Асинхронност (MissingGreenlet)
+```python
+# ❌ НЕ - мързеливо зареждане (lazy loading) в асинхронна среда
+# Това ще предизвика sqlalchemy.exc.MissingGreenlet при достъп до релация
+stmt = select(User).where(User.id == user_id)
+user = (await db.execute(stmt)).scalar_one()
+return UserType.from_instance(user) # Ако from_instance достъпва user.role синхронно
+
+# ✅ ДА - използвай selectinload за предварително зареждане
+from sqlalchemy.orm import selectinload
+
+stmt = select(User).options(
+    selectinload(User.role),
+    selectinload(User.company_rel)
+).where(User.id == user_id)
+```
+1. **V2.0**: При възможност използвай SQLAlchemy(v2.0)
+**Правила за релации:**
+2. **Винаги** използвай `selectinload` в заявките (`select`), ако методът `from_instance` на съответния тип достъпва тези релации.
+3. **Избягвай** достъп до релации в `from_instance`, ако те са тежки. Вместо това дефинирай асинхронно поле (`@strawberry.field`) в типа, което използва `DataLoader`.
+4. **Shadowing**: При импорт на модели в GraphQL типовете, винаги използвай алиас (`from models import User as DbUser`), за да не презапишеш името на GraphQL класа и да получиш `AttributeError`.
+5. **Refresh**: При използване на `db.refresh()`, винаги изброявай нужните релации: `await db.refresh(instance, ["company", "position"])`.
+
 ---
 
-## 4. Парични стойности (Decimal)
+## 4. Форматиране на валута
 
-### Backend
+### Централизирана валута
+```typescript
+// ✅ ДА - използвай централизирани функции
+import { useCurrency, formatCurrencyValue } from '../currencyContext';
+
+const MyComponent = () => {
+  const { currency } = useCurrency();
+  // currency: 'EUR' | 'USD' | 'BGN'
+  
+  const formatted = formatCurrencyValue(19.99, currency);
+  // EUR → "19.99 €"
+  // USD → "$19.99"
+  // BGN → "19.99 лв."
+};
+```
+
+### Правила
+- **Винаги** използвай `formatCurrencyValue()` от `currencyContext`
+- **Никога** не пиши hardcoded валутни символи (`лв.`, `€`, `$`)
+- Символите се определят от `globalPayrollConfig.currency` в настройките
+- За ценови компоненти в подкомпоненти - винаги дефинирай `formatPrice` локално с `useCurrency()`
+
+### Backend (Decimal)
 ```python
 # ❌ НЕ - използвай float за пари
 price = 19.99
@@ -129,17 +295,6 @@ from decimal import Decimal
 
 price = Decimal("19.99")
 total = subtotal * Decimal("0.2")
-```
-
-### Frontend
-```typescript
-// Винаги форматирай Decimal стойности
-const formatPrice = (value: number | string | null | undefined): string => {
-  if (value === null || value === undefined) return '-';
-  const num = typeof value === 'string' ? parseFloat(value) : Number(value);
-  if (isNaN(num)) return '-';
-  return num.toFixed(2) + ' лв.';
-};
 ```
 
 ---
@@ -204,6 +359,46 @@ const formatPrice = (value: number | string | null | undefined): string => {
 />
 ```
 
+### Tooltips с InfoIcon (onClick)
+
+Всички form field-ове с помощни текстове използват **InfoIcon** компонент с onClick (НЕ hover):
+
+```tsx
+import { InputAdornment } from '@mui/material';
+import { InfoIcon } from '../components/ui/InfoIcon';
+import { someFieldsHelp } from '../components/ui/fieldsHelpText';
+
+// ✅ ДА - InfoIcon с onClick в slotProps.input.endAdornment
+<TextField
+  label="Име на полето"
+  value={value}
+  onChange={handleChange}
+  slotProps={{
+    input: {
+      endAdornment: (
+        <InputAdornment position="end">
+          <InfoIcon helpText="Текст за помощната подсказка" />
+        </InputAdornment>
+      )
+    }
+  }}
+/>
+
+// ❌ НЕ - MUI Tooltip с hover (за field-ове)
+// Hover tooltips СЕ запазват само за бутони и действия
+<Tooltip title="Редактирай">
+  <IconButton onClick={handleEdit}>
+    <EditIcon />
+  </IconButton>
+</Tooltip>
+```
+
+**Правила за tooltips:**
+1. `InputLabelProps={{ shrink: true }}` - САМО за `type="date"` полета
+2. Селектите НЯМАТ shrink (label-а плава)
+3. Help text-овете са в `fieldsHelpText.ts`
+4. Hover tooltips остават за действия (бутони, иконки)
+
 ### MUI конвенции
 ```tsx
 // Използвай Grid size вместо xs/md
@@ -224,13 +419,12 @@ const formatPrice = (value: number | string | null | undefined): string => {
 const price1 = data.price.toFixed(2) + ' лв.';
 const price2 = order.total.toFixed(2) + ' лв.';
 
-// ✅ ДА - създай helper функция
-const formatPrice = (value: number | string | null | undefined): string => {
-  if (value === null || value === undefined) return '-';
-  const num = typeof value === 'string' ? parseFloat(value) : Number(value);
-  if (isNaN(num)) return '-';
-  return num.toFixed(2) + ' лв.';
-};
+// ✅ ДА - използвай централизираната функция
+import { useCurrency, formatCurrencyValue } from '../currencyContext';
+
+const { currency } = useCurrency();
+const formatted1 = formatCurrencyValue(data.price, currency);
+const formatted2 = formatCurrencyValue(order.total, currency);
 ```
 
 ---
@@ -443,6 +637,7 @@ docker build --no-cache -t <image>:<tag> <context>
 ```typescript
 import { getErrorMessage } from '../types';
 import ValidatedTextField from '../components/ui/ValidatedTextField';
+import { useCurrency, formatCurrencyValue } from '../currencyContext';
 ```
 
 ### Backend helpers
