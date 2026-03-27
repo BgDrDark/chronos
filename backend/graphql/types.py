@@ -14,7 +14,7 @@ from backend.database.models import sofia_now
 @strawberry.scalar
 class JSONScalar:
     """Custom scalar for JSON data"""
-    def serialize(value):
+    def serialize(self, value):
         return value
 
 if TYPE_CHECKING:
@@ -244,22 +244,22 @@ class EmploymentContract:
     contract_number: Optional[str]
     start_date: datetime.date
     end_date: Optional[datetime.date]
-    base_salary: Optional[float]
+    base_salary: Optional[Decimal]
     work_hours_per_week: int
     probation_months: int
     is_active: bool
     salary_calculation_type: str
     salary_installments_count: int
-    monthly_advance_amount: float
+    monthly_advance_amount: Decimal
     tax_resident: bool
     insurance_contributor: bool
     has_income_tax: bool
     # ТРЗ разширение
     payment_day: int
     experience_start_date: Optional[datetime.date]
-    night_work_rate: Optional[float]
-    overtime_rate: Optional[float]
-    holiday_rate: Optional[float]
+    night_work_rate: Optional[Decimal]
+    overtime_rate: Optional[Decimal]
+    holiday_rate: Optional[Decimal]
     work_class: Optional[str]
     dangerous_work: bool
     position_id: Optional[int]
@@ -275,32 +275,29 @@ class EmploymentContract:
     async def annexes(self, info: strawberry.Info) -> List["ContractAnnex"]:
         """Връща списък с всички анекси за този договор"""
         from sqlalchemy import select
-        from backend.database.models import ContractAnnex
+        from backend.database.models import ContractAnnex as ModelContractAnnex
         db = info.context["db"]
-        stmt = select(ContractAnnex).where(
-            ContractAnnex.contract_id == self.id
-        ).order_by(ContractAnnex.effective_date.desc())
+        stmt = select(ModelContractAnnex).where(
+            ModelContractAnnex.contract_id == self.id
+        ).order_by(ModelContractAnnex.effective_date.desc())
         result = await db.execute(stmt)
         annexes = result.scalars().all()
         return [ContractAnnex.from_instance(a) for a in annexes]
 
     @classmethod
     def from_instance(cls, instance: models.EmploymentContract) -> "EmploymentContract":
-        position = None
+        position_obj = None
         position_title = None
-        department = None
-        company = None
+        department_obj = None
+        company_obj = None
         if hasattr(instance, 'position_id') and instance.position_id:
-            from backend.database.models import Position
-            position = instance.position
-            if position:
-                position_title = position.title
+            position_obj = instance.position
+            if position_obj:
+                position_title = position_obj.title
         if hasattr(instance, 'department_id') and instance.department_id:
-            from backend.database.models import Department
-            department = instance.department
+            department_obj = instance.department
         if hasattr(instance, 'company_id') and instance.company_id:
-            from backend.database.models import Company
-            company = instance.company
+            company_obj = instance.company
         return cls(
             id=instance.id,
             user_id=getattr(instance, 'user_id', None),
@@ -310,29 +307,29 @@ class EmploymentContract:
             contract_number=instance.contract_number if hasattr(instance, "contract_number") else None,
             start_date=instance.start_date,
             end_date=instance.end_date,
-            base_salary=float(instance.base_salary) if instance.base_salary else None,
+            base_salary=instance.base_salary,
             work_hours_per_week=instance.work_hours_per_week,
             probation_months=instance.probation_months,
             is_active=instance.is_active,
             salary_calculation_type=instance.salary_calculation_type,
             salary_installments_count=instance.salary_installments_count,
-            monthly_advance_amount=float(instance.monthly_advance_amount or 0),
+            monthly_advance_amount=instance.monthly_advance_amount or Decimal("0"),
             tax_resident=instance.tax_resident if instance.tax_resident is not None else True,
             insurance_contributor=instance.insurance_contributor if instance.insurance_contributor is not None else True,
             has_income_tax=instance.has_income_tax if instance.has_income_tax is not None else True,
             # ТРЗ разширение
             payment_day=instance.payment_day if hasattr(instance, "payment_day") and instance.payment_day is not None else 25,
             experience_start_date=instance.experience_start_date if hasattr(instance, "experience_start_date") else None,
-            night_work_rate=float(instance.night_work_rate) if instance.night_work_rate else None,
-            overtime_rate=float(instance.overtime_rate) if instance.overtime_rate else None,
-            holiday_rate=float(instance.holiday_rate) if instance.holiday_rate else None,
+            night_work_rate=instance.night_work_rate,
+            overtime_rate=instance.overtime_rate,
+            holiday_rate=instance.holiday_rate,
             work_class=instance.work_class,
             dangerous_work=instance.dangerous_work if instance.dangerous_work is not None else False,
             position_id=getattr(instance, 'position_id', None),
             position_title=position_title,
-            position=Position.from_instance(position) if position else None,
-            department=Department.from_instance(department) if department else None,
-            company=Company.from_instance(company) if company else None,
+            position=Position.from_instance(position_obj) if position_obj else None,
+            department=Department.from_instance(department_obj) if department_obj else None,
+            company=Company.from_instance(company_obj) if company_obj else None,
             # Нови полета
             employee_name=getattr(instance, 'employee_name', None),
             employee_egn=getattr(instance, 'employee_egn', None),
@@ -349,9 +346,9 @@ class ContractAnnex:
     base_salary: Optional[Decimal]
     position_id: Optional[int]
     work_hours_per_week: Optional[int]
-    night_work_rate: Optional[float]
-    overtime_rate: Optional[float]
-    holiday_rate: Optional[float]
+    night_work_rate: Optional[Decimal]
+    overtime_rate: Optional[Decimal]
+    holiday_rate: Optional[Decimal]
     is_signed: bool
     signed_at: Optional[datetime.datetime]
     status: str
@@ -382,9 +379,9 @@ class ContractAnnex:
             base_salary=instance.base_salary,
             position_id=instance.position_id,
             work_hours_per_week=instance.work_hours_per_week,
-            night_work_rate=float(instance.night_work_rate) if instance.night_work_rate else None,
-            overtime_rate=float(instance.overtime_rate) if instance.overtime_rate else None,
-            holiday_rate=float(instance.holiday_rate) if instance.holiday_rate else None,
+            night_work_rate=instance.night_work_rate,
+            overtime_rate=instance.overtime_rate,
+            holiday_rate=instance.holiday_rate,
             is_signed=instance.is_signed,
             signed_at=instance.signed_at,
             status=instance.status if instance.status else "draft",
@@ -697,9 +694,14 @@ class User:
     @strawberry.field
     async def employment_contract(self, info: strawberry.Info) -> Optional["EmploymentContract"]:
         from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
         from backend.database.models import EmploymentContract as EmploymentContractModel
         db = info.context["db"]
-        stmt = select(EmploymentContractModel).where(
+        stmt = select(EmploymentContractModel).options(
+            selectinload(EmploymentContractModel.company),
+            selectinload(EmploymentContractModel.position),
+            selectinload(EmploymentContractModel.department)
+        ).where(
             EmploymentContractModel.user_id == self.id,
             EmploymentContractModel.is_active == True
         )
@@ -1511,6 +1513,7 @@ class ScheduleTemplateItem:
 @strawberry.type
 class ScheduleTemplate:
     id: int
+    company_id: int
     name: str
     description: Optional[str]
     created_at: datetime.datetime
@@ -1531,6 +1534,7 @@ class ScheduleTemplate:
     def from_instance(cls, instance: models.ScheduleTemplate) -> "ScheduleTemplate":
         return cls(
             id=instance.id,
+            company_id=instance.company_id,
             name=instance.name,
             description=instance.description,
             created_at=instance.created_at
@@ -2000,9 +2004,9 @@ class Recipe:
 
     @strawberry.field
     def portion_price(self) -> Optional[Decimal]:
-        """Цена за 1 порция"""
-        if self.portions and self.portions > 0:
-            return self.final_price() / self.portions
+        """Цена за 1 бр. парче"""
+        if self.default_pieces and self.default_pieces > 0:
+            return self.final_price() / self.default_pieces
         return None
 
     @strawberry.field
@@ -2104,10 +2108,12 @@ class PriceHistory:
 @strawberry.type
 class RecipeCostResult:
     recipe_id: int
+    recipe_name: str
     cost_price: Decimal
     markup_amount: Decimal
     premium_amount: Decimal
     final_price: Decimal
+    portion_price: Decimal
 
 
 @strawberry.type
@@ -2352,15 +2358,22 @@ class ProductionRecord:
 
     @strawberry.field
     async def ingredients(self, info: strawberry.Info) -> List[ProductionRecordIngredient]:
+        from sqlalchemy.orm import selectinload
         db = info.context["db"]
-        stmt = select(models.ProductionRecordIngredient).where(models.ProductionRecordIngredient.record_id == self.id)
+        stmt = select(models.ProductionRecordIngredient).options(
+            selectinload(models.ProductionRecordIngredient.ingredient)
+        ).where(models.ProductionRecordIngredient.record_id == self.id)
         res = await db.execute(stmt)
         return [ProductionRecordIngredient.from_instance(t) for t in res.scalars().all()]
 
     @strawberry.field
     async def workers(self, info: strawberry.Info) -> List[ProductionRecordWorker]:
+        from sqlalchemy.orm import selectinload
         db = info.context["db"]
-        stmt = select(models.ProductionRecordWorker).where(models.ProductionRecordWorker.record_id == self.id)
+        stmt = select(models.ProductionRecordWorker).options(
+            selectinload(models.ProductionRecordWorker.user),
+            selectinload(models.ProductionRecordWorker.workstation)
+        ).where(models.ProductionRecordWorker.record_id == self.id)
         res = await db.execute(stmt)
         return [ProductionRecordWorker.from_instance(t) for t in res.scalars().all()]
 
@@ -2417,8 +2430,11 @@ class InventorySession:
 
     @strawberry.field
     async def items(self, info: strawberry.Info) -> List[InventoryItem]:
+        from sqlalchemy.orm import selectinload
         db = info.context["db"]
-        stmt = select(models.InventoryItem).where(models.InventoryItem.session_id == self.id)
+        stmt = select(models.InventoryItem).options(
+            selectinload(models.InventoryItem.ingredient)
+        ).where(models.InventoryItem.session_id == self.id)
         res = await db.execute(stmt)
         return [InventoryItem.from_instance(t) for t in res.scalars().all()]
 
@@ -2844,17 +2860,19 @@ class InvoiceCorrection:
 
     @classmethod
     def from_instance(cls, instance: models.InvoiceCorrection) -> "InvoiceCorrection":
+        # Accessing original_invoice relationship - must be eager loaded with selectinload
+        orig = instance.original_invoice
         return cls(
             id=instance.id,
             number=instance.number,
             type=instance.type,
             date=instance.date,
             original_invoice_id=instance.original_invoice_id,
-            client_name=instance.original_invoice.clientName if instance.original_invoice else None,
-            client_eik=instance.original_invoice.clientEik if instance.original_invoice else None,
+            client_name=orig.client_name if orig else None,
+            client_eik=orig.client_eik if orig else None,
             reason=instance.reason,
             subtotal=instance.amount_diff or Decimal("0"),
-            vat_rate=instance.original_invoice.vatRate if instance.original_invoice else Decimal("20.0"),
+            vat_rate=orig.vat_rate if orig else Decimal("20.0"),
             vat_amount=instance.vat_diff or Decimal("0"),
             total=(instance.amount_diff or Decimal("0")) + (instance.vat_diff or Decimal("0")),
             status=instance.status or "draft",
@@ -3021,9 +3039,9 @@ class AccountingEntry:
     async def invoice(self, info: strawberry.Info) -> Optional["Invoice"]:
         if not self.invoice_id:
             return None
-        from backend.database.models import Invoice
+        from backend.database.models import Invoice as DbInvoice
         db = info.context["db"]
-        result = await db.get(Invoice, self.invoice_id)
+        result = await db.get(DbInvoice, self.invoice_id)
         return Invoice.from_instance(result) if result else None
 
     @strawberry.field

@@ -1688,7 +1688,7 @@ class Mutation:
 
         await verify_module_enabled("shifts", db)
 
-        template = await crud.create_schedule_template(db, name, description, items)
+        template = await crud.create_schedule_template(db, name, current_user.company_id, description, items)
         return types.ScheduleTemplate.from_instance(template)
 
     @strawberry.mutation
@@ -1699,7 +1699,10 @@ class Mutation:
             raise PermissionDeniedException.for_action("manage")
 
         await verify_module_enabled("shifts", db)
-        return await crud.delete_schedule_template(db, id)
+        result = await crud.delete_schedule_template(db, id, company_id=current_user.company_id)
+        if not result:
+            raise NotFoundException.resource("ScheduleTemplate", id)
+        return True
 
     @strawberry.mutation
     async def apply_schedule_template(

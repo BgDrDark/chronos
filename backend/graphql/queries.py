@@ -809,8 +809,13 @@ class Query:
         from sqlalchemy.orm import selectinload
         from backend.database.models import User, TimeLog, WorkSchedule, LeaveRequest, sofia_now
         
-        # 1. Fetch all active users
-        users_result = await db.execute(select(User).where(User.is_active == True))
+        # 1. Fetch all active users from the current company only
+        users_result = await db.execute(
+            select(User).where(
+                User.is_active == True,
+                User.company_id == current_user.company_id
+            )
+        )
         users = users_result.scalars().all()
         
         # 2. Fetch all schedules for the date
@@ -1186,10 +1191,11 @@ class Query:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view audit logs")
         
-        from sqlalchemy import select, desc
-        from backend.database.models import AuditLog as DbAuditLog
+        from sqlalchemy import select, desc, and_
+        from backend.database.models import AuditLog as DbAuditLog, User
         
-        stmt = select(DbAuditLog).order_by(desc(DbAuditLog.created_at))
+        stmt = select(DbAuditLog).join(User, DbAuditLog.user_id == User.id).order_by(desc(DbAuditLog.created_at))
+        stmt = stmt.where(User.company_id == current_user.company_id)
         if action:
             stmt = stmt.where(DbAuditLog.action == action)
             
@@ -1274,7 +1280,7 @@ class Query:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view schedule templates")
-        res = await crud.get_schedule_templates(db)
+        res = await crud.get_schedule_templates(db, company_id=current_user.company_id)
         return [types.ScheduleTemplate.from_instance(t) for t in res]
 
     @strawberry.field
@@ -1282,8 +1288,10 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("view schedule template")  
-        res = await crud.get_schedule_template(db, id)
+            raise PermissionDeniedException.for_action("view schedule template")
+        res = await crud.get_schedule_template(db, id, company_id=current_user.company_id)
+        if res and res.company_id != current_user.company_id:
+            return None
         return types.ScheduleTemplate.from_instance(res) if res else None
 
     @strawberry.field

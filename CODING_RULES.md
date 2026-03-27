@@ -514,7 +514,94 @@ function RecipesPage() {
 
 - Преглеждай кода редовно
 - Подобрявай структурата
-- Премахвай technical debt
+- Използвай technical debt за коментари на функциите
+
+
+---
+
+## 12.1 Alembic Миграции
+
+### Правила за работа с Alembic
+
+1. **Винаги поддържай ЕДИН head**
+   - Ако имаш множество head-ове, `alembic revision --autogenerate` няма да работи
+   - Преди да създадеш нова миграция, провери с `alembic heads`
+
+2. **Сливане на множество head-ове**
+   ```bash
+   # Когато имаш повече от един head:
+   alembic merge head1 head2 head3 -m "merge_all_heads"
+   ```
+
+3. **Създаване на миграция**
+   ```bash
+   cd backend
+   alembic revision --autogenerate -m "add_new_column"
+   alembic upgrade head
+   ```
+
+4. **Проверка на състоянието**
+   ```bash
+   alembic current          # Къде е текущата миграция
+   alembic heads            # Колко head-а има
+   alembic history          # История на миграциите
+   ```
+
+5. **Когато нещо се обърка**
+   ```bash
+   # Ако autogenerate дава грешка за multiple heads:
+   alembic merge <head1> <head2> -m "merge_heads"
+   alembic upgrade <нов_head>
+   ```
+
+### Структура на alembic.ini
+
+```ini
+[alembic]
+sqlalchemy.url = postgresql://postgres:postgres@localhost:5432/workingtimedb
+```
+
+**Важно:** URL-ът трябва да е синхронен (без `+asyncpg`).
+
+### Чести грешки
+
+1. **Липсващ company_id при нов модел**
+   ```python
+   # ❌ НЕ - моделът няма company_id
+   class ScheduleTemplate(Base):
+       id: Mapped[int] = mapped_column(Integer, primary_key=True)
+       name: Mapped[str] = mapped_column(String)
+   
+   # ✅ ДА - добави company_id
+   class ScheduleTemplate(Base):
+       id: Mapped[int] = mapped_column(Integer, primary_key=True)
+       company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False)
+       name: Mapped[str] = mapped_column(String)
+       company = relationship("Company")
+   ```
+
+2. **Липсващ company_id filter в queries**
+   ```python
+   # ❌ НЕ - връща всички записи
+   async def schedule_templates(self, info):
+       stmt = select(ScheduleTemplate)
+   
+   # ✅ ДА - филтрирай по company_id
+   async def schedule_templates(self, info):
+       current_user = info.context["current_user"]
+       stmt = select(ScheduleTemplate).where(
+           ScheduleTemplate.company_id == current_user.company_id
+       )
+   ```
+
+3. **Неподходящ revision ID**
+   ```python
+   # ❌ НЕ - твърде дълго име
+   revision: str = 'add_company_id_to_schedule_template_version_2_final'
+   
+   # ✅ ДА - кратко име
+   revision: str = 'add_st_company_id'
+   ```
 
 ---
 

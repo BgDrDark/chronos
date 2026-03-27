@@ -124,9 +124,9 @@ async def send_push_to_user(db: AsyncSession, user_id: int, title: str, body: st
 
 # --- Schedule Templates ---
 
-async def create_schedule_template(db: AsyncSession, name: str, description: Optional[str] = None,
-                                   items: List[dict] = []):
-    template = ScheduleTemplate(name=name, description=description)
+async def create_schedule_template(db: AsyncSession, name: str, company_id: int,
+                                   description: Optional[str] = None, items: List[dict] = []):
+    template = ScheduleTemplate(name=name, company_id=company_id, description=description)
     db.add(template)
     await db.flush()  # Get template ID
 
@@ -143,24 +143,30 @@ async def create_schedule_template(db: AsyncSession, name: str, description: Opt
     return template
 
 
-async def get_schedule_templates(db: AsyncSession):
+async def get_schedule_templates(db: AsyncSession, company_id: int = None):
     stmt = select(ScheduleTemplate).options(
         selectinload(ScheduleTemplate.items).selectinload(ScheduleTemplateItem.shift))
+    if company_id:
+        stmt = stmt.where(ScheduleTemplate.company_id == company_id)
     res = await db.execute(stmt)
     return res.scalars().all()
 
 
-async def get_schedule_template(db: AsyncSession, template_id: int):
+async def get_schedule_template(db: AsyncSession, template_id: int, company_id: int = None):
     stmt = select(ScheduleTemplate).where(ScheduleTemplate.id == template_id).options(
         selectinload(ScheduleTemplate.items).selectinload(ScheduleTemplateItem.shift)
     )
+    if company_id:
+        stmt = stmt.where(ScheduleTemplate.company_id == company_id)
     res = await db.execute(stmt)
     return res.scalars().first()
 
 
-async def delete_schedule_template(db: AsyncSession, template_id: int):
+async def delete_schedule_template(db: AsyncSession, template_id: int, company_id: int = None):
     tmpl = await db.get(ScheduleTemplate, template_id)
     if tmpl:
+        if company_id and tmpl.company_id != company_id:
+            return False
         await db.delete(tmpl)
         await db.commit()
         return True
@@ -910,7 +916,6 @@ async def get_global_payroll_config(db: AsyncSession):
     standard_hours_per_day = await get_global_setting(db, "global_standard_hours_per_day")
     currency = await get_global_setting(db, "global_currency")
     annual_leave_days = await get_global_setting(db, "global_annual_leave_days")
-
     # Deductions
     tax_percent = await get_global_setting(db, "global_tax_percent")
     health_insurance_percent = await get_global_setting(db, "global_health_insurance_percent")
@@ -925,7 +930,6 @@ async def get_global_payroll_config(db: AsyncSession):
         standard_hours_per_day=int(standard_hours_per_day) if standard_hours_per_day else 8,
         currency=currency or "EUR",
         annual_leave_days=int(annual_leave_days) if annual_leave_days else 20,
-
         tax_percent=float(tax_percent) if tax_percent else 10.00,
         health_insurance_percent=float(health_insurance_percent) if health_insurance_percent else 13.78,
         has_tax_deduction=(has_tax_deduction == "True") if has_tax_deduction is not None else True,
@@ -953,7 +957,6 @@ async def update_global_payroll_config(
     await set_global_setting(db, "global_standard_hours_per_day", str(standard_hours_per_day))
     await set_global_setting(db, "global_currency", currency)
     await set_global_setting(db, "global_annual_leave_days", str(annual_leave_days))
-
     await set_global_setting(db, "global_tax_percent", str(tax_percent))
     await set_global_setting(db, "global_health_insurance_percent", str(health_insurance_percent))
     await set_global_setting(db, "global_has_tax_deduction", str(has_tax_deduction))
