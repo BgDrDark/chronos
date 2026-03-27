@@ -3421,6 +3421,13 @@ class Mutation:
         if current_user.role.name != "super_admin" and invoice.company_id != current_user.company_id:
             raise PermissionDeniedException.for_action("manage")
 
+        # READONLY check: paid, cancelled, and corrected invoices cannot be edited
+        readonly_statuses = ['paid', 'cancelled', 'corrected']
+        if invoice.status in readonly_statuses:
+            raise ValidationException(
+                detail=f"Фактура с статус '{invoice.status}' е в READONLY режим и не може да се редактира. Платена/анулирана/коригирана фактура не може да се променя."
+            )
+
         # Validate status transition
         current_status = invoice.status
         new_status = invoice_data.status
@@ -3428,10 +3435,10 @@ class Mutation:
         ALLOWED_TRANSITIONS = {
             'draft': ['sent', 'paid', 'cancelled'],
             'sent': ['paid', 'cancelled'],
-            'paid': ['cancelled'],  # Allow cancellation of paid invoices
             'overdue': ['paid', 'cancelled'],
-            'cancelled': []  # Final status - no transitions allowed
+            'corrected': []  # No transitions from corrected
         }
+        # NOTE: 'paid' and 'cancelled' are handled by the READONLY check above
 
         if new_status != current_status:
             allowed = ALLOWED_TRANSITIONS.get(current_status, [])
@@ -3442,9 +3449,28 @@ class Mutation:
                     f"Не може да промените статуса от '{current_status}' на '{new_status}'. Позволени: {allowed_text}"
                 )
 
-            # Special protection: only super_admin can cancel paid invoices
-            if current_status == 'paid' and new_status == 'cancelled' and current_user.role.name != "super_admin":
-                raise PermissionDeniedException(detail="Не можете да анулирате платена фактура. Свържете се с администратор.")
+            # Special protection: accountant, head_accountant, and super_admin can cancel paid invoices
+            if current_status == 'paid' and new_status == 'cancelled':
+                if current_user.role.name not in ["super_admin", "head_accountant", "accountant"]:
+                    raise PermissionDeniedException(
+                        detail="Нямате права да анулирате платена фактура. За това действие са необходими права на счетоводител или по-високи."
+                    )
+                # Log the cancellation of paid invoice
+                log_entry = models.OperationLog(
+                    operation="cancel_paid",
+                    entity_type="invoice",
+                    entity_id=invoice.id,
+                    user_id=current_user.id,
+                    company_id=current_user.company_id,
+                    changes={
+                        "number": invoice.number,
+                        "previous_status": "paid",
+                        "new_status": "cancelled",
+                        "amount": str(invoice.total),
+                        "role": current_user.role.name
+                    }
+                )
+                db.add(log_entry)
 
         # Update basic fields
         invoice.type = invoice_data.type
@@ -3576,43 +3602,10 @@ class Mutation:
             id: int,
             info: strawberry.Info
     ) -> bool:
-        """Delete an invoice"""
-        db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
-
-        from backend.database import models
-
-        invoice = await db.get(models.Invoice, id)
-        if not invoice:
-            raise NotFoundException.record("Invoice")
-
-        if current_user.role.name != "super_admin" and invoice.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage")
-
-        # Проверка за законовия срок за съхранение на фактурите (10 години)
-        from datetime import datetime
-        MIN_RETENTION_YEARS = 10
-        age_in_days = (datetime.utcnow() - invoice.created_at).days
-        if age_in_days < MIN_RETENTION_YEARS * 365:
-            raise ValidationException(
-                detail=f"Фактурата не може да бъде изтрита. Законовият срок за съхранение е {MIN_RETENTION_YEARS} години."
-            )
-
-        # Log the deletion before deleting
-        log_entry = models.OperationLog(
-            operation="delete",
-            entity_type="invoice",
-            entity_id=invoice.id,
-            user_id=current_user.id,
-            changes={"number": invoice.number, "type": invoice.type, "total": str(invoice.total)}
+        """Delete an invoice - ALWAYS BLOCKED"""
+        raise ValidationException(
+            detail="Фактурите не могат да се изтриват. Вместо това ги анулирайте или коригирайте."
         )
-        db.add(log_entry)
-
-        await db.delete(invoice)
-        await db.commit()
-        return True
 
     @strawberry.mutation
     async def create_invoice_from_batch(
@@ -4509,6 +4502,151 @@ class Mutation:
         return types.Invoice.from_instance(invoice)
 
     @strawberry.mutation
+    async def create_invoice_correction(
+            self,
+            original_invoice_id: int,
+            correction_type: str,
+            reason: str,
+            correction_date: datetime.date,
+            info: strawberry.Info,
+            create_new_invoice: bool = False,
+    ) -> types.InvoiceCorrection:
+        """Create a credit or debit note for an invoice"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise AuthenticationException(detail="Трябва да се автентикирате")
+
+        # Permission check: accountant, head_accountant, super_admin
+        allowed_roles = ["super_admin", "head_accountant", "accountant"]
+        if current_user.role.name not in allowed_roles:
+            raise PermissionDeniedException(
+                detail="Нямате права да създавате корекции. За това действие са необходими права на счетоводител или по-високи."
+            )
+
+        from backend.database import models
+        from sqlalchemy import func
+
+        original_invoice = await db.get(models.Invoice, original_invoice_id)
+        if not original_invoice:
+            raise NotFoundException.record("Original Invoice")
+
+        # Validate invoice is paid
+        if original_invoice.status != 'paid':
+            raise ValidationException(
+                detail=f"Може да коригирате само платени фактури. Тази фактура има статус '{original_invoice.status}'."
+            )
+
+        # Validate correction type
+        if correction_type not in ['credit', 'debit']:
+            raise ValidationException(
+                detail="Типът на корекцията трябва да бъде 'credit' или 'debit'."
+            )
+
+        # Generate correction number: КР-{YEAR}-{NNN}
+        year = correction_date.year
+        last_correction = await db.execute(
+            select(models.InvoiceCorrection)
+            .where(
+                models.InvoiceCorrection.company_id == current_user.company_id,
+                func.extract('year', models.InvoiceCorrection.correction_date) == year
+            )
+            .order_by(models.InvoiceCorrection.id.desc())
+            .limit(1)
+        )
+        last_num = last_correction.scalar()
+        next_num = 1 if not last_num else int(last_num.number.split('-')[-1]) + 1
+        correction_number = f"КР-{year}-{next_num:04d}"
+
+        # Calculate amounts based on correction type
+        if correction_type == 'credit':
+            amount_diff = -original_invoice.subtotal
+            vat_diff = -original_invoice.vat_amount
+        else:  # debit
+            amount_diff = original_invoice.subtotal
+            vat_diff = original_invoice.vat_amount
+
+        # Create correction
+        correction = models.InvoiceCorrection(
+            number=correction_number,
+            original_invoice_id=original_invoice_id,
+            type=correction_type,
+            correction_type=correction_type,
+            reason=reason,
+            amount_diff=amount_diff,
+            vat_diff=vat_diff,
+            correction_date=correction_date,
+            company_id=current_user.company_id,
+            created_by=current_user.id
+        )
+
+        db.add(correction)
+
+        # Optionally create new invoice
+        if create_new_invoice:
+            # Generate invoice number
+            prefix = "ИЗХ" if original_invoice.type == 'outgoing' else "ВХ"
+            year_inv = correction_date.year
+            last_invoice = await db.execute(
+                select(models.Invoice)
+                .where(
+                    models.Invoice.company_id == current_user.company_id,
+                    models.Invoice.number.like(f"{prefix}-{year_inv}-%")
+                )
+                .order_by(models.Invoice.id.desc())
+                .limit(1)
+            )
+            last_inv_num = last_invoice.scalar()
+            next_inv_num = 1 if not last_inv_num else int(last_inv_num.number.split('-')[-1]) + 1
+            new_invoice_number = f"{prefix}-{year_inv}-{next_inv_num:04d}"
+
+            new_invoice = models.Invoice(
+                number=new_invoice_number,
+                type=original_invoice.type,
+                document_type=original_invoice.document_type,
+                date=correction_date,
+                client_name=original_invoice.client_name,
+                client_eik=original_invoice.client_eik,
+                client_address=original_invoice.client_address,
+                subtotal=original_invoice.subtotal + amount_diff,
+                vat_amount=original_invoice.vat_amount + vat_diff,
+                total=(original_invoice.subtotal + amount_diff) + (original_invoice.vat_amount + vat_diff),
+                vat_rate=original_invoice.vat_rate,
+                status='draft',
+                company_id=current_user.company_id,
+                created_by=current_user.id
+            )
+            db.add(new_invoice)
+            correction.new_invoice = new_invoice
+
+        # Mark original as corrected
+        original_invoice.status = "corrected"
+
+        # Log the operation
+        log_entry = models.OperationLog(
+            operation="create_correction",
+            entity_type="correction",
+            entity_id=correction.id,
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            changes={
+                "number": correction_number,
+                "type": correction_type,
+                "original_invoice_id": original_invoice_id,
+                "original_invoice_number": original_invoice.number,
+                "amount_diff": float(amount_diff),
+                "vat_diff": float(vat_diff),
+                "reason": reason,
+                "create_new_invoice": create_new_invoice
+            }
+        )
+        db.add(log_entry)
+
+        await db.commit()
+        await db.refresh(correction, ["original_invoice"])
+        return types.InvoiceCorrection.from_instance(correction)
+
+    @strawberry.mutation
     async def create_credit_note(
             self,
             original_invoice_id: int,
@@ -4798,6 +4936,24 @@ class Mutation:
             created_by=current_user.id
         )
         db.add(transaction)
+        
+        # Log the operation
+        log_entry = models.OperationLog(
+            operation="create",
+            entity_type="bank_transaction",
+            entity_id=transaction.id,
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            changes={
+                "amount": float(input.amount),
+                "type": input.type,
+                "description": input.description,
+                "reference": input.reference,
+                "invoice_id": input.invoice_id
+            }
+        )
+        db.add(log_entry)
+        
         await db.commit()
         await db.refresh(transaction)
         return types.BankTransaction.from_instance(transaction)
@@ -4873,6 +5029,21 @@ class Mutation:
             raise ValidationException(
                 detail=f"Банковата транзакция не може да бъде изтрита. Законовият срок за съхранение е {MIN_RETENTION_YEARS} години."
             )
+
+        # Log the deletion
+        log_entry = models.OperationLog(
+            operation="delete",
+            entity_type="bank_transaction",
+            entity_id=transaction.id,
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            changes={
+                "amount": float(transaction.amount),
+                "type": transaction.type,
+                "description": transaction.description
+            }
+        )
+        db.add(log_entry)
 
         await db.delete(transaction)
         await db.commit()
@@ -5113,6 +5284,26 @@ class Mutation:
             created_by=current_user.id
         )
         db.add(entry)
+
+        # Log the operation
+        log_entry = models.OperationLog(
+            operation="create",
+            entity_type="accounting_entry",
+            entity_id=entry.id,
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            changes={
+                "entry_number": input.entry_number,
+                "description": input.description,
+                "debit_account_id": input.debit_account_id,
+                "credit_account_id": input.credit_account_id,
+                "amount": float(input.amount),
+                "vat_amount": float(input.vat_amount),
+                "invoice_id": input.invoice_id
+            }
+        )
+        db.add(log_entry)
+
         await db.commit()
         await db.refresh(entry)
         return types.AccountingEntry.from_instance(entry)
@@ -5137,6 +5328,21 @@ class Mutation:
 
         if entry.company_id != current_user.company_id:
             raise PermissionDeniedException.for_action("manage")
+
+        # Log the deletion
+        log_entry = models.OperationLog(
+            operation="delete",
+            entity_type="accounting_entry",
+            entity_id=entry.id,
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            changes={
+                "entry_number": entry.entry_number,
+                "description": entry.description,
+                "amount": float(entry.amount)
+            }
+        )
+        db.add(log_entry)
 
         await db.delete(entry)
         await db.commit()

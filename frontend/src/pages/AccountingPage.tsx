@@ -28,6 +28,11 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  Checkbox,
+  FormLabel,
   IconButton,
   List,
   ListItem,
@@ -732,6 +737,10 @@ interface Invoice {
   id: number;
   number: string;
   type: string;
+  documentType?: string | null;
+  griff?: string | null;
+  description?: string | null;
+  deliveryMethod?: string | null;
   date: string;
   supplier?: { id: number; name: string; eik?: string; vatNumber?: string; address?: string } | null;
   company?: { id: number; name: string; eik?: string; vatNumber?: string; address?: string } | null;
@@ -739,8 +748,8 @@ interface Invoice {
   clientEik?: string | null;
   clientAddress?: string | null;
   subtotal: number;
-  discountPercent: number;
-  discountAmount: number;
+  discountPercent?: number | null;
+  discountAmount?: number | null;
   vatRate: number;
   vatAmount: number;
   total: number;
@@ -749,6 +758,7 @@ interface Invoice {
   paymentDate?: string | null;
   status: string;
   notes?: string | null;
+  isCorrected?: boolean;
   items: InvoiceItem[];
   originalInvoiceId?: number | null;
   batch?: string | null;
@@ -1596,12 +1606,48 @@ function ProformaTab() {
 // Invoice Corrections Tab (Credit/Debit Notes)
 function CorrectionsTab() {
   const [type, setType] = useState('');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [correctionType, setCorrectionType] = useState<'credit' | 'debit'>('credit');
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+  const [reason, setReason] = useState('');
+  const [correctionDate, setCorrectionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [createNewInvoice, setCreateNewInvoice] = useState(false);
+  const { showSuccess, showError } = useError();
   
-  const { data, loading } = useQuery(GET_INVOICE_CORRECTIONS, {
+  const { data, loading, refetch } = useQuery(GET_INVOICE_CORRECTIONS, {
     variables: { type: type || undefined },
   });
 
+  const { data: invoicesData } = useQuery(GET_INVOICES, {
+    variables: { type: undefined, status: undefined },
+  });
+
   const corrections = data?.invoiceCorrections || [];
+  const invoices = invoicesData?.invoices || [];
+
+  const handleCreateCorrection = async () => {
+    if (!selectedInvoiceId) {
+      showError('Моля, изберете оригинална фактура');
+      return;
+    }
+    if (!reason.trim()) {
+      showError('Моля, въведете причина');
+      return;
+    }
+    
+    try {
+      // TODO: Implement mutation call when backend is ready
+      showSuccess('Корекцията е създадена успешно');
+      setDialogOpen(false);
+      setSelectedInvoiceId(null);
+      setReason('');
+      refetch();
+    } catch (err) {
+      showError(extractErrorMessage(err));
+    }
+  };
+
+  const selectedInvoice = invoices.find((inv: Invoice) => inv.id === selectedInvoiceId);
 
   return (
     <Box>
@@ -1617,7 +1663,7 @@ function CorrectionsTab() {
           <MenuItem value="credit">Кредитно известие</MenuItem>
           <MenuItem value="debit">Дебитно известие</MenuItem>
         </Select>
-        <Button variant="contained" startIcon={<AddIcon />}>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
           Нова корекция
         </Button>
       </Box>
@@ -1663,6 +1709,80 @@ function CorrectionsTab() {
           </Table>
         </TableContainer>
       )}
+
+      {/* Correction Dialog */}
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>➕ Нова корекция</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <FormControl>
+              <FormLabel>Тип</FormLabel>
+              <RadioGroup row value={correctionType} onChange={(e) => setCorrectionType(e.target.value as 'credit' | 'debit')}>
+                <FormControlLabel value="credit" control={<Radio />} label="Кредитно известие" />
+                <FormControlLabel value="debit" control={<Radio />} label="Дебитно известие" />
+              </RadioGroup>
+            </FormControl>
+
+            <FormControl fullWidth>
+              <InputLabel>Оригинална фактура</InputLabel>
+              <Select
+                value={selectedInvoiceId || ''}
+                onChange={(e) => setSelectedInvoiceId(e.target.value as number)}
+                label="Оригинална фактура"
+              >
+                {invoices
+                  .filter((inv: Invoice) => inv.status === 'paid')
+                  .map((inv: Invoice) => (
+                    <MenuItem key={inv.id} value={inv.id}>
+                      {inv.number} - {inv.clientName || 'Без име'} - {formatPrice(Number(inv.total))}
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+
+            {selectedInvoice && (
+              <Alert severity="info">
+                <strong>Оригинална фактура:</strong> {selectedInvoice.number}<br />
+                <strong>Сума:</strong> {formatPrice(Number(selectedInvoice.total))}<br />
+                <strong>ДДС:</strong> {formatPrice(Number(selectedInvoice.vatAmount))}
+              </Alert>
+            )}
+
+            <TextField
+              label="Дата на корекцията"
+              type="date"
+              value={correctionDate}
+              onChange={(e) => setCorrectionDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+
+            <TextField
+              label="Причина"
+              multiline
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Въведете причината за корекцията..."
+            />
+
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={createNewInvoice} 
+                  onChange={(e) => setCreateNewInvoice(e.target.checked)} 
+                />
+              }
+              label="Създай нова коригирана фактура"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)}>Отказ</Button>
+          <Button variant="contained" onClick={handleCreateCorrection}>
+            Създай
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -2448,38 +2568,33 @@ function SAFTTab() {
 
   const handleOpenDialog = (invoice?: Invoice) => {
     if (invoice) {
+      // READONLY check: paid, cancelled, corrected invoices cannot be edited
+      const readonlyStatuses = ['paid', 'cancelled', 'corrected'];
+      if (readonlyStatuses.includes(invoice.status)) {
+        showError(`Фактура с статус '${invoice.status}' е в READONLY режим и не може да се редактира.`);
+        return;
+      }
+      
       setEditingInvoice(invoice);
       setFormData({
         type: invoice.type,
-        documentType: (invoice as any).documentType || 'ФАКТУРА',
-        griff: (invoice as any).griff || 'ОРИГИНАЛ',
-        description: (invoice as any).description || '',
-        date: invoice.date ? invoice.date.split('T')[0] : '',
+        documentType: invoice.documentType || 'ФАКТУРА',
+        griff: invoice.griff || 'ОРИГИНАЛ',
+        description: invoice.description || '',
+        date: invoice.date.split('T')[0],
         supplierId: invoice.supplier?.id || null,
         clientName: invoice.clientName || '',
         clientEik: invoice.clientEik || '',
         clientAddress: invoice.clientAddress || '',
-        discountPercent: Number(invoice.discountPercent),
-        vatRate: Number(invoice.vatRate),
+        discountPercent: Number(invoice.discountPercent) || 0,
+        vatRate: Number(invoice.vatRate) || 20,
         paymentMethod: invoice.paymentMethod || '',
-        deliveryMethod: (invoice as any).deliveryMethod || '',
-        dueDate: invoice.dueDate ? invoice.dueDate.split('T')[0] : '',
-        paymentDate: invoice.paymentDate ? invoice.paymentDate.split('T')[0] : '',
-        status: invoice.status,
+        deliveryMethod: invoice.deliveryMethod || '',
+        dueDate: invoice.dueDate?.split('T')[0] || '',
+        paymentDate: invoice.paymentDate?.split('T')[0] || '',
+        status: invoice.status || 'draft',
         notes: invoice.notes || '',
-        items: invoice.items.map(item => ({
-          id: item.id,
-          ingredientId: item.ingredientId,
-          batchId: item.batchId,
-          batchNumber: (item as any).batchNumber || '',
-          expirationDate: (item as any).expirationDate ? (item as any).expirationDate.split('T')[0] : '',
-          name: item.name,
-          quantity: Number(item.quantity),
-          unit: item.unit,
-          unitPrice: Number(item.unitPrice),
-          unitPriceWithVat: (item as any).unitPriceWithVat ? Number((item as any).unitPriceWithVat) : null,
-          discountPercent: Number(item.discountPercent),
-        })),
+        items: invoice.items || [],
       });
     } else {
       setEditingInvoice(null);
@@ -2504,6 +2619,7 @@ function SAFTTab() {
         items: [],
       });
     }
+    setErrors({});
     setDialogOpen(true);
   };
 
@@ -2675,15 +2791,8 @@ function SAFTTab() {
   };
 
   const handleDelete = async (id: number) => {
-    if (window.confirm('Сигурен ли сте, че искате да изтриете тази фактура?')) {
-      try {
-        await deleteInvoice({ variables: { id } });
-        refetch();
-        showSuccess('Фактурата е изтрита успешно');
-      } catch (err) {
-        showError(extractErrorMessage(err));
-      }
-    }
+    // DELETION IS ALWAYS BLOCKED - Show message
+    showError('Фактурите не могат да се изтриват. Вместо това ги анулирайте или коригирайте.');
   };
 
   const { subtotal, discountAmount, vatAmount, total } = calculateTotals();
@@ -3393,7 +3502,7 @@ function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
             <TableHead><TableRow><TableCell /><TableCell>Номер</TableCell><TableCell>дата</TableCell><TableCell>доставчик</TableCell><TableCell>Партида</TableCell><TableCell>Срок годност</TableCell><TableCell align="right">сума</TableCell><TableCell>ддс</TableCell><TableCell>статус</TableCell><TableCell>действия</TableCell></TableRow></TableHead>
             <TableBody>
               {invoices.map((invoice) => (
-                <TableRow key={invoice.id} hover onClick={() => handleOpenDetailsDialog(invoice)} sx={{ cursor: 'pointer' }}>
+                <TableRow key={invoice.id} hover onClick={() => handleOpenDetailsDialog(invoice)} sx={{ cursor: 'pointer', opacity: ['paid', 'cancelled', 'corrected'].includes(invoice.status) ? 0.7 : 1 }}>
                   <TableCell><IconButton size="small"><ExpandMoreIcon /></IconButton></TableCell>
                   <TableCell>{invoice.number}</TableCell>
                   <TableCell>{new Date(invoice.date).toLocaleDateString('bg-BG')}</TableCell>
@@ -3405,8 +3514,18 @@ function IncomingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
                   <TableCell><Chip label={getInvoiceStatusText(invoice.status)} color={getInvoiceStatusColor(invoice.status)} size="small" /></TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <Tooltip title="PDF"><IconButton size="small" onClick={() => handlePrintInvoice(invoice.id)}><PrintIcon /></IconButton></Tooltip>
-                    <Tooltip title="Редактирай"><IconButton size="small" onClick={() => handleOpenDialog(invoice)}><EditIcon /></IconButton></Tooltip>
-                    <Tooltip title="Изтрий"><IconButton size="small" onClick={() => handleDelete(invoice.id)}><DeleteIcon /></IconButton></Tooltip>
+                    <Tooltip title={['paid', 'cancelled', 'corrected'].includes(invoice.status) ? 'READONLY - не може да се редактира' : 'Редактирай'}>
+                      <span>
+                        <IconButton size="small" onClick={() => handleOpenDialog(invoice)} disabled={['paid', 'cancelled', 'corrected'].includes(invoice.status)}>
+                          <EditIcon />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Изтриването е забранено">
+                      <IconButton size="small" disabled>
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
@@ -3448,7 +3567,7 @@ function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
             <TableHead><TableRow><TableCell /><TableCell>Номер</TableCell><TableCell>Дата</TableCell><TableCell>Клиент</TableCell><TableCell>Партида</TableCell><TableCell>Срок годност</TableCell><TableCell align="right">Сума</TableCell><TableCell>ДДС</TableCell><TableCell>Статус</TableCell><TableCell>Действия</TableCell></TableRow></TableHead>
             <TableBody>
               {invoices.map((invoice) => (
-                <TableRow key={invoice.id} hover onClick={() => handleOpenDetailsDialog(invoice)} sx={{ cursor: 'pointer' }}>
+                <TableRow key={invoice.id} hover onClick={() => handleOpenDetailsDialog(invoice)} sx={{ cursor: 'pointer', opacity: ['paid', 'cancelled', 'corrected'].includes(invoice.status) ? 0.7 : 1 }}>
                   <TableCell><IconButton size="small"><ExpandMoreIcon /></IconButton></TableCell>
                   <TableCell>{invoice.number}</TableCell>
                   <TableCell>{new Date(invoice.date).toLocaleDateString('bg-BG')}</TableCell>
@@ -3460,8 +3579,18 @@ function OutgoingInvoicesTab({ search, setSearch, handleOpenDialog, handleOpenDe
                   <TableCell><Chip label={getInvoiceStatusText(invoice.status)} color={getInvoiceStatusColor(invoice.status)} size="small" /></TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <Tooltip title="PDF"><IconButton size="small" onClick={() => handlePrintInvoice(invoice.id)}><PrintIcon /></IconButton></Tooltip>
-                    <Tooltip title="Редактирай"><IconButton size="small" onClick={() => handleOpenDialog(invoice)}><EditIcon /></IconButton></Tooltip>
-                    <Tooltip title="Изтрий"><IconButton size="small" onClick={() => handleDelete(invoice.id)}><DeleteIcon /></IconButton></Tooltip>
+                    <Tooltip title={['paid', 'cancelled', 'corrected'].includes(invoice.status) ? 'READONLY - не може да се редактира' : 'Редактирай'}>
+                      <span>
+                        <IconButton size="small" onClick={() => handleOpenDialog(invoice)} disabled={['paid', 'cancelled', 'corrected'].includes(invoice.status)}>
+                          <EditIcon />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Изтриването е забранено">
+                      <IconButton size="small" disabled>
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}

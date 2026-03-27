@@ -1262,16 +1262,16 @@ export interface RecipeWithPrice extends Recipe {
 export interface PriceHistory {
   id: number;
   recipeId: number;
-  oldSellingPrice: number | null;
-  newSellingPrice: number | null;
-  oldMarkupPercentage: number | null;
-  newMarkupPercentage: number | null;
-  oldPremiumAmount: number | null;
-  newPremiumAmount: number | null;
-  oldCostPrice: number | null;
-  newCostPrice: number | null;
+  oldPrice: number | null;
+  newPrice: number | null;
+  oldMarkup: number | null;
+  newMarkup: number | null;
+  oldPremium: number | null;
+  newPremium: number | null;
+  oldCost: number | null;
+  newCost: number | null;
   reason: string | null;
-  createdAt: string;
+  changedAt: string;
   user?: { id: number; firstName?: string | null; lastName?: string | null; email: string } | null;
 }
 
