@@ -619,7 +619,7 @@ class User:
     phone_number: Optional[str]
     address: Optional[str]
     egn: Optional[str]
-    pin: Optional[str] = strawberry.field(name="pin", deprecation_reason="Use egn instead")
+    pin: Optional[str] = strawberry.field(name="pin", default=None, deprecation_reason="Use egn instead")
     birth_date: Optional[datetime.date]
     iban: Optional[str]
     is_active: bool
