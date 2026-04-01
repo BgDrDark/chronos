@@ -743,3 +743,23 @@ recipeId              →  recipe_id
 markupPercentage      →  markup_percentage
 finalPrice            →  final_price
 ```
+
+### GraphQL JSON типове
+
+За връщане на JSON/dict от GraphQL mutations, използвай `JSONScalar`:
+
+```python
+# ✅ ДА - използвай JSONScalar от utils
+from backend.utils.json_type import JSONScalar
+
+@strawberry.mutation
+async def generate_report(...) -> JSONScalar:
+    return await generator.generate_data()
+
+# ❌ НЕ - не използвай Python dict директно
+@strawberry.mutation
+async def generate_report(...) -> dict:  # Грешка!
+    return {"data": "value"}
+```
+
+**Защо?** Strawberry GraphQL не поддържа Python `dict` като return тип в mutations.
