@@ -93,7 +93,7 @@ class OptimizedQuery:
         
         return types.PaginatedUsers(
             users=[types.User.from_instance(user) for user in users_with_relations if user],
-            total_count=total_count
+            total_count=total_count or 0
         )
 
     @strawberry.field
@@ -443,7 +443,7 @@ class OptimizedQuery:
             # Check Schedule Logic (If NOT present and NOT on leave)
             if not is_present and not leave:
                 if schedule and schedule.shift:
-                    if is_today:
+                    if is_today and shift_start and shift_end:
                         if current_time < shift_start:
                              p_status = types.PresenceStatus.OFF_DUTY
                         elif current_time >= shift_start and current_time <= shift_end:

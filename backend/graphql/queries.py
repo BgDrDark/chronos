@@ -1,18 +1,19 @@
-import strawberry
 import datetime
-from typing import List, Optional
 from decimal import Decimal
+from typing import List, Optional
+import strawberry
 from sqlalchemy import select, Time, desc
-from backend.graphql import types
 from backend import crud
 from backend.config import settings
-from backend.services.payroll_calculator import PayrollCalculator
 from backend.exceptions import (
     AuthenticationException,
     PermissionDeniedException,
     NotFoundException,
 )
+from backend.graphql import types
+from backend.services.payroll_calculator import PayrollCalculator
 
+authenticate_msg = "Трябва да се автентикирате"
 @strawberry.type
 class Query:
     @strawberry.field
@@ -127,7 +128,7 @@ class Query:
         
         return types.PaginatedUsers(
             users=[types.User.from_instance(user) for user in db_users],
-            total_count=total_count
+            total_count=total_count or 0
         )
 
     @strawberry.field
@@ -382,7 +383,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import AnnexTemplate
         template = await db.get(AnnexTemplate, id)
@@ -408,7 +409,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import AnnexTemplateVersion
         stmt = select(AnnexTemplateVersion).where(
@@ -438,7 +439,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         company_id = current_user.company_id if current_user.role.name != "super_admin" else None
         
@@ -467,7 +468,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import ContractAnnex, EmploymentContract, User
         stmt = select(ContractAnnex).join(EmploymentContract).join(User)
@@ -729,7 +730,7 @@ class Query:
         current_user = info.context["current_user"]
         
         if current_user is None:
-             raise AuthenticationException(detail="Трябва да се автентикирате")
+             raise AuthenticationException(detail=authenticate_msg)
              
         if current_user.id != user_id and current_user.role.name not in ["admin", "super_admin"]:
              raise PermissionDeniedException.for_action("view records")
@@ -742,7 +743,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         res = await crud.get_companies(db)
         return [types.Company.from_instance(c) for c in res]
@@ -752,7 +753,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
             
         res = await crud.get_departments(db, company_id)
         return [types.Department.from_instance(d) for d in res]
@@ -762,7 +763,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
             
         res = await crud.get_positions(db, department_id)
         return [types.Position.from_instance(p) for p in res]
@@ -894,7 +895,7 @@ class Query:
             # 4. Check Schedule Logic (If NOT present and NOT on leave)
             if not is_present and not leave:
                 if schedule and schedule.shift:
-                    if is_today:
+                    if is_today and shift_start and shift_end:
                         if current_time < shift_start:
                              p_status = types.PresenceStatus.OFF_DUTY # Waiting for start
                         elif current_time >= shift_start and current_time <= shift_end:
@@ -1191,7 +1192,7 @@ class Query:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view audit logs")
         
-        from sqlalchemy import select, desc, and_
+        from sqlalchemy import select, desc
         from backend.database.models import AuditLog as DbAuditLog, User
         
         stmt = select(DbAuditLog).join(User, DbAuditLog.user_id == User.id).order_by(desc(DbAuditLog.created_at))
@@ -1228,7 +1229,7 @@ class Query:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view management stats")   
 
-        from sqlalchemy import func, extract
+        from sqlalchemy import func
         from backend.database.models import Payslip, TimeLog, WorkSchedule, Shift, User
         
         # 1. Overtime by Month (last 12 months)
@@ -1387,7 +1388,7 @@ class Query:
     async def storage_zones(self, info: strawberry.Info) -> List[types.StorageZone]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import StorageZone
         stmt = select(StorageZone)
@@ -1401,7 +1402,7 @@ class Query:
     async def suppliers(self, info: strawberry.Info) -> List[types.Supplier]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import Supplier
         stmt = select(Supplier)
@@ -1415,7 +1416,7 @@ class Query:
     async def ingredients(self, info: strawberry.Info, search: Optional[str] = None) -> List[types.Ingredient]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import Ingredient
         stmt = select(Ingredient)
@@ -1437,7 +1438,7 @@ class Query:
     ) -> List[types.Batch]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import Batch, Ingredient
         stmt = select(Batch).join(Ingredient)
@@ -1533,7 +1534,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import Batch, Ingredient
         stmt = select(Batch).join(Ingredient).where(
@@ -1554,7 +1555,7 @@ class Query:
     async def recipes(self, info: strawberry.Info) -> List[types.Recipe]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import Recipe
         stmt = select(Recipe)
@@ -1574,7 +1575,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import Recipe
         stmt = select(Recipe)
@@ -1598,14 +1599,14 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import PriceHistory, Recipe
         from sqlalchemy import desc
         
         recipe = await db.get(Recipe, recipe_id)
         if not recipe or recipe.company_id != current_user.company_id:
-            raise not_found("Рецепта не е намерена")
+            raise NotFoundException.record("Recipe")
         
         stmt = select(PriceHistory).where(
             PriceHistory.recipe_id == recipe_id
@@ -1618,7 +1619,7 @@ class Query:
     async def workstations(self, info: strawberry.Info) -> List[types.Workstation]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import Workstation
         stmt = select(Workstation)
@@ -1632,7 +1633,7 @@ class Query:
     async def production_orders(self, info: strawberry.Info, status: Optional[str] = None) -> List[types.ProductionOrder]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import ProductionOrder
         stmt = select(ProductionOrder)
@@ -1651,7 +1652,7 @@ class Query:
     async def terminal_orders(self, info: strawberry.Info, workstation_id: int) -> List[types.TerminalOrder]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import ProductionOrder, ProductionTask, Recipe
         stmt = select(ProductionOrder).where(
@@ -1692,7 +1693,7 @@ class Query:
     async def production_records(self, info: strawberry.Info, order_id: Optional[int] = None) -> List[types.ProductionRecord]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import ProductionRecord
         stmt = select(ProductionRecord)
@@ -1713,7 +1714,7 @@ class Query:
     async def production_record_by_order(self, order_id: int, info: strawberry.Info) -> Optional[types.ProductionRecord]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import ProductionRecord, ProductionOrder
         stmt = select(ProductionRecord).where(ProductionRecord.order_id == order_id)
@@ -1731,7 +1732,7 @@ class Query:
     async def inventory_sessions(self, info: strawberry.Info, status: Optional[str] = None) -> List[types.InventorySession]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import InventorySession
         stmt = select(InventorySession)
@@ -1750,7 +1751,7 @@ class Query:
     async def inventory_session_items(self, session_id: int, info: strawberry.Info) -> List[types.InventoryItem]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import InventorySession, InventoryItem
         
@@ -1768,7 +1769,7 @@ class Query:
         """Get ingredient by barcode for inventory scanning"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import Ingredient, Batch
         from sqlalchemy import select, func
@@ -1812,7 +1813,7 @@ class Query:
         """Get all invoices, optionally filtered by type and status"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Invoice
         stmt = select(Invoice)
@@ -1840,7 +1841,7 @@ class Query:
         """Get a single invoice by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Invoice
         invoice = await db.get(Invoice, id)
@@ -1857,7 +1858,7 @@ class Query:
         """Get a single invoice by number"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Invoice
         stmt = select(Invoice).where(Invoice.number == number)
@@ -1883,7 +1884,7 @@ class Query:
         """Get cash journal entries, optionally filtered"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import CashJournalEntry
         import datetime
@@ -1916,7 +1917,7 @@ class Query:
         """Get operation logs, optionally filtered"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import OperationLog
         import datetime
@@ -1948,7 +1949,7 @@ class Query:
         """Get daily summaries, optionally filtered by date range"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import DailySummary
         import datetime
@@ -1977,7 +1978,7 @@ class Query:
         """Get monthly summaries, optionally filtered by year range"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import MonthlySummary
         stmt = select(MonthlySummary)
@@ -2005,7 +2006,7 @@ class Query:
         """Get yearly summaries, optionally filtered by year range"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import YearlySummary
         stmt = select(YearlySummary)
@@ -2033,7 +2034,7 @@ class Query:
         """Get all proforma invoices"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Invoice
         stmt = select(Invoice).where(Invoice.type == "proforma")
@@ -2064,7 +2065,7 @@ class Query:
         """Get all invoice corrections (credit/debit notes)"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import InvoiceCorrection
         from sqlalchemy.orm import selectinload
@@ -2088,7 +2089,7 @@ class Query:
         """Get a single invoice correction by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import InvoiceCorrection
         from sqlalchemy.orm import selectinload
@@ -2117,7 +2118,7 @@ class Query:
         """Get all cash receipts"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import CashReceipt
         stmt = select(CashReceipt)
@@ -2142,7 +2143,7 @@ class Query:
         """Get a single cash receipt by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import CashReceipt
         receipt = await db.get(CashReceipt, id)
@@ -2163,7 +2164,7 @@ class Query:
         """Get all bank accounts"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import BankAccount
         stmt = select(BankAccount)
@@ -2184,7 +2185,7 @@ class Query:
         """Get a single bank account by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import BankAccount
         account = await db.get(BankAccount, id)
@@ -2208,7 +2209,7 @@ class Query:
         """Get all bank transactions"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import BankTransaction
         stmt = select(BankTransaction)
@@ -2235,7 +2236,7 @@ class Query:
         """Get a single bank transaction by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import BankTransaction
         transaction = await db.get(BankTransaction, id)
@@ -2257,7 +2258,7 @@ class Query:
         """Get all accounts (chart of accounts)"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Account
         stmt = select(Account)
@@ -2280,7 +2281,7 @@ class Query:
         """Get a single account by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Account
         account = await db.get(Account, id)
@@ -2297,7 +2298,7 @@ class Query:
         """Get a single account by code"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Account
         stmt = select(Account).where(Account.code == code)
@@ -2323,7 +2324,7 @@ class Query:
         """Get all accounting entries"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import AccountingEntry
         stmt = select(AccountingEntry)
@@ -2353,7 +2354,7 @@ class Query:
         """Get a single accounting entry by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import AccountingEntry
         entry = await db.get(AccountingEntry, id)
@@ -2375,7 +2376,7 @@ class Query:
         """Get all VAT registers"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import VATRegister
         stmt = select(VATRegister)
@@ -2398,7 +2399,7 @@ class Query:
         """Get a single VAT register by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import VATRegister
         vat_register = await db.get(VATRegister, id)
@@ -2415,7 +2416,7 @@ class Query:
         """Get all gateways"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Gateway
         stmt = select(Gateway)
@@ -2436,7 +2437,7 @@ class Query:
         """Get a single gateway by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Gateway
         gateway = await db.get(Gateway, id)
@@ -2455,7 +2456,7 @@ class Query:
         """Get all terminals"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Terminal, Gateway
         stmt = select(Terminal)
@@ -2482,7 +2483,7 @@ class Query:
         """Get a single terminal by ID"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Terminal
         terminal = await db.get(Terminal, id)
@@ -2496,7 +2497,7 @@ class Query:
         """Get all printers for a gateway"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import Printer
         stmt = select(Printer).where(Printer.gateway_id == gateway_id)
@@ -2510,7 +2511,7 @@ class Query:
         """Get gateway statistics"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
         if current_user.role.name != "super_admin":
             raise AuthenticationException
 
@@ -2618,8 +2619,8 @@ class Query:
         if not current_user: raise AuthenticationException()
         
         from backend.database.models import ProductionOrder
-        from datetime import datetime, timedelta
-        
+        from datetime import datetime
+
         target_date = datetime.now().date()
         if date:
             target_date = datetime.strptime(date, "%Y-%m-%d").date()
