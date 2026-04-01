@@ -817,7 +817,6 @@ class User:
             phone_number=getattr(instance, 'phone_number', None),
             address=getattr(instance, 'address', None),
             egn=decrypt_data(str(instance.egn)) if instance.egn else None,
-            pin=decrypt_data(str(instance.pin)) if instance.pin else None,
             birth_date=getattr(instance, 'birth_date', None),
             iban=decrypt_data(str(instance.iban)) if instance.iban else None,
             is_active=instance.is_active,
