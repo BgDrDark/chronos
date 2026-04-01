@@ -1,4 +1,5 @@
 import datetime
+import os, sys
 import json
 import enum
 import strawberry
@@ -6,16 +7,12 @@ from typing import Optional, List, TYPE_CHECKING
 from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-
 from backend.database import models
 from backend.database.models import sofia_now
+from backend.utils.json_type import JSONScalar
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# JSON Scalar for GraphQL
-@strawberry.scalar
-class JSONScalar:
-    """Custom scalar for JSON data"""
-    def serialize(self, value):
-        return value
+
 
 if TYPE_CHECKING:
     from backend.graphql.types import Workstation
@@ -673,12 +670,15 @@ class User:
     # Scalar versions for settings page
     @strawberry.field
     async def company_name(self, info: strawberry.Info) -> Optional[str]:
-        obj = await self.company(info)
+        if not self.company_id: return self.company_legacy
+        obj = await info.context["dataloaders"]["company_by_id"].load(self.company_id)
         return obj.name if obj else self.company_legacy
 
     @strawberry.field
     async def department_name(self, info: strawberry.Info) -> Optional[str]:
-        obj = await self.department(info)
+        if not self.department_id: 
+            return self.department_legacy
+        obj = await info.context["dataloaders"]["department_by_id"].load(self.department_id)
         return obj.name if obj else self.department_legacy
 
     # New Relations (internal IDs)
@@ -783,13 +783,13 @@ class User:
         return WorkSchedule.from_instance(schedule) if schedule else None
 
     @strawberry.field
-    async def leave_balance(self, info: strawberry.Info, year: int = None) -> Optional["LeaveBalance"]:
+    async def leave_balance(self, info: strawberry.Info, year: Optional[int] = None) -> Optional["LeaveBalance"]:
         db = info.context["db"]
         from backend import crud
-        target_year = year if year else datetime.datetime.now().year
-        
+        target_year = year if year is not None else datetime.datetime.now().year
+        from backend.database.models import LeaveBalance as DbLeaveBalance
         balance = await crud.get_leave_balance(db, self.id, target_year)
-        return LeaveBalance.from_instance(balance) if balance else None
+        return DbLeaveBalance.from_instance(balance) if balance else None
 
     @strawberry.field
     async def is_smtp_configured(self, info: strawberry.Info) -> bool:
@@ -816,10 +816,10 @@ class User:
             last_name=instance.last_name,
             phone_number=getattr(instance, 'phone_number', None),
             address=getattr(instance, 'address', None),
-            egn=decrypt_data(getattr(instance, 'egn', None)),
-            pin=decrypt_data(getattr(instance, 'egn', None)),
+            egn=decrypt_data(str(instance.egn)) if instance.egn else None,
+            pin=decrypt_data(str(instance.pin)) if instance.pin else None,
             birth_date=getattr(instance, 'birth_date', None),
-            iban=decrypt_data(getattr(instance, 'iban', None)),
+            iban=decrypt_data(str(instance.iban)) if instance.iban else None,
             is_active=instance.is_active,
             role_id=instance.role_id,
             # Legacy mapping
@@ -1644,8 +1644,8 @@ class PasswordSettings:
 class StorageZone:
     id: int
     name: str
-    temp_min: Optional[Decimal]
-    temp_max: Optional[Decimal]
+    temp_min: Optional[float]
+    temp_max: Optional[float]
     description: Optional[str]
     company_id: int
     is_active: bool
@@ -1888,7 +1888,7 @@ class RecipeIngredient:
             workstation_id=instance.workstation_id,
             quantity_gross=instance.quantity_gross,
             quantity_net=instance.quantity_gross,
-            waste_percentage=0
+            waste_percentage=Decimal(instance.waste_percentage or 0),
         )
 
 @strawberry.type
@@ -2005,9 +2005,14 @@ class Recipe:
     @strawberry.field
     def portion_price(self) -> Optional[Decimal]:
         """Цена за 1 бр. парче"""
-        if self.default_pieces and self.default_pieces > 0:
-            return self.final_price() / self.default_pieces
-        return None
+        if not self.default_pieces or self.default_pieces <= 0:
+            return None
+        base = self.cost_price or Decimal("0")
+        markup = Decimal("0")
+        if self.cost_price and self.markup_percentage and self.markup_percentage != 0:
+            markup = self.cost_price * self.markup_percentage / 100
+        premium = self.premium_amount or Decimal("0")
+        return (base + markup + premium) / self.default_pieces  if self.default_pieces and self.default_pieces > 0 else None
 
     @strawberry.field
     async def sections(self, info: strawberry.Info) -> List[RecipeSection]:
@@ -2593,7 +2598,7 @@ class Invoice:
 @strawberry.type
 class CashJournalEntryType:
     id: int
-    date: str
+    date: Optional[str]
     operation_type: str
     amount: float
     description: Optional[str]
@@ -2625,7 +2630,7 @@ class CashJournalEntryType:
 @strawberry.type
 class OperationLogType:
     id: int
-    timestamp: str
+    timestamp: Optional[str]
     operation: str
     entity_type: str
     entity_id: int
@@ -2654,7 +2659,7 @@ class OperationLogType:
 @strawberry.type
 class DailySummaryType:
     id: int
-    date: str
+    date: Optional[str]
     invoices_count: int
     incoming_invoices_count: int
     outgoing_invoices_count: int
@@ -2674,7 +2679,7 @@ class DailySummaryType:
     def from_instance(cls, instance: models.DailySummary) -> "DailySummaryType":
         return cls(
             id=instance.id,
-            date=instance.date.isoformat() if instance.date else None,
+            date=instance.datetime.date.isoformat() if instance.date else None,
             invoices_count=instance.invoices_count or 0,
             incoming_invoices_count=instance.incoming_invoices_count or 0,
             outgoing_invoices_count=instance.outgoing_invoices_count or 0,
@@ -4512,4 +4517,3 @@ class WorkExperience:
             created_at=instance.created_at,
             updated_at=instance.updated_at,
         )
-

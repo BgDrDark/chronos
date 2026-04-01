@@ -1,14 +1,12 @@
 import strawberry
-import json
 from strawberry.file_uploads import Upload
 from typing import Optional, List
 import datetime
 from decimal import Decimal
 from sqlalchemy import select
 from datetime import time as dt_time
-
 from backend.graphql import types, inputs
-from backend.graphql.types import JSONScalar
+from backend.utils.json_type import JSONScalar
 from backend import crud, schemas
 from backend.exceptions import (
     PermissionDeniedException,
@@ -39,12 +37,12 @@ from backend.auth.security import verify_password, hash_password, validate_passw
 from backend.auth.module_guard import verify_module_enabled
 
 
+authenticate_msg = "Трябва да се автентикирате"
 async def create_trz_records_on_clock_out(
     db,
     user_id: int,
     clock_in: datetime.datetime,
-    clock_out: datetime.datetime,
-    shift_id: Optional[int] = None
+    clock_out: datetime.datetime
 ):
     """
     Автоматично създава NightWorkBonus, OvertimeWork и WorkOnHoliday записи при clock-out.
@@ -54,6 +52,7 @@ async def create_trz_records_on_clock_out(
     2. Ако работеното време е над 8 часа -> OvertimeWork
     3. Ако денят е празничен -> WorkOnHoliday
     """
+    
     from backend import crud
     
     # Провери дали автоматизацията е активирана
@@ -72,7 +71,6 @@ async def create_trz_records_on_clock_out(
     night_supplement_str = await crud.get_global_setting(db, "payroll_night_hourly_supplement")
     overtime_rate_str = await crud.get_global_setting(db, "payroll_overtime_rate")
     holiday_rate_str = await crud.get_global_setting(db, "payroll_holiday_rate")
-    
     night_supplement = Decimal(night_supplement_str) if night_supplement_str else Decimal("0.15")
     overtime_rate = Decimal(overtime_rate_str) if overtime_rate_str else Decimal("50")
     holiday_rate = Decimal(holiday_rate_str) if holiday_rate_str else Decimal("100")
@@ -84,11 +82,6 @@ async def create_trz_records_on_clock_out(
     )
     holiday = result.scalars().first()
     is_holiday = holiday is not None
-    
-    # Вземи смяната (ако има такава)
-    shift = None
-    if shift_id:
-        shift = await db.get(Shift, shift_id)
     
     # Изчисли работеното време
     duration = clock_out - clock_in
@@ -182,13 +175,14 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         await verify_module_enabled("integrations", db)
 
         # Read file content
-        content = await file.read()
-        filename = file.filename
+        # Upload type from strawberry has read() and filename but type hints are missing
+        content = await file.read()  # type: ignore
+        filename = file.filename  # type: ignore
 
         # Perform OCR
         from backend.services.ocr_service import extract_text_from_file
@@ -228,7 +222,6 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        # Basic Validation
         if not settings.smtp_server or not settings.sender_email:
             raise ValidationException.required_field("Server and Sender Email")
 
@@ -367,44 +360,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        user_data = schemas.UserCreate(
-            email=userInput.email,
-            username=userInput.username,
-            password=userInput.password,
-            first_name=userInput.first_name,
-            surname=userInput.surname,
-            last_name=userInput.last_name,
-            phone_number=userInput.phone_number,
-            address=userInput.address,
-            egn=userInput.egn,
-            birth_date=userInput.birth_date,
-            iban=userInput.iban,
-            company_id=userInput.company_id,
-            department_id=userInput.department_id,
-            position_id=userInput.position_id,
-            password_force_change=userInput.password_force_change,
-            contract_type=userInput.contract_type,
-            contract_number=userInput.contract_number,
-            contract_start_date=userInput.contract_start_date,
-            contract_end_date=userInput.contract_end_date,
-            base_salary=userInput.base_salary,
-            work_hours_per_week=userInput.work_hours_per_week,
-            probation_months=userInput.probation_months,
-            salary_calculation_type=userInput.salary_calculation_type,
-            salary_installments_count=userInput.salary_installments_count,
-            monthly_advance_amount=userInput.monthly_advance_amount,
-            tax_resident=userInput.tax_resident,
-            insurance_contributor=userInput.insurance_contributor,
-            has_income_tax=userInput.has_income_tax,
-            # ТРЗ разширение
-            payment_day=userInput.payment_day,
-            experience_start_date=userInput.experience_start_date,
-            night_work_rate=userInput.night_work_rate,
-            overtime_rate=userInput.overtime_rate,
-            holiday_rate=userInput.holiday_rate,
-            work_class=userInput.work_class,
-            dangerous_work=userInput.dangerous_work,
-        )
+        user_data = schemas.UserCreate(**userInput.model_dump())
 
         db_user = await crud.create_user(db=db, user=user_data, role_id=userInput.role_id)
         return types.User.from_instance(db_user)
@@ -414,7 +370,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         if current_user.id != userInput.id and current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
@@ -490,7 +446,9 @@ class Mutation:
         if userInput.surname is not None:
             update_data["surname"] = userInput.surname
 
-        db_user = await crud.update_user(db, user_id=userInput.id, user_in=update_data)
+        # Convert dict to UserUpdate Pydantic model
+        user_in = schemas.UserUpdate(**update_data)
+        db_user = await crud.update_user(db, user_id=userInput.id, user_in=user_in)
         
         # Update or create EmploymentContract with TRZ fields
         if userInput.contract_type or userInput.base_salary:
@@ -1124,8 +1082,10 @@ class Mutation:
             self, id: int, name: str, start_time: datetime.time, end_time: datetime.time,
             tolerance_minutes: Optional[int] = None, break_duration_minutes: Optional[int] = None,
             pay_multiplier: Optional[Decimal] = None, shift_type: Optional[str] = None,
-            info: strawberry.Info = None
+            info: Optional[strawberry.Info] = None
     ) -> types.Shift:
+        if not info:
+            raise Exception("Info is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
@@ -1157,7 +1117,9 @@ class Mutation:
 
     @strawberry.mutation
     async def update_role(self, id: int, name: Optional[str] = None, description: Optional[str] = None,
-                          info: strawberry.Info = None) -> types.Role:
+                          info: Optional[strawberry.Info] = None) -> types.Role:
+        if not info:
+            raise Exception("Info is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
@@ -1233,19 +1195,44 @@ class Mutation:
         await crud.set_global_setting(db, "qr_token_regen_minutes", str(qr_regen_interval_minutes))
 
         # Re-fetch the updated config with the new QR setting
-        return await crud.get_global_payroll_config(db)
+        config = await crud.get_global_payroll_config(db)
+        qr_setting = await crud.get_global_setting(db, "qr_token_regen_minutes")
+        return types.GlobalPayrollConfig(
+            id="global",
+            hourly_rate=Decimal(str(config.hourly_rate)),
+            monthly_salary=Decimal(str(config.monthly_salary)),
+            overtime_multiplier=Decimal(str(config.overtime_multiplier)),
+            standard_hours_per_day=config.standard_hours_per_day,
+            currency=config.currency,
+            annual_leave_days=config.annual_leave_days,
+            tax_percent=Decimal(str(config.tax_percent)),
+            health_insurance_percent=Decimal(str(config.health_insurance_percent)),
+            has_tax_deduction=config.has_tax_deduction,
+            has_health_insurance=config.has_health_insurance,
+            qr_regen_interval_minutes=int(qr_setting) if qr_setting else 60
+        )
 
     @strawberry.mutation
     async def create_leave_request(self, input: LeaveRequestInput, info: strawberry.Info) -> types.LeaveRequest:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
-        # Override user_id from input to ensure self-submission
-        req_data = schemas.LeaveRequestCreate(**input.dict(), user_id=current_user.id)
-        req = await crud.create_leave_request(db, req_data)
-        return types.LeaveRequest.from_instance(req)
+        # Create leave request directly with the model
+        from backend.database.models import LeaveRequest
+        leave_request = LeaveRequest(
+            user_id=current_user.id,
+            start_date=input.start_date,
+            end_date=input.end_date,
+            leave_type=input.leave_type,
+            reason=input.reason,
+            status="pending"
+        )
+        db.add(leave_request)
+        await db.commit()
+        await db.refresh(leave_request)
+        return types.LeaveRequest.from_instance(leave_request)
 
     @strawberry.mutation
     async def update_leave_request_status(self, input: UpdateLeaveRequestStatusInput,
@@ -1271,7 +1258,8 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
-        return await crud.delete_leave_request(db, id)
+        is_admin = current_user.role.name in ["admin", "super_admin"]
+        return await crud.delete_leave_request(db, id, current_user.id, is_admin)
 
     @strawberry.mutation
     async def update_office_location(
@@ -1312,7 +1300,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         # Re-fetch user from DB to access hashed_password (not present in Pydantic schema)
         from backend.database.models import User
@@ -1390,7 +1378,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         await crud.disconnect_google_calendar(db, current_user.id)
         return True
@@ -1408,7 +1396,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         await crud.update_google_calendar_sync_settings(
             db,
@@ -1431,12 +1419,15 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         await verify_module_enabled("salaries", db)
 
+        # Convert date to datetime for PayrollCalculator
+        start_dt = datetime.datetime.combine(start_date, datetime.time.min)
+        end_dt = datetime.datetime.combine(end_date, datetime.time.max)
         calculator = crud.PayrollCalculator(db)
-        res = await calculator.calculate(current_user.id, start_date, end_date)
+        res = await calculator.calculate(current_user.id, start_dt, end_dt)
 
         # Save to DB
         db_payslip = crud.Payslip(
@@ -1476,8 +1467,12 @@ class Mutation:
 
         await verify_module_enabled("salaries", db)
 
+        # Convert date to datetime for PayrollCalculator
+        start_dt = datetime.datetime.combine(start_date, datetime.time.min)
+        end_dt = datetime.datetime.combine(end_date, datetime.time.max)
+
         calculator = crud.PayrollCalculator(db)
-        res = await calculator.calculate(user_id, start_date, end_date)
+        res = await calculator.calculate(user_id, start_dt, end_dt)
 
         # Save to DB
         db_payslip = crud.Payslip(
@@ -1511,16 +1506,21 @@ class Mutation:
             is_manual: bool = False,
             break_duration_minutes: int = 0,
             notes: Optional[str] = None,
-            info: strawberry.Info = None
+            info: Optional[strawberry.Info] = None
     ) -> types.TimeLog:
+        if not info:
+            raise Exception("Info is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
 
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        log = await crud.create_time_log(
-            db, user_id, start_time, end_time, is_manual, break_duration_minutes, notes
+        if not end_time:
+            raise ValidationException(detail="Краен час е задължителен за ръчно въвеждане")
+
+        log = await crud.create_manual_time_log(
+            db, user_id, start_time, end_time, break_duration_minutes or 0, notes, is_manual=is_manual
         )
         return types.TimeLog.from_instance(log)
 
@@ -1528,8 +1528,10 @@ class Mutation:
     async def update_time_log(
             self, id: int, start_time: datetime.datetime, end_time: Optional[datetime.datetime] = None,
             is_manual: bool = False, break_duration_minutes: int = 0, notes: Optional[str] = None,
-            info: strawberry.Info = None
+            info: Optional[strawberry.Info] = None
     ) -> types.TimeLog:
+        if not info:
+            raise Exception("Info is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
 
@@ -1542,7 +1544,9 @@ class Mutation:
         return types.TimeLog.from_instance(log)
 
     @strawberry.mutation
-    async def delete_time_log(self, id: int, info: strawberry.Info) -> bool:
+    async def delete_time_log(self, id: int, info: Optional[strawberry.Info]) -> bool:
+        if not info:
+            raise Exception("Info is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
@@ -1607,8 +1611,7 @@ class Mutation:
             db=db,
             user_id=current_user.id,
             clock_in=active_log.start_time,
-            clock_out=log.end_time,
-            shift_id=shift_id
+            clock_out=log.end_time
         )
         
         await db.commit()
@@ -1654,7 +1657,7 @@ class Mutation:
         if not active_log:
             raise Exception("No active time log found")
 
-        log = await crud.end_time_log(db, user_id, notes=notes, end_time=custom_time)
+        log = await crud.end_time_log(db, user_id, notes=notes, custom_time=custom_time)
         
         # Fetch shift_id from WorkSchedule for this user and date
         log_date = active_log.start_time.date()
@@ -1671,7 +1674,6 @@ class Mutation:
             user_id=user_id,
             clock_in=active_log.start_time,
             clock_out=log.end_time,
-            shift_id=shift_id
         )
         
         await db.commit()
@@ -1688,7 +1690,14 @@ class Mutation:
 
         await verify_module_enabled("shifts", db)
 
-        template = await crud.create_schedule_template(db, name, current_user.company_id, description, items)
+        # Convert Strawberry Input items to dicts manually
+        items_dicts = []
+        for item in items:
+            items_dicts.append({
+                "day_index": item.day_of_week,
+                "shift_id": getattr(item, 'shift_id', None)
+            })
+        template = await crud.create_schedule_template(db, name, current_user.company_id, description, items_dicts)
         return types.ScheduleTemplate.from_instance(template)
 
     @strawberry.mutation
@@ -1710,6 +1719,7 @@ class Mutation:
             template_id: int,
             user_ids: List[int],
             start_date: datetime.date,
+            end_date: datetime.date,
             info: strawberry.Info
     ) -> bool:
         db = info.context["db"]
@@ -1719,7 +1729,11 @@ class Mutation:
 
         await verify_module_enabled("shifts", db)
 
-        await crud.apply_schedule_template(db, template_id, user_ids, start_date)
+        # Apply template to each user
+        for user_id in user_ids:
+            await crud.apply_schedule_template(
+                db, template_id, user_id, start_date, end_date, current_user.id
+            )
         return True
 
     @strawberry.mutation
@@ -1826,7 +1840,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         return await crud.regenerate_user_qr_token(db, current_user.id)
 
@@ -1837,8 +1851,10 @@ class Mutation:
             amount: float,
             payment_date: datetime.date,
             description: Optional[str] = None,
-            info: strawberry.Info = None
+            info: Optional[strawberry.Info] = None
     ) -> types.AdvancePayment:
+        if not info:
+            raise Exception("Info is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
@@ -1856,9 +1872,11 @@ class Mutation:
             total_amount: float,
             installments_count: int,
             start_date: datetime.date,
-            description: Optional[str] = None,
-            info: strawberry.Info = None
+            description: str,
+            info: Optional[strawberry.Info] = None
     ) -> types.ServiceLoan:
+        if not info:
+            raise Exception("Info is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
@@ -1888,8 +1906,10 @@ class Mutation:
             end_time: datetime.datetime,
             break_duration_minutes: int = 0,
             notes: Optional[str] = None,
-            info: strawberry.Info = None
+            info: Optional[strawberry.Info] = None
     ) -> types.TimeLog:
+        if not info:
+            raise Exception("Info is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
@@ -1935,7 +1955,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         new_status = "accepted" if accept else "rejected"
         res = await crud.update_swap_status(db, swap_id, new_status)
@@ -1958,7 +1978,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         res = await crud.create_swap_request(db, current_user.id, requestor_schedule_id, target_user_id,
                                              target_schedule_id)
@@ -2441,7 +2461,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         recipe = await db.get(models.Recipe, recipe_id)
         if not recipe:
@@ -2506,7 +2526,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         recipe = await db.get(models.Recipe, recipe_id)
         if not recipe:
@@ -2565,7 +2585,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         stmt = select(models.Recipe).where(
             models.Recipe.company_id == current_user.company_id
@@ -2642,7 +2662,7 @@ class Mutation:
                                       info: strawberry.Info) -> types.ProductionOrder:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
@@ -2715,7 +2735,7 @@ class Mutation:
                                              info: strawberry.Info) -> types.ProductionOrder:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import ProductionOrder
         order = await db.get(ProductionOrder, id)
@@ -2734,7 +2754,7 @@ class Mutation:
         """Department head confirms order is ready for transport"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import (
             ProductionOrder, ProductionTask, ProductionRecord,
@@ -2833,7 +2853,7 @@ class Mutation:
         """Mark a task as scrap - deducts all ingredients for that task"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import ProductionTask, ProductionOrder, Recipe, RecipeIngredient, Batch, \
             RecipeStep, sofia_now
@@ -2884,7 +2904,7 @@ class Mutation:
         """Scrap part of a task quantity - logs the scrap and reduces the order quantity"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import ProductionTask, ProductionOrder, ProductionScrapLog, sofia_now
 
@@ -2924,7 +2944,7 @@ class Mutation:
         """Get scrap logs for a task"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import ProductionScrapLog, ProductionTask, ProductionOrder
         from sqlalchemy import select
@@ -2945,7 +2965,7 @@ class Mutation:
     async def update_production_task_status(self, id: int, status: str, info: strawberry.Info) -> types.ProductionTask:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import ProductionTask, ProductionOrder, sofia_now
         task = await db.get(ProductionTask, id)
@@ -3086,7 +3106,7 @@ class Mutation:
         """Start a new inventory session"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import InventorySession, sofia_now
 
@@ -3112,7 +3132,7 @@ class Mutation:
         """Add or update an item in the inventory session"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import InventorySession, InventoryItem, Ingredient, Batch
         from sqlalchemy import func, select
@@ -3173,7 +3193,7 @@ class Mutation:
         """Complete inventory session and adjust quantities"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import InventorySession, InventoryItem, Batch, sofia_now
         from sqlalchemy import select
@@ -3262,7 +3282,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
         from decimal import Decimal
@@ -3347,7 +3367,7 @@ class Mutation:
                 unit_price_with_vat=item.unit_price_with_vat,
                 discount_percent=item.discount_percent,
                 total=item_total,
-                expiration_date=datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
+                expiration_date=datetime.datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
                 batch_number=item.batch_number
             )
             db.add(invoice_item)
@@ -3409,7 +3429,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
         from decimal import Decimal
@@ -3530,7 +3550,7 @@ class Mutation:
                 unit_price_with_vat=item.unit_price_with_vat,
                 discount_percent=item.discount_percent,
                 total=item_total,
-                expiration_date=datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
+                expiration_date=datetime.datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
                 batch_number=item.batch_number
             )
             db.add(invoice_item)
@@ -3604,7 +3624,7 @@ class Mutation:
     ) -> bool:
         """Delete an invoice - ALWAYS BLOCKED"""
         raise ValidationException(
-            detail="Фактурите не могат да се изтриват. Вместо това ги анулирайте или коригирайте."
+            detail="Създадена фактура не може да се изтрие. Може само да се анулира."
         )
 
     @strawberry.mutation
@@ -3617,7 +3637,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
         from decimal import Decimal
@@ -3718,7 +3738,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
         from decimal import Decimal
@@ -3834,7 +3854,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -3879,7 +3899,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -3925,7 +3945,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
         import datetime
@@ -3936,7 +3956,7 @@ class Mutation:
         if current_user.role.name != "super_admin":
             company_id = current_user.company_id
         else:
-            company_id = 1
+            raise AuthenticationException(detail=authenticate_msg)
 
         # Get invoices for the date
         invoices_stmt = select(models.Invoice).where(
@@ -4036,7 +4056,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
         import datetime
@@ -4046,7 +4066,7 @@ class Mutation:
         if current_user.role.name != "super_admin":
             company_id = current_user.company_id
         else:
-            company_id = 1
+            raise AuthenticationException(detail=authenticate_msg)
 
         start_date = datetime.date(year, month, 1)
         if month == 12:
@@ -4149,7 +4169,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
         import datetime
@@ -4158,7 +4178,7 @@ class Mutation:
         if current_user.role.name != "super_admin":
             company_id = current_user.company_id
         else:
-            company_id = 1
+            raise AuthenticationException(detail=authenticate_msg)
 
         start_date = datetime.date(year, 1, 1)
         end_date = datetime.date(year, 12, 31)
@@ -4272,7 +4292,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         # Import SAF-T generator
         from backend.services.saft_generator import generate_saft_file as saft_generator
@@ -4338,7 +4358,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4402,7 +4422,7 @@ class Mutation:
                 unit_price_with_vat=item.unit_price_with_vat,
                 discount_percent=item.discount_percent or Decimal("0"),
                 total=item_total,
-                expiration_date=datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
+                expiration_date=datetime.datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
                 batch_number=item.batch_number
             )
             db.add(db_item)
@@ -4422,7 +4442,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4515,7 +4535,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         # Permission check: accountant, head_accountant, super_admin
         allowed_roles = ["super_admin", "head_accountant", "accountant"]
@@ -4531,10 +4551,18 @@ class Mutation:
         if not original_invoice:
             raise NotFoundException.record("Original Invoice")
 
-        # Validate invoice is paid
-        if original_invoice.status != 'paid':
+        # Validate invoice can be corrected
+        if original_invoice.status == 'cancelled':
             raise ValidationException(
-                detail=f"Може да коригирате само платени фактури. Тази фактура има статус '{original_invoice.status}'."
+                detail="Не можете да коригирате тази фактура. Тя е анулирана."
+            )
+        if original_invoice.status == 'corrected':
+            raise ValidationException(
+                detail="Не можете да коригирате тази фактура. Тя вече е коригирана."
+            )
+        if original_invoice.status == 'paid':
+            raise ValidationException(
+                detail="Платена фактура не може да се коригира."
             )
 
         # Validate correction type
@@ -4622,6 +4650,21 @@ class Mutation:
         # Mark original as corrected
         original_invoice.status = "corrected"
 
+        # Create reverse accounting entries
+        from backend.services.accounting_service import AccountingService
+        company = await db.get(models.Company, current_user.company_id)
+        correction_entries = []
+        if company:
+            accounting_service = AccountingService(db)
+            correction_entries = await accounting_service.create_correction_entries(
+                correction=correction,
+                invoice=original_invoice,
+                company=company,
+                created_by=current_user
+            )
+            for entry in correction_entries:
+                db.add(entry)
+
         # Log the operation
         log_entry = models.OperationLog(
             operation="create_correction",
@@ -4637,7 +4680,8 @@ class Mutation:
                 "amount_diff": float(amount_diff),
                 "vat_diff": float(vat_diff),
                 "reason": reason,
-                "create_new_invoice": create_new_invoice
+                "create_new_invoice": create_new_invoice,
+                "accounting_entries_created": len(correction_entries)
             }
         )
         db.add(log_entry)
@@ -4658,7 +4702,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4697,7 +4741,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4728,7 +4772,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4768,7 +4812,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4802,7 +4846,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4843,7 +4887,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4894,7 +4938,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4919,7 +4963,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4969,7 +5013,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -4996,6 +5040,24 @@ class Mutation:
         if input.matched is not None:
             transaction.matched = input.matched
 
+        # Log the update
+        log_entry = models.OperationLog(
+            operation="update",
+            entity_type="bank_transaction",
+            entity_id=transaction.id,
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            changes={
+                "amount": float(transaction.amount),
+                "type": transaction.type,
+                "description": transaction.description,
+                "reference": transaction.reference,
+                "invoice_id": transaction.invoice_id,
+                "matched": transaction.matched
+            }
+        )
+        db.add(log_entry)
+
         await db.commit()
         await db.refresh(transaction)
         return types.BankTransaction.from_instance(transaction)
@@ -5010,7 +5072,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -5060,7 +5122,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -5092,7 +5154,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -5120,7 +5182,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
         from sqlalchemy import select
@@ -5152,8 +5214,8 @@ class Mutation:
         matched_count = 0
         for tx in transactions:
             for inv in invoices:
-                if (tx.type == "credit" and Number(tx.amount) == Number(inv.total)) or \
-                   (tx.type == "debit" and Number(tx.amount) == Number(inv.total)):
+                if (tx.type == "credit" and Decimal(tx.amount) == Decimal(inv.total)) or \
+                   (tx.type == "debit" and Decimal(tx.amount) == Decimal(inv.total)):
                     if not inv.bank_transactions:
                         tx.invoice_id = inv.id
                         tx.matched = True
@@ -5175,7 +5237,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -5204,7 +5266,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -5240,7 +5302,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -5265,7 +5327,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -5318,7 +5380,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -5358,7 +5420,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database import models
 
@@ -5456,7 +5518,7 @@ class Mutation:
         """Reassign a production task to a different workstation"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import ProductionTask, ProductionOrder
 
@@ -5481,7 +5543,7 @@ class Mutation:
         """Recalculate production_deadline for an order based on recipe"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import ProductionOrder, Recipe, sofia_now
         from datetime import timedelta
@@ -5510,7 +5572,7 @@ class Mutation:
         """Update production order quantity"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import ProductionOrder
         from decimal import Decimal
@@ -5534,7 +5596,7 @@ class Mutation:
         """Generate label for a production order"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise AuthenticationException(detail="Трябва да се автентикирате")
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
 
         from backend.database.models import ProductionOrder, Recipe, sofia_now
         
@@ -5588,7 +5650,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
 
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
@@ -5655,7 +5717,7 @@ class Mutation:
         url = f"http://{gateway.ip_address}:{gateway.terminal_port}/access/doors/{door.door_id}/trigger"
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, timeout=5) as response:
+                async with session.post(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
                     return response.status == 200
         except:
             return False
@@ -5748,7 +5810,7 @@ class Mutation:
         url = f"http://{gw.ip_address}:{gw.web_port}/access/doors/{door.door_id}/trigger"
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, timeout=5) as r:
+                async with session.post(url, timeout=aiohttp.ClientTimeout(total=5)) as r:
                     if r.status == 200:
                         return True
                     try:
@@ -5849,8 +5911,10 @@ class Mutation:
         alias: Optional[str] = None,
         mode: Optional[str] = None,
         is_active: Optional[bool] = None,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.Terminal:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -5859,8 +5923,7 @@ class Mutation:
         from backend.database.models import Terminal
         terminal = await db.get(Terminal, id)
         if not terminal:
-            raise Exception("Terminal not found")
-            
+            raise Exception("Terminal not found") 
         if alias is not None:
             terminal.alias = alias
         if mode is not None:
@@ -5932,7 +5995,7 @@ class Mutation:
         url = f"http://{gw.ip_address}:{gw.web_port}/sync/{direction}"
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, timeout=10) as r:
+                async with session.post(url, timeout=aiohttp.ClientTimeout(total=10)) as r:
                     if r.status == 200:
                         return True
                     try:
@@ -5983,7 +6046,15 @@ class Mutation:
 
     @strawberry.mutation
     async def remove_zone_from_user(self, user_id: int, zone_id: int, info: strawberry.Info) -> bool:
-        # ... (съществуващ код)
+
+        from backend.database.models import user_access_zones
+        from sqlalchemy import delete 
+
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise Exception("Not authorized")
+ 
         await db.execute(delete(user_access_zones).where(
             user_access_zones.c.user_id == user_id,
             user_access_zones.c.zone_id == zone_id
@@ -6073,8 +6144,10 @@ class Mutation:
         id: int, 
         alias: Optional[str] = None, 
         company_id: Optional[int] = None,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.Gateway:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6105,8 +6178,10 @@ class Mutation:
         hourly_rate: float,
         period_id: Optional[int] = None,
         notes: Optional[str] = None,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.NightWorkBonus:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6142,8 +6217,10 @@ class Mutation:
         multiplier: float = 1.5,
         period_id: Optional[int] = None,
         notes: Optional[str] = None,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.OvertimeWork:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6184,8 +6261,10 @@ class Mutation:
         department_id: Optional[int] = None,
         period_id: Optional[int] = None,
         notes: Optional[str] = None,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.BusinessTrip:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
@@ -6224,8 +6303,10 @@ class Mutation:
         trip_id: int,
         approved: bool,
         notes: Optional[str] = None,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.BusinessTrip:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6260,8 +6341,10 @@ class Mutation:
         class_level: Optional[str] = None,
         is_current: bool = False,
         notes: Optional[str] = None,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.WorkExperience:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6293,8 +6376,10 @@ class Mutation:
         payslip_id: int,
         payment_date: Optional[datetime.datetime] = None,
         payment_method: str = "bank",
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.Payslip:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6330,12 +6415,14 @@ class Mutation:
         payslip_ids: List[int],
         payment_date: Optional[datetime.datetime] = None,
         payment_method: str = "bank",
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> List[types.Payslip]:
         """
         Bulk mark multiple payslips as paid.
         Used for batch payment processing.
         """
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6364,11 +6451,13 @@ class Mutation:
         period_start: datetime.date,
         period_end: datetime.date,
         execution_date: Optional[datetime.date] = None,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> str:
         """
         Generate SEPA XML file for payroll payments.
         """
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6376,7 +6465,7 @@ class Mutation:
 
         from backend.database.models import Payslip, User, EmploymentContract
         from backend.services.sepa_generator import SEPAGenerator
-        
+        from sqlalchemy import select, and_
         # Get company settings
         company_name = await crud.get_global_setting(db, f"company_{company_id}_name") or "Company"
         company_iban = await crud.get_global_setting(db, f"company_{company_id}_iban") or ""
@@ -6448,8 +6537,10 @@ class Mutation:
         night_work_rate: Optional[float] = None,
         overtime_rate: Optional[float] = None,
         holiday_rate: Optional[float] = None,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.ContractAnnex:
+        if not info:
+            raise Exception("Info is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6490,8 +6581,10 @@ class Mutation:
         overtime_rate: float,
         holiday_rate: float,
         work_class: Optional[str],
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.ContractTemplate:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6594,8 +6687,10 @@ class Mutation:
         holiday_rate: float,
         work_class: Optional[str],
         change_note: str,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.ContractTemplate:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6672,8 +6767,10 @@ class Mutation:
     async def delete_contract_template(
         self,
         id: int,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> bool:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6693,8 +6790,10 @@ class Mutation:
     async def restore_contract_template_version(
         self,
         version_id: int,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.ContractTemplate:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6765,8 +6864,10 @@ class Mutation:
         new_night_work_rate: Optional[float],
         new_overtime_rate: Optional[float],
         new_holiday_rate: Optional[float],
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.AnnexTemplate:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6843,8 +6944,10 @@ class Mutation:
     async def delete_annex_template(
         self,
         id: int,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> bool:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6868,8 +6971,10 @@ class Mutation:
         title: str,
         content: str,
         category: str,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.ClauseTemplate:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6904,8 +7009,10 @@ class Mutation:
         title: str,
         content: str,
         category: str,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.ClauseTemplate:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6937,8 +7044,10 @@ class Mutation:
     async def delete_clause_template(
         self,
         id: int,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> bool:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6961,9 +7070,11 @@ class Mutation:
         self,
         template_id: int,
         section: inputs.ContractTemplateSectionInput,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.ContractTemplateSection:
         """Добавя секция към шаблон за договор"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7014,9 +7125,11 @@ class Mutation:
         self,
         section_id: int,
         section: inputs.ContractTemplateSectionUpdateInput,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.ContractTemplateSection:
         """Обновява секция в шаблон за договор"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7054,9 +7167,11 @@ class Mutation:
     async def delete_section_from_contract_template(
         self,
         section_id: int,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> bool:
         """Изтрива секция от шаблон за договор"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7079,9 +7194,11 @@ class Mutation:
         self,
         template_id: int,
         section: inputs.AnnexTemplateSectionInput,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.AnnexTemplateSection:
         """Добавя секция към шаблон за анекс"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7132,9 +7249,11 @@ class Mutation:
         self,
         section_id: int,
         section: inputs.AnnexTemplateSectionUpdateInput,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.AnnexTemplateSection:
         """Обновява секция в шаблон за анекс"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7172,9 +7291,11 @@ class Mutation:
     async def delete_section_from_annex_template(
         self,
         section_id: int,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> bool:
         """Изтрива секция от шаблон за анекс"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7197,8 +7318,10 @@ class Mutation:
         self,
         annex_id: int,
         role: str = "employer",
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.ContractAnnex:
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7251,9 +7374,11 @@ class Mutation:
         self,
         annex_id: int,
         reason: str,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> types.ContractAnnex:
         """Отхвърля анекс"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin", "employee"]:
@@ -7279,9 +7404,11 @@ class Mutation:
         self,
         company_id: int,
         year: int,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> JSONScalar:
         """Генерира годишна справка за осигурени лица"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7297,9 +7424,11 @@ class Mutation:
         self,
         company_id: int,
         year: int,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> JSONScalar:
         """Генерира справка по чл. 73, ал. 6 ЗДДФЛ"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7315,9 +7444,11 @@ class Mutation:
         self,
         company_id: int,
         year: int,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> JSONScalar:
         """Генерира експорт за електронната трудова книжка"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7334,9 +7465,11 @@ class Mutation:
         company_id: int,
         year: int,
         month: int,
-        info: strawberry.Info = None
+        info: Optional[strawberry.Info] = None
     ) -> JSONScalar:
         """Генерира месечна декларация за НАП"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7354,6 +7487,8 @@ class Mutation:
         info: strawberry.Info
     ) -> types.EmploymentContract:
         """Създава нов трудов договор"""
+        if not info:
+            raise Exception("Info context is required")
         db = info.context["db"]
         current_user = info.context["current_user"]
         
@@ -7554,7 +7689,7 @@ class Mutation:
         current_user = info.context["current_user"]
         
         if not current_user:
-            raise AuthenticationException(detail="Трябва да се автентикирате")
+            raise AuthenticationException(detail=authenticate_msg)
         
         from backend.database.models import Invoice
         

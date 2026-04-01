@@ -3,14 +3,12 @@ from typing import Optional, List
 import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field, EmailStr, field_validator
-from strawberry.experimental.pydantic import input as pydantic_input
 
-# Pydantic models for validation
-class UserCreatePydantic(BaseModel):
-    email: EmailStr = Field(description="User email address")
+@strawberry.input
+class UserCreateInput:
+    email: Optional[str] = None
     username: Optional[str] = None
-    password: str = Field(min_length=8)
+    password: str
     first_name: Optional[str] = None
     surname: Optional[str] = None
     last_name: Optional[str] = None
@@ -20,17 +18,12 @@ class UserCreatePydantic(BaseModel):
     birth_date: Optional[datetime.date] = None
     iban: Optional[str] = None
     role_id: Optional[int] = None
-    
-    # New Relation IDs
     company_id: Optional[int] = None
     department_id: Optional[int] = None
     position_id: Optional[int] = None
     password_force_change: Optional[bool] = False
-    
-    # Employment Contract
     contract_type: Optional[str] = None
     contract_number: Optional[str] = None
-    
     contract_start_date: Optional[datetime.date] = None
     contract_end_date: Optional[datetime.date] = None
     base_salary: Optional[Decimal] = None
@@ -42,8 +35,6 @@ class UserCreatePydantic(BaseModel):
     tax_resident: Optional[bool] = None
     insurance_contributor: Optional[bool] = None
     has_income_tax: Optional[bool] = None
-    
-    # TRZ extension
     payment_day: Optional[int] = 25
     experience_start_date: Optional[datetime.date] = None
     night_work_rate: Optional[Decimal] = Decimal("0.50")
@@ -52,15 +43,19 @@ class UserCreatePydantic(BaseModel):
     work_class: Optional[str] = None
     dangerous_work: Optional[bool] = False
 
-class LoginPydantic(BaseModel):
-    email: str # Can be email or username
-    password: str = Field(min_length=8)
 
-class UpdateUserPydantic(BaseModel):
+@strawberry.input
+class LoginInput:
+    email: str
+    password: str
+
+
+@strawberry.input
+class UpdateUserInput:
     id: int
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     username: Optional[str] = None
-    password: Optional[str] = Field(None, min_length=8)
+    password: Optional[str] = None
     first_name: Optional[str] = None
     surname: Optional[str] = None
     last_name: Optional[str] = None
@@ -72,20 +67,9 @@ class UpdateUserPydantic(BaseModel):
     is_active: Optional[bool] = None
     role_id: Optional[int] = None
     password_force_change: Optional[bool] = None
-    
-    # Relation IDs
     company_id: Optional[int] = None
     department_id: Optional[int] = None
     position_id: Optional[int] = None
-    
-    @field_validator('email', mode='before')
-    @classmethod
-    def empty_str_to_none(cls, v):
-        if v == '' or v is None:
-            return None
-        return v
-
-    # Employment Contract
     contract_type: Optional[str] = None
     contract_number: Optional[str] = None
     contract_start_date: Optional[datetime.date] = None
@@ -99,8 +83,6 @@ class UpdateUserPydantic(BaseModel):
     tax_resident: Optional[bool] = None
     insurance_contributor: Optional[bool] = None
     has_income_tax: Optional[bool] = None
-
-    # TRZ fields
     payment_day: Optional[int] = None
     experience_start_date: Optional[datetime.date] = None
     night_work_rate: Optional[float] = None
@@ -109,45 +91,6 @@ class UpdateUserPydantic(BaseModel):
     dangerous_work: Optional[bool] = None
     work_class: Optional[str] = None
 
-# Strawberry input types
-@pydantic_input(model=UserCreatePydantic)
-class UserCreateInput:
-    email: strawberry.auto
-    username: strawberry.auto
-    password: strawberry.auto
-    first_name: strawberry.auto
-    surname: strawberry.auto
-    last_name: strawberry.auto
-    phone_number: strawberry.auto
-    address: strawberry.auto
-    egn: strawberry.auto
-    birth_date: strawberry.auto
-    iban: strawberry.auto
-    role_id: strawberry.auto
-    company_id: strawberry.auto
-    department_id: strawberry.auto
-    position_id: strawberry.auto
-    password_force_change: strawberry.auto
-    contract_type: strawberry.auto
-    contract_number: strawberry.auto
-    contract_start_date: strawberry.auto
-    contract_end_date: strawberry.auto
-    base_salary: strawberry.auto
-    work_hours_per_week: strawberry.auto
-    probation_months: strawberry.auto
-    salary_calculation_type: strawberry.auto
-    salary_installments_count: strawberry.auto
-    monthly_advance_amount: strawberry.auto
-    tax_resident: strawberry.auto
-    insurance_contributor: strawberry.auto
-    has_income_tax: strawberry.auto
-    payment_day: strawberry.auto
-    experience_start_date: strawberry.auto
-    night_work_rate: strawberry.auto
-    overtime_rate: strawberry.auto
-    holiday_rate: strawberry.auto
-    work_class: strawberry.auto
-    dangerous_work: strawberry.auto
 
 @strawberry.input
 class CompanyCreateInput:
@@ -157,6 +100,7 @@ class CompanyCreateInput:
     vat_number: Optional[str] = None
     address: Optional[str] = None
     mol_name: Optional[str] = None
+
 
 @strawberry.input
 class CompanyUpdateInput:
@@ -175,6 +119,7 @@ class CompanyUpdateInput:
     default_cash_account_id: Optional[int] = None
     default_bank_account_id: Optional[int] = None
 
+
 @strawberry.input
 class CompanyAccountingSettingsInput:
     company_id: int
@@ -185,6 +130,7 @@ class CompanyAccountingSettingsInput:
     default_supplier_account_id: Optional[int] = None
     default_cash_account_id: Optional[int] = None
     default_bank_account_id: Optional[int] = None
+
 
 @strawberry.input
 class SupplierInput:
@@ -234,11 +180,13 @@ class UpdateStorageZoneInput:
     zone_type: Optional[str] = "food"
     manager_id: Optional[int] = None
 
+
 @strawberry.input
 class DepartmentCreateInput:
     name: str
     company_id: int
     manager_id: Optional[int] = None
+
 
 @strawberry.input
 class DepartmentUpdateInput:
@@ -246,10 +194,12 @@ class DepartmentUpdateInput:
     name: Optional[str] = None
     manager_id: Optional[int] = None
 
+
 @strawberry.input
 class PositionCreateInput:
     title: str
     department_id: int
+
 
 @strawberry.input
 class AccessZoneInput:
@@ -264,6 +214,7 @@ class AccessZoneInput:
     anti_passback_timeout: int = 5
     description: Optional[str] = None
 
+
 @strawberry.input
 class AccessDoorInput:
     door_id: str
@@ -275,6 +226,7 @@ class AccessDoorInput:
     terminal_id: Optional[str] = None
     description: Optional[str] = None
 
+
 @strawberry.input
 class AccessCodeInput:
     code: Optional[str] = None
@@ -284,12 +236,14 @@ class AccessCodeInput:
     expires_hours: Optional[int] = 24
     gateway_id: Optional[int] = None
 
+
 @strawberry.input
 class LeaveRequestInput:
     start_date: datetime.date
     end_date: datetime.date
     leave_type: str
     reason: Optional[str] = None
+
 
 @strawberry.input
 class UpdateLeaveRequestStatusInput:
@@ -298,10 +252,12 @@ class UpdateLeaveRequestStatusInput:
     admin_comment: Optional[str] = None
     employer_top_up: Optional[bool] = False
 
+
 @strawberry.input
 class RoleCreateInput:
     name: str
     description: Optional[str] = None
+
 
 @strawberry.input
 class SmtpSettingsInput:
@@ -311,61 +267,6 @@ class SmtpSettingsInput:
     smtp_password: str
     sender_email: str
     use_tls: bool
-
-@pydantic_input(model=LoginPydantic)
-class LoginInput:
-    email: strawberry.auto
-    password: strawberry.auto
-
-@pydantic_input(model=UpdateUserPydantic)
-class UpdateUserInput:
-    id: strawberry.auto
-    email: strawberry.auto
-    username: strawberry.auto
-    password: strawberry.auto
-    first_name: strawberry.auto
-    surname: strawberry.auto
-    last_name: strawberry.auto
-    phone_number: strawberry.auto
-    address: strawberry.auto
-    egn: strawberry.auto
-    birth_date: strawberry.auto
-    iban: strawberry.auto
-    is_active: strawberry.auto
-    role_id: strawberry.auto
-    password_force_change: strawberry.auto
-    company_id: strawberry.auto
-    department_id: strawberry.auto
-    position_id: strawberry.auto
-    contract_type: strawberry.auto
-    contract_number: strawberry.auto
-    contract_start_date: strawberry.auto
-    contract_end_date: strawberry.auto
-    base_salary: strawberry.auto
-    work_hours_per_week: strawberry.auto
-    probation_months: strawberry.auto
-    salary_calculation_type: strawberry.auto
-    salary_installments_count: strawberry.auto
-    monthly_advance_amount: strawberry.auto
-    tax_resident: strawberry.auto
-    insurance_contributor: strawberry.auto
-    has_income_tax: strawberry.auto
-    # ТРЗ разширение
-    payment_day: strawberry.auto
-    experience_start_date: strawberry.auto
-    night_work_rate: strawberry.auto
-    overtime_rate: strawberry.auto
-    holiday_rate: strawberry.auto
-    work_class: strawberry.auto
-    dangerous_work: strawberry.auto
-
-@strawberry.input
-class ProductionOrderInput:
-    recipe_id: int
-    quantity: Decimal
-    due_date: datetime.datetime
-    notes: Optional[str] = None
-    company_id: int
 
 
 @strawberry.input
@@ -387,25 +288,10 @@ class NotificationSettingInput:
     email_enabled: bool = True
     push_enabled: bool = True
     email_template: Optional[str] = None
-    recipients: Optional[str] = None  # JSON string
+    recipients: Optional[str] = None
     interval_minutes: int = 60
     enabled: bool = True
     company_id: int
-
-
-@pydantic_input
-class BonusCreatePydantic(BaseModel):
-    user_id: int
-    amount: Decimal
-    date: datetime.date
-    description: Optional[str] = None
-
-
-@pydantic_input
-class MonthlyWorkDaysPydantic(BaseModel):
-    year: int
-    month: int
-    days_count: int
 
 
 @strawberry.input
@@ -423,12 +309,6 @@ class MonthlyWorkDaysInput:
     days_count: int
 
 
-@pydantic_input
-class PasswordSettingsPydantic(BaseModel):
-    current_password: str
-    new_password: str = Field(min_length=8)
-
-
 @strawberry.input
 class PasswordSettingsInput:
     current_password: str
@@ -441,18 +321,6 @@ class ScheduleTemplateItemInput:
     start_time: str
     end_time: str
     break_minutes: int = 0
-
-
-@strawberry.input
-class StorageZoneInput:
-    name: str
-    temp_min: Optional[float] = None
-    temp_max: Optional[float] = None
-    description: Optional[str] = None
-    is_active: Optional[bool] = True
-    asset_type: Optional[str] = "KMA"
-    zone_type: Optional[str] = "food"
-    company_id: int
 
 
 @strawberry.input
@@ -478,7 +346,7 @@ class InvoiceItemInput:
 
 @strawberry.input
 class InvoiceInput:
-    type: str  # incoming / outgoing
+    type: str
     document_type: Optional[str] = "ФАКТУРА"
     griff: Optional[str] = "ОРИГИНАЛ"
     description: Optional[str] = None
@@ -503,175 +371,91 @@ class InvoiceInput:
 @strawberry.input
 class CashJournalEntryInput:
     date: datetime.date
-    operation_type: str  # income / expense
+    operation_type: str
     amount: Decimal
     description: Optional[str] = None
-    reference_type: Optional[str] = None  # invoice / manual / other
+    reference_type: Optional[str] = None
     reference_id: Optional[int] = None
     company_id: int
 
 
 @strawberry.input
-class SupplierInput:
-
-    name: str
-
-    eik: Optional[str] = None
-
-    vat_number: Optional[str] = None
-
-    address: Optional[str] = None
-
-    contact_person: Optional[str] = None
-
-    phone: Optional[str] = None
-
-    email: Optional[str] = None
-
-    company_id: int
-
-
-
-@strawberry.input
-
 class IngredientInput:
-
     id: Optional[int] = None
-
     name: str
-
     unit: str
-
     barcode: Optional[str] = None
-
     baseline_min_stock: Decimal = Decimal("0")
-
     current_price: Optional[Decimal] = None
-
     storage_zone_id: Optional[int] = None
-
     is_perishable: bool = True
-
     expiry_warning_days: int = 3
-
     allergens: List[str] = strawberry.field(default_factory=list)
-
     product_type: str = "raw"
-
     company_id: int
 
 
-
 @strawberry.input
-
 class BatchInput:
-
     id: Optional[int] = None
-
     ingredient_id: int
-
     batch_number: Optional[str] = None
-
     quantity: Decimal
-
     expiry_date: datetime.date
-
     supplier_id: Optional[int] = None
-
     invoice_number: Optional[str] = None
-
     invoice_date: Optional[datetime.date] = None
-
     storage_zone_id: Optional[int] = None
 
 
-
 @strawberry.input
-
 class RecipeIngredientInput:
-
     ingredient_id: int
-
     quantity_gross: Decimal
-
     workstation_id: Optional[int] = None
 
 
-
 @strawberry.input
-
 class RecipeStepInput:
-
     workstation_id: int
-
     name: str
-
     step_order: int = 0
-
     estimated_duration_minutes: Optional[int] = None
 
 
-
 @strawberry.input
-
 class RecipeSectionInput:
-
     section_type: str
-
     name: str
-
     shelf_life_days: Optional[int] = None
-
     waste_percentage: Decimal = Decimal("0")
-
     section_order: int = 0
-
     ingredients: List[RecipeIngredientInput]
-
     steps: List[RecipeStepInput]
-
     brutto_g: Optional[float] = None
-
     net_g: Optional[float] = None
 
 
-
 @strawberry.input
-
 class RecipeInput:
-
     name: str
-
     description: Optional[str] = None
-
     yield_quantity: Decimal = Decimal("1.0")
-
     yield_unit: str = "br"
-
     shelf_life_days: int = 7
-
     shelf_life_frozen_days: int = 30
-
     default_pieces: int = 12
-
     production_time_days: int = 1
-
     standard_quantity: Decimal = Decimal("1.0")
-
     instructions: Optional[str] = None
-
     company_id: int
-
     sections: List[RecipeSectionInput]
-
     ingredients: List[RecipeIngredientInput] = strawberry.field(default_factory=list)
-
     steps: List[RecipeStepInput] = strawberry.field(default_factory=list)
 
 
 @strawberry.input
 class RecipePriceUpdateInput:
-    """Input за обновяне на цена на рецепта"""
     markup_percentage: Optional[Decimal] = None
     premium_amount: Optional[Decimal] = None
     portions: Optional[int] = None
@@ -680,7 +464,6 @@ class RecipePriceUpdateInput:
 
 @strawberry.input
 class RecipePriceInput:
-    """Input за изчисление на цена"""
     recipe_id: int
     markup_percentage: Optional[Decimal] = None
     premium_amount: Optional[Decimal] = None
@@ -688,15 +471,10 @@ class RecipePriceInput:
 
 @strawberry.input
 class ProductionOrderInput:
-
     recipe_id: int
-
     quantity: Decimal
-
     due_date: datetime.datetime
-
     notes: Optional[str] = None
-
     company_id: int
 
 
@@ -821,7 +599,6 @@ class VATRegisterInput:
     company_id: int
 
 
-# Vehicle Inputs
 @strawberry.input
 class VehicleCreateInput:
     registration_number: str
@@ -932,7 +709,6 @@ class VehicleTripInput:
     notes: Optional[str] = None
 
 
-# Update Input types
 @strawberry.input
 class VehicleMileageUpdateInput:
     date: Optional[datetime.datetime] = None
@@ -1003,70 +779,62 @@ class VehicleTripUpdateInput:
 
 @strawberry.input
 class EmploymentContractCreateInput:
-    """Input за създаване на трудов договор"""
-    employee_name: str = strawberry.field(description="Име на служителя (преди регистрация)")
-    employee_egn: str = strawberry.field(description="ЕГН на служителя")
-    company_id: Optional[int] = strawberry.field(default=None, description="ID на фирмата")
-    department_id: Optional[int] = strawberry.field(default=None, description="ID на отдела")
-    position_id: Optional[int] = strawberry.field(default=None, description="ID на длъжността")
-    contract_type: str = strawberry.field(description="Тип на договора (full_time/part_time/contractor/internship)")
-    contract_number: Optional[str] = strawberry.field(default=None, description="Номер на договора")
-    start_date: datetime.date = strawberry.field(description="Начална дата")
-    end_date: Optional[datetime.date] = strawberry.field(default=None, description="Крайна дата")
-    base_salary: Optional[float] = strawberry.field(default=None, description="Основна заплата")
-    work_hours_per_week: int = strawberry.field(default=40, description="Работни часове на седмица")
-    job_description: Optional[str] = strawberry.field(default=None, description="Трудова характеристика")
+    employee_name: str
+    employee_egn: str
+    company_id: Optional[int] = None
+    department_id: Optional[int] = None
+    position_id: Optional[int] = None
+    contract_type: str
+    contract_number: Optional[str] = None
+    start_date: datetime.date
+    end_date: Optional[datetime.date] = None
+    base_salary: Optional[float] = None
+    work_hours_per_week: int = 40
+    job_description: Optional[str] = None
 
 
 @strawberry.input
 class EmploymentContractUpdateInput:
-    """Input за обновяване на трудов договор"""
-    employee_name: Optional[str] = strawberry.field(default=None, description="Име на служителя")
-    employee_egn: Optional[str] = strawberry.field(default=None, description="ЕГН на служителя")
-    company_id: Optional[int] = strawberry.field(default=None, description="ID на фирмата")
-    department_id: Optional[int] = strawberry.field(default=None, description="ID на отдела")
-    position_id: Optional[int] = strawberry.field(default=None, description="ID на длъжността")
-    contract_number: Optional[str] = strawberry.field(default=None, description="Номер на договора")
-    start_date: Optional[datetime.date] = strawberry.field(default=None, description="Начална дата")
-    end_date: Optional[datetime.date] = strawberry.field(default=None, description="Крайна дата")
-    base_salary: Optional[float] = strawberry.field(default=None, description="Основна заплата")
-    work_hours_per_week: Optional[int] = strawberry.field(default=None, description="Работни часове на седмица")
-    job_description: Optional[str] = strawberry.field(default=None, description="Трудова характеристика")
+    employee_name: Optional[str] = None
+    employee_egn: Optional[str] = None
+    company_id: Optional[int] = None
+    department_id: Optional[int] = None
+    position_id: Optional[int] = None
+    contract_number: Optional[str] = None
+    start_date: Optional[datetime.date] = None
+    end_date: Optional[datetime.date] = None
+    base_salary: Optional[float] = None
+    work_hours_per_week: Optional[int] = None
+    job_description: Optional[str] = None
 
-
-# ============ TRZ Template Section Inputs ============
 
 @strawberry.input
 class ContractTemplateSectionInput:
-    """Input за създаване на секция в шаблон за договор"""
-    title: str = strawberry.field(description="Заглавие на секцията")
-    content: str = strawberry.field(description="Съдържание (HTML/текст)")
-    order_index: int = strawberry.field(default=0, description="Ред на секцията")
-    is_required: bool = strawberry.field(default=False, description="Задължителна секция")
+    title: str
+    content: str
+    order_index: int = 0
+    is_required: bool = False
 
 
 @strawberry.input
 class ContractTemplateSectionUpdateInput:
-    """Input за обновяване на секция в шаблон за договор"""
-    title: Optional[str] = strawberry.field(default=None, description="Заглавие на секцията")
-    content: Optional[str] = strawberry.field(default=None, description="Съдържание (HTML/текст)")
-    order_index: Optional[int] = strawberry.field(default=None, description="Ред на секцията")
-    is_required: Optional[bool] = strawberry.field(default=None, description="Задължителна секция")
+    title: Optional[str] = None
+    content: Optional[str] = None
+    order_index: Optional[int] = None
+    is_required: Optional[bool] = None
 
 
 @strawberry.input
 class AnnexTemplateSectionInput:
-    """Input за създаване на секция в шаблон за анекс"""
-    title: str = strawberry.field(description="Заглавие на секцията")
-    content: str = strawberry.field(description="Съдържание (HTML/текст)")
-    order_index: int = strawberry.field(default=0, description="Ред на секцията")
-    is_required: bool = strawberry.field(default=False, description="Задължителна секция")
+    title: str
+    content: str
+    order_index: int = 0
+    is_required: bool = False
 
 
 @strawberry.input
 class AnnexTemplateSectionUpdateInput:
-    """Input за обновяване на секция в шаблон за анекс"""
-    title: Optional[str] = strawberry.field(default=None, description="Заглавие на секцията")
-    content: Optional[str] = strawberry.field(default=None, description="Съдържание (HTML/текст)")
-    order_index: Optional[int] = strawberry.field(default=None, description="Ред на секцията")
-    is_required: Optional[bool] = strawberry.field(default=None, description="Задължителна секция")
+    title: Optional[str] = None
+    content: Optional[str] = None
+    order_index: Optional[int] = None
+    is_required: Optional[bool] = None
