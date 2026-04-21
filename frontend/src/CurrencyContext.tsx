@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { useQuery, gql } from '@apollo/client';
-import { CurrencyContext } from './currencyContext';
+import { 
+  CurrencyContext, 
+  formatCurrencyValue, 
+  getCurrencySymbolForCurrency,
+  type CurrencyContextType 
+} from './currencyContext';
 
 const GET_GLOBAL_CURRENCY = gql`
   query GetGlobalCurrency {
@@ -29,8 +34,21 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   };
 
+  const formatCurrency: CurrencyContextType['formatCurrency'] = (value) => {
+    return formatCurrencyValue(value, currency);
+  };
+
+  const getCurrencySymbol: CurrencyContextType['getCurrencySymbol'] = () => {
+    return getCurrencySymbolForCurrency(currency);
+  };
+
   return (
-    <CurrencyContext.Provider value={{ currency, refreshCurrency }}>
+    <CurrencyContext.Provider value={{ 
+      currency, 
+      refreshCurrency,
+      formatCurrency,
+      getCurrencySymbol 
+    }}>
       {children}
     </CurrencyContext.Provider>
   );

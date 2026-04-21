@@ -237,7 +237,7 @@ async def export_annex_pdf(
 
     if annex.base_salary:
         elements.append(Spacer(1, 8))
-        elements.append(Paragraph(f"<b>Нова основна месечна заплата:</b> {float(annex.base_salary):.2f} лв.", styles['Normal']))
+        elements.append(Paragraph(f"<b>Нова основна месечна заплата:</b> {float(annex.base_salary):.2f} €", styles['Normal']))
 
     if annex.work_hours_per_week:
         elements.append(Spacer(1, 8))
@@ -618,7 +618,7 @@ async def export_contract_pdf(
     elements.append(Paragraph(f"<b>Работно време:</b> {work_hours_display}", styles['Normal']))
 
     if contract.base_salary:
-        elements.append(Paragraph(f"<b>Основна заплата:</b> {contract.base_salary} лв.", styles['Normal']))
+        elements.append(Paragraph(f"<b>Основна заплата:</b> {contract.base_salary} €", styles['Normal']))
 
     if contract.probation_months and contract.probation_months > 0:
         elements.append(Paragraph(f"<b>Изпитателен срок:</b> {contract.probation_months} месеца", styles['Normal']))
@@ -834,7 +834,7 @@ async def export_invoice_pdf(
         table_data.append([
             '', '', '', '', '', '', '', '',
             Paragraph('<b>ОБЩО:</b>', styles['InvoiceSmall']),
-            Paragraph(f"<b>{total_amount:.2f} лв.</b>", styles['InvoiceSmall'])
+            Paragraph(f"<b>{total_amount:.2f} €</b>", styles['InvoiceSmall'])
         ])
 
         items_table = Table(table_data, colWidths=col_widths)
@@ -936,14 +936,16 @@ async def export_invoice_pdf(
         doc.build(elements)
 
         buffer.seek(0)
-        safe_filename = f"invoice_{invoice.number or invoice_id}.pdf"
-        encoded_filename = quote(safe_filename)
+        
+        # Only use ASCII for filename header
+        ascii_filename = f"invoice_{invoice_id}.pdf"
+        encoded_filename = quote(ascii_filename)
 
         return Response(
             content=buffer.getvalue(),
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"attachment; filename=\"{safe_filename}\"; filename*=UTF-8''{encoded_filename}"
+                "Content-Disposition": f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{encoded_filename}"
             }
         )
     except HTTPException:

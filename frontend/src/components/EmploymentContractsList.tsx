@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { useCurrency, formatCurrencyValue } from '../currencyContext';
 import {
   Box, Typography, Card, CardContent, Button, Chip,
   CircularProgress, Alert, Grid, IconButton,
@@ -59,6 +60,7 @@ interface OrgData {
 }
 
 const EmploymentContractsList: React.FC<EmploymentContractsListProps> = ({ companyId }) => {
+  const { currency } = useCurrency();
   const [statusFilter, setStatusFilter] = useState<ContractStatus | ''>('');
   const [companyFilter, setCompanyFilter] = useState<number | ''>(companyId || '');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -263,7 +265,7 @@ const EmploymentContractsList: React.FC<EmploymentContractsListProps> = ({ compa
                         </Typography>
                         {contract.baseSalary && (
                           <Typography variant="body2" color="primary.main" fontWeight="bold">
-                            {Number(contract.baseSalary).toFixed(2)} лв.
+                            {formatCurrencyValue(contract.baseSalary, currency)}
                           </Typography>
                         )}
 

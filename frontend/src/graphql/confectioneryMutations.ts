@@ -118,8 +118,8 @@ export const CREATE_WORKSTATION = gql`
 `;
 
 export const DELETE_RECIPE = gql`
-  mutation DeleteRecipe($id: Int!) {
-    deleteRecipe(id: $id)
+  mutation DeleteRecipe($recipeId: Int!) {
+    deleteRecipe(id: $recipeId)
   }
 `;
 
@@ -329,16 +329,16 @@ export const GET_PRICE_HISTORY = gql`
     priceHistory(recipeId: $recipeId) {
       id
       recipeId
-      oldSellingPrice
-      newSellingPrice
-      oldMarkupPercentage
-      newMarkupPercentage
-      oldPremiumAmount
-      newPremiumAmount
-      oldCostPrice
-      newCostPrice
+      oldPrice
+      newPrice
+      oldMarkup
+      newMarkup
+      oldPremium
+      newPremium
+      oldCost
+      newCost
       reason
-      createdAt
+      changedAt
       user {
         id
         firstName

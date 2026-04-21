@@ -22,6 +22,7 @@ import {
 } from '../graphql/confectioneryMutations';
 import { type RecipeWithPrice, type PriceHistory, getErrorMessage } from '../types';
 import RecipePriceDialog from '../components/RecipePriceDialog';
+import { useCurrency, formatCurrencyValue } from '../currencyContext';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -45,16 +46,18 @@ const MenuPricingPage: React.FC = () => {
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeWithPrice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  
+  const { currency } = useCurrency();
 
   const { data, loading, refetch } = useQuery(GET_RECIPES_WITH_PRICES, {
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: 'network-only',
     onError: (err) => setError(getErrorMessage(err))
   });
 
   const { data: historyData, refetch: refetchHistory } = useQuery(GET_PRICE_HISTORY, {
     variables: { recipeId: selectedRecipe?.id },
     skip: !selectedRecipe?.id || !historyDialogOpen,
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: 'no-cache',
     onError: (err) => setError(getErrorMessage(err))
   });
 
@@ -71,7 +74,7 @@ const MenuPricingPage: React.FC = () => {
   const [calculateCost, { loading: calculatingCost }] = useMutation(CALCULATE_RECIPE_COST, {
     onCompleted: (result) => {
       const finalPrice = Number(result.calculateRecipeCost.finalPrice);
-      setSuccessMessage(`Себестойността е преизчислена: ${finalPrice.toFixed(2)} лв.`);
+      setSuccessMessage(`Себестойността е преизчислена: ${formatCurrencyValue(finalPrice, currency)}`);
       refetch();
       setTimeout(() => setSuccessMessage(null), 3000);
     },
@@ -100,7 +103,6 @@ const MenuPricingPage: React.FC = () => {
   const handleOpenHistory = (recipe: RecipeWithPrice) => {
     setSelectedRecipe(recipe);
     setHistoryDialogOpen(true);
-    refetchHistory();
   };
 
   const handleSavePrice = (formData: {
@@ -133,10 +135,7 @@ const MenuPricingPage: React.FC = () => {
   };
 
   const formatPrice = (value: number | string | null | undefined): string => {
-    if (value === null || value === undefined) return '-';
-    const num = typeof value === 'string' ? parseFloat(value) : Number(value);
-    if (isNaN(num)) return '-';
-    return num.toFixed(2) + ' лв.';
+    return formatCurrencyValue(value, currency);
   };
 
   const formatDate = (dateStr: string | null | undefined): string => {
@@ -206,11 +205,11 @@ const MenuPricingPage: React.FC = () => {
                   <TableCell><strong>Рецепта</strong></TableCell>
                   <TableCell><strong>Категория</strong></TableCell>
                   <TableCell align="right"><strong>Себестойност</strong></TableCell>
-                  <TableCell align="right"><strong>Markup %</strong></TableCell>
+                  <TableCell align="right"><strong>Марж %</strong></TableCell>
                   <TableCell align="right"><strong>Надценка</strong></TableCell>
                   <TableCell align="right"><strong>Финална цена</strong></TableCell>
                   <TableCell align="right"><strong>Бр. парчета</strong></TableCell>
-                  <TableCell align="right"><strong>Цена/бр.</strong></TableCell>
+                  <TableCell align="right"><strong>Цена/1 бр.</strong></TableCell>
                   <TableCell><strong>Последна промяна</strong></TableCell>
                   <TableCell align="center"><strong>Действия</strong></TableCell>
                 </TableRow>
@@ -342,7 +341,7 @@ const MenuPricingPage: React.FC = () => {
                           <Typography variant="body2">{recipe.defaultPieces || '-'}</Typography>
                         </Grid>
                         <Grid size={{ xs: 6 }}>
-                          <Typography variant="body2" color="text.secondary">Цена/бр.:</Typography>
+                          <Typography variant="body2" color="text.secondary">Цена/1 бр.:</Typography>
                         </Grid>
                         <Grid size={{ xs: 6 }} sx={{ textAlign: 'right' }}>
                           <Typography variant="body2" fontWeight="bold">{formatPrice(recipe.portionPrice)}</Typography>
@@ -388,7 +387,7 @@ const MenuPricingPage: React.FC = () => {
                     <TableCell><strong>Дата</strong></TableCell>
                     <TableCell><strong>Предишна цена</strong></TableCell>
                     <TableCell><strong>Нова цена</strong></TableCell>
-                    <TableCell><strong>Markup % (преди/след)</strong></TableCell>
+                    <TableCell><strong>Марж % (преди/след)</strong></TableCell>
                     <TableCell><strong>Надценка (преди/след)</strong></TableCell>
                     <TableCell><strong>Потребител</strong></TableCell>
                     <TableCell><strong>Причина</strong></TableCell>
@@ -397,14 +396,14 @@ const MenuPricingPage: React.FC = () => {
                 <TableBody>
                   {priceHistory.map((entry) => (
                     <TableRow key={entry.id}>
-                      <TableCell>{formatDate(entry.createdAt)}</TableCell>
-                      <TableCell>{formatPrice(entry.oldSellingPrice)}</TableCell>
-                      <TableCell>{formatPrice(entry.newSellingPrice)}</TableCell>
+                      <TableCell>{formatDate(entry.changedAt)}</TableCell>
+                      <TableCell>{formatPrice(entry.oldPrice)}</TableCell>
+                      <TableCell>{formatPrice(entry.newPrice)}</TableCell>
                       <TableCell>
-                        {typeof entry.oldMarkupPercentage === 'number' ? entry.oldMarkupPercentage.toFixed(1) : '-'}% → {typeof entry.newMarkupPercentage === 'number' ? entry.newMarkupPercentage.toFixed(1) : '-'}%
+                        {typeof entry.oldMarkup === 'number' ? entry.oldMarkup.toFixed(1) : '-'}% → {typeof entry.newMarkup === 'number' ? entry.newMarkup.toFixed(1) : '-'}%
                       </TableCell>
                       <TableCell>
-                        {formatPrice(entry.oldPremiumAmount)} → {formatPrice(entry.newPremiumAmount)}
+                        {formatPrice(entry.oldPremium)} → {formatPrice(entry.newPremium)}
                       </TableCell>
                       <TableCell>
                         {entry.user ? `${entry.user.firstName || ''} ${entry.user.lastName || ''}`.trim() || entry.user.email : '-'}

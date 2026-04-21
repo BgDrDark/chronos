@@ -115,13 +115,13 @@ const PersonalDataSection: React.FC<{ user: any }> = ({ user }) => {
                         <Divider sx={{ my: 3 }} />
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
                             <AccountBalanceWalletIcon color="primary" />
-                            <Typography variant="h6" fontWeight="bold">Финансови параметри (Договор)</Typography>
+                            <Typography variant="h6" fontWeight="bold">Трудов договор</Typography>
                         </Box>
                         <Grid container spacing={3}>
                             <Grid size={{ xs: 12, sm: 6 }}>
-                                <Typography variant="caption" color="text.secondary">Основна заплата (Бруто)</Typography>
-                                <Typography variant="body1" fontWeight="bold" color="primary">
-                                    {user.activeContract.baseSalary ? `${parseFloat(user.activeContract.baseSalary).toFixed(2)}` : '—'}
+                                <Typography variant="caption" color="text.secondary">Номер на договор</Typography>
+                                <Typography variant="body1" fontWeight="medium">
+                                    {user.activeContract.contractNumber || '—'}
                                 </Typography>
                             </Grid>
                             <Grid size={{ xs: 12, sm: 6 }}>
@@ -132,12 +132,27 @@ const PersonalDataSection: React.FC<{ user: any }> = ({ user }) => {
                                 </Typography>
                             </Grid>
                             <Grid size={{ xs: 12, sm: 6 }}>
-                                <Typography variant="caption" color="text.secondary">Плащания (Вноски)</Typography>
-                                <Typography variant="body1">{user.activeContract.salaryInstallmentsCount} вноски / месец</Typography>
+                                <Typography variant="caption" color="text.secondary">Период</Typography>
+                                <Typography variant="body1">
+                                    {user.activeContract.startDate ? new Date(user.activeContract.startDate).toLocaleDateString('bg-BG') : '—'}
+                                    {user.activeContract.endDate && ` - ${new Date(user.activeContract.endDate).toLocaleDateString('bg-BG')}`}
+                                </Typography>
                             </Grid>
                             <Grid size={{ xs: 12, sm: 6 }}>
-                                <Typography variant="caption" color="text.secondary">Месечен аванс</Typography>
-                                <Typography variant="body1">{parseFloat(user.activeContract.monthlyAdvanceAmount || 0).toFixed(2)}</Typography>
+                                <Typography variant="caption" color="text.secondary">Длъжност</Typography>
+                                <Typography variant="body1" fontWeight="medium">
+                                    {user.activeContract.positionTitle || '—'}
+                                </Typography>
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <Typography variant="caption" color="text.secondary">Основна заплата (Бруто)</Typography>
+                                <Typography variant="body1" fontWeight="bold" color="primary">
+                                    {user.activeContract.baseSalary ? `${parseFloat(user.activeContract.baseSalary).toFixed(2)} лв.` : '—'}
+                                </Typography>
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <Typography variant="caption" color="text.secondary">Плащания (Вноски)</Typography>
+                                <Typography variant="body1">{user.activeContract.salaryInstallmentsCount} вноски / месец</Typography>
                             </Grid>
                         </Grid>
                     </>
@@ -329,7 +344,7 @@ const ProfilePage: React.FC = () => {
 
             {/* TAB 1: Contract Dossier */}
             {activeTab === 1 && (
-                <ContractDossier userId={user.id} />
+                <ContractDossier userId={user.id} isReadOnly={true} />
             )}
 
             {/* TAB 2: Documents (Digital Dossier) */}

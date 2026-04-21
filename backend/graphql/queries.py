@@ -4,6 +4,7 @@ from typing import List, Optional
 import strawberry
 from sqlalchemy import select, Time, desc
 from backend import crud
+from backend.crud.repositories import user_repo, time_repo, settings_repo, company_repo
 from backend.config import settings
 from backend.exceptions import (
     AuthenticationException,
@@ -27,11 +28,12 @@ class Query:
             return types.User.from_instance(current_user)
         return None
 
-    @strawberry.field
+    @strawberry.field(name="employmentContracts")
     async def employment_contracts(
         self,
         info: strawberry.Info,
         company_id: Optional[int] = None,
+        user_id: Optional[int] = None,
         status: Optional[str] = None
     ) -> List[types.EmploymentContract]:
         """Връща списък с трудови договори"""
@@ -40,7 +42,7 @@ class Query:
         db = info.context["db"]
         current_user = info.context["current_user"]
         
-        if current_user.role.name not in ["admin", "super_admin"]:
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise AuthenticationException(detail="Трябва да сте администратор за достъп до договорите")
         
         from sqlalchemy.orm import selectinload
@@ -50,8 +52,11 @@ class Query:
             selectinload(EmploymentContract.department)
         )
         
+        # Filter by user_id
+        if user_id:
+            stmt = stmt.where(EmploymentContract.user_id == user_id)
         # Filter by company
-        if company_id:
+        elif company_id:
             stmt = stmt.where(EmploymentContract.company_id == company_id)
         elif current_user.role.name != "super_admin":
             stmt = stmt.where(EmploymentContract.company_id == current_user.company_id)
@@ -96,7 +101,7 @@ class Query:
         current_user = info.context["current_user"]
         if not current_user:
             return None
-        db_log = await crud.get_active_time_log(db, current_user.id)
+        db_log = await time_repo.get_active_timelog(db, current_user.id)
         if db_log:
             return types.TimeLog.from_instance(db_log)
         return None
@@ -113,9 +118,8 @@ class Query:
     ) -> types.PaginatedUsers:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        # Allow admin, super_admin, accountant, and manager
         allowed_roles = ["admin", "super_admin", "accountant", "manager"]
-        if current_user is None or current_user.role.name not in allowed_roles:
+        if current_user is None or current_user.role is None or current_user.role.name not in allowed_roles:
             raise PermissionDeniedException()
         
         # Isolation: Non-super_admin sees only their company
@@ -123,8 +127,8 @@ class Query:
         if current_user.role.name != "super_admin":
             company_id = current_user.company_id
 
-        db_users = await crud.get_users(db, skip=skip, limit=limit, search=search, sort_by=sort_by, sort_order=sort_order, company_id=company_id)
-        total_count = await crud.count_users(db, search=search, company_id=company_id)
+        db_users = await user_repo.get_users(db, skip=skip, limit=limit, search=search, sort_by=sort_by, sort_order=sort_order, company_id=company_id)
+        total_count = await user_repo.count_users(db, search=search, company_id=company_id)
         
         return types.PaginatedUsers(
             users=[types.User.from_instance(user) for user in db_users],
@@ -144,7 +148,7 @@ class Query:
             raise PermissionDeniedException.for_action("view records")
             
         company_id = current_user.company_id if current_user.role.name != "super_admin" else None
-        db_users = await crud.get_users(db, skip=0, limit=1000, search=search, company_id=company_id)
+        db_users = await user_repo.get_users(db, skip=0, limit=1000, search=search, company_id=company_id)
         return [types.User.from_instance(u) for u in db_users]
 
     @strawberry.field
@@ -159,7 +163,7 @@ class Query:
         if current_user.role.name not in ["admin", "super_admin"] and current_user.id != target_id:
             raise PermissionDeniedException.for_action("access")
             
-        db_user = await crud.get_user_by_id(db, target_id)
+        db_user = await user_repo.get_by_id(db, target_id)
         if db_user:
             return types.User.from_instance(db_user)
         return None
@@ -171,7 +175,7 @@ class Query:
         allowed_roles = ["admin", "super_admin", "accountant", "manager"]
         if current_user is None or current_user.role.name not in allowed_roles:
             raise PermissionDeniedException.for_action("access roles")
-        db_roles = await crud.get_roles(db)
+        db_roles = await time_repo.get_all_roles(db)
         return [types.Role.from_instance(role) for role in db_roles]
     
     @strawberry.field
@@ -183,8 +187,8 @@ class Query:
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
              raise PermissionDeniedException.for_action("access")
              
-        gps = await crud.get_global_setting(db, "kiosk_require_gps") != "false"
-        net = await crud.get_global_setting(db, "kiosk_require_same_network") != "false"
+        gps = await settings_repo.get_setting(db, "kiosk_require_gps") != "false"
+        net = await settings_repo.get_setting(db, "kiosk_require_same_network") != "false"
         
         return types.KioskSecuritySettings(
             require_gps=gps,
@@ -229,14 +233,14 @@ class Query:
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
              raise PermissionDeniedException.for_action("access")
              
-        max_ins = await crud.get_global_setting(db, "payroll_max_insurance_base")
-        ins_rate = await crud.get_global_setting(db, "payroll_employee_insurance_rate")
-        tax_rate = await crud.get_global_setting(db, "payroll_income_tax_rate")
-        civil_costs = await crud.get_global_setting(db, "payroll_civil_contract_costs_rate")
-        noi_perc = await crud.get_global_setting(db, "payroll_noi_compensation_percent")
-        sick_days = await crud.get_global_setting(db, "payroll_employer_paid_sick_days")
-        tax_res = await crud.get_global_setting(db, "payroll_default_tax_resident")
-        strict_mode = await crud.get_global_setting(db, "trz_compliance_strict_mode")
+        max_ins = await settings_repo.get_setting(db, "payroll_max_insurance_base")
+        ins_rate = await settings_repo.get_setting(db, "payroll_employee_insurance_rate")
+        tax_rate = await settings_repo.get_setting(db, "payroll_income_tax_rate")
+        civil_costs = await settings_repo.get_setting(db, "payroll_civil_contract_costs_rate")
+        noi_perc = await settings_repo.get_setting(db, "payroll_noi_compensation_percent")
+        sick_days = await settings_repo.get_setting(db, "payroll_employer_paid_sick_days")
+        tax_res = await settings_repo.get_setting(db, "payroll_default_tax_resident")
+        strict_mode = await settings_repo.get_setting(db, "trz_compliance_strict_mode")
 
         return types.PayrollLegalSettings(
             max_insurance_base=float(max_ins) if max_ins else 3750.0,
@@ -467,13 +471,13 @@ class Query:
     async def annexes(self, info: strawberry.Info, status: Optional[str] = None) -> List[types.ContractAnnex]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise AuthenticationException(detail=authenticate_msg)
+        if current_user is None or current_user.role is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise AuthenticationException(detail="Трябва да се автентикирате")
         
         from backend.database.models import ContractAnnex, EmploymentContract, User
         stmt = select(ContractAnnex).join(EmploymentContract).join(User)
         
-        if current_user.role.name != "super_admin":
+        if current_user.role is None or current_user.role.name != "super_admin":
             stmt = stmt.where(User.company_id == current_user.company_id)
         
         if status:
@@ -606,7 +610,7 @@ class Query:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view records")
-        db_role = await crud.get_role_by_id(db, id)
+        db_role = await time_repo.get_role_by_id(db, id)
         if db_role:
             return types.Role.from_instance(db_role)
         return None
@@ -614,7 +618,7 @@ class Query:
     @strawberry.field
     async def shifts(self, info: strawberry.Info) -> List[types.Shift]:
         db = info.context["db"]
-        db_shifts = await crud.get_shifts(db)
+        db_shifts = await time_repo.get_all_shifts(db)
         return [types.Shift.from_instance(s) for s in db_shifts]
 
     @strawberry.field
@@ -656,7 +660,7 @@ class Query:
         if current_user and current_user.role.name != "super_admin":
             company_id = current_user.company_id
             
-        res = await crud.get_schedules_by_period(db, start_date, end_date, company_id=company_id)
+        res = await time_repo.get_schedules_by_period(db, start_date, end_date, company_id=company_id)
         return [types.WorkSchedule.from_instance(s) for s in res]
 
     @strawberry.field
@@ -701,7 +705,7 @@ class Query:
         if not current_user:
             return []
         
-        reqs = await crud.get_leave_requests(db, user_id=current_user.id)
+        reqs = await time_repo.get_leave_requests(db, user_id=current_user.id)
         return [types.LeaveRequest.from_instance(r) for r in reqs]
 
     @strawberry.field
@@ -711,7 +715,7 @@ class Query:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view records")
             
-        reqs = await crud.get_leave_requests(db, status="pending")
+        reqs = await time_repo.get_leave_requests(db, status="pending")
         return [types.LeaveRequest.from_instance(r) for r in reqs]
 
     @strawberry.field
@@ -721,7 +725,7 @@ class Query:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view records")
             
-        reqs = await crud.get_leave_requests(db, status=status)
+        reqs = await time_repo.get_leave_requests(db, status=status)
         return [types.LeaveRequest.from_instance(r) for r in reqs]
 
     @strawberry.field
@@ -735,7 +739,7 @@ class Query:
         if current_user.id != user_id and current_user.role.name not in ["admin", "super_admin"]:
              raise PermissionDeniedException.for_action("view records")
              
-        balance = await crud.get_leave_balance(db, user_id, year)
+        balance = await time_repo.get_leave_balance(db, user_id, year)
         return types.LeaveBalance.from_instance(balance)
 
     @strawberry.field
@@ -745,7 +749,7 @@ class Query:
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
         
-        res = await crud.get_companies(db)
+        res = await company_repo.get_all_companies(db)
         return [types.Company.from_instance(c) for c in res]
 
     @strawberry.field
@@ -755,7 +759,10 @@ class Query:
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
             
-        res = await crud.get_departments(db, company_id)
+        if not company_id:
+            company_id = current_user.company_id
+        
+        res = await company_repo.get_departments(db, company_id)
         return [types.Department.from_instance(d) for d in res]
 
     @strawberry.field
@@ -765,7 +772,7 @@ class Query:
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
             
-        res = await crud.get_positions(db, department_id)
+        res = await company_repo.get_positions(db, department_id)
         return [types.Position.from_instance(p) for p in res]
 
     @strawberry.field
@@ -946,15 +953,15 @@ class Query:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
              raise PermissionDeniedException.for_action("view records")
 
-        server = await crud.get_global_setting(db, "smtp_server")
-        port = await crud.get_global_setting(db, "smtp_port")
-        username = await crud.get_global_setting(db, "smtp_username")
+        server = await settings_repo.get_setting(db, "smtp_server")
+        port = await settings_repo.get_setting(db, "smtp_port")
+        username = await settings_repo.get_setting(db, "smtp_username")
         # Don't return the real password for security, or return it if necessary for editing
         # Usually better to leave blank and only update if provided.
         # But for this simple app, we might return it or a placeholder.
-        password = await crud.get_global_setting(db, "smtp_password") 
-        sender = await crud.get_global_setting(db, "sender_email")
-        tls = await crud.get_global_setting(db, "use_tls")
+        password = await settings_repo.get_setting(db, "smtp_password") 
+        sender = await settings_repo.get_setting(db, "sender_email")
+        tls = await settings_repo.get_setting(db, "use_tls")
 
         if not server:
             return None
@@ -1070,11 +1077,11 @@ class Query:
         if not current_user:
              return None
 
-        lat = await crud.get_global_setting(db, "office_latitude")
-        lon = await crud.get_global_setting(db, "office_longitude")
-        rad = await crud.get_global_setting(db, "office_radius")
-        entry_enabled = await crud.get_global_setting(db, "geofencing_entry_enabled")
-        exit_enabled = await crud.get_global_setting(db, "geofencing_exit_enabled")
+        lat = await settings_repo.get_setting(db, "office_latitude")
+        lon = await settings_repo.get_setting(db, "office_longitude")
+        rad = await settings_repo.get_setting(db, "office_radius")
+        entry_enabled = await settings_repo.get_setting(db, "geofencing_entry_enabled")
+        exit_enabled = await settings_repo.get_setting(db, "geofencing_exit_enabled")
         
         if not lat or not lon:
             return None
@@ -1164,9 +1171,14 @@ class Query:
         # Any authenticated user should be able to see work days to calculate their own salary expectations
         # But for editing, only admin (handled in mutation)
         
-        res = await crud.get_monthly_work_days(db, year, month)
+        res = await time_repo.get_monthly_work_days(db, year, month)
         if res:
-            return types.MonthlyWorkDays.from_instance(res)
+            return types.MonthlyWorkDays(
+                year=res["year"],
+                month=res["month"],
+                days_count=res["days_count"],
+                holidays_count=res.get("holidays_count", 0)
+            )
         return None
 
     @strawberry.field
@@ -1176,7 +1188,7 @@ class Query:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view active sessions")
         
-        sessions = await crud.get_active_sessions(db, skip=skip, limit=limit)
+        sessions = await user_repo.get_active_sessions(db, skip=skip, limit=limit)
         return [types.UserSession.from_instance(s) for s in sessions]
 
     @strawberry.field
@@ -1210,7 +1222,7 @@ class Query:
         current_user = info.context["current_user"]
         if not current_user:
              return []
-        res = await crud.get_my_swap_requests(db, current_user.id)
+        res = await time_repo.get_my_swap_requests(db, current_user.id)
         return [types.ShiftSwapRequest.from_instance(s) for s in res]
 
     @strawberry.field
@@ -1219,7 +1231,7 @@ class Query:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view swap requests")
-        res = await crud.get_all_pending_swaps(db)
+        res = await time_repo.get_all_pending_swaps(db)
         return [types.ShiftSwapRequest.from_instance(s) for s in res]
 
     @strawberry.field
@@ -1281,7 +1293,7 @@ class Query:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view schedule templates")
-        res = await crud.get_schedule_templates(db, company_id=current_user.company_id)
+        res = await time_repo.get_schedule_templates(db, company_id=current_user.company_id)
         return [types.ScheduleTemplate.from_instance(t) for t in res]
 
     @strawberry.field
@@ -1290,7 +1302,7 @@ class Query:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view schedule template")
-        res = await crud.get_schedule_template(db, id, company_id=current_user.company_id)
+        res = await time_repo.get_schedule_template(db, id, company_id=current_user.company_id)
         if res and res.company_id != current_user.company_id:
             return None
         return types.ScheduleTemplate.from_instance(res) if res else None
@@ -1300,7 +1312,7 @@ class Query:
         db = info.context["db"]
         if not info.context["current_user"]:
              return None
-        return await crud.get_global_setting(db, "vapid_public_key")
+        return await settings_repo.get_setting(db, "vapid_public_key")
 
     @strawberry.field
     async def payroll_forecast(self, info: strawberry.Info, year: int, month: int) -> types.PayrollForecast:
@@ -1310,17 +1322,24 @@ class Query:
             raise PermissionDeniedException.for_action("view payroll forecast")
         
         # 1. Get All Active Users
-        users = await crud.get_users(db, limit=1000)
+        users = await user_repo.get_users(db, limit=1000)
         
         total = 0.0
         dept_map = {}
         
         calc = PayrollCalculator(db)
         
-        for u in users:
-            if not u.is_active: continue
-            
-            amount = await calc.calculate_forecast(u.id, year, month)
+        # Optimized: Use asyncio.gather for parallel queries instead of sequential loop
+        async def calc_user_amount(u):
+            if not u.is_active:
+                return 0.0
+            return await calc.calculate_forecast(u.id, year, month)
+        
+        # Run all calculations in parallel
+        import asyncio
+        amounts = await asyncio.gather(*[calc_user_amount(u) for u in users])
+        
+        for u, amount in zip(users, amounts):
             total += amount
             
             # Use new department relation if available, else string fallback
@@ -1330,7 +1349,7 @@ class Query:
             
             if dept_name not in dept_map: dept_map[dept_name] = 0.0
             dept_map[dept_name] += amount
-            
+        
         by_dept = [
             types.DepartmentForecast(department_name=k, amount=round(v, 2)) 
             for k, v in dept_map.items()
@@ -1345,7 +1364,7 @@ class Query:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view API keys")
         
-        res = await crud.get_api_keys(db)
+        res = await settings_repo.get_api_keys(db)
         return [types.APIKey.from_instance(k) for k in res]
 
     @strawberry.field
@@ -1355,7 +1374,7 @@ class Query:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view webhooks")   
         
-        res = await crud.get_webhooks(db)
+        res = await settings_repo.get_webhooks(db)
         return [types.Webhook.from_instance(w) for w in res]
 
     @strawberry.field
@@ -1374,12 +1393,12 @@ class Query:
             raise PermissionDeniedException.for_action("view password settings")
             
         return types.PasswordSettings(
-            min_length=int(await crud.get_global_setting(db, "pwd_min_length") or "8"),
-            max_length=int(await crud.get_global_setting(db, "pwd_max_length") or "32"),
-            require_upper=(await crud.get_global_setting(db, "pwd_require_upper")) == "true",
-            require_lower=(await crud.get_global_setting(db, "pwd_require_lower")) == "true",
-            require_digit=(await crud.get_global_setting(db, "pwd_require_digit")) == "true",
-            require_special=(await crud.get_global_setting(db, "pwd_require_special")) == "true"
+            min_length=int(await settings_repo.get_setting(db, "pwd_min_length") or "8"),
+            max_length=int(await settings_repo.get_setting(db, "pwd_max_length") or "32"),
+            require_upper=(await settings_repo.get_setting(db, "pwd_require_upper")) == "true",
+            require_lower=(await settings_repo.get_setting(db, "pwd_require_lower")) == "true",
+            require_digit=(await settings_repo.get_setting(db, "pwd_require_digit")) == "true",
+            require_special=(await settings_repo.get_setting(db, "pwd_require_special")) == "true"
         )
 
     # --- Confectionery Module Queries ---

@@ -72,8 +72,12 @@ export const extractErrorMessage = (error: any): string => {
   
   if (typeof error === 'string') return error;
   
+  // Handle GraphQL errors (including CHRONOSException format)
   if (error?.graphQLErrors?.[0]?.message) {
-    return error.graphQLErrors[0].message;
+    let message = error.graphQLErrors[0].message;
+    // Remove error code prefix like [VALIDATION_ERROR] or [AUTHENTICATION_ERROR]
+    message = message.replace(/^\[[A-Z_]+\]\s*/, '');
+    return message;
   }
   
   if (error?.message) {

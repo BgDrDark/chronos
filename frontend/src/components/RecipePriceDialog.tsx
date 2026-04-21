@@ -1,9 +1,12 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, Grid, Divider, Box, Typography
+  Button, TextField, Grid, Divider, Box, Typography, InputAdornment
 } from '@mui/material';
 import { type RecipeWithPrice } from '../types';
+import { useCurrency, formatCurrencyValue, getCurrencySymbolForCurrency } from '../currencyContext';
+import { InfoIcon } from './ui/InfoIcon';
+import { recipeFieldsHelp, commonFieldsHelp } from './ui/fieldsHelpText';
 
 interface RecipePriceDialogProps {
   open: boolean;
@@ -31,9 +34,22 @@ const RecipePriceDialog: React.FC<RecipePriceDialogProps> = ({
   onSave,
   loading = false
 }) => {
-  const markupPercentage = recipe?.markupPercentage?.toString() ?? '50';
-  const premiumAmount = recipe?.premiumAmount?.toString() ?? '0';
-  const portions = recipe?.portions?.toString() ?? '1';
+  const { currency } = useCurrency();
+  const currencySymbol = getCurrencySymbolForCurrency(currency);
+  
+  const [markupPercentage, setMarkupPercentage] = useState('');
+  const [premiumAmount, setPremiumAmount] = useState('');
+  const [portions, setPortions] = useState('');
+  const [reason, setReason] = useState('');
+
+  useEffect(() => {
+    if (recipe && open) {
+      setMarkupPercentage(recipe.markupPercentage?.toString() ?? '50');
+      setPremiumAmount(recipe.premiumAmount?.toString() ?? '0');
+      setPortions(recipe.portions?.toString() ?? '12');
+      setReason('');
+    }
+  }, [recipe, open]);
 
   const preview = useMemo((): PricePreview => {
     const costPrice = recipe?.costPrice || 0;
@@ -53,15 +69,12 @@ const RecipePriceDialog: React.FC<RecipePriceDialogProps> = ({
       markupPercentage: markupPercentage ? parseFloat(markupPercentage) : null,
       premiumAmount: premiumAmount ? parseFloat(premiumAmount) : null,
       portions: portions ? parseInt(portions) : null,
-      reason: null
+      reason: reason || null
     });
   };
 
   const formatPrice = (value: number | string | null | undefined): string => {
-    if (value === null || value === undefined) return '0.00';
-    const num = typeof value === 'string' ? parseFloat(value) : Number(value);
-    if (isNaN(num)) return '0.00';
-    return num.toFixed(2);
+    return formatCurrencyValue(value, currency);
   };
 
   return (
@@ -72,28 +85,30 @@ const RecipePriceDialog: React.FC<RecipePriceDialogProps> = ({
           <Grid container spacing={2}>
             <Grid size={{ xs: 12 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Текуща себестойност: <strong>{formatPrice(recipe?.costPrice || 0)} лв.</strong>
+                Текуща себестойност: <strong>{formatPrice(recipe?.costPrice || 0)}</strong>
               </Typography>
             </Grid>
 
             <Grid size={{ xs: 6 }}>
               <TextField
-                label="Markup %"
+                label="Марж %"
                 type="number"
                 fullWidth
                 size="small"
-                defaultValue={markupPercentage}
-                slotProps={{ htmlInput: { min: 0, step: 0.1 } }}
+                value={markupPercentage}
+                onChange={(e) => setMarkupPercentage(e.target.value)}
+                slotProps={{ htmlInput: { min: 0, step: 0.1 }, input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={recipeFieldsHelp.markupPercentage} /></InputAdornment> } }}
               />
             </Grid>
 
             <Grid size={{ xs: 6 }}>
               <TextField
-                label="Надценка (лв.)"
+                label={`Надценка (${currencySymbol})`}
                 type="number"
                 fullWidth
                 size="small"
-                defaultValue={premiumAmount}
+                value={premiumAmount}
+                onChange={(e) => setPremiumAmount(e.target.value)}
                 slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
               />
             </Grid>
@@ -104,8 +119,9 @@ const RecipePriceDialog: React.FC<RecipePriceDialogProps> = ({
                 type="number"
                 fullWidth
                 size="small"
-                defaultValue={portions}
-                slotProps={{ htmlInput: { min: 1, step: 1 } }}
+                value={portions}
+                onChange={(e) => setPortions(e.target.value)}
+                slotProps={{ htmlInput: { min: 1, step: 1 }, input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={recipeFieldsHelp.defaultPieces} /></InputAdornment> } }}
               />
             </Grid>
 
@@ -114,7 +130,10 @@ const RecipePriceDialog: React.FC<RecipePriceDialogProps> = ({
                 label="Причина за промяна"
                 fullWidth
                 size="small"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
                 placeholder="напр. Поскъпване на продукти"
+                slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={commonFieldsHelp.notes} /></InputAdornment> } }}
               />
             </Grid>
           </Grid>
@@ -141,7 +160,7 @@ const RecipePriceDialog: React.FC<RecipePriceDialogProps> = ({
               </Grid>
               <Grid size={{ xs: 6 }} sx={{ textAlign: 'right' }}>
                 <Typography variant="body2">
-                  {formatPrice(preview.markupAmount)} лв.
+                  {formatPrice(preview.markupAmount)}
                 </Typography>
               </Grid>
 
@@ -152,7 +171,7 @@ const RecipePriceDialog: React.FC<RecipePriceDialogProps> = ({
               </Grid>
               <Grid size={{ xs: 6 }} sx={{ textAlign: 'right' }}>
                 <Typography variant="body1" fontWeight="bold">
-                  {formatPrice(preview.finalPrice)} лв.
+                  {formatPrice(preview.finalPrice)}
                 </Typography>
               </Grid>
 
@@ -163,7 +182,7 @@ const RecipePriceDialog: React.FC<RecipePriceDialogProps> = ({
               </Grid>
               <Grid size={{ xs: 6 }} sx={{ textAlign: 'right' }}>
                 <Typography variant="body1" fontWeight="bold" color="primary">
-                  {formatPrice(preview.portionPrice)} лв.
+                  {formatPrice(preview.portionPrice)}
                 </Typography>
               </Grid>
             </Grid>

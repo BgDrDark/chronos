@@ -150,7 +150,7 @@ async def export_contract_pdf(
     elements.append(Paragraph(f"Пробен период: {contract.probation_months or 0} месеца", normal_style))
     
     if contract.base_salary:
-        elements.append(Paragraph(f"Основна заплата: {float(contract.base_salary):.2f} лв.", normal_style))
+        elements.append(Paragraph(f"Основна заплата: {float(contract.base_salary):.2f} €", normal_style))
     
     elements.append(Paragraph(f"Начин на изчисляване: {'Брутно' if contract.salary_calculation_type == 'gross' else 'Нетно'}", normal_style))
     elements.append(Paragraph(f"Ден за плащане: {contract.payment_day or 25}-то число на месеца", normal_style))
@@ -312,7 +312,7 @@ async def export_annex_pdf(
         elements.append(Paragraph(f"<b>Вид промяна:</b> {change_type_label}", normal_style))
 
     if annex.base_salary:
-        elements.append(Paragraph(f"Нова основна заплата: {float(annex.base_salary):.2f} лв.", normal_style))
+        elements.append(Paragraph(f"Нова основна заплата: {float(annex.base_salary):.2f} €", normal_style))
     if annex.work_hours_per_week:
         elements.append(Paragraph(f"Нови работни часове: {annex.work_hours_per_week} часа седмично", normal_style))
     if annex.night_work_rate:

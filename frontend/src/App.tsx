@@ -26,6 +26,7 @@ import RecipesPage from './pages/RecipesPage';
 import MenuPricingPage from './pages/MenuPricingPage';
 import OrdersPage from './pages/OrdersPage';
 import ProductionControlPage from './pages/ProductionControlPage';
+import ProductionKioskPage from './pages/ProductionKioskPage';
 import AccountingPage from './pages/AccountingPage';
 import NotificationsPage from './pages/NotificationsPage';
 import LogisticsPage from './pages/LogisticsPage';
@@ -376,6 +377,14 @@ function App() {
             </AdminRoute>
           }
         />
+        <Route
+          path="/admin/production/kiosk"
+          element={
+            <AdminRoute>
+              <ProductionKioskPage />
+            </AdminRoute>
+          }
+        />
         
         {/* Счетоводство */}
         <Route
@@ -487,6 +496,14 @@ function App() {
           element={
             <AdminRoute>
               <AccountingPage tab="saft" />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/accounting/accounting-entries"
+          element={
+            <AdminRoute>
+              <AccountingPage tab="accounting-entries" />
             </AdminRoute>
           }
         />

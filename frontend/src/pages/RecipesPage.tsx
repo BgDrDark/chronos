@@ -3,8 +3,9 @@ import {
   Container, Typography, Box, Paper, Button, IconButton, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, Grid, Divider, List, ListItem, ListItemText,
   CircularProgress, Tabs, Tab, Table, TableBody, TableCell, TableHead, TableRow, Autocomplete,
-  Tooltip, Select, MenuItem, FormControl, InputLabel, Accordion, AccordionSummary, AccordionDetails
+  Select, MenuItem, FormControl, InputLabel, Accordion, AccordionSummary, AccordionDetails, InputAdornment, Tooltip
 } from '@mui/material';
+import { InfoIcon } from '../components/ui/InfoIcon';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
@@ -50,55 +51,61 @@ const ValidatedTextField: React.FC<ValidatedTextFieldProps> = ({
 }) => {
   const showError = !!error;
   const hasValue = value !== '' && value !== null && value !== undefined;
+
+  const endAdornment = tooltip ? (
+    <InputAdornment position="end">
+      <InfoIcon helpText={tooltip} />
+    </InputAdornment>
+  ) : InputProps?.endAdornment;
   
   return (
-    <Tooltip title={tooltip || ''} arrow placement="top">
-      <TextField
-        label={label}
-        value={value}
-        onChange={(e) => {
-          if (type === 'number') {
-            onChange(e.target.value.replace(/[^0-9.]/g, ''));
-          } else {
-            onChange(e.target.value);
-          }
-        }}
-        placeholder={placeholder}
-        error={showError}
-        helperText={error}
-        required={required}
-        type={type}
-        select={select}
-        size={size}
-        fullWidth={fullWidth}
-        disabled={disabled}
-        multiline={multiline}
-        rows={rows}
-        sx={sx}
-        InputProps={{
-          ...InputProps,
-          sx: {
-            ...InputProps?.sx,
-            '& .MuiOutlinedInput-root': {
-              '&.Mui-error': {
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'error.main',
-                  borderWidth: 2,
-                },
+    <TextField
+      label={label}
+      value={value}
+      onChange={(e) => {
+        if (type === 'number') {
+          onChange(e.target.value.replace(/[^0-9.]/g, ''));
+        } else {
+          onChange(e.target.value);
+        }
+      }}
+      placeholder={placeholder}
+      error={showError}
+      helperText={error}
+      required={required}
+      type={type}
+      select={select}
+      size={size}
+      fullWidth={fullWidth}
+      disabled={disabled}
+      multiline={multiline}
+      rows={rows}
+      sx={sx}
+      slotProps={{
+        input: { endAdornment }
+      }}
+      InputProps={{
+        sx: {
+          ...InputProps?.sx,
+          '& .MuiOutlinedInput-root': {
+            '&.Mui-error': {
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'error.main',
+                borderWidth: 2,
               },
-              ...(hasValue && !showError && {
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'success.main',
-                  borderWidth: 2,
-                },
-              }),
             },
+            ...(hasValue && !showError && {
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'success.main',
+                borderWidth: 2,
+              },
+            }),
           },
-        }}
-      >
-        {children}
-      </TextField>
-    </Tooltip>
+        },
+      }}
+    >
+      {children}
+    </TextField>
   );
 };
 
@@ -300,6 +307,19 @@ const RecipesPage: React.FC = () => {
     alert('Импортът на рецепти ще бъде обновен за новата структура');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  // Delete recipe
+  const handleDeleteRecipe = async (recipe: FullRecipe) => {
+    if (!window.confirm(`Сигурни ли сте, че искате да изтриете рецепта "${recipe.name}"?`)) {
+      return;
+    }
+    try {
+      await deleteRecipe({ variables: { recipeId: recipe.id } });
+      refetch();
+    } catch (err) {
+      alert('Грешка при изтриване: ' + getErrorMessage(err));
     }
   };
 
@@ -672,11 +692,23 @@ const RecipesPage: React.FC = () => {
                         Бр. парчета: {recipe.defaultPieces || 12} | Срок: {recipe.shelfLifeDays} дни
                       </Typography>
                     </Box>
-                    <Tooltip title="Копирай рецептата като основа за нова" arrow>
-                      <IconButton size="small" color="primary" onClick={() => handleCopyRecipe(recipe)}>
-                        <CopyIcon />
-                      </IconButton>
-                    </Tooltip>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <Tooltip title="Редактирай рецептата" arrow>
+                        <IconButton size="small" color="primary" onClick={() => handleEditRecipe(recipe)}>
+                          <EditIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Копирай рецептата като основа за нова" arrow>
+                        <IconButton size="small" color="primary" onClick={() => handleCopyRecipe(recipe)}>
+                          <CopyIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Изтрий рецептата" arrow>
+                        <IconButton size="small" color="error" onClick={() => handleDeleteRecipe(recipe)}>
+                          <DeleteIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </Box>
                   <Divider sx={{ my: 1 }} />
                   <Typography variant="subtitle2">Съставки:</Typography>
@@ -1090,7 +1122,7 @@ const RecipesPage: React.FC = () => {
           <Button color="error" onClick={async () => {
             if (confirm('Сигурни ли сте, че искате да изтриете тази рецепта?')) {
               try {
-                await deleteRecipe({ variables: { id: selectedRecipe!.id } });
+                await deleteRecipe({ variables: { recipeId: selectedRecipe!.id } });
                 setSelectedRecipe(null);
                 refetch();
               } catch (err) {

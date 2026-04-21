@@ -13,7 +13,8 @@ import {
   InputLabel,
   Select,
   Grid,
-  Checkbox
+  Checkbox,
+  InputAdornment
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import { useForm, Controller } from 'react-hook-form';
@@ -21,6 +22,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { gql, useMutation, useQuery } from '@apollo/client';
 import { type User, type Role, type Company, type Department, type Position, type UpdateUserInput } from '../types';
+import { InfoIcon } from './ui/InfoIcon';
+import { userFieldsHelp } from './ui/fieldsHelpText';
 
 // Zod schema for validation
 const updateUserSchema = z.object({
@@ -285,28 +288,142 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
               </Alert>
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Първо име" {...register('firstName')} size="small" />
+              <TextField
+                fullWidth
+                label="Първо име"
+                size="small"
+                {...register('firstName')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.firstName} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Презиме" {...register('surname')} size="small" />
+              <TextField
+                fullWidth
+                label="Презиме"
+                size="small"
+                {...register('surname')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.surname} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Фамилия" {...register('lastName')} size="small" />
+              <TextField
+                fullWidth
+                label="Фамилия"
+                size="small"
+                {...register('lastName')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.lastName} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField fullWidth label="ЕГН" {...register('egn')} size="small" />
+              <TextField
+                fullWidth
+                label="ЕГН"
+                size="small"
+                {...register('egn')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.egn} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField fullWidth label="Телефон" {...register('phoneNumber')} size="small" />
+              <TextField
+                fullWidth
+                label="Телефон"
+                size="small"
+                {...register('phoneNumber')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.phoneNumber} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField fullWidth label="Дата на раждане" type="date" {...register('birthDate')} InputLabelProps={{ shrink: true }} size="small" />
+              <TextField
+                fullWidth
+                label="Дата на раждане"
+                type="date"
+                InputLabelProps={{ shrink: true }}
+                {...register('birthDate')}
+                size="small"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.birthDate} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField fullWidth label="IBAN" {...register('iban')} size="small" />
+              <TextField
+                fullWidth
+                label="IBAN"
+                size="small"
+                {...register('iban')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.iban} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField fullWidth label="Адрес" {...register('address')} size="small" />
+              <TextField
+                fullWidth
+                label="Адрес"
+                size="small"
+                {...register('address')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.address} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
 
             {/* --- СЕКЦИЯ 2: АКАУНТ --- */}
@@ -314,13 +431,57 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
               <Alert severity="info" variant="outlined" icon={false} sx={{ py: 0, fontWeight: 'bold' }}>АКАУНТ И ДОСТЪП</Alert>
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Потребителско име" {...register('username')} size="small" />
+              <TextField
+                fullWidth
+                label="Потребителско име"
+                size="small"
+                {...register('username')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.username} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Имейл" {...register('email')} size="small" />
+              <TextField
+                fullWidth
+                label="Имейл"
+                size="small"
+                {...register('email')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.email} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Нова парола" type="password" {...register('password')} size="small" placeholder="Остави празно" />
+              <TextField
+                fullWidth
+                label="Нова парола"
+                type="password"
+                size="small"
+                {...register('password')}
+                placeholder="Остави празно"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.password} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 8 }}>
               <FormControl fullWidth size="small">
@@ -455,10 +616,40 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 3 }}>
-              <TextField fullWidth label="Номер на договор" {...register('contractNumber')} size="small" />
+              <TextField
+                fullWidth
+                label="Номер на договор"
+                size="small"
+                {...register('contractNumber')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.contractNumber} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 3 }}>
-              <TextField fullWidth label="Ден за плащане" type="number" {...register('paymentDay', { valueAsNumber: true })} size="small" inputProps={{ min: 1, max: 31 }} />
+              <TextField
+                fullWidth
+                label="Ден за плащане"
+                type="number"
+                size="small"
+                {...register('paymentDay', { valueAsNumber: true })}
+                inputProps={{ min: 1, max: 31 }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.paymentDay} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 3 }}>
               <FormControl fullWidth size="small">
@@ -476,27 +667,134 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Основна заплата" type="number" {...register('baseSalary', { valueAsNumber: true })} size="small" />
+              <TextField
+                fullWidth
+                label="Основна заплата"
+                type="number"
+                size="small"
+                {...register('baseSalary', { valueAsNumber: true })}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.baseSalary} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
 
             <Grid size={{ xs: 12, sm: 3 }}>
-              <TextField fullWidth label="Часове/седмица" type="number" {...register('workHoursPerWeek', { valueAsNumber: true })} size="small" />
+              <TextField
+                fullWidth
+                label="Часове/седмица"
+                type="number"
+                size="small"
+                {...register('workHoursPerWeek', { valueAsNumber: true })}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.workHoursPerWeek} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 3 }}>
-              <TextField fullWidth label="Изпитателен срок" type="number" {...register('probationMonths', { valueAsNumber: true })} size="small" />
+              <TextField
+                fullWidth
+                label="Изпитателен срок"
+                type="number"
+                size="small"
+                {...register('probationMonths', { valueAsNumber: true })}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.probationMonths} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField fullWidth label="Старт" type="date" {...register('contractStartDate')} InputLabelProps={{ shrink: true }} size="small" />
+              <TextField
+                fullWidth
+                label="Старт"
+                type="date"
+                InputLabelProps={{ shrink: true }}
+                size="small"
+                {...register('contractStartDate')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.contractStartDate} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField fullWidth label="Край" type="date" {...register('contractEndDate')} InputLabelProps={{ shrink: true }} size="small" />
+              <TextField
+                fullWidth
+                label="Край"
+                type="date"
+                InputLabelProps={{ shrink: true }}
+                size="small"
+                {...register('contractEndDate')}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.contractEndDate} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Брой вноски" type="number" {...register('salaryInstallmentsCount', { valueAsNumber: true })} size="small" />
+              <TextField
+                fullWidth
+                label="Брой вноски"
+                type="number"
+                size="small"
+                {...register('salaryInstallmentsCount', { valueAsNumber: true })}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.salaryInstallmentsCount} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Фиксиран аванс" type="number" {...register('monthlyAdvanceAmount', { valueAsNumber: true })} size="small" />
+              <TextField
+                fullWidth
+                label="Фиксиран аванс"
+                type="number"
+                size="small"
+                {...register('monthlyAdvanceAmount', { valueAsNumber: true })}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.monthlyAdvanceAmount} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -534,16 +832,79 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
               <Alert severity="info" variant="outlined" icon={false} sx={{ py: 0, fontWeight: 'bold' }}>ТРЗ ПАРАМЕТРИ (СТАВКИ)</Alert>
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Нощен труд (множ.)" type="number" inputProps={{ step: 0.1 }} {...register('nightWorkRate', { valueAsNumber: true })} size="small" />
+              <TextField
+                fullWidth
+                label="Нощен труд (множ.)"
+                type="number"
+                inputProps={{ step: 0.1 }}
+                size="small"
+                {...register('nightWorkRate', { valueAsNumber: true })}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.nightWorkRate} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Извънреден (множ.)" type="number" inputProps={{ step: 0.1 }} {...register('overtimeRate', { valueAsNumber: true })} size="small" />
+              <TextField
+                fullWidth
+                label="Извънреден (множ.)"
+                type="number"
+                inputProps={{ step: 0.1 }}
+                size="small"
+                {...register('overtimeRate', { valueAsNumber: true })}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.overtimeRate} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField fullWidth label="Празници (множ.)" type="number" inputProps={{ step: 0.1 }} {...register('holidayRate', { valueAsNumber: true })} size="small" />
+              <TextField
+                fullWidth
+                label="Празници (множ.)"
+                type="number"
+                inputProps={{ step: 0.1 }}
+                size="small"
+                {...register('holidayRate', { valueAsNumber: true })}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.holidayRate} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField fullWidth label="Трудов клас / Категория" {...register('workClass')} size="small" placeholder="Напр. I, II, III" />
+              <TextField
+                fullWidth
+                label="Трудов клас / Категория"
+                size="small"
+                {...register('workClass')}
+                placeholder="Напр. I, II, III"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText={userFieldsHelp.workClass} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>

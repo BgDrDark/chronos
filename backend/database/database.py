@@ -1,17 +1,12 @@
 import asyncio
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-try:
-    from backend.config import settings
-    from backend.database.session_proxy import LockedSession
-except ImportError:
-    from config import settings
-    from database.session_proxy import LockedSession
+from backend.config import settings
+from backend.database.session_proxy import LockedSession
 
 # Use create_async_engine for async operations
 engine = create_async_engine(str(settings.DATABASE_URL))

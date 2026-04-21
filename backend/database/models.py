@@ -1,13 +1,11 @@
 import datetime
 import enum
-import numbers
 import sys
 import os
 from decimal import Decimal
 from typing import Optional, List
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
-
+from backend.utils.json_type import JSONScalar
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from zoneinfo import ZoneInfo
 from sqlalchemy import (
     Column,
@@ -27,10 +25,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship, declarative_base, Mapped, mapped_column
 
-try:
-    from backend.config import settings
-except ImportError:
-    from config import settings
+from backend.config import settings
+
 
 Base = declarative_base()
 
@@ -233,8 +229,8 @@ class Gateway(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_online: Mapped[bool] = mapped_column(Boolean, default=True)
     system_mode: Mapped[str] = mapped_column(String(30), default="normal") # normal, emergency_unlock, lockdown
-    last_heartbeat: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
-    registered_at: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
+    last_heartbeat: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    registered_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=True)
 
     company = relationship("Company")
@@ -255,7 +251,7 @@ class Terminal(Base):
     os_version: Mapped[str] = mapped_column(String(50), nullable=True)
     gateway_id: Mapped[int] = mapped_column(Integer, ForeignKey("gateways.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_seen: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
+    last_seen: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
     total_scans: Mapped[int] = mapped_column(Integer, default=0)
     alias: Mapped[str] = mapped_column(String(100), nullable=True)
 
@@ -263,7 +259,7 @@ class Terminal(Base):
     
  
     # Terminal mode: "clock" (Clock In/Out), "access" (Достъп), "both" (Комбиниран)
-    mode = Column(String(20), default="both")
+    mode: Mapped[str] = mapped_column(String(20), default="both")
 
 
 class Printer(Base):
@@ -282,7 +278,7 @@ class Printer(Base):
     gateway_id: Mapped[int] = mapped_column(Integer, ForeignKey("gateways.id"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
-    last_test: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
+    last_test: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
     last_error: Mapped[str] = mapped_column(Text, nullable=True)
 
     gateway = relationship("Gateway", back_populates="printers")
@@ -294,7 +290,7 @@ class GatewayHeartbeat(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     gateway_id: Mapped[int] = mapped_column(Integer, ForeignKey("gateways.id"))
-    timestamp: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
+    timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     status: Mapped[str] = mapped_column(String(20))  # "online", "offline"
     cpu_usage = Column(Float, nullable=True)
     memory_usage = Column(Float, nullable=True)
@@ -310,8 +306,8 @@ class TerminalSession(Base):
     terminal_id: Mapped[str] = mapped_column(String(100))  # Hardware UUID на терминала
     employee_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
     workstation_id: Mapped[int] = mapped_column(Integer, ForeignKey("workstations.id"))
-    started_at: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
-    ended_at: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    ended_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
     gateway_id: Mapped[int] = mapped_column(Integer, ForeignKey("gateways.id"), nullable=True)
 
     employee = relationship("User")
@@ -893,10 +889,10 @@ class Ingredient(Base):
     # Type: raw (суровина), semi_finished (заготовка), finished (готов продукт)
     product_type: Mapped[str] = mapped_column(String(20), default="raw")
     # Stock levels
-    baseline_min_stock: Mapped[float] = mapped_column(Numeric(12, 3), default=0)
-    current_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True) # Last purchase price
+    baseline_min_stock: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=0)
+    current_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=True) # Last purchase price
     # Auto-reorder fields
-    min_quantity: Mapped[float] = mapped_column(Numeric(12, 3), nullable=True)
+    min_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=True)
     reorder_quantity: Mapped[float] = mapped_column(Numeric(12, 3), nullable=True)
     is_auto_reorder: Mapped[bool] = mapped_column(Boolean, default=False)
     preferred_supplier_id: Mapped[int] = mapped_column(Integer, ForeignKey("suppliers.id"), nullable=True)
@@ -917,7 +913,7 @@ class Batch(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     ingredient_id: Mapped[int] = mapped_column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=False)
     batch_number: Mapped[str] = mapped_column(String(100), index=True)
-    quantity: Mapped[float] = mapped_column(Numeric(12, 3), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     unit_value: Mapped[float] = mapped_column(Numeric(12, 3), nullable=True) # e.g., 1.0 for 1L if unit is 'br'
     production_date: Mapped[datetime.date] = mapped_column(Date, nullable=True)
     expiry_date: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
@@ -1009,10 +1005,12 @@ class RecipeIngredient(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     section_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("recipe_sections.id", ondelete="CASCADE"), nullable=True)
-    recipe_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=True)  # За съвместимost
+    recipe_id: Mapped[int] = mapped_column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=True)  # За съвместимost
     ingredient_id: Mapped[int] = mapped_column(Integer, ForeignKey("ingredients.id"), nullable=False)
     workstation_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("workstations.id"), nullable=True) # За коя станция е продукта
     quantity_gross: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False) # amount taken from stock
+    quantity_net: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=0.0)
+    waste_percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0.0)
 
     section = relationship("RecipeSection", back_populates="ingredients")
     recipe_legacy = relationship("Recipe", back_populates="ingredients", foreign_keys=[recipe_id])
@@ -1022,7 +1020,7 @@ class RecipeIngredient(Base):
 class Workstation(Base):
     __tablename__ = "workstations"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
@@ -1050,15 +1048,15 @@ class ProductionOrder(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     recipe_id: Mapped[int] = mapped_column(Integer, ForeignKey("recipes.id"), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    due_date: Mapped[DateTime] = mapped_column(DateTime, nullable=False)
+    due_date: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="pending")
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
-    completed_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    completed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
     completed_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
-    confirmed_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
+    confirmed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
     confirmed_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
-    production_deadline: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
+    production_deadline: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
     created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
 
@@ -1080,8 +1078,8 @@ class ProductionTask(Base):
     status: Mapped[str] = mapped_column(String(50), default="pending")
     is_scrap: Mapped[bool] = mapped_column(Boolean, default=False)
     scrap_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True) # Value + 26% 
-    started_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
     assigned_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     
     order = relationship("ProductionOrder", back_populates="tasks")
@@ -1099,7 +1097,7 @@ class ProductionScrapLog(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     
     task = relationship("ProductionTask")
     user = relationship("User")
@@ -1120,9 +1118,9 @@ class PriceHistory(Base):
     old_premium: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     new_premium: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     changed_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    changed_at: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
-    reason = Column(String(255))
-    
+    changed_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     recipe = relationship("Recipe")
     user = relationship("User")
 
@@ -1134,10 +1132,10 @@ class ProductionRecord(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     order_id: Mapped[int] = mapped_column(Integer, ForeignKey("production_orders.id", ondelete="CASCADE"), nullable=False)
     confirmed_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
-    confirmed_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, default=sofia_now)
-    expiry_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)  # Изчислена дата на годност (от рецептата)
+    confirmed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, default=sofia_now)
+    expiry_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)  # Изчислена дата на годност (от рецептата)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     order = relationship("ProductionOrder")
     confirmer = relationship("User")
@@ -1153,7 +1151,7 @@ class ProductionRecordIngredient(Base):
     record_id: Mapped[int] = mapped_column(Integer, ForeignKey("production_records.id", ondelete="CASCADE"), nullable=False)
     ingredient_id: Mapped[int] = mapped_column(Integer, ForeignKey("ingredients.id"), nullable=False)
     batch_number: Mapped[str] = mapped_column(String(100), nullable=False)
-    expiry_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    expiry_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     quantity_used: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     unit: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
@@ -1170,8 +1168,8 @@ class ProductionRecordWorker(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     workstation_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("workstations.id"), nullable=True)
     task_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("production_tasks.id"), nullable=True)
-    started_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
 
     record = relationship("ProductionRecord", back_populates="workers")
     user = relationship("User")
@@ -1186,8 +1184,8 @@ class InventorySession(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     started_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
-    started_at: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
-    completed_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    completed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active, completed
     protocol_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -1207,7 +1205,7 @@ class InventoryItem(Base):
     found_quantity: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 3), nullable=True)  # Намерено количество
     system_quantity: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 3), nullable=True)  # Количество по система
     difference: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 3), nullable=True)  # Разлика
-    adjusted: Mapped[Boolean] = mapped_column(Boolean, default=False)
+    adjusted: Mapped[bool] = mapped_column(Boolean, default=False)
 
     session = relationship("InventorySession", back_populates="items")
     ingredient = relationship("Ingredient")
@@ -1220,10 +1218,10 @@ class AdvancePayment(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    payment_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    payment_date: Mapped[datetime.date] = mapped_column(DateTime, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    is_processed: Mapped[Boolean] = mapped_column(Boolean, default=False)
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=sofia_now)
+    is_processed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     user = relationship("User")
 
@@ -1238,9 +1236,9 @@ class ServiceLoan(Base):
     remaining_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     installments_count: Mapped[int] = mapped_column (Integer, nullable=False) 
     installments_paid: Mapped[int] = mapped_column(Integer, default=0) 
-    start_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    start_date: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
     description: Mapped[str] = mapped_column(String(255), nullable=True)
-    is_active: Mapped[Boolean] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     user = relationship("User")
@@ -1649,7 +1647,7 @@ class ClauseTemplate(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
-    is_active: Mapped[Optional[bool]] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
     
@@ -2100,6 +2098,7 @@ class InvoiceCorrection(Base):
     
     original_invoice = relationship("Invoice", foreign_keys=[original_invoice_id])
     new_invoice = relationship("Invoice", foreign_keys=[new_invoice_id])
+    accounting_entries: Mapped[List["AccountingEntry"]] = relationship("AccountingEntry", back_populates="correction")
 
 
 class CashReceipt(Base):
@@ -2111,9 +2110,9 @@ class CashReceipt(Base):
     payment_type: Mapped[str] = mapped_column(String(20), default="cash")  # 'cash', 'card'
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     vat_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
-    items_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    items_json: Mapped[str] = mapped_column(JSON, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
-    company_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     
@@ -2190,15 +2189,18 @@ class AccountingEntry(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     vat_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     invoice_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("invoices.id"), nullable=True)
+    correction_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("invoice_corrections.id"), nullable=True)
     bank_transaction_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("bank_transactions.id"), nullable=True)
     cash_journal_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("cash_journal_entries.id"), nullable=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    is_reversal: Mapped[bool] = mapped_column(Boolean, default=False)
     
     debit_account = relationship("Account", foreign_keys=[debit_account_id], back_populates="debit_entries")
     credit_account = relationship("Account", foreign_keys=[credit_account_id], back_populates="credit_entries")
     invoice = relationship("Invoice", backref="accounting_entries")
+    correction = relationship("InvoiceCorrection", back_populates="accounting_entries")
     company = relationship("Company", backref="accounting_entries")
     creator = relationship("User", foreign_keys=[created_by])
 
@@ -2261,7 +2263,7 @@ class AccessDoor(Base):
     terminal_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Hardware UUID of associated terminal
     terminal_mode: Mapped[str] = mapped_column(String(20), default="access") # "clock", "access", "both"    
     description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    is_active: Mapped[Optional[bool]] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
     last_check: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
     
@@ -2318,7 +2320,7 @@ class RequestTemplate(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    items: Mapped[list] = mapped_column(JSON, default=[])
+    items: Mapped[JSONScalar] = mapped_column(JSON, default=[])
     default_department_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("departments.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
@@ -2355,11 +2357,11 @@ class PurchaseRequest(Base):
     status: Mapped[str] = mapped_column(String(20), default=PurchaseRequestStatus.DRAFT.value)
     priority: Mapped[str] = mapped_column(String(20), default=PurchaseRequestPriority.MEDIUM.value)
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    due_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    due_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     approved_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     approved_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
     is_auto: Mapped[bool] = mapped_column(Boolean, default=False)
-    notes: Mapped[Optional[Text]] = mapped_column(Text, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
@@ -2593,8 +2595,8 @@ class VehicleDocument(Base):
     document_type: Mapped[str] = mapped_column(String(20), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     file_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    issue_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
-    expiry_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    issue_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
+    expiry_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
@@ -2612,7 +2614,7 @@ class VehicleFuelCard(Base):
     pin: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     limit: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    expiry_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    expiry_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     vehicle = relationship("Vehicle", back_populates="fuel_cards")
@@ -2632,9 +2634,9 @@ class VehicleVignette(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     vehicle_id: Mapped[int] = mapped_column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
     vignette_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    purchase_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
-    valid_from: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
-    valid_until: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    purchase_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
+    valid_from: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
+    valid_until: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     provider: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     document_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -2671,7 +2673,7 @@ class VehicleMileage(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     vehicle_id: Mapped[int] = mapped_column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
-    date: Mapped[Date] = mapped_column(Date, nullable=False)
+    date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     mileage: Mapped[int] = mapped_column(Integer, nullable=False)
     source: Mapped[str] = mapped_column(String(20), default=MileageSource.MANUAL.value)
     notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -2718,7 +2720,7 @@ class VehicleRepair(Base):
     repair_date: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
     repair_type: Mapped[str] = mapped_column(String(20), default=RepairType.UNSCHEDULED.value)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    parts: Mapped[list] = mapped_column(JSON, default=[])
+    parts: Mapped[JSONScalar] = mapped_column(JSON, default=[])
     labor_hours: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
     labor_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     parts_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
@@ -2767,9 +2769,9 @@ class VehicleSchedule(Base):
     schedule_type: Mapped[str] = mapped_column(String(20), nullable=False)
     interval_km: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     interval_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    last_service_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    last_service_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     last_service_km: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    next_service_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    next_service_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     next_service_km: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     vehicle_service_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("vehicle_services.id"), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -2801,8 +2803,8 @@ class VehicleInsurance(Base):
     insurance_type: Mapped[str] = mapped_column(String(20), nullable=False)
     policy_number: Mapped[str] = mapped_column(String(50), nullable=False)
     insurance_company: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    start_date: Mapped[Date] = mapped_column(Date, nullable=False)
-    end_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    start_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     premium: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     coverage_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     payment_type: Mapped[str] = mapped_column(String(20), default=PaymentType.ANNUAL.value)
@@ -2825,13 +2827,13 @@ class VehicleInspection(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     vehicle_id: Mapped[int] = mapped_column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
-    inspection_date: Mapped[Date] = mapped_column(Date, nullable=False)
-    valid_until: Mapped[Date] = mapped_column(Date, nullable=False)
+    inspection_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    valid_until: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     result: Mapped[str] = mapped_column(String(20), default=InspectionResult.PENDING.value)
     mileage: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     inspector: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     certificate_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    next_inspection_date: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    next_inspection_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
@@ -2873,7 +2875,7 @@ class VehiclePreTripInspection(Base):
     warning_triangle: Mapped[Optional[bool]] = mapped_column(Boolean, default=False)
     overall_status: Mapped[str] = mapped_column(String(20), default=PreTripStatus.FAILED.value)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    photos: Mapped[Optional[list]] = mapped_column(JSON, default=[])
+    photos: Mapped[Optional[JSONScalar]] = mapped_column(JSON, default=[])
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
     vehicle = relationship("Vehicle", back_populates="pretrip_inspections")
@@ -2887,8 +2889,8 @@ class VehicleDriver(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     vehicle_id: Mapped[int] = mapped_column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    assigned_from: Mapped[Date] = mapped_column(Date, nullable=False)
-    assigned_to: Mapped[Optional[Date]] = mapped_column(Date, nullable=True)
+    assigned_from: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    assigned_to: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
 
@@ -2938,7 +2940,7 @@ class VehicleExpense(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     vehicle_id: Mapped[int] = mapped_column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
     expense_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    expense_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    expense_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     vat_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)

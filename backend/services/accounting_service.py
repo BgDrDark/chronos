@@ -224,3 +224,118 @@ class AccountingService:
         count = result.scalar() or 0
         
         return f"{prefix}-{count + 1:04d}"
+
+    async def create_correction_entries(
+        self,
+        correction,
+        invoice: Invoice,
+        company: Company,
+        created_by: Optional[User] = None
+    ) -> List[AccountingEntry]:
+        """
+        Създава обратни счетоводни записи при корекция на фактура.
+        
+        При кредитно известие (credit):
+            - Обръщаме посоката на записите от оригиналната фактура
+            - Ако оригиналът е продажба: Дт: 701 / Кт: 411
+            - Ако оригиналът е покупка: Дт: 401 / Кт: 601
+            
+        При дебитно известие (debit):
+            - Записваме отново като положителна сума
+            
+        Args:
+            correction: Корекцията (InvoiceCorrection)
+            invoice: Оригиналната фактура
+            company: Фирмата
+            created_by: Потребителят
+            
+        Returns:
+            List[AccountingEntry]: Списък с обратни счетоводни записи
+        """
+        from backend.database.models import InvoiceCorrection
+        
+        entries = []
+        correction_date = correction.correction_date if hasattr(correction, 'correction_date') else date.today()
+        
+        sales_account = company.default_sales_account_id
+        expense_account = company.default_expense_account_id
+        vat_account = company.default_vat_account_id
+        customer_account = company.default_customer_account_id
+        supplier_account = company.default_supplier_account_id
+        
+        amount_diff = float(correction.amount_diff) if correction.amount_diff else 0
+        vat_diff = float(correction.vat_diff) if correction.vat_diff else 0
+        
+        if invoice.type == 'outgoing':
+            if not sales_account or not customer_account:
+                return entries
+            
+            if amount_diff != 0:
+                entries.append(AccountingEntry(
+                    date=correction_date,
+                    entry_number=f"REV-{correction.number}",
+                    description=f"Обратен запис - Корекция {correction.number}",
+                    debit_account_id=sales_account,
+                    credit_account_id=customer_account,
+                    amount=abs(amount_diff),
+                    vat_amount=0,
+                    invoice_id=invoice.id,
+                    correction_id=correction.id,
+                    company_id=company.id,
+                    created_by=created_by.id if created_by else None,
+                    is_reversal=True
+                ))
+            
+            if vat_diff != 0:
+                entries.append(AccountingEntry(
+                    date=correction_date,
+                    entry_number=f"REV-{correction.number}-VAT",
+                    description=f"Обратен ДДС - Корекция {correction.number}",
+                    debit_account_id=vat_account,
+                    credit_account_id=customer_account,
+                    amount=abs(vat_diff),
+                    vat_amount=0,
+                    invoice_id=invoice.id,
+                    correction_id=correction.id,
+                    company_id=company.id,
+                    created_by=created_by.id if created_by else None,
+                    is_reversal=True
+                ))
+                
+        elif invoice.type == 'incoming':
+            if not expense_account or not supplier_account:
+                return entries
+            
+            if amount_diff != 0:
+                entries.append(AccountingEntry(
+                    date=correction_date,
+                    entry_number=f"REV-{correction.number}",
+                    description=f"Обратен запис - Корекция {correction.number}",
+                    debit_account_id=supplier_account,
+                    credit_account_id=expense_account,
+                    amount=abs(amount_diff),
+                    vat_amount=0,
+                    invoice_id=invoice.id,
+                    correction_id=correction.id,
+                    company_id=company.id,
+                    created_by=created_by.id if created_by else None,
+                    is_reversal=True
+                ))
+            
+            if vat_diff != 0:
+                entries.append(AccountingEntry(
+                    date=correction_date,
+                    entry_number=f"REV-{correction.number}-VAT",
+                    description=f"Обратен ДДС - Корекция {correction.number}",
+                    debit_account_id=supplier_account,
+                    credit_account_id=vat_account,
+                    amount=abs(vat_diff),
+                    vat_amount=0,
+                    invoice_id=invoice.id,
+                    correction_id=correction.id,
+                    company_id=company.id,
+                    created_by=created_by.id if created_by else None,
+                    is_reversal=True
+                ))
+        
+        return entries

@@ -68,6 +68,10 @@ class GatewayService:
         async def try_register(base_url: str) -> bool:
             url = f"{base_url}/gateways/register"
             
+            if not base_url:
+                logger.warning("Could not register with backend: Empty backend_url")
+                return False
+            
             data = {
                 "hardware_uuid": config.hardware_uuid,
                 "ip_address": self.get_local_ip(),
@@ -108,9 +112,13 @@ class GatewayService:
                                     config.set("backend.api_key", api_key)
                                 logger.info(f"Gateway already registered. Found ID: {gateway_id}")
                                 return True
-                        logger.warning(f"Registration failed: {response.status}")
+                        logger.warning(f"Registration failed: HTTP {response.status} (URL: {url})")
+            except asyncio.TimeoutError:
+                logger.warning(f"Could not register with backend: Timeout after 10s (URL: {url})")
+            except aiohttp.ClientConnectorError as e:
+                logger.warning(f"Could not register with backend: Connection failed (URL: {url}) - {type(e).__name__}: {e}")
             except Exception as e:
-                logger.warning(f"Could not register with backend {base_url}: {e}")
+                logger.warning(f"Could not register with backend: {type(e).__name__}: {e} (URL: {url})", exc_info=True)
             return False
         
         if await try_register(config.backend_url):
@@ -216,6 +224,17 @@ class GatewayService:
 
         async def try_sync(base_url: str) -> bool:
             url = f"{base_url}/gateways/{config.gateway_id}/config"
+            
+            if not base_url:
+                logger.error(f"Error syncing config: Empty base_url (Gateway ID: {config.gateway_id})")
+                return False
+            
+            if not config.api_key:
+                logger.warning(f"Error syncing config: No API key configured (Gateway ID: {config.gateway_id})")
+                return False
+            
+            logger.info(f"Syncing config: {url} (Gateway ID: {config.gateway_id})")
+            
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
@@ -235,10 +254,18 @@ class GatewayService:
                                 zone_manager.load_from_config(zones, doors)
                                 logger.info(f"Synced configuration from backend: {len(zones)} zones, {len(doors)} doors")
                             return True
+                        elif response.status == 401:
+                            logger.error(f"Config sync failed: Unauthorized (Gateway ID: {config.gateway_id}) - check API key")
+                        elif response.status == 404:
+                            logger.error(f"Config sync failed: Gateway not found (Gateway ID: {config.gateway_id})")
                         else:
-                            logger.warning(f"Config sync failed: {response.status}")
+                            logger.warning(f"Config sync failed: HTTP {response.status} (Gateway ID: {config.gateway_id})")
+            except asyncio.TimeoutError:
+                logger.error(f"Error syncing config: Timeout after 10s (URL: {url})")
+            except aiohttp.ClientConnectorError as e:
+                logger.error(f"Error syncing config: Connection failed (URL: {url}) - {type(e).__name__}: {e}")
             except Exception as e:
-                logger.error(f"Error syncing config: {e}")
+                logger.error(f"Error syncing config: {type(e).__name__}: {e} (URL: {url})", exc_info=True)
             return False
 
         while self._running:

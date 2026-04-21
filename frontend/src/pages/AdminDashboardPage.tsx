@@ -189,7 +189,7 @@ const AdminClockDialog: React.FC<{
                 <FormControlLabel control={<Switch checked={useNow} onChange={(e) => setUseNow(e.target.checked)} />} label="Сега" sx={{ mb: 2 }} />
                 {!useNow && <TextField label="Час" type="time" value={customTime} onChange={(e) => setCustomTime(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />}
             </DialogContent>
-            <DialogActions><Button onClick={onClose}>Отказ</Button><Button onClick={handleConfirm} variant="contained" color={mode === 'IN' ? 'success' : 'error'}>{mode === 'IN' ? 'Старт' : 'Стоп'}</Button></DialogActions>
+            <DialogActions><Button onClick={onClose}>Отказ</Button><Button onClick={() => { console.log('Confirm clicked, useNow=', useNow, 'customTime=', customTime); onConfirm(useNow ? null : new Date(`${targetDate}T${customTime}`).toISOString()); onClose(); }} variant="contained" color={mode === 'IN' ? 'success' : 'error'}>{mode === 'IN' ? 'Старт' : 'Стоп'}</Button></DialogActions>
         </Dialog>
     );
 };
@@ -226,22 +226,85 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
     fetchPolicy: 'network-only',
   });
 
-  const [adminClockIn] = useMutation(ADMIN_CLOCK_IN);
-  const [adminClockOut] = useMutation(ADMIN_CLOCK_OUT);
+  const [adminClockIn] = useMutation(ADMIN_CLOCK_IN, {
+    update(cache, { data }) {
+      if (!data?.adminClockIn) return;
+      const currentDate = format(new Date(), 'yyyy-MM-dd');
+      const variables = { date: currentDate, status: statusFilter === 'ALL' ? null : statusFilter };
+      const existingData = cache.readQuery<any>({ query: GET_USER_PRESENCES, variables });
+      if (!existingData?.userPresences) return;
+      
+      const newData = {
+        ...existingData,
+        userPresences: existingData.userPresences.map((p: any) => {
+          if (p.user.id === actionUserId) {
+            return {
+              ...p,
+              status: 'ON_DUTY',
+              isOnDuty: true,
+              actualArrival: data.adminClockIn.startTime,
+              actualDeparture: null
+            };
+          }
+          return p;
+        })
+      };
+      cache.writeQuery({ query: GET_USER_PRESENCES, variables, data: newData });
+    }
+  });
+  const [adminClockOut] = useMutation(ADMIN_CLOCK_OUT, {
+    update(cache, { data }) {
+      if (!data?.adminClockOut) return;
+      const currentDate = format(new Date(), 'yyyy-MM-dd');
+      const variables = { date: currentDate, status: statusFilter === 'ALL' ? null : statusFilter };
+      const existingData = cache.readQuery<any>({ query: GET_USER_PRESENCES, variables });
+      if (!existingData?.userPresences) return;
+      
+      const newData = {
+        ...existingData,
+        userPresences: existingData.userPresences.map((p: any) => {
+          if (p.user.id === actionUserId) {
+            return {
+              ...p,
+              status: 'OFF_DUTY',
+              isOnDuty: false,
+              actualDeparture: data.adminClockOut.endTime
+            };
+          }
+          return p;
+        })
+      };
+      cache.writeQuery({ query: GET_USER_PRESENCES, variables, data: newData });
+    }
+  });
 
   const handleOpenClockDialog = (e: React.MouseEvent, userId: number, userName: string, mode: 'IN' | 'OUT') => {
-      e.stopPropagation(); setActionUserId(userId); setSelectedUserName(userName); setClockDialogMode(mode); setClockDialogOpen(true);
+      if (e) {
+          e.stopPropagation();
+          e.preventDefault();
+      }
+      setActionUserId(userId); setSelectedUserName(userName); setClockDialogMode(mode); setClockDialogOpen(true);
   };
 
   const handleClockAction = async (customTime: string | null) => {
-      if (!actionUserId) return;
+      if (!actionUserId) {
+          alert('Грешка: няма избран потребител');
+          return;
+      }
       try {
-          if (clockDialogMode === 'IN') await adminClockIn({ variables: { userId: actionUserId, customTime } });
-          else await adminClockOut({ variables: { userId: actionUserId, customTime } });
-          refetch();
+          if (clockDialogMode === 'IN') {
+              await adminClockIn({ variables: { userId: actionUserId, customTime } });
+          } else {
+              await adminClockOut({ variables: { userId: actionUserId, customTime } });
+          }
+          setClockDialogOpen(false);
       } catch (err: unknown) {
-        const error = err as { message?: string };
-        alert(error.message || 'Грешка');
+        const error = err as { message?: string; graphQLErrors?: Array<{ message?: string }> };
+        if (error.graphQLErrors?.length) {
+            alert(error.graphQLErrors[0].message || 'Грешка');
+        } else {
+            alert(error.message || 'Грешка');
+        }
       }
   };
 
@@ -308,8 +371,32 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
                         <TableCell align="center">{getStatusChip(presence.status)}</TableCell>
                         <TableCell align="center">
                             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                                <IconButton size="small" color="success" onClick={(e) => handleOpenClockDialog(e, presence.user.id, `${presence.user.firstName} ${presence.user.lastName}`, 'IN')} disabled={presence.status === 'ON_DUTY'}><PlayArrowIcon fontSize="small" /></IconButton>
-                                <IconButton size="small" color="error" onClick={(e) => handleOpenClockDialog(e, presence.user.id, `${presence.user.firstName} ${presence.user.lastName}`, 'OUT')} disabled={presence.status !== 'ON_DUTY'}><StopIcon fontSize="small" /></IconButton>
+                                <Button 
+                                    size="small" 
+                                    variant="contained" 
+                                    color="success" 
+                                    startIcon={<PlayArrowIcon />}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenClockDialog(e, presence.user.id, `${presence.user.firstName} ${presence.user.lastName}`, 'IN');
+                                    }}
+                                    disabled={presence.status === 'ON_DUTY'}
+                                >
+                                    СТАРТ
+                                </Button>
+                                <Button 
+                                    size="small" 
+                                    variant="contained" 
+                                    color="error" 
+                                    startIcon={<StopIcon />}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenClockDialog(e, presence.user.id, `${presence.user.firstName} ${presence.user.lastName}`, 'OUT');
+                                    }}
+                                    disabled={presence.status !== 'ON_DUTY'}
+                                >
+                                    СТОП
+                                </Button>
                             </Box>
                         </TableCell>
                         </TableRow>

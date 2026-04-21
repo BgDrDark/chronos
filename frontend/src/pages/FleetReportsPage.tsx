@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useCurrency, formatCurrencyValue } from '../currencyContext';
 import {
   Box,
   Typography,
@@ -20,6 +21,7 @@ import {
   CardContent,
   Chip,
   Alert,
+  InputAdornment,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -31,6 +33,7 @@ import {
   Security as InsuranceIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { InfoIcon } from '../components/ui/InfoIcon';
 
 interface ReportData {
   id: string;
@@ -43,6 +46,7 @@ interface ReportData {
 
 const FleetReportsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { currency } = useCurrency();
   const [reportType, setReportType] = useState('expenses');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -109,6 +113,15 @@ const FleetReportsPage: React.FC = () => {
               InputLabelProps={{ shrink: true }}
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <InfoIcon helpText="Начална дата за справката" />
+                    </InputAdornment>
+                  )
+                }
+              }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 2 }}>
@@ -119,6 +132,15 @@ const FleetReportsPage: React.FC = () => {
               InputLabelProps={{ shrink: true }}
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <InfoIcon helpText="Крайна дата за справката" />
+                    </InputAdornment>
+                  )
+                }
+              }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -157,7 +179,7 @@ const FleetReportsPage: React.FC = () => {
           <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom>Обща сума</Typography>
-              <Typography variant="h4" color="primary.main">{totalAmount} лв</Typography>
+              <Typography variant="h4" color="primary.main">{formatCurrencyValue(totalAmount, currency)}</Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -232,12 +254,12 @@ const FleetReportsPage: React.FC = () => {
                   />
                 </TableCell>
                 <TableCell>{row.details}</TableCell>
-                <TableCell align="right">{row.amount} лв</TableCell>
+                <TableCell align="right">{formatCurrencyValue(row.amount, currency)}</TableCell>
               </TableRow>
             ))}
             <TableRow sx={{ fontWeight: 'bold' }}>
               <TableCell colSpan={4} align="right">Общо:</TableCell>
-              <TableCell align="right">{totalAmount} лв</TableCell>
+              <TableCell align="right">{formatCurrencyValue(totalAmount, currency)}</TableCell>
             </TableRow>
           </TableBody>
         </Table>

@@ -1,20 +1,25 @@
 from datetime import datetime, timezone, date, timedelta
 from zoneinfo import ZoneInfo
+import os, sys
 from typing import Optional, List, Any
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, or_, func, desc, asc, update
+from sqlalchemy import Date, select, delete, or_, func, desc, asc, update
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
-
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from backend.utils.security import sanitize_html
 from backend import schemas
-
 from backend.config import settings
 from backend.database.models import User, Role, TimeLog, Payroll, Payslip, Shift, WorkSchedule, GlobalSetting, \
     LeaveRequest, LeaveBalance, sofia_now, AuthKey, UserSession, AuditLog, ShiftSwapRequest, ScheduleTemplate, \
     ScheduleTemplateItem, PushSubscription, Webhook, APIKey, EmploymentContract, AdvancePayment, ServiceLoan
 from backend.database.transaction_manager import atomic_transaction, with_row_lock, TransactionError
+from backend.services.payroll_calculator import PayrollCalculator
+
+# Re-export for mutations compatibility
+from backend.database.models import Payslip
+from backend.database.models import sofia_now
 
 
 # ... (rest of imports)
@@ -407,15 +412,17 @@ async def get_shifts(db: AsyncSession):
     return result.scalars().all()
 
 
-async def create_shift(db: AsyncSession, name: str, start_time: datetime.time, end_time: datetime.time, # type: ignore
-                       tolerance_minutes: int = 15, break_duration_minutes: int = 0, pay_multiplier: float = 1.0):
+async def create_shift(db: AsyncSession, name: str, start_time: datetime.time, end_time: datetime.time,
+                        tolerance_minutes: int = 15, break_duration_minutes: int = 0, pay_multiplier: float = 1.0,
+                        shift_type: str = "regular"):
     db_shift = Shift(
         name=name,
         start_time=start_time,
         end_time=end_time,
         tolerance_minutes=tolerance_minutes,
         break_duration_minutes=break_duration_minutes,
-        pay_multiplier=pay_multiplier
+        pay_multiplier=pay_multiplier,
+        shift_type=shift_type
     )
     db.add(db_shift)
     await db.commit()
@@ -423,12 +430,13 @@ async def create_shift(db: AsyncSession, name: str, start_time: datetime.time, e
     return db_shift
 
 
-async def update_shift(db: AsyncSession, shift_id: int, name: str = None, start_time: datetime.time = None,
-                       end_time: datetime.time = None, tolerance_minutes: int = None, # type: ignore
-                       break_duration_minutes: int = None, pay_multiplier: float = None):
+async def update_shift(db: AsyncSession, shift_id: int, name: Optional[str] = None, start_time: Optional[datetime.time] = None,
+                        end_time: Optional[datetime.time] = None, tolerance_minutes: Optional[int] = None,
+                        break_duration_minutes: Optional[int] = None, pay_multiplier: Optional[Decimal] = None,
+                        shift_type: Optional[str] = None):
     db_shift = await get_shift_by_id(db, shift_id)
     if not db_shift:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found")
+        raise HTTPException(status_code=404, detail="Shift not found")
 
     if name: db_shift.name = name
     if start_time: db_shift.start_time = start_time
@@ -436,11 +444,11 @@ async def update_shift(db: AsyncSession, shift_id: int, name: str = None, start_
     if tolerance_minutes is not None: db_shift.tolerance_minutes = tolerance_minutes
     if break_duration_minutes is not None: db_shift.break_duration_minutes = break_duration_minutes
     if pay_multiplier is not None: db_shift.pay_multiplier = pay_multiplier
+    if shift_type: db_shift.shift_type = shift_type
 
     await db.commit()
     await db.refresh(db_shift)
     return db_shift
-
 
 async def delete_shift(db: AsyncSession, shift_id: int, admin_user_id: Optional[int] = None):
     db_shift = await get_shift_by_id(db, shift_id)
@@ -813,12 +821,37 @@ async def get_role_by_name(db: AsyncSession, role_name: str):
     return result.scalars().first()
 
 
-async def create_role(db: AsyncSession, role: RoleCreate):
+async def create_role(db: AsyncSession, role: schemas.RoleCreate):
     db_role = Role(name=role.name, description=role.description)
     db.add(db_role)
     await db.commit()
     await db.refresh(db_role)
     return db_role
+
+
+async def update_role(db: AsyncSession, role_id: int, name: Optional[str] = None, description: Optional[str] = None):
+    db_role = await get_role_by_id(db, role_id)
+    if not db_role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    
+    if name is not None:
+        db_role.name = name
+    if description is not None:
+        db_role.description = description
+        
+    await db.commit()
+    await db.refresh(db_role)
+    return db_role
+
+
+async def delete_role(db: AsyncSession, role_id: int):
+    db_role = await get_role_by_id(db, role_id)
+    if not db_role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    
+    await db.delete(db_role)
+    await db.commit()
+    return True
 
 
 async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100, search: Optional[str] = None,
@@ -1193,8 +1226,8 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     return r * c
 
 
-async def start_time_log(db: AsyncSession, user_id: int, latitude: float = None, longitude: float = None,
-                         custom_time: datetime = None):
+async def start_time_log(db: AsyncSession, user_id: int, latitude: Optional[float] = None, longitude: Optional[float] = None,
+                         custom_time: Optional[datetime] = None):
     from datetime import timedelta, datetime
 
     async with atomic_transaction(db) as tx:
@@ -1319,8 +1352,8 @@ async def start_time_log(db: AsyncSession, user_id: int, latitude: float = None,
         return db_log
 
 
-async def end_time_log(db: AsyncSession, user_id: int, latitude: float = None, longitude: float = None,
-                       custom_time: datetime = None, notes: str = None):
+async def end_time_log(db: AsyncSession, user_id: int, latitude: Optional[float] = None, longitude: Optional[float] = None,
+                       custom_time: Optional[datetime] = None, notes: Optional[str] = None):
     from datetime import timedelta, datetime
 
     async with atomic_transaction(db) as tx:
@@ -1412,8 +1445,41 @@ async def end_time_log(db: AsyncSession, user_id: int, latitude: float = None, l
         return active_log
 
 
+async def check_time_overlap(db: AsyncSession, user_id: int, start_time: datetime, end_time: datetime) -> bool:
+    """Check if time log overlaps with existing logs for the user.
+    
+    Returns True if there is an overlap, False otherwise.
+    This function does NOT create any records - it only checks.
+    """
+    from sqlalchemy import or_
+    
+    sofia_tz = ZoneInfo(settings.TIMEZONE)
+    
+    # Convert to naive if aware
+    if start_time.tzinfo is not None:
+        start_time = start_time.astimezone(sofia_tz).replace(tzinfo=None)
+    if end_time.tzinfo is not None:
+        end_time = end_time.astimezone(sofia_tz).replace(tzinfo=None)
+    
+    # Check for overlapping records
+    overlap_query = select(TimeLog).where(
+        TimeLog.user_id == user_id,
+        TimeLog.start_time < end_time,
+        or_(
+            TimeLog.end_time == None,
+            TimeLog.end_time > start_time
+        )
+    )
+    
+    result = await db.execute(overlap_query)
+    overlapping_logs = result.scalars().all()
+    
+    return len(overlapping_logs) > 0
+
+
 async def create_manual_time_log(db: AsyncSession, user_id: int, start_time: datetime, end_time: datetime,
-                                 break_duration_minutes: int = 0, notes: str = None):
+                                 break_duration_minutes: int = 0, notes: Optional[str] = None,
+                                 is_manual: bool = True):
     # Convert to naive UTC if aware
     sofia_tz = ZoneInfo(settings.TIMEZONE)
     if start_time.tzinfo is not None:
@@ -1421,10 +1487,26 @@ async def create_manual_time_log(db: AsyncSession, user_id: int, start_time: dat
     if end_time.tzinfo is not None:
         end_time = end_time.astimezone(sofia_tz).replace(tzinfo=None)
 
+    # Validate time order - ADDITIONAL CHECK before overlap check
     if start_time >= end_time:
         raise ValueError("Началният час трябва да бъде преди крайния час.")
 
     async with atomic_transaction(db) as tx:
+        # 0. First check for invalid records (end_time < start_time) for this user on this date
+        invalid_query = select(TimeLog).where(
+            TimeLog.user_id == user_id,
+            TimeLog.start_time < end_time,
+            TimeLog.end_time < TimeLog.start_time
+        )
+        invalid_result = await tx.execute(invalid_query)
+        invalid_logs = invalid_result.scalars().all()
+        
+        if invalid_logs:
+            # Delete invalid records first
+            for invalid_log in invalid_logs:
+                await tx.delete(invalid_log)
+            await tx.flush()
+        
         # 1. Check for overlaps with row locking to prevent concurrent conflicts
         overlap_query = select(TimeLog).where(
             TimeLog.user_id == user_id,
@@ -1535,6 +1617,38 @@ async def delete_time_log(db: AsyncSession, log_id: int):
         return True
 
 
+async def update_time_log(
+    db: AsyncSession,
+    log_id: int,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    is_manual: bool = False,
+    break_duration_minutes: int = 0,
+    notes: Optional[str] = None
+):
+    """Update an existing time log entry."""
+    stmt = select(TimeLog).where(TimeLog.id == log_id)
+    result = await db.execute(stmt)
+    log = result.scalars().first()
+
+    if not log:
+        raise HTTPException(status_code=404, detail="Time log not found")
+
+    if start_time:
+        log.start_time = start_time
+    if end_time:
+        log.end_time = end_time
+    if notes is not None:
+        log.notes = notes
+    log.is_manual = is_manual
+    log.break_duration_minutes = break_duration_minutes
+
+    db.add(log)
+    await db.commit()
+    await db.refresh(log)
+    return log
+
+
 # --- Leave Management ---
 
 async def create_leave_request(
@@ -1618,8 +1732,8 @@ async def get_leave_balance(db: AsyncSession, user_id: int, year: int):
     return balance
 
 
-async def update_leave_request_status(db: AsyncSession, request_id: int, status: str, admin_comment: str = None,
-                                      admin_user_id: Optional[int] = None, employer_top_up: bool = False):
+async def update_leave_request_status(db: AsyncSession, request_id: int, status: str, admin_comment: Optional[str] = None,
+                                      admin_user_id: Optional[int] = None, employer_top_up: Optional[bool] = False):
     stmt = select(LeaveRequest).where(LeaveRequest.id == request_id)
     result = await db.execute(stmt)
     req = result.scalars().first()
@@ -1774,10 +1888,34 @@ async def cancel_leave_request(db: AsyncSession, request_id: int, current_user_i
     elif req.status == "rejected" or req.status == "cancelled":
         raise HTTPException(status_code=400, detail="Request is already cancelled/rejected")
 
-    db.add(req)
+        db.add(req)
+        await db.commit()
+        await db.refresh(req)
+        return req
+
+
+async def delete_leave_request(db: AsyncSession, request_id: int, current_user_id: int, is_admin: Optional[bool] = False) -> bool:
+    """
+    Delete a leave request. Only the owner or admin can delete.
+    """
+    stmt = select(LeaveRequest).where(LeaveRequest.id == request_id)
+    result = await db.execute(stmt)
+    req = result.scalars().first()
+
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    # Check ownership or admin rights
+    if req.user_id != current_user_id and not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this request")
+
+    # Only pending requests can be deleted
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail="Only pending requests can be deleted")
+
+    await db.delete(req)
     await db.commit()
-    await db.refresh(req)
-    return req
+    return True
 
 
 async def update_leave_request(
@@ -2013,6 +2151,236 @@ async def create_position(db: AsyncSession, title: str, department_id: Optional[
     await db.commit()
     await db.refresh(pos)
     return pos
+
+
+async def update_position(db: AsyncSession, id: int, title: str, department_id: int):
+    stmt = select(Position).where(Position.id == id)
+    result = await db.execute(stmt)
+    pos = result.scalars().first()
+    if pos:
+        pos.title = title
+        pos.department_id = department_id
+        await db.commit()
+        await db.refresh(pos)
+    return pos
+
+
+async def delete_position(db: AsyncSession, id: int):
+    stmt = select(Position).where(Position.id == id)
+    result = await db.execute(stmt)
+    pos = result.scalars().first()
+    if pos:
+        await db.delete(pos)
+        await db.commit()
+        return True
+    return False
+
+
+# --- Fleet Management ---
+from backend.database.models import (
+    Vehicle, VehicleMileage, VehicleFuel, VehicleRepair, 
+    VehicleInsurance, VehicleInspection, VehicleDriver, VehicleTrip
+)
+
+async def create_vehicle(db: AsyncSession, **kwargs):
+    vehicle = Vehicle(**kwargs)
+    db.add(vehicle)
+    await db.commit()
+    await db.refresh(vehicle)
+    return vehicle
+
+async def update_vehicle(db: AsyncSession, vehicle_id: int, **kwargs):
+    vehicle = await db.get(Vehicle, vehicle_id)
+    if vehicle:
+        for key, value in kwargs.items():
+            if value is not None:
+                setattr(vehicle, key, value)
+        await db.commit()
+        await db.refresh(vehicle)
+    return vehicle
+
+async def delete_vehicle(db: AsyncSession, vehicle_id: int):
+    vehicle = await db.get(Vehicle, vehicle_id)
+    if vehicle:
+        await db.delete(vehicle)
+        await db.commit()
+        return True
+    return False
+
+async def create_vehicle_mileage(db: AsyncSession, **kwargs):
+    record = VehicleMileage(**kwargs)
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+async def update_vehicle_mileage(db: AsyncSession, id: int, **kwargs):
+    record = await db.get(VehicleMileage, id)
+    if record:
+        for key, value in kwargs.items():
+            if value is not None:
+                setattr(record, key, value)
+        await db.commit()
+        await db.refresh(record)
+    return record
+
+async def delete_vehicle_mileage(db: AsyncSession, id: int):
+    record = await db.get(VehicleMileage, id)
+    if record:
+        await db.delete(record)
+        await db.commit()
+        return True
+    return False
+
+async def create_vehicle_fuel(db: AsyncSession, **kwargs):
+    record = VehicleFuel(**kwargs)
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+async def update_vehicle_fuel(db: AsyncSession, id: int, **kwargs):
+    record = await db.get(VehicleFuel, id)
+    if record:
+        for key, value in kwargs.items():
+            if value is not None:
+                setattr(record, key, value)
+        await db.commit()
+        await db.refresh(record)
+    return record
+
+async def delete_vehicle_fuel(db: AsyncSession, id: int):
+    record = await db.get(VehicleFuel, id)
+    if record:
+        await db.delete(record)
+        await db.commit()
+        return True
+    return False
+
+async def create_vehicle_repair(db: AsyncSession, **kwargs):
+    record = VehicleRepair(**kwargs)
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+async def update_vehicle_repair(db: AsyncSession, id: int, **kwargs):
+    record = await db.get(VehicleRepair, id)
+    if record:
+        for key, value in kwargs.items():
+            if value is not None:
+                setattr(record, key, value)
+        await db.commit()
+        await db.refresh(record)
+    return record
+
+async def delete_vehicle_repair(db: AsyncSession, id: int):
+    record = await db.get(VehicleRepair, id)
+    if record:
+        await db.delete(record)
+        await db.commit()
+        return True
+    return False
+
+async def create_vehicle_insurance(db: AsyncSession, **kwargs):
+    record = VehicleInsurance(**kwargs)
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+async def update_vehicle_insurance(db: AsyncSession, id: int, **kwargs):
+    record = await db.get(VehicleInsurance, id)
+    if record:
+        for key, value in kwargs.items():
+            if value is not None:
+                setattr(record, key, value)
+        await db.commit()
+        await db.refresh(record)
+    return record
+
+async def delete_vehicle_insurance(db: AsyncSession, id: int):
+    record = await db.get(VehicleInsurance, id)
+    if record:
+        await db.delete(record)
+        await db.commit()
+        return True
+    return False
+
+async def create_vehicle_inspection(db: AsyncSession, **kwargs):
+    record = VehicleInspection(**kwargs)
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+async def update_vehicle_inspection(db: AsyncSession, id: int, **kwargs):
+    record = await db.get(VehicleInspection, id)
+    if record:
+        for key, value in kwargs.items():
+            if value is not None:
+                setattr(record, key, value)
+        await db.commit()
+        await db.refresh(record)
+    return record
+
+async def delete_vehicle_inspection(db: AsyncSession, id: int):
+    record = await db.get(VehicleInspection, id)
+    if record:
+        await db.delete(record)
+        await db.commit()
+        return True
+    return False
+
+async def create_vehicle_driver(db: AsyncSession, **kwargs):
+    record = VehicleDriver(**kwargs)
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+async def update_vehicle_driver(db: AsyncSession, id: int, **kwargs):
+    record = await db.get(VehicleDriver, id)
+    if record:
+        for key, value in kwargs.items():
+            if value is not None:
+                setattr(record, key, value)
+        await db.commit()
+        await db.refresh(record)
+    return record
+
+async def delete_vehicle_driver(db: AsyncSession, id: int):
+    record = await db.get(VehicleDriver, id)
+    if record:
+        await db.delete(record)
+        await db.commit()
+        return True
+    return False
+
+async def create_vehicle_trip(db: AsyncSession, **kwargs):
+    record = VehicleTrip(**kwargs)
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+async def update_vehicle_trip(db: AsyncSession, id: int, **kwargs):
+    record = await db.get(VehicleTrip, id)
+    if record:
+        for key, value in kwargs.items():
+            if value is not None:
+                setattr(record, key, value)
+        await db.commit()
+        await db.refresh(record)
+    return record
+
+async def delete_vehicle_trip(db: AsyncSession, id: int):
+    record = await db.get(VehicleTrip, id)
+    if record:
+        await db.delete(record)
+        await db.commit()
+        return True
+    return False
 
 
 # --- Global Settings ---
@@ -2335,7 +2703,7 @@ async def set_tax_deduction(
 
 # --- Bonus & Monthly Config ---
 
-async def create_bonus(db: AsyncSession, user_id: int, amount: float, date: datetime.date, description: str = None):
+async def create_bonus(db: AsyncSession, user_id: int, amount: Decimal, date: datetime.date, description: Optional[str] = None):
     from backend.database.models import Bonus
     bonus = Bonus(user_id=user_id, amount=amount, date=date, description=description)
     db.add(bonus)
@@ -2521,7 +2889,7 @@ async def invalidate_all_user_sessions(db: AsyncSession, user_id: int):
 
 # --- Advances & Loans ---
 
-async def create_advance_payment(db: AsyncSession, user_id: int, amount: float, payment_date: date, description: str = None):
+async def create_advance_payment(db: AsyncSession, user_id: int, amount: float, payment_date: date, description: Optional[str] = None):
     if amount <= 0:
         raise ValueError("Сумата на аванса трябва да бъде положително число.")
     if payment_date < date.today():
@@ -2842,3 +3210,38 @@ async def reset_login_attempts(db: AsyncSession, user_id: int):
             await db.commit()
     return user
 
+
+async def disconnect_google_calendar(db: AsyncSession, user_id: int):
+    """Disconnect user's Google Calendar integration."""
+    stmt = select(User).where(User.id == user_id)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+    if user:
+        user.google_calendar_token = None
+        user.google_refresh_token = None
+        user.google_calendar_connected = False
+        db.add(user)
+        await db.commit()
+
+
+async def update_google_calendar_sync_settings(
+    db: AsyncSession,
+    user_id: int,
+    sync_work_schedules: bool,
+    sync_time_logs: bool,
+    sync_leave_requests: bool,
+    sync_public_holidays: bool,
+    privacy_level: str
+):
+    """Update user's Google Calendar sync settings."""
+    stmt = select(User).where(User.id == user_id)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+    if user:
+        user.google_sync_work_schedules = sync_work_schedules
+        user.google_sync_time_logs = sync_time_logs
+        user.google_sync_leave_requests = sync_leave_requests
+        user.google_sync_public_holidays = sync_public_holidays
+        user.google_calendar_privacy_level = privacy_level
+        db.add(user)
+        await db.commit()

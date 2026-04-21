@@ -45,15 +45,15 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --health) MODE="health"; shift ;;
-        --performance) MODE="performance"; shift ;;
-        --system) MODE="system"; shift ;;
-        --all) MODE="all"; shift ;;
-        --json) JSON_OUTPUT=true; shift ;;
-        --watch) WATCH_MODE=true; shift ;;
-        --interval) INTERVAL="$2"; shift 2 ;;
-        -h|--help) usage ;;
-        *) echo "Unknown option: $1"; usage ;;
+        (--health) MODE="health"; shift ;;
+        (--performance) MODE="performance"; shift ;;
+        (--system) MODE="system"; shift ;;
+        (--all) MODE="all"; shift ;;
+        (--json) JSON_OUTPUT=true; shift ;;
+        (--watch) WATCH_MODE=true; shift ;;
+        (--interval) INTERVAL="$2"; shift 2 ;;
+        (-h|--help) usage ;;
+        (*) echo "Unknown option: $1"; usage ;;
     esac
 done
 
@@ -124,19 +124,19 @@ main() {
     local exit_code=0
     
     case $MODE in
-        system)
+        (system)
             run_system_check
             exit_code=$?
             ;;
-        health)
+        (health)
             run_health_check
             exit_code=$?
             ;;
-        performance)
+        (performance)
             run_performance_check
             exit_code=$?
             ;;
-        all)
+        (all)
             run_system_check || exit_code=1
             echo ""
             run_health_check || exit_code=1

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useCurrency, getCurrencySymbolForCurrency } from '../currencyContext';
 import {
   Box,
   Typography,
@@ -11,6 +12,7 @@ import {
   Divider,
   Alert,
   Chip,
+  InputAdornment,
 } from '@mui/material';
 import {
   NightsStay as NightIcon,
@@ -24,6 +26,7 @@ import {
   Save as SaveIcon,
 } from '@mui/icons-material';
 import { useMutation, gql } from '@apollo/client';
+import { InfoIcon } from '../components/ui/InfoIcon';
 
 const UPDATE_GLOBAL_SETTING = gql`
   mutation UpdateGlobalSetting($key: String!, $value: String!) {
@@ -44,6 +47,8 @@ interface TRZFeature {
 }
 
 const TRZSettingsPage: React.FC = () => {
+  const { currency } = useCurrency();
+  const currencySymbol = getCurrencySymbolForCurrency(currency);
   const [settings, setSettings] = useState<Record<string, string>>({
     trz_night_work_enabled: 'false',
     trz_overtime_enabled: 'false',
@@ -93,7 +98,7 @@ const TRZSettingsPage: React.FC = () => {
       description: 'Включва управлението на командировки и дневни',
       icon: <TripIcon />,
       rateKey: 'trz_default_daily_allowance',
-      rateLabel: 'Дневни (лв)',
+      rateLabel: `Дневни (${currencySymbol})`,
     },
     {
       key: 'trz_work_experience_enabled',
@@ -104,7 +109,7 @@ const TRZSettingsPage: React.FC = () => {
     {
       key: 'trz_food_vouchers_enabled',
       label: 'Ваучери за храна',
-      description: 'Включва ваучерите за храна (до 200 лв месечно необлагаемо)',
+      description: `Включва ваучерите за храна (до 200 ${currencySymbol} месечно необлагаемо)`,
       icon: <VoucherIcon />,
     },
     {
@@ -195,6 +200,15 @@ const TRZSettingsPage: React.FC = () => {
                       onChange={(e) => handleRateChange(feature.rateKey || '', e.target.value)}
                       sx={{ width: '100%' }}
                       inputProps={{ step: 0.1, min: 0 }}
+                      slotProps={{
+                        input: {
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <InfoIcon helpText="Множител за надницата (напр. 0.50 = +50%)" />
+                            </InputAdornment>
+                          )
+                        }
+                      }}
                     />
                   </Box>
                 )}

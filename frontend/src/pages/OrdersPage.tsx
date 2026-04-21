@@ -5,6 +5,7 @@ import {
   Chip, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress,
   List, ListItem, ListItemText, Divider, Select, InputAdornment, Alert
 } from '@mui/material';
+import { InfoIcon } from '../components/ui/InfoIcon';
 import {
   AddShoppingCart as OrderIcon,
   Visibility as ViewIcon,
@@ -18,12 +19,13 @@ import { CREATE_PRODUCTION_ORDER, UPDATE_PRODUCTION_ORDER_STATUS, CONFIRM_PRODUC
 import { ME_QUERY } from '../graphql/queries';
 import { QRCodeSVG } from 'qrcode.react';
 import { type RecipeWithPrice, type ProductionOrder, type Recipe, type ProductionTask, type RecipeIngredient, getErrorMessage } from '../types';
+import { useCurrency, formatCurrencyValue } from '../currencyContext';
 
 interface LabelData {
   qrCodeContent: string;
   batchNumber: string;
   productName: string;
-  quantity: number;
+  quantity: string;
   expiryDate: string;
 }
 
@@ -143,6 +145,7 @@ const GET_PRODUCTION_RECORD = gql`
 `;
 
 const OrdersPage: React.FC = () => {
+  const { currency } = useCurrency();
   const [openModal, setOpenModal] = useState(false);
   const [openSaleModal, setOpenSaleModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<ProductionOrder | null>(null);
@@ -215,12 +218,12 @@ const OrdersPage: React.FC = () => {
     const defaultPieces = recipe?.defaultPieces || 12;
     if (recipe?.finalPrice) {
       const quantity = parseFloat(saleForm.quantity) || 1;
-      const totalPrice = recipe.finalPrice * quantity;
+      const totalPrice = Number(recipe.finalPrice) * quantity;
       setSaleForm(prev => ({
         ...prev,
         recipeId,
         pieces: defaultPieces,
-        price: totalPrice.toFixed(2)
+        price: Number(totalPrice).toFixed(2)
       }));
     } else {
       setSaleForm(prev => ({ ...prev, recipeId, pieces: defaultPieces }));
@@ -234,11 +237,11 @@ const OrdersPage: React.FC = () => {
     if (recipeId) {
       const recipe = (recipesWithPrices as RecipeWithPrice[]).find((r: RecipeWithPrice) => r.id === parseInt(recipeId));
       if (recipe?.finalPrice) {
-        const totalPrice = recipe.finalPrice * qty;
+        const totalPrice = Number(recipe.finalPrice) * qty;
         setSaleForm(prev => ({
           ...prev,
           quantity,
-          price: totalPrice.toFixed(2)
+          price: Number(totalPrice).toFixed(2)
         }));
       } else {
         setSaleForm(prev => ({ ...prev, quantity }));
@@ -537,6 +540,15 @@ const OrdersPage: React.FC = () => {
                 type="number"
                 value={form.quantity}
                 onChange={e => setForm({...form, quantity: e.target.value})}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Количество за производство в брой/килограми" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -547,6 +559,15 @@ const OrdersPage: React.FC = () => {
                 InputLabelProps={{ shrink: true }}
                 value={form.dueDate}
                 onChange={e => setForm({...form, dueDate: e.target.value})}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Дата когато поръчката трябва да бъде готова" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -557,6 +578,15 @@ const OrdersPage: React.FC = () => {
                 InputLabelProps={{ shrink: true }}
                 value={form.dueTime}
                 onChange={e => setForm({...form, dueTime: e.target.value})}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Час когато поръчката трябва да бъде готова" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
@@ -567,6 +597,15 @@ const OrdersPage: React.FC = () => {
                 rows={3}
                 value={form.notes}
                 onChange={e => setForm({...form, notes: e.target.value})}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Допълнителни изисквания като надпис, цвят и др." />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
           </Grid>
@@ -599,7 +638,7 @@ const OrdersPage: React.FC = () => {
                 {recipesWithPrices.map((r: RecipeWithPrice) => (
                   <MenuItem key={r.id} value={r.id}>
                     {r.name}
-                    {r.finalPrice ? ` - ${r.finalPrice.toFixed(2)} лв.` : ' - без цена'}
+                    {r.finalPrice ? ` - ${formatCurrencyValue(r.finalPrice, currency)}` : ' - без цена'}
                   </MenuItem>
                 ))}
               </TextField>
@@ -643,27 +682,43 @@ const OrdersPage: React.FC = () => {
                 type="number"
                 value={saleForm.quantity}
                 onChange={e => handleQuantityChange(e.target.value)}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Брой поръчки за една и съща рецепта" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
-                label="Цена (лв)"
+                label={`Цена (${currency})`}
                 type="number"
                 value={saleForm.price}
                 onChange={e => setSaleForm(prev => ({...prev, price: e.target.value}))}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">лв</InputAdornment>,
-                }}
                 helperText={
                   saleForm.recipeId && (() => {
                     const recipe = (recipesWithPrices as RecipeWithPrice[]).find((r: RecipeWithPrice) => r.id === parseInt(saleForm.recipeId));
                     if (recipe?.finalPrice) {
-                      return `Единична цена: ${recipe.finalPrice.toFixed(2)} лв. | ${saleForm.pieces} парчета`;
+                      return `Единична цена: ${formatCurrencyValue(recipe.finalPrice, currency)} | ${saleForm.pieces} парчета`;
                     }
                     return null;
                   })()
                 }
+                slotProps={{
+                  input: {
+                    startAdornment: <InputAdornment position="start">{currency}</InputAdornment>,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Крайна цена за поръчката" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
@@ -685,6 +740,15 @@ const OrdersPage: React.FC = () => {
                 label="Клиент (име)"
                 value={saleForm.clientName}
                 onChange={e => setSaleForm(prev => ({...prev, clientName: e.target.value}))}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Име на клиента за поръчката" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -693,6 +757,15 @@ const OrdersPage: React.FC = () => {
                 label="Телефон"
                 value={saleForm.clientPhone}
                 onChange={e => setSaleForm({...saleForm, clientPhone: e.target.value})}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Телефон за връзка с клиента" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
@@ -782,14 +855,14 @@ const OrdersPage: React.FC = () => {
                 </TableHead>
                 <TableBody>
                   {selectedOrder?.recipe?.ingredients?.map((ing: RecipeIngredient, idx: number) => {
-                    const needed = (ing.quantityNet || 0) * (selectedOrder?.quantity || 0);
-                    const available = ing.ingredient?.currentStock || 0;
+                    const needed = Number(ing.quantityNet || 0) * Number(selectedOrder?.quantity || 0);
+                    const available = Number(ing.ingredient?.currentStock || 0);
                     const isEnough = available >= needed;
                     return (
                       <TableRow key={idx}>
                         <TableCell>{ing.ingredient?.name}</TableCell>
-                        <TableCell align="right">{needed.toFixed(3)} {ing.ingredient?.unit}</TableCell>
-                        <TableCell align="right">{available.toFixed(3)} {ing.ingredient?.unit}</TableCell>
+                        <TableCell align="right">{Number(needed).toFixed(3)} {ing.ingredient?.unit}</TableCell>
+                        <TableCell align="right">{Number(available).toFixed(3)} {ing.ingredient?.unit}</TableCell>
                         <TableCell>
                           <Chip 
                             label={isEnough ? 'Достатъчно' : 'Няма'} 

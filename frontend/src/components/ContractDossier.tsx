@@ -8,6 +8,7 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import { useQuery } from '@apollo/client';
 import { gql } from '@apollo/client';
 import { type LaborContract, type LaborContractAnnex, type ContractStatus } from '../types';
+import { useCurrency, formatCurrencyValue } from '../currencyContext';
 
 const GET_EMPLOYMENT_CONTRACT = gql`
   query GetEmploymentContract($userId: Int!) {
@@ -43,6 +44,7 @@ const GET_EMPLOYMENT_CONTRACT = gql`
 
 interface ContractDossierProps {
   userId: number;
+  isReadOnly?: boolean;
 }
 
 const CONTRACT_TYPE_LABELS: Record<string, string> = {
@@ -70,7 +72,8 @@ interface EmploymentContractQueryData {
   employmentContracts: LaborContract[];
 }
 
-const ContractDossier: React.FC<ContractDossierProps> = ({ userId }) => {
+const ContractDossier: React.FC<ContractDossierProps> = ({ userId, isReadOnly = false }) => {
+  const { currency } = useCurrency();
   const { data, loading, error } = useQuery<EmploymentContractQueryData>(
     GET_EMPLOYMENT_CONTRACT,
     {
@@ -172,7 +175,7 @@ const ContractDossier: React.FC<ContractDossierProps> = ({ userId }) => {
               Основна заплата
             </Typography>
             <Typography variant="body1" color="primary.main" fontWeight="bold">
-              {contract.baseSalary ? `${Number(contract.baseSalary).toFixed(2)} лв.` : '—'}
+              {contract.baseSalary ? formatCurrencyValue(contract.baseSalary, currency) : '—'}
             </Typography>
           </Grid>
           {contract.signedAt && (
@@ -234,7 +237,7 @@ const ContractDossier: React.FC<ContractDossierProps> = ({ userId }) => {
                   </Typography>
                   {annex.baseSalary && (
                     <Typography variant="body2" color="primary.main">
-                      Заплата: {Number(annex.baseSalary).toFixed(2)} лв.
+                      Заплата: {formatCurrencyValue(annex.baseSalary, currency)}
                     </Typography>
                   )}
                   {annex.changeDescription && (

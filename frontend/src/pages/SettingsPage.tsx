@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { getErrorMessage } from '../types';
 import { 
   Container, Typography, Card, CardContent, Grid, TextField, Button, 
-  Alert, Box, CircularProgress, Switch, FormControlLabel, Divider, Tooltip
+  Alert, Box, CircularProgress, Switch, FormControlLabel, Divider, InputAdornment
 } from '@mui/material';
+import { InfoIcon } from '../components/ui/InfoIcon';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import StorageIcon from '@mui/icons-material/Storage';
@@ -50,39 +51,46 @@ const ValidatedTextField: React.FC<ValidatedTextFieldProps> = ({
   const showError = !!error;
   const strValue = String(value);
   const showSuccess = success && !showError && strValue.length > 0;
+
+  const endAdornment = tooltip ? (
+    <InputAdornment position="end">
+      <InfoIcon helpText={tooltip} />
+    </InputAdornment>
+  ) : undefined;
   
   return (
-    <Tooltip title={tooltip || ''} arrow placement="top">
-      <TextField
-        label={label}
-        value={value}
-        onChange={(e) => onChange(type === 'number' ? (e.target.value.replace(/[^0-9.-]/g, '')) : e.target.value)}
-        placeholder={placeholder}
-        error={showError}
-        helperText={error}
-        required={required}
-        type={type}
-        size={size}
-        fullWidth={fullWidth}
-        disabled={disabled}
-        sx={{
-          ...sx,
-          '& .MuiOutlinedInput-root': {
-            '&.Mui-error': {
-              '& .MuiOutlinedInput-notchedOutline': {
-                borderColor: 'error.main',
-              },
+    <TextField
+      label={label}
+      value={value}
+      onChange={(e) => onChange(type === 'number' ? (e.target.value.replace(/[^0-9.-]/g, '')) : e.target.value)}
+      placeholder={placeholder}
+      error={showError}
+      helperText={error}
+      required={required}
+      type={type}
+      size={size}
+      fullWidth={fullWidth}
+      disabled={disabled}
+      slotProps={{
+        input: { endAdornment }
+      }}
+      sx={{
+        ...sx,
+        '& .MuiOutlinedInput-root': {
+          '&.Mui-error': {
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'error.main',
             },
-            ...(showSuccess && {
-              '& .MuiOutlinedInput-notchedOutline': {
-                borderColor: 'success.main',
-                borderWidth: 2,
-              },
-            }),
           },
-        }}
-      />
-    </Tooltip>
+          ...(showSuccess && {
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'success.main',
+              borderWidth: 2,
+            },
+          }),
+        },
+      }}
+    />
   );
 };
 

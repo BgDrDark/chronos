@@ -13,6 +13,34 @@ const cache = new InMemoryCache({
         },
       },
     },
+    Recipe: {
+      fields: {
+        markupPercentage: {
+          read( markupPercentage) {
+            if (markupPercentage === null || markupPercentage === undefined) return null;
+            return typeof markupPercentage === 'string' ? parseFloat(markupPercentage) : markupPercentage;
+          },
+        },
+        costPrice: {
+          read(costPrice) {
+            if (costPrice === null || costPrice === undefined) return null;
+            return typeof costPrice === 'string' ? parseFloat(costPrice) : costPrice;
+          },
+        },
+        premiumAmount: {
+          read(premiumAmount) {
+            if (premiumAmount === null || premiumAmount === undefined) return null;
+            return typeof premiumAmount === 'string' ? parseFloat(premiumAmount) : premiumAmount;
+          },
+        },
+        sellingPrice: {
+          read(sellingPrice) {
+            if (sellingPrice === null || sellingPrice === undefined) return null;
+            return typeof sellingPrice === 'string' ? parseFloat(sellingPrice) : sellingPrice;
+          },
+        },
+      },
+    },
   },
 });
 

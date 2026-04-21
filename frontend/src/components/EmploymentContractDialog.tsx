@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, FormControl, InputLabel, Select, MenuItem,
-  Grid, Alert, CircularProgress, Box
+  Grid, Alert, CircularProgress, Box, InputAdornment
 } from '@mui/material';
 import { useMutation, useQuery } from '@apollo/client';
 import {
@@ -11,6 +11,8 @@ import {
   GET_ORG_DATA_FOR_CONTRACT
 } from '../graphql/contracts';
 import { type LaborContract, type LaborContractFormData, getErrorMessage } from '../types';
+import { InfoIcon } from './ui/InfoIcon';
+import { userFieldsHelp } from './ui/fieldsHelpText';
 
 interface EmploymentContractDialogProps {
   open: boolean;
@@ -257,6 +259,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
               onChange={handleTextChange('employeeName')}
               required
               size="small"
+              slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={userFieldsHelp.firstName} /></InputAdornment> } }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
@@ -268,6 +271,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
               required
               size="small"
               inputProps={{ maxLength: 10 }}
+              slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={userFieldsHelp.egn} /></InputAdornment> } }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
@@ -279,6 +283,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
                 onChange={handleTextChange('contractNumber')}
                 size="small"
                 placeholder="Натиснете бутона за автоматичен номер"
+                slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={userFieldsHelp.contractNumber} /></InputAdornment> } }}
               />
               <Button
                 variant="outlined"
@@ -316,6 +321,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
               required
               size="small"
               InputLabelProps={{ shrink: true }}
+              slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={userFieldsHelp.contractStartDate} /></InputAdornment> } }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 4 }}>
@@ -327,6 +333,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
               onChange={handleTextChange('endDate')}
               size="small"
               InputLabelProps={{ shrink: true }}
+              slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={userFieldsHelp.contractEndDate} /></InputAdornment> } }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 4 }}>
@@ -337,6 +344,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
               value={formData.workHoursPerWeek}
               onChange={handleTextChange('workHoursPerWeek')}
               size="small"
+              slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={userFieldsHelp.workHoursPerWeek} /></InputAdornment> } }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
@@ -347,6 +355,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
               value={formData.baseSalary}
               onChange={handleTextChange('baseSalary')}
               size="small"
+              slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={userFieldsHelp.baseSalary} /></InputAdornment> } }}
             />
           </Grid>
           <Grid size={{ xs: 12 }}>

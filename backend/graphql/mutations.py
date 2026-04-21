@@ -2,12 +2,15 @@ import strawberry
 from strawberry.file_uploads import Upload
 from typing import Optional, List
 import datetime
+import json
 from decimal import Decimal
 from sqlalchemy import select
 from datetime import time as dt_time
 from backend.graphql import types, inputs
 from backend.utils.json_type import JSONScalar
 from backend import crud, schemas
+from backend.crud.repositories import time_repo, settings_repo, user_repo, company_repo, vehicle_repo, payroll_repo
+from backend.database.transaction_manager import atomic_transaction, atomic_with_savepoint
 from backend.exceptions import (
     PermissionDeniedException,
     NotFoundException,
@@ -56,9 +59,9 @@ async def create_trz_records_on_clock_out(
     from backend import crud
     
     # Провери дали автоматизацията е активирана
-    auto_night = await crud.get_global_setting(db, "payroll_auto_night_work")
-    auto_overtime = await crud.get_global_setting(db, "payroll_auto_overtime")
-    auto_holiday = await crud.get_global_setting(db, "payroll_auto_holiday")
+    auto_night = await settings_repo.get_setting(db, "payroll_auto_night_work")
+    auto_overtime = await settings_repo.get_setting(db, "payroll_auto_overtime")
+    auto_holiday = await settings_repo.get_setting(db, "payroll_auto_holiday")
     
     auto_night = auto_night.lower() == "true" if auto_night else False
     auto_overtime = auto_overtime.lower() == "true" if auto_overtime else False
@@ -68,9 +71,9 @@ async def create_trz_records_on_clock_out(
         return  # Автоматизацията е изключена
     
     # Вземи настройките
-    night_supplement_str = await crud.get_global_setting(db, "payroll_night_hourly_supplement")
-    overtime_rate_str = await crud.get_global_setting(db, "payroll_overtime_rate")
-    holiday_rate_str = await crud.get_global_setting(db, "payroll_holiday_rate")
+    night_supplement_str = await settings_repo.get_setting(db, "payroll_night_hourly_supplement")
+    overtime_rate_str = await settings_repo.get_setting(db, "payroll_overtime_rate")
+    holiday_rate_str = await settings_repo.get_setting(db, "payroll_holiday_rate")
     night_supplement = Decimal(night_supplement_str) if night_supplement_str else Decimal("0.15")
     overtime_rate = Decimal(overtime_rate_str) if overtime_rate_str else Decimal("50")
     holiday_rate = Decimal(holiday_rate_str) if holiday_rate_str else Decimal("100")
@@ -89,7 +92,7 @@ async def create_trz_records_on_clock_out(
     
     # Вземи заплатата на служителя (за опростенение - използваме мин заплата)
     # В реална имплементация - от employment_contract
-    min_wage_str = await crud.get_global_setting(db, "payroll_min_wage")
+    min_wage_str = await settings_repo.get_setting(db, "payroll_min_wage")
     hourly_rate = Decimal(min_wage_str) if min_wage_str else Decimal("1213")
     hourly_rate = hourly_rate / Decimal("8")  # Дневна / 8 часа
     
@@ -225,12 +228,12 @@ class Mutation:
         if not settings.smtp_server or not settings.sender_email:
             raise ValidationException.required_field("Server and Sender Email")
 
-        await crud.set_global_setting(db, "smtp_server", settings.smtp_server)
-        await crud.set_global_setting(db, "smtp_port", str(settings.smtp_port))
-        await crud.set_global_setting(db, "smtp_username", settings.smtp_username)
-        await crud.set_global_setting(db, "smtp_password", settings.smtp_password)
-        await crud.set_global_setting(db, "sender_email", settings.sender_email)
-        await crud.set_global_setting(db, "use_tls", str(settings.use_tls))
+        await settings_repo.set_setting(db, "smtp_server", settings.smtp_server)
+        await settings_repo.set_setting(db, "smtp_port", str(settings.smtp_port))
+        await settings_repo.set_setting(db, "smtp_username", settings.smtp_username)
+        await settings_repo.set_setting(db, "smtp_password", settings.smtp_password)
+        await settings_repo.set_setting(db, "sender_email", settings.sender_email)
+        await settings_repo.set_setting(db, "use_tls", str(settings.use_tls))
 
         return types.SmtpSettings(
             smtp_server=settings.smtp_server,
@@ -332,15 +335,15 @@ class Mutation:
 
         # Само super_admin може да променя строгия режим на съответствие
         if trz_compliance_strict_mode is not None and current_user.role.name == "super_admin":
-            await crud.set_global_setting(db, "trz_compliance_strict_mode", str(trz_compliance_strict_mode).lower())
+            await settings_repo.set_setting(db, "trz_compliance_strict_mode", str(trz_compliance_strict_mode).lower())
 
-        await crud.set_global_setting(db, "payroll_max_insurance_base", str(max_insurance_base))
-        await crud.set_global_setting(db, "payroll_employee_insurance_rate", str(employee_insurance_rate))
-        await crud.set_global_setting(db, "payroll_income_tax_rate", str(income_tax_rate))
-        await crud.set_global_setting(db, "payroll_civil_contract_costs_rate", str(civil_contract_costs_rate))
-        await crud.set_global_setting(db, "payroll_noi_compensation_percent", str(noi_compensation_percent))
-        await crud.set_global_setting(db, "payroll_employer_paid_sick_days", str(employer_paid_sick_days))
-        await crud.set_global_setting(db, "payroll_default_tax_resident", str(default_tax_resident))
+        await settings_repo.set_setting(db, "payroll_max_insurance_base", str(max_insurance_base))
+        await settings_repo.set_setting(db, "payroll_employee_insurance_rate", str(employee_insurance_rate))
+        await settings_repo.set_setting(db, "payroll_income_tax_rate", str(income_tax_rate))
+        await settings_repo.set_setting(db, "payroll_civil_contract_costs_rate", str(civil_contract_costs_rate))
+        await settings_repo.set_setting(db, "payroll_noi_compensation_percent", str(noi_compensation_percent))
+        await settings_repo.set_setting(db, "payroll_employer_paid_sick_days", str(employer_paid_sick_days))
+        await settings_repo.set_setting(db, "payroll_default_tax_resident", str(default_tax_resident))
 
         return types.PayrollLegalSettings(
             max_insurance_base=max_insurance_base,
@@ -362,7 +365,7 @@ class Mutation:
 
         user_data = schemas.UserCreate(**userInput.model_dump())
 
-        db_user = await crud.create_user(db=db, user=user_data, role_id=userInput.role_id)
+        db_user = await user_repo.create_user(db=db, user_data=user_data, role_id=userInput.role_id)
         return types.User.from_instance(db_user)
 
     @strawberry.mutation
@@ -448,7 +451,7 @@ class Mutation:
 
         # Convert dict to UserUpdate Pydantic model
         user_in = schemas.UserUpdate(**update_data)
-        db_user = await crud.update_user(db, user_id=userInput.id, user_in=user_in)
+        db_user = await user_repo.update_user(db, user_id=userInput.id, user_in=user_in)
         
         # Update or create EmploymentContract with TRZ fields
         if userInput.contract_type or userInput.base_salary:
@@ -541,7 +544,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
-        return await crud.delete_user(db, id)
+        return await user_repo.delete_user(db, id)
 
     @strawberry.mutation
     async def create_company(self, input: CompanyCreateInput, info: strawberry.Info) -> types.Company:
@@ -550,14 +553,17 @@ class Mutation:
         if current_user is None or current_user.role.name != "super_admin":
             raise PermissionDeniedException.for_action("manage")
 
-        company = await crud.create_company(
+        company = await company_repo.create_company(
             db,
             name=input.name,
             eik=input.eik,
-            bulstat=input.bulstat,
             vat_number=input.vat_number,
             address=input.address,
-            mol_name=input.mol_name
+            city=input.city,
+            country=input.country,
+            phone=input.phone,
+            website=input.web_site,
+            logo_url=input.logo_url
         )
         return types.Company.from_instance(company)
 
@@ -568,7 +574,7 @@ class Mutation:
         if current_user is None or current_user.role.name != "super_admin":
             raise PermissionDeniedException.for_action("manage")
 
-        company = await crud.update_company(
+        company = await company_repo.update_company(
             db,
             company_id=input.id,
             name=input.name,
@@ -596,7 +602,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        company = await crud.update_company(
+        company = await company_repo.update_company(
             db,
             company_id=input.company_id,
             default_sales_account_id=input.default_sales_account_id,
@@ -616,7 +622,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        dept = await crud.create_department(db, name=input.name, company_id=input.company_id,
+        dept = await company_repo.create_department(db, name=input.name, company_id=input.company_id,
                                             manager_id=input.manager_id)
         return types.Department.from_instance(dept)
 
@@ -627,7 +633,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        dept = await crud.update_department(db, department_id=input.id, name=input.name, manager_id=input.manager_id)
+        dept = await company_repo.update_department(db, department_id=input.id, name=input.name, manager_id=input.manager_id)
         return types.Department.from_instance(dept)
 
     @strawberry.mutation
@@ -637,7 +643,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        pos = await crud.create_position(db, title, department_id)
+        pos = await company_repo.create_position(db, title, department_id)
         return types.Position.from_instance(pos)
 
     @strawberry.mutation
@@ -647,7 +653,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        pos = await crud.update_position(db, id, title, department_id)
+        pos = await company_repo.update_position(db, position_id=id, title=title, department_id=department_id)
         return types.Position.from_instance(pos)
 
     @strawberry.mutation
@@ -656,7 +662,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
-        return await crud.delete_position(db, id)
+        return await company_repo.delete_position(db, id)
 
     @strawberry.mutation
     async def create_vehicle(self, input: VehicleCreateInput, info: strawberry.Info) -> types.Vehicle:
@@ -668,7 +674,7 @@ class Mutation:
         # Get company_id from current user if not provided
         company_id = input.company_id or current_user.company_id
 
-        vehicle = await crud.create_vehicle(
+        vehicle = await vehicle_repo.create_vehicle(
             db,
             registration_number=input.registration_number,
             vin=input.vin,
@@ -693,7 +699,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
 
-        vehicle = await crud.update_vehicle(
+        vehicle = await vehicle_repo.update_vehicle(
             db,
             vehicle_id=id,
             registration_number=input.registration_number,
@@ -720,7 +726,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
 
-        success = await crud.delete_vehicle(db, vehicle_id=id)
+        success = await vehicle_repo.delete_vehicle(db, vehicle_id=id)
         if not success:
             raise NotFoundException.vehicle()
         return True
@@ -732,7 +738,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
             raise PermissionDeniedException.for_action("manage")
 
-        record = await crud.create_vehicle_mileage(
+        record = await vehicle_repo.create_vehicle_mileage(
             db,
             vehicle_id=input.vehicle_id,
             date=input.date.date() if hasattr(input.date, 'date') else input.date,
@@ -748,7 +754,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
             raise PermissionDeniedException.for_action("manage")
 
-        record = await crud.create_vehicle_fuel(
+        record = await vehicle_repo.create_vehicle_fuel(
             db,
             vehicle_id=input.vehicle_id,
             date=input.date.date() if hasattr(input.date, 'date') else input.date,
@@ -767,13 +773,12 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
 
-        record = await crud.create_vehicle_repair(
+        record = await vehicle_repo.create_vehicle_repair(
             db,
             vehicle_id=input.vehicle_id,
             date=input.date.date() if hasattr(input.date, 'date') else input.date,
             description=input.description,
-            cost=input.cost or 0,
-            repair_type=input.repair_type or "maintenance",
+            cost=input.cost,
             notes=input.notes,
         )
         return types.VehicleRepair.from_instance(record)
@@ -785,15 +790,14 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
 
-        record = await crud.create_vehicle_insurance(
+        record = await vehicle_repo.create_vehicle_insurance(
             db,
             vehicle_id=input.vehicle_id,
             provider=input.provider,
             policy_number=input.policy_number,
             start_date=input.start_date.date() if hasattr(input.start_date, 'date') else input.start_date,
             end_date=input.end_date.date() if hasattr(input.end_date, 'date') else input.end_date,
-            premium=input.premium or 0,
-            insurance_type=input.insurance_type or "grazhdanska",
+            premium=input.premium,
             notes=input.notes,
         )
         return types.VehicleInsurance.from_instance(record)
@@ -805,14 +809,14 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
 
-        record = await crud.create_vehicle_inspection(
+        record = await vehicle_repo.create_vehicle_inspection(
             db,
             vehicle_id=input.vehicle_id,
+            inspection_type=input.inspection_type,
             date=input.date.date() if hasattr(input.date, 'date') else input.date,
-            next_date=input.next_date.date() if input.next_date and hasattr(input.next_date, 'date') else input.next_date,
-            cost=input.cost or 0,
-            result=input.result or "passed",
-            protocol_number=input.protocol_number,
+            result=input.result,
+            next_inspection_date=input.next_inspection_date.date() if hasattr(input.next_inspection_date, 'date') else input.next_inspection_date,
+            cost=input.cost,
             notes=input.notes,
         )
         return types.VehicleInspection.from_instance(record)
@@ -824,15 +828,13 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
 
-        record = await crud.create_vehicle_driver(
+        record = await vehicle_repo.create_vehicle_driver(
             db,
             vehicle_id=input.vehicle_id,
             user_id=input.user_id,
-            license_number=input.license_number,
-            license_expiry=input.license_expiry.date() if hasattr(input.license_expiry, 'date') else input.license_expiry,
-            phone=input.phone,
-            category=input.category or "B",
-            is_primary=input.is_primary or False,
+            start_date=input.start_date.date() if hasattr(input.start_date, 'date') else input.start_date,
+            end_date=input.end_date.date() if hasattr(input.end_date, 'date') else input.end_date,
+            is_primary=input.is_primary,
             notes=input.notes,
         )
         return types.VehicleDriver.from_instance(record)
@@ -844,16 +846,15 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
             raise PermissionDeniedException.for_action("manage")
 
-        record = await crud.create_vehicle_trip(
+        record = await vehicle_repo.create_vehicle_trip(
             db,
             vehicle_id=input.vehicle_id,
             user_id=input.user_id,
-            start_date=input.start_date,
-            end_date=input.end_date,
+            start_time=input.start_time,
+            end_time=input.end_time,
             start_location=input.start_location,
             end_location=input.end_location,
-            distance=input.distance or 0,
-            trip_type=input.trip_type or "business",
+            distance=input.distance,
             notes=input.notes,
         )
         return types.VehicleTrip.from_instance(record)
@@ -864,7 +865,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        success = await crud.delete_vehicle_mileage(db, id)
+        success = await vehicle_repo.delete_vehicle_mileage(db, id)
         if not success:
             raise NotFoundException.record("Запис")
         return True
@@ -875,7 +876,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        success = await crud.delete_vehicle_fuel(db, id)
+        success = await vehicle_repo.delete_vehicle_fuel(db, id)
         if not success:
             raise NotFoundException.record("Запис")
         return True
@@ -886,7 +887,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        success = await crud.delete_vehicle_repair(db, id)
+        success = await vehicle_repo.delete_vehicle_repair(db, id)
         if not success:
             raise NotFoundException.record("Запис")
         return True
@@ -897,7 +898,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        success = await crud.delete_vehicle_insurance(db, id)
+        success = await vehicle_repo.delete_vehicle_insurance(db, id)
         if not success:
             raise NotFoundException.record("Запис")
         return True
@@ -908,7 +909,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        success = await crud.delete_vehicle_inspection(db, id)
+        success = await vehicle_repo.delete_vehicle_inspection(db, id)
         if not success:
             raise NotFoundException.record("Запис")
         return True
@@ -919,7 +920,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        success = await crud.delete_vehicle_driver(db, id)
+        success = await vehicle_repo.delete_vehicle_driver(db, id)
         if not success:
             raise NotFoundException.record("Запис")
         return True
@@ -930,7 +931,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        success = await crud.delete_vehicle_trip(db, id)
+        success = await vehicle_repo.delete_vehicle_trip(db, id)
         if not success:
             raise NotFoundException.record("Запис")
         return True
@@ -941,7 +942,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
             raise PermissionDeniedException.for_action("manage")
-        record = await crud.update_vehicle_mileage(
+        record = await vehicle_repo.update_vehicle_mileage(
             db, id,
             date=input.date.date() if input.date else None,
             mileage=input.mileage,
@@ -957,7 +958,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
             raise PermissionDeniedException.for_action("manage")
-        record = await crud.update_vehicle_fuel(
+        record = await vehicle_repo.update_vehicle_fuel(
             db, id,
             date=input.date.date() if input.date else None,
             liters=input.liters,
@@ -976,7 +977,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        record = await crud.update_vehicle_repair(
+        record = await vehicle_repo.update_vehicle_repair(
             db, id,
             date=input.date.date() if input.date else None,
             description=input.description,
@@ -994,7 +995,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        record = await crud.update_vehicle_insurance(
+        record = await vehicle_repo.update_vehicle_insurance(
             db, id,
             provider=input.provider,
             policy_number=input.policy_number,
@@ -1014,7 +1015,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        record = await crud.update_vehicle_inspection(
+        record = await vehicle_repo.update_vehicle_inspection(
             db, id,
             date=input.date.date() if input.date else None,
             next_date=input.next_date.date() if input.next_date else None,
@@ -1033,7 +1034,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
-        record = await crud.update_vehicle_driver(
+        record = await vehicle_repo.update_vehicle_driver(
             db, id,
             license_number=input.license_number,
             license_expiry=input.license_expiry.date() if input.license_expiry else None,
@@ -1052,7 +1053,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
             raise PermissionDeniedException.for_action("manage")
-        record = await crud.update_vehicle_trip(
+        record = await vehicle_repo.update_vehicle_trip(
             db, id,
             start_date=input.start_date,
             end_date=input.end_date,
@@ -1074,7 +1075,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        s = await crud.create_shift(db, name, start_time, end_time)
+        s = await time_repo.create_shift(db, name, start_time, end_time)
         return types.Shift.from_instance(s)
 
     @strawberry.mutation
@@ -1085,15 +1086,15 @@ class Mutation:
             info: Optional[strawberry.Info] = None
     ) -> types.Shift:
         if not info:
-            raise Exception("Info is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        s = await crud.update_shift(
-            db, id, name, start_time, end_time,
-            tolerance_minutes, break_duration_minutes, pay_multiplier, shift_type
+        s = await time_repo.update_shift(
+            db, shift_id=id, name=name, start_time=start_time, end_time=end_time,
+            tolerance_minutes=tolerance_minutes, break_duration_minutes=break_duration_minutes, pay_multiplier=pay_multiplier, shift_type=shift_type
         )
         return types.Shift.from_instance(s)
 
@@ -1103,7 +1104,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
-        return await crud.delete_shift(db, id)
+        return await time_repo.delete_shift(db, id)
 
     @strawberry.mutation
     async def create_role(self, input: RoleCreateInput, info: strawberry.Info) -> types.Role:
@@ -1112,20 +1113,20 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        role = await crud.create_role(db, schemas.RoleCreate(name=input.name, description=input.description))
+        role = await time_repo.create_role(db, schemas.RoleCreate(name=input.name, description=input.description))
         return types.Role.from_instance(role)
 
     @strawberry.mutation
     async def update_role(self, id: int, name: Optional[str] = None, description: Optional[str] = None,
                           info: Optional[strawberry.Info] = None) -> types.Role:
         if not info:
-            raise Exception("Info is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        role = await crud.update_role(db, id, name, description)
+        role = await time_repo.update_role(db, role_id=id, name=name, description=description)
         return types.Role.from_instance(role)
 
     @strawberry.mutation
@@ -1134,7 +1135,7 @@ class Mutation:
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
-        return await crud.delete_role(db, id)
+        return await time_repo.delete_role(db, id)
 
     @strawberry.mutation
     async def assign_role_to_user(self, user_id: int, company_id: int, role_id: int, info: strawberry.Info) -> bool:
@@ -1155,7 +1156,7 @@ class Mutation:
         if current_user is None or current_user.role.name != "super_admin":
             raise PermissionDeniedException.for_action("manage")
 
-        setting = await crud.set_global_setting(db, key, value)
+        setting = await settings_repo.set_setting(db, key, value)
         return types.GlobalSetting.from_instance(setting)
 
     @strawberry.mutation
@@ -1192,7 +1193,7 @@ class Mutation:
             "has_health_insurance": has_health_insurance,
         }
         await crud.update_global_payroll_config(db, **config_data)
-        await crud.set_global_setting(db, "qr_token_regen_minutes", str(qr_regen_interval_minutes))
+        await settings_repo.set_setting(db, "qr_token_regen_minutes", str(qr_regen_interval_minutes))
 
         # Re-fetch the updated config with the new QR setting
         config = await crud.get_global_payroll_config(db)
@@ -1212,8 +1213,8 @@ class Mutation:
             qr_regen_interval_minutes=int(qr_setting) if qr_setting else 60
         )
 
-    @strawberry.mutation
-    async def create_leave_request(self, input: LeaveRequestInput, info: strawberry.Info) -> types.LeaveRequest:
+    @strawberry.mutation(name="requestLeave")
+    async def create_leave_request(self, leave_input: LeaveRequestInput, info: strawberry.Info) -> types.LeaveRequest:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
@@ -1223,10 +1224,10 @@ class Mutation:
         from backend.database.models import LeaveRequest
         leave_request = LeaveRequest(
             user_id=current_user.id,
-            start_date=input.start_date,
-            end_date=input.end_date,
-            leave_type=input.leave_type,
-            reason=input.reason,
+            start_date=leave_input.start_date,
+            end_date=leave_input.end_date,
+            leave_type=leave_input.leave_type,
+            reason=leave_input.reason,
             status="pending"
         )
         db.add(leave_request)
@@ -1242,14 +1243,49 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        req = await crud.update_leave_request_status(
+        req = await time_repo.update_leave_request_status(
             db,
-            input.request_id,
-            input.status,
-            input.admin_comment,
-            admin_user_id=current_user.id,
+            request_id=input.request_id,
+            status=input.status,
+            admin_comment=input.admin_comment,
             employer_top_up=input.employer_top_up
         )
+        return types.LeaveRequest.from_instance(req)
+
+    @strawberry.mutation(name="approveLeave")
+    async def approve_leave(self, info: strawberry.Info, request_id: int, admin_comment: str = None, employer_top_up: bool = False) -> types.LeaveRequest:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage")
+
+        req = await time_repo.update_leave_request_status(
+            db,
+            request_id=request_id,
+            status="approved",
+            admin_comment=admin_comment,
+            employer_top_up=employer_top_up
+        )
+        async with atomic_with_savepoint(db, "leave_approved"):
+            pass  # Reserved for future notifications
+        return types.LeaveRequest.from_instance(req)
+
+    @strawberry.mutation(name="rejectLeave")
+    async def reject_leave(self, info: strawberry.Info, request_id: int, admin_comment: str = None) -> types.LeaveRequest:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage")
+
+        req = await time_repo.update_leave_request_status(
+            db,
+            request_id=request_id,
+            status="rejected",
+            admin_comment=admin_comment
+        )
+        async with atomic_with_savepoint(db, "leave_rejected"):
+            pass  # Reserved for future notifications
+        return types.LeaveRequest.from_instance(req)
         return types.LeaveRequest.from_instance(req)
 
     @strawberry.mutation
@@ -1259,7 +1295,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
         is_admin = current_user.role.name in ["admin", "super_admin"]
-        return await crud.delete_leave_request(db, id, current_user.id, is_admin)
+        return await time_repo.delete_leave_request(db, id, current_user.id, is_admin)
 
     @strawberry.mutation
     async def update_office_location(
@@ -1276,11 +1312,11 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        await crud.set_global_setting(db, "office_latitude", str(latitude))
-        await crud.set_global_setting(db, "office_longitude", str(longitude))
-        await crud.set_global_setting(db, "office_radius", str(radius))
-        await crud.set_global_setting(db, "geofencing_entry_enabled", str(entry_enabled))
-        await crud.set_global_setting(db, "geofencing_exit_enabled", str(exit_enabled))
+        await settings_repo.set_setting(db, "office_latitude", str(latitude))
+        await settings_repo.set_setting(db, "office_longitude", str(longitude))
+        await settings_repo.set_setting(db, "office_radius", str(radius))
+        await settings_repo.set_setting(db, "geofencing_entry_enabled", str(entry_enabled))
+        await settings_repo.set_setting(db, "geofencing_exit_enabled", str(exit_enabled))
 
         return types.OfficeLocation(
             latitude=latitude,
@@ -1330,14 +1366,14 @@ class Mutation:
             raise PermissionDeniedException.for_action("manage")
 
         # Check if the session belongs to the user trying to invalidate (if not admin)
-        session_to_invalidate = await crud.get_user_session_by_id(db, sessionId)
+        session_to_invalidate = await user_repo.get_user_session_by_id(db, sessionId)
         if not session_to_invalidate:
             raise NotFoundException.session()
 
         if session_to_invalidate.user_id != current_user.id and current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("invalidate session")
 
-        return await crud.invalidate_user_session(db, session_to_invalidate.refresh_token_jti)
+        return await user_repo.invalidate_user_session(db, session_to_invalidate.refresh_token_jti)
 
     @strawberry.mutation
     async def update_security_config(
@@ -1351,8 +1387,8 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        await crud.set_global_setting(db, "max_login_attempts", str(max_login_attempts))
-        await crud.set_global_setting(db, "lockout_minutes", str(lockout_minutes))
+        await settings_repo.set_setting(db, "max_login_attempts", str(max_login_attempts))
+        await settings_repo.set_setting(db, "lockout_minutes", str(lockout_minutes))
         await db.commit()
         return True
 
@@ -1368,8 +1404,8 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        await crud.set_global_setting(db, "kiosk_require_gps", "true" if require_gps else "false")
-        await crud.set_global_setting(db, "kiosk_require_same_network", "true" if require_same_network else "false")
+        await settings_repo.set_setting(db, "kiosk_require_gps", "true" if require_gps else "false")
+        await settings_repo.set_setting(db, "kiosk_require_same_network", "true" if require_same_network else "false")
         await db.commit()
         return True
 
@@ -1509,7 +1545,7 @@ class Mutation:
             info: Optional[strawberry.Info] = None
     ) -> types.TimeLog:
         if not info:
-            raise Exception("Info is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
 
@@ -1519,7 +1555,12 @@ class Mutation:
         if not end_time:
             raise ValidationException(detail="Краен час е задължителен за ръчно въвеждане")
 
-        log = await crud.create_manual_time_log(
+        # Pre-validation: check for overlaps BEFORE creating
+        has_overlap = await crud.check_time_overlap(db, user_id, start_time, end_time)
+        if has_overlap:
+            raise ValidationException(detail="Записът се застъпва с друг запис за този период")
+
+        log = await time_repo.create_manual_time_log(
             db, user_id, start_time, end_time, break_duration_minutes or 0, notes, is_manual=is_manual
         )
         return types.TimeLog.from_instance(log)
@@ -1531,27 +1572,27 @@ class Mutation:
             info: Optional[strawberry.Info] = None
     ) -> types.TimeLog:
         if not info:
-            raise Exception("Info is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
 
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        log = await crud.update_time_log(
-            db, id, start_time, end_time, is_manual, break_duration_minutes, notes
+        log = await time_repo.update_time_log(
+            db, log_id=id, start_time=start_time, end_time=end_time, is_manual=is_manual, break_duration_minutes=break_duration_minutes, notes=notes
         )
         return types.TimeLog.from_instance(log)
 
     @strawberry.mutation
     async def delete_time_log(self, id: int, info: Optional[strawberry.Info]) -> bool:
         if not info:
-            raise Exception("Info is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
-        return await crud.delete_time_log(db, id)
+        return await time_repo.delete_time_log(db, log_id=id)
 
     @strawberry.mutation
     async def clock_in(
@@ -1560,21 +1601,24 @@ class Mutation:
             latitude: Optional[float] = None,
             longitude: Optional[float] = None
     ) -> types.TimeLog:
+        from backend.database.transaction_manager import atomic_transaction
+        
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise Exception("Not authenticated")
+            raise AuthenticationException(detail="Not authenticated")
 
         await verify_module_enabled("shifts", db)
 
-        # Check for active log
-        active_log = await crud.get_active_time_log(db, current_user.id)
+        active_log = await time_repo.get_active_timelog(db, current_user.id)
         if active_log:
-            raise Exception("User already has an active time log")
+            raise InvalidOperationException.cannot_complete("User already has an active time log")
 
-        log = await crud.start_time_log(db, current_user.id)
-        await db.commit()
-        return types.TimeLog.from_instance(log)
+        async with atomic_transaction(db) as tx:
+            log = await crud.start_time_log(tx, current_user.id)
+            async with atomic_with_savepoint(tx, "clock_in_complete"):
+                pass  # Reserved for future notifications
+            return types.TimeLog.from_instance(log)
 
     @strawberry.mutation
     async def clock_out(
@@ -1584,61 +1628,91 @@ class Mutation:
             latitude: Optional[float] = None,
             longitude: Optional[float] = None
     ) -> types.TimeLog:
+        from backend.database.transaction_manager import atomic_transaction
+        
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise Exception("Not authenticated")
+            raise AuthenticationException(detail="Not authenticated")
 
         await verify_module_enabled("shifts", db)
 
-        active_log = await crud.get_active_time_log(db, current_user.id)
+        active_log = await time_repo.get_active_timelog(db, current_user.id)
         if not active_log:
-            raise Exception("No active time log found")
+            raise InvalidOperationException.cannot_complete("No active time log found")
 
-        log = await crud.end_time_log(db, current_user.id, notes=notes)
-        
-        # Fetch shift_id from WorkSchedule for this user and date
-        log_date = active_log.start_time.date()
-        sched_stmt = select(WorkSchedule.shift_id).where(
-            WorkSchedule.user_id == current_user.id,
-            WorkSchedule.date == log_date
-        )
-        res = await db.execute(sched_stmt)
-        shift_id = res.scalar_one_or_none()
-        
-        # Автоматично създаване на TRZ записи (Фаза 3)
-        await create_trz_records_on_clock_out(
-            db=db,
-            user_id=current_user.id,
-            clock_in=active_log.start_time,
-            clock_out=log.end_time
-        )
-        
-        await db.commit()
-        return types.TimeLog.from_instance(log)
+        async with atomic_transaction(db) as tx:
+            log = await crud.end_time_log(tx, current_user.id, notes=notes)
+            
+            log_date = active_log.start_time.date()
+            sched_stmt = select(WorkSchedule.shift_id).where(
+                WorkSchedule.user_id == current_user.id,
+                WorkSchedule.date == log_date
+            )
+            res = await tx.execute(sched_stmt)
+            shift_id = res.scalar_one_or_none()
+            
+            await create_trz_records_on_clock_out(
+                db=tx,
+                user_id=current_user.id,
+                clock_in=active_log.start_time,
+                clock_out=log.end_time
+            )
+            
+            async with atomic_with_savepoint(tx, "clock_out_complete"):
+                pass  # Reserved for future notifications
+            
+            return types.TimeLog.from_instance(log)
 
-    @strawberry.mutation
+    @strawberry.mutation(name="adminClockIn")
     async def admin_clock_in(
             self,
             user_id: int,
             info: strawberry.Info,
             custom_time: Optional[datetime.datetime] = None
     ) -> types.TimeLog:
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"=== admin_clock_in START ===")
+        logger.info(f"user_id: {user_id}")
+        logger.info(f"custom_time: {custom_time}")
+        
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+        
+        logger.info(f"current_user: {current_user}")
+        logger.info(f"current_user.role: {current_user.role.name if current_user.role else None}")
+        
+        if current_user is None or current_user.role is None or current_user.role.name not in ["admin", "super_admin"]:
+            logger.warning(f"admin_clock_in: unauthorized user: {current_user}")
             raise PermissionDeniedException.for_action("manage")
-
+        
+        logger.info(f"Checking module 'shifts' enabled...")
         await verify_module_enabled("shifts", db)
-
-        active_log = await crud.get_active_time_log(db, user_id)
+        logger.info(f"Module 'shifts' enabled: OK")
+        
+        logger.info(f"Checking for active_time_log...")
+        active_log = await time_repo.get_active_timelog(db, user_id)
         if active_log:
-            raise Exception("User already has an active time log")
+            logger.warning(f"User already has active time log: {active_log.id}")
+            raise InvalidOperationException.cannot_complete("User already has an active time log")
+        
+        logger.info(f"Calling time_repo.start_time_log...")
+        try:
+            log = await time_repo.start_time_log(db, user_id, custom_time=custom_time)
+            logger.info(f"time_repo.start_time_log result: id={log.id}, start_time={log.start_time}")
+            logger.info(f"Committing transaction...")
+            await db.commit()
+            logger.info(f"Transaction committed successfully!")
+            logger.info(f"=== admin_clock_in SUCCESS ===")
+            return types.TimeLog.from_instance(log)
+        except Exception as e:
+            logger.error(f"time_repo.start_time_log FAILED: {e}", exc_info=True)
+            await db.rollback()
+            raise
 
-        log = await crud.start_time_log(db, user_id, custom_time=custom_time)
-        return types.TimeLog.from_instance(log)
-
-    @strawberry.mutation
+    @strawberry.mutation(name="adminClockOut")
     async def admin_clock_out(
             self,
             user_id: int,
@@ -1646,38 +1720,59 @@ class Mutation:
             notes: Optional[str] = None,
             custom_time: Optional[datetime.datetime] = None
     ) -> types.TimeLog:
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"=== admin_clock_out START ===")
+        logger.info(f"user_id: {user_id}")
+        logger.info(f"custom_time: {custom_time}")
+        
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+        
+        if current_user is None or current_user.role is None or current_user.role.name not in ["admin", "super_admin"]:
+            logger.warning(f"admin_clock_out: unauthorized user: {current_user}")
             raise PermissionDeniedException.for_action("manage")
-
+        
+        logger.info(f"Checking module 'shifts' enabled...")
         await verify_module_enabled("shifts", db)
-
-        active_log = await crud.get_active_time_log(db, user_id)
+        
+        active_log = await time_repo.get_active_timelog(db, user_id)
+        logger.info(f"active_log: {active_log}")
+        
         if not active_log:
-            raise Exception("No active time log found")
-
-        log = await crud.end_time_log(db, user_id, notes=notes, custom_time=custom_time)
+            logger.warning(f"No active time log found for user {user_id}")
+            raise InvalidOperationException.cannot_complete("No active time log found")
         
-        # Fetch shift_id from WorkSchedule for this user and date
-        log_date = active_log.start_time.date()
-        sched_stmt = select(WorkSchedule.shift_id).where(
-            WorkSchedule.user_id == user_id,
-            WorkSchedule.date == log_date
-        )
-        res = await db.execute(sched_stmt)
-        shift_id = res.scalar_one_or_none()
-        
-        # Автоматично създаване на TRZ записи (Фаза 3)
-        await create_trz_records_on_clock_out(
-            db=db,
-            user_id=user_id,
-            clock_in=active_log.start_time,
-            clock_out=log.end_time,
-        )
-        
-        await db.commit()
-        return types.TimeLog.from_instance(log)
+        logger.info(f"Calling time_repo.end_time_log...")
+        try:
+            log = await time_repo.end_time_log(db, user_id, notes=notes, custom_time=custom_time)
+            logger.info(f"time_repo.end_time_log result: id={log.id}, end_time={log.end_time}")
+            
+            # Fetch shift_id from WorkSchedule for this user and date
+            log_date = active_log.start_time.date()
+            sched_stmt = select(WorkSchedule.shift_id).where(
+                WorkSchedule.user_id == user_id,
+                WorkSchedule.date == log_date
+            )
+            res = await db.execute(sched_stmt)
+            shift_id = res.scalar_one_or_none()
+            
+            # Автоматично създаване на TRZ записи (Фаза 3)
+            await create_trz_records_on_clock_out(
+                db=db,
+                user_id=user_id,
+                clock_in=active_log.start_time,
+                clock_out=log.end_time,
+            )
+            
+            await db.commit()
+            logger.info(f"=== admin_clock_out SUCCESS ===")
+            return types.TimeLog.from_instance(log)
+        except Exception as e:
+            logger.error(f"time_repo.end_time_log FAILED: {e}", exc_info=True)
+            await db.rollback()
+            raise
 
     @strawberry.mutation
     async def create_schedule_template(self, name: str, description: Optional[str],
@@ -1697,7 +1792,7 @@ class Mutation:
                 "day_index": item.day_of_week,
                 "shift_id": getattr(item, 'shift_id', None)
             })
-        template = await crud.create_schedule_template(db, name, current_user.company_id, description, items_dicts)
+        template = await time_repo.create_schedule_template(db, name, current_user.company_id, description, items_dicts)
         return types.ScheduleTemplate.from_instance(template)
 
     @strawberry.mutation
@@ -1708,7 +1803,7 @@ class Mutation:
             raise PermissionDeniedException.for_action("manage")
 
         await verify_module_enabled("shifts", db)
-        result = await crud.delete_schedule_template(db, id, company_id=current_user.company_id)
+        result = await time_repo.delete_schedule_template(db, id, company_id=current_user.company_id)
         if not result:
             raise NotFoundException.resource("ScheduleTemplate", id)
         return True
@@ -1731,9 +1826,11 @@ class Mutation:
 
         # Apply template to each user
         for user_id in user_ids:
-            await crud.apply_schedule_template(
+            await time_repo.apply_schedule_template(
                 db, template_id, user_id, start_date, end_date, current_user.id
             )
+            async with atomic_with_savepoint(db, f"schedule_applied_{user_id}"):
+                pass  # Reserved for future notifications
         return True
 
     @strawberry.mutation
@@ -1747,16 +1844,16 @@ class Mutation:
         if current_user is None or current_user.role.name != "super_admin":
             raise PermissionDeniedException.for_action("manage")
 
-        await crud.set_global_setting(db, "pwd_min_length", str(settings.min_length))
-        await crud.set_global_setting(db, "pwd_max_length", str(settings.max_length))
-        await crud.set_global_setting(db, "pwd_require_upper", "true" if settings.require_upper else "false")
-        await crud.set_global_setting(db, "pwd_require_lower", "true" if settings.require_lower else "false")
-        await crud.set_global_setting(db, "pwd_require_digit", "true" if settings.require_digit else "false")
-        await crud.set_global_setting(db, "pwd_require_special", "true" if settings.require_special else "false")
+        await settings_repo.set_setting(db, "pwd_min_length", str(settings.min_length))
+        await settings_repo.set_setting(db, "pwd_max_length", str(settings.max_length))
+        await settings_repo.set_setting(db, "pwd_require_upper", "true" if settings.require_upper else "false")
+        await settings_repo.set_setting(db, "pwd_require_lower", "true" if settings.require_lower else "false")
+        await settings_repo.set_setting(db, "pwd_require_digit", "true" if settings.require_digit else "false")
+        await settings_repo.set_setting(db, "pwd_require_special", "true" if settings.require_special else "false")
 
         # Increment password settings version
-        current_version = int(await crud.get_global_setting(db, "password_settings_version") or "0")
-        await crud.set_global_setting(db, "password_settings_version", str(current_version + 1))
+        current_version = int(await settings_repo.get_setting(db, "password_settings_version") or "0")
+        await settings_repo.set_setting(db, "password_settings_version", str(current_version + 1))
 
         # Set password_force_change to True for all users
         await crud.force_password_change_for_all_users(db)
@@ -1805,7 +1902,7 @@ class Mutation:
                     return len(existing)
                 except:
                     pass
-            raise Exception(f"Failed to sync holidays: {str(e)}")
+            raise DatabaseException(detail=f"Failed to sync holidays: {str(e)}")
 
     @strawberry.mutation
     async def add_bonus(self, input: BonusCreateInput, info: strawberry.Info) -> types.Bonus:
@@ -1814,13 +1911,15 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        bonus = await crud.create_bonus(
+        bonus = await payroll_repo.create_bonus(
             db,
             user_id=input.user_id,
             amount=input.amount,
             date=input.date,
             description=input.description
         )
+        async with atomic_with_savepoint(db, "bonus_created"):
+            pass  # Reserved for future notifications
         await db.commit()
         return types.Bonus.from_instance(bonus)
 
@@ -1831,7 +1930,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        await crud.delete_bonus(db, id)
+        await payroll_repo.delete_bonus(db, id)
         await db.commit()
         return True
 
@@ -1854,14 +1953,14 @@ class Mutation:
             info: Optional[strawberry.Info] = None
     ) -> types.AdvancePayment:
         if not info:
-            raise Exception("Info is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        advance = await crud.create_advance_payment(
-            db, user_id=user_id, amount=amount, payment_date=payment_date, description=description
+        advance = await payroll_repo.create_advance_payment(
+            db, user_id=user_id, amount=amount, request_date=payment_date
         )
         return types.AdvancePayment.from_instance(advance)
 
@@ -1876,15 +1975,14 @@ class Mutation:
             info: Optional[strawberry.Info] = None
     ) -> types.ServiceLoan:
         if not info:
-            raise Exception("Info is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        loan = await crud.create_service_loan(
-            db, user_id=user_id, total_amount=total_amount, installments_count=installments_count,
-            start_date=start_date, description=description
+        loan = await payroll_repo.create_service_loan(
+            db, user_id=user_id, amount=total_amount, months=installments_count
         )
         return types.ServiceLoan.from_instance(loan)
 
@@ -1909,15 +2007,22 @@ class Mutation:
             info: Optional[strawberry.Info] = None
     ) -> types.TimeLog:
         if not info:
-            raise Exception("Info is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        log = await crud.create_manual_time_log(
+        # Pre-validation: check for overlaps BEFORE creating
+        has_overlap = await crud.check_time_overlap(db, user_id, start_time, end_time)
+        if has_overlap:
+            raise ValidationException(detail="Записът се застъпва с друг запис за този период")
+
+        log = await time_repo.create_manual_time_log(
             db, user_id, start_time, end_time, break_duration_minutes, notes
         )
+        async with atomic_with_savepoint(db, "manual_timelog_created"):
+            pass  # Reserved for future notifications
         return types.TimeLog.from_instance(log)
 
     @strawberry.mutation
@@ -1927,7 +2032,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        return await crud.delete_schedule(db, id)
+        return await time_repo.delete_schedule(db, id)
 
     @strawberry.mutation
     async def set_work_schedule(self, user_id: int, shift_id: int, date: datetime.date,
@@ -1937,7 +2042,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        res = await crud.create_or_update_schedule(db, user_id, shift_id, date)
+        res = await time_repo.create_or_update_schedule(db, user_id, shift_id, date)
         return types.WorkSchedule.from_instance(res)
 
     @strawberry.mutation
@@ -1948,7 +2053,7 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        return await crud.create_bulk_schedules(db, user_ids, shift_id, start_date, end_date, days_of_week)
+        return await time_repo.create_bulk_schedules(db, user_ids, shift_id, start_date, end_date, days_of_week)
 
     @strawberry.mutation
     async def respond_to_swap(self, swap_id: int, accept: bool, info: strawberry.Info) -> types.ShiftSwapRequest:
@@ -1958,7 +2063,7 @@ class Mutation:
             raise AuthenticationException(detail=authenticate_msg)
 
         new_status = "accepted" if accept else "rejected"
-        res = await crud.update_swap_status(db, swap_id, new_status)
+        res = await time_repo.update_swap_status(db, swap_id, new_status)
         return types.ShiftSwapRequest.from_instance(res)
 
     @strawberry.mutation
@@ -1969,7 +2074,9 @@ class Mutation:
             raise PermissionDeniedException.for_action("manage")
 
         new_status = "approved" if approve else "rejected"
-        res = await crud.update_swap_status(db, swap_id, new_status, admin_user_id=current_user.id)
+        res = await time_repo.update_swap_status(db, swap_id, new_status, admin_user_id=current_user.id)
+        async with atomic_with_savepoint(db, "swap_approved"):
+            pass  # Reserved for future notifications
         return types.ShiftSwapRequest.from_instance(res)
 
     @strawberry.mutation
@@ -1980,8 +2087,10 @@ class Mutation:
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
 
-        res = await crud.create_swap_request(db, current_user.id, requestor_schedule_id, target_user_id,
+        res = await time_repo.create_swap_request(db, current_user.id, requestor_schedule_id, target_user_id,
                                              target_schedule_id)
+        async with atomic_with_savepoint(db, "swap_created"):
+            pass  # Reserved for future notifications
         return types.ShiftSwapRequest.from_instance(res)
 
     # --- Confectionery Module Mutations ---
@@ -2406,6 +2515,8 @@ class Mutation:
                     section_id=section.id,
                     ingredient_id=ing.ingredient_id,
                     quantity_gross=ing.quantity_gross,
+                    quantity_net=ing.quantity_net or ing.quantity_gross,
+                    waste_percentage=ing.waste_percentage or section_input.waste_percentage or Decimal("0"),
                     workstation_id=ing.workstation_id
                 )
                 db.add(ri)
@@ -2660,6 +2771,8 @@ class Mutation:
     @strawberry.mutation
     async def create_production_order(self, input: inputs.ProductionOrderInput,
                                       info: strawberry.Info) -> types.ProductionOrder:
+        from backend.database.transaction_manager import atomic_transaction
+        
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user: raise AuthenticationException(detail=authenticate_msg)
@@ -2668,67 +2781,84 @@ class Mutation:
         if not target_company_id:
             raise ValidationException.required_field("Company ID")
 
-        # Validate company exists
-        from backend.database.models import Company
-        stmt = select(Company).where(Company.id == target_company_id)
-        res = await db.execute(stmt)
-        if not res.scalar_one_or_none():
-            raise NotFoundException.resource("Фирма", target_company_id)
+        async with atomic_transaction(db) as tx:
+            # Validate company exists
+            from backend.database.models import Company
+            stmt = select(Company).where(Company.id == target_company_id)
+            res = await tx.execute(stmt)
+            if not res.scalar_one_or_none():
+                raise NotFoundException.resource("Фирма", target_company_id)
 
-        from backend.database.models import ProductionOrder, Recipe, ProductionTask, Batch, sofia_now
-        from datetime import timedelta
+            from backend.database.models import ProductionOrder, Recipe, ProductionTask, Batch, sofia_now
+            from datetime import timedelta
+            from sqlalchemy.orm import selectinload
 
-        # Calculate production_deadline
-        production_deadline = None
-        recipe = await db.get(Recipe, input.recipe_id)
-        if recipe and recipe.production_deadline_days and recipe.shelf_life_days:
-            # production_deadline = due_date - production_deadline_days
-            production_deadline = input.due_date - timedelta(days=recipe.production_deadline_days)
-
-        # 1. Create Order
-        order = ProductionOrder(
-            recipe_id=input.recipe_id,
-            quantity=input.quantity,
-            due_date=input.due_date,
-            production_deadline=production_deadline,
-            notes=input.notes,
-            created_by=current_user.id,
-            company_id=target_company_id,
-            status="awaiting_stock"  # Initial status
-        )
-
-        # 2. Check stock availability (Simple version)
-        all_available = True
-        for ri in recipe.ingredients:
-            required = ri.quantity_gross * input.quantity
-            # Check batches for this ingredient
-            stmt = select(Batch).where(Batch.ingredient_id == ri.ingredient_id, Batch.status == "active")
-            res = await db.execute(stmt)
-            available = sum((b.quantity for b in res.scalars().all()), Decimal("0"))
-            if available < required:
-                all_available = False
-                break
-
-        if all_available:
-            order.status = "ready"
-
-        db.add(order)
-        await db.flush()
-
-        # 3. Create initial tasks from recipe steps
-        for step in recipe.steps:
-            task = ProductionTask(
-                order_id=order.id,
-                workstation_id=step.workstation_id,
-                step_id=step.id,
-                name=step.name,
-                status="pending"
+            # Convert due_date to naive datetime if it has timezone info
+            due_date = input.due_date
+            if due_date.tzinfo is not None:
+                due_date = due_date.replace(tzinfo=None)
+            
+            # Calculate production_deadline
+            production_deadline = None
+            stmt = select(Recipe).where(Recipe.id == input.recipe_id).options(
+                selectinload(Recipe.ingredients),
+                selectinload(Recipe.steps)
             )
-            db.add(task)
+            recipe = (await tx.execute(stmt)).scalar_one_or_none()
+            
+            if not recipe:
+                raise NotFoundException.recipe()
 
-        await db.commit()
-        await db.refresh(order)
-        return types.ProductionOrder.from_instance(order)
+            if recipe.production_deadline_days and recipe.shelf_life_days:
+                pd_days = recipe.production_deadline_days
+                if pd_days:
+                    production_deadline = due_date - timedelta(days=pd_days)
+                    if production_deadline.tzinfo is not None:
+                        production_deadline = production_deadline.replace(tzinfo=None)
+
+            # 1. Create Order
+            order = ProductionOrder(
+                recipe_id=input.recipe_id,
+                quantity=input.quantity,
+                due_date=due_date,
+                production_deadline=production_deadline,
+                notes=input.notes,
+                created_by=current_user.id,
+                company_id=target_company_id,
+                status="awaiting_stock"  # Initial status
+            )
+
+            # 2. Check stock availability (Simple version)
+            all_available = True
+            for ri in recipe.ingredients:
+                required = ri.quantity_gross * input.quantity
+                # Check batches for this ingredient
+                stmt = select(Batch).where(Batch.ingredient_id == ri.ingredient_id, Batch.status == "active")
+                res = await tx.execute(stmt)
+                available = sum((b.quantity for b in res.scalars().all()), Decimal("0"))
+                if available < required:
+                    all_available = False
+                    break
+
+            if all_available:
+                order.status = "ready"
+
+            tx.add(order)
+            await tx.flush()
+
+            # 3. Create initial tasks from recipe steps
+            for step in recipe.steps:
+                task = ProductionTask(
+                    order_id=order.id,
+                    workstation_id=step.workstation_id,
+                    step_id=step.id,
+                    name=step.name,
+                    status="pending"
+                )
+                tx.add(task)
+
+            await tx.refresh(order)
+            return types.ProductionOrder.from_instance(order)
 
     @strawberry.mutation
     async def update_production_order_status(self, id: int, status: str,
@@ -2773,8 +2903,14 @@ class Mutation:
         if order.status != "ready":
             raise ValidationException.field("Order status", "Трябва да е 'ready' за потвърждение")
 
-        # Get recipe for shelf_life_days
-        recipe = await db.get(Recipe, order.recipe_id)
+        from sqlalchemy.orm import selectinload
+
+        # Get recipe for shelf_life_days and its ingredients
+        stmt = select(Recipe).where(Recipe.id == order.recipe_id).options(
+            selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient)
+        )
+        recipe = (await db.execute(stmt)).scalar_one_or_none()
+        
         shelf_life_days = recipe.shelf_life_days if recipe else 7
         expiry_date = sofia_now().date() + timedelta(days=shelf_life_days)
 
@@ -2871,8 +3007,12 @@ class Mutation:
         task.status = "completed"
         task.completed_at = sofia_now()
 
+        from sqlalchemy.orm import selectinload
         # Get recipe and step to determine which ingredients to deduct
-        recipe = await db.get(Recipe, order.recipe_id)
+        stmt_recipe = select(Recipe).where(Recipe.id == order.recipe_id).options(
+            selectinload(Recipe.ingredients)
+        )
+        recipe = (await db.execute(stmt_recipe)).scalar_one_or_none()
 
         # Deduct all ingredients for this task (full quantity)
         if recipe:
@@ -3284,102 +3424,104 @@ class Mutation:
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
 
+        from backend.database.transaction_manager import atomic_transaction
         from backend.database import models
         from decimal import Decimal
 
-        # Generate invoice number
-        year = invoice_data.date.year
-        prefix = "ВХ" if invoice_data.type == "incoming" else "ИЗХ"
+        async with atomic_transaction(db) as tx:
+            # Generate invoice number
+            year = invoice_data.date.year
+            prefix = "ВХ" if invoice_data.type == "incoming" else "ИЗХ"
 
-        stmt = select(models.Invoice).where(
-            models.Invoice.number.like(f"{prefix}-{year}-%")
-        ).order_by(models.Invoice.number.desc())
-        res = await db.execute(stmt)
-        last_invoice = res.scalars().first()
+            stmt = select(models.Invoice).where(
+                models.Invoice.number.like(f"{prefix}-{year}-%")
+            ).order_by(models.Invoice.number.desc())
+            res = await tx.execute(stmt)
+            last_invoice = res.scalars().first()
 
-        if last_invoice:
-            last_num = int(last_invoice.number.split("-")[-1])
-            new_num = last_num + 1
-        else:
-            new_num = 1
+            if last_invoice:
+                last_num = int(last_invoice.number.split("-")[-1])
+                new_num = last_num + 1
+            else:
+                new_num = 1
 
-        invoice_number = f"{prefix}-{year}-{new_num:04d}"
+            invoice_number = f"{prefix}-{year}-{new_num:04d}"
 
-        # Calculate totals
-        subtotal = Decimal("0")
-        for item in invoice_data.items:
-            item_total = item.quantity * item.unit_price
-            item_discount = item_total * (item.discount_percent / 100)
-            item_total = item_total - item_discount
-            subtotal += item_total
+            # Calculate totals
+            subtotal = Decimal("0")
+            for item in invoice_data.items:
+                item_total = item.quantity * item.unit_price
+                item_discount = item_total * (item.discount_percent / 100)
+                item_total = item_total - item_discount
+                subtotal += item_total
 
-        discount_amount = subtotal * (invoice_data.discount_percent / 100)
-        subtotal_after_discount = subtotal - discount_amount
-        vat_amount = subtotal_after_discount * (invoice_data.vat_rate / 100)
-        total = subtotal_after_discount + vat_amount
+            discount_amount = subtotal * (invoice_data.discount_percent / 100)
+            subtotal_after_discount = subtotal - discount_amount
+            vat_amount = subtotal_after_discount * (invoice_data.vat_rate / 100)
+            total = subtotal_after_discount + vat_amount
 
-        # Create invoice
-        invoice = models.Invoice(
-            number=invoice_number,
-            type=invoice_data.type,
-            document_type=invoice_data.document_type,
-            griff=invoice_data.griff,
-            description=invoice_data.description,
-            date=invoice_data.date,
-            supplier_id=invoice_data.supplier_id,
-            batch_id=invoice_data.batch_id,
-            client_name=invoice_data.client_name,
-            client_eik=invoice_data.client_eik,
-            client_address=invoice_data.client_address,
-            subtotal=subtotal,
-            discount_percent=invoice_data.discount_percent,
-            discount_amount=discount_amount,
-            vat_rate=invoice_data.vat_rate,
-            vat_amount=vat_amount,
-            total=total,
-            payment_method=invoice_data.payment_method,
-            delivery_method=invoice_data.delivery_method,
-            due_date=invoice_data.due_date,
-            payment_date=invoice_data.payment_date,
-            status=invoice_data.status,
-            notes=invoice_data.notes,
-            company_id=invoice_data.company_id,
-            created_by=current_user.id
-        )
-
-        db.add(invoice)
-        await db.flush()
-
-        # Create invoice items
-        for item in invoice_data.items:
-            item_total = item.quantity * item.unit_price
-            item_discount = item_total * (item.discount_percent / 100)
-            item_total = item_total - item_discount
-
-            invoice_item = models.InvoiceItem(
-                invoice_id=invoice.id,
-                ingredient_id=item.ingredient_id,
-                batch_id=item.batch_id,
-                name=item.name,
-                quantity=item.quantity,
-                unit=item.unit,
-                unit_price=item.unit_price,
-                unit_price_with_vat=item.unit_price_with_vat,
-                discount_percent=item.discount_percent,
-                total=item_total,
-                expiration_date=datetime.datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
-                batch_number=item.batch_number
+            # Create invoice
+            invoice = models.Invoice(
+                number=invoice_number,
+                type=invoice_data.type,
+                document_type=invoice_data.document_type,
+                griff=invoice_data.griff,
+                description=invoice_data.description,
+                date=invoice_data.date,
+                supplier_id=invoice_data.supplier_id,
+                batch_id=invoice_data.batch_id,
+                client_name=invoice_data.client_name,
+                client_eik=invoice_data.client_eik,
+                client_address=invoice_data.client_address,
+                subtotal=subtotal,
+                discount_percent=invoice_data.discount_percent,
+                discount_amount=discount_amount,
+                vat_rate=invoice_data.vat_rate,
+                vat_amount=vat_amount,
+                total=total,
+                payment_method=invoice_data.payment_method,
+                delivery_method=invoice_data.delivery_method,
+                due_date=invoice_data.due_date,
+                payment_date=invoice_data.payment_date,
+                status=invoice_data.status,
+                notes=invoice_data.notes,
+                company_id=invoice_data.company_id,
+                created_by=current_user.id
             )
-            db.add(invoice_item)
-            
-            # Обнови цената на партидата от фактурата
-            if item.batch_id:
-                batch = await db.get(models.Batch, item.batch_id)
-                if batch:
-                    batch.price_no_vat = float(item.unit_price)
-                    batch.price_with_vat = float(item.unit_price_with_vat or item.unit_price * Decimal("1.2"))
 
-        await db.commit()
+            tx.add(invoice)
+            await tx.flush()
+
+            # Create invoice items
+            for item in invoice_data.items:
+                item_total = item.quantity * item.unit_price
+                item_discount = item_total * (item.discount_percent / 100)
+                item_total = item_total - item_discount
+
+                invoice_item = models.InvoiceItem(
+                    invoice_id=invoice.id,
+                    ingredient_id=item.ingredient_id,
+                    batch_id=item.batch_id,
+                    name=item.name,
+                    quantity=item.quantity,
+                    unit=item.unit,
+                    unit_price=item.unit_price,
+                    unit_price_with_vat=item.unit_price_with_vat,
+                    discount_percent=item.discount_percent,
+                    total=item_total,
+                    expiration_date=datetime.datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
+                    batch_number=item.batch_number
+                )
+                tx.add(invoice_item)
+                
+                # Обнови цената на партидата от фактурата
+                if item.batch_id:
+                    batch = await tx.get(models.Batch, item.batch_id)
+                    if batch:
+                        batch.price_no_vat = float(item.unit_price)
+                        batch.price_with_vat = float(item.unit_price_with_vat or item.unit_price * Decimal("1.2"))
+
+            return types.Invoice.from_instance(invoice, tx)
 
         # Log the operation
         log_entry = models.OperationLog(
@@ -5557,6 +5699,8 @@ class Mutation:
         recipe = await db.get(Recipe, order.recipe_id)
         if recipe and recipe.production_deadline_days and order.due_date:
             order.production_deadline = order.due_date - timedelta(days=recipe.production_deadline_days)
+            if order.production_deadline and order.production_deadline.tzinfo is not None:
+                order.production_deadline = order.production_deadline.replace(tzinfo=None)
 
         await db.commit()
         await db.refresh(order)
@@ -5704,14 +5848,14 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import AccessDoor, Gateway
         door = await db.get(AccessDoor, id)
-        if not door: raise Exception("Door not found")
+        if not door: raise NotFoundException.resource("Door")
         
         gateway = await db.get(Gateway, door.gateway_id)
-        if not gateway or not gateway.ip_address: raise Exception("Gateway unreachable")
+        if not gateway or not gateway.ip_address: raise InvalidOperationException.cannot_complete("Gateway offline or unreachable")
         
         import aiohttp
         url = f"http://{gateway.ip_address}:{gateway.terminal_port}/access/doors/{door.door_id}/trigger"
@@ -5727,7 +5871,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import AccessZone
         new_zone = AccessZone(
@@ -5753,12 +5897,12 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
             
         from backend.database.models import AccessZone
         zone = await db.get(AccessZone, id)
         if not zone:
-            raise Exception("Zone not found")
+            raise NotFoundException.resource("Zone")
             
         # Update fields
         zone.zone_id = input.zone_id
@@ -5781,7 +5925,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import AccessZone
         zone = await db.get(AccessZone, id)
@@ -5796,14 +5940,14 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
             
         from backend.database.models import AccessDoor, Gateway
         door = await db.get(AccessDoor, id)
-        if not door: raise Exception("Door not found")
+        if not door: raise NotFoundException.resource("Door")
         
         gw = await db.get(Gateway, door.gateway_id)
-        if not gw or not gw.ip_address: raise Exception("Gateway offline or no IP")
+        if not gw or not gw.ip_address: raise InvalidOperationException.cannot_complete("Gateway offline or no IP")
 
         import aiohttp
         # Gateway internal endpoint: /access/doors/{door_id}/trigger
@@ -5818,16 +5962,16 @@ class Mutation:
                         msg = data.get("message", "Gateway error")
                     except:
                         msg = f"Gateway returned {r.status}"
-                    raise Exception(msg)
+                    raise InvalidOperationException(detail=msg)
         except Exception as e:
-            raise Exception(f"Connection error: {str(e)}")
+            raise InvalidOperationException(detail=f"Connection error: {str(e)}")
 
     @strawberry.mutation
     async def create_access_door(self, input: inputs.AccessDoorInput, info: strawberry.Info) -> types.AccessDoor:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import AccessDoor
         new_door = AccessDoor(
@@ -5850,7 +5994,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import AccessDoor
         door = await db.get(AccessDoor, id)
@@ -5871,14 +6015,14 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import AccessDoor, Terminal
         from sqlalchemy import update
         
         door = await db.get(AccessDoor, id)
         if not door:
-            raise Exception("Door not found")
+            raise NotFoundException.resource("Door")
         
         # 1. Ако задаваме нов терминал на тази врата, първо разкачаме този терминал от ВСИЧКИ други врати
         if terminal_id:
@@ -5914,16 +6058,16 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.Terminal:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
             
         from backend.database.models import Terminal
         terminal = await db.get(Terminal, id)
         if not terminal:
-            raise Exception("Terminal not found") 
+            raise NotFoundException.resource("Terminal") 
         if alias is not None:
             terminal.alias = alias
         if mode is not None:
@@ -5940,7 +6084,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         import secrets
         from backend.database.models import AccessCode
@@ -5968,7 +6112,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import AccessCode
         code = await db.get(AccessCode, id)
@@ -5982,12 +6126,12 @@ class Mutation:
     async def sync_gateway_config(self, id: int, direction: str, info: strawberry.Info) -> bool:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user: raise Exception("Not authenticated")
+        if not current_user: raise AuthenticationException(detail="Not authenticated")
         
         from backend.database.models import Gateway
         gw = await db.get(Gateway, id)
-        if not gw: raise Exception("Gateway not found")
-        if not gw.ip_address: raise Exception("Gateway offline or no IP")
+        raise NotFoundException.resource("Gateway")
+        if not gw.ip_address: raise InvalidOperationException.cannot_complete("Gateway offline or no IP")
 
         import aiohttp
         # Map push/pull to gateway's internal endpoints
@@ -6003,16 +6147,16 @@ class Mutation:
                         msg = data.get("message", "Gateway error")
                     except:
                         msg = f"Gateway returned {r.status}"
-                    raise Exception(msg)
+                    raise InvalidOperationException(detail=msg)
         except Exception as e:
-            raise Exception(f"Connection error: {str(e)}")
+            raise InvalidOperationException(detail=f"Connection error: {str(e)}")
 
     @strawberry.mutation
     async def delete_access_code(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import AccessCode
         code = await db.get(AccessCode, id)
@@ -6027,7 +6171,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import User, AccessZone, user_access_zones
         from sqlalchemy import insert
@@ -6053,7 +6197,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
  
         await db.execute(delete(user_access_zones).where(
             user_access_zones.c.user_id == user_id,
@@ -6067,7 +6211,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import user_access_zones
         from sqlalchemy import insert, delete, and_
@@ -6100,7 +6244,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
         
         from backend.database.models import Gateway, AuditLog
         from sqlalchemy import update
@@ -6128,7 +6272,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
             
         from backend.database.models import Terminal
         terminal = await db.get(Terminal, id)
@@ -6147,16 +6291,16 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.Gateway:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import Gateway
         gateway = await db.get(Gateway, id)
         if not gateway:
-            raise Exception("Gateway not found")
+            raise NotFoundException.resource("Gateway")
 
         if alias is not None:
             gateway.alias = alias
@@ -6181,11 +6325,11 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.NightWorkBonus:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import NightWorkBonus
         from decimal import Decimal
@@ -6220,11 +6364,11 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.OvertimeWork:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import OvertimeWork
         from decimal import Decimal
@@ -6264,11 +6408,11 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.BusinessTrip:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import BusinessTrip
         from decimal import Decimal
@@ -6306,18 +6450,18 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.BusinessTrip:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import BusinessTrip
         from backend.database.models import sofia_now
 
         trip = await db.get(BusinessTrip, trip_id)
         if not trip:
-            raise Exception("Business trip not found")
+            raise NotFoundException.resource("Business Trip")
 
         trip.status = "approved" if approved else "rejected"
         trip.approved_by_id = current_user.id
@@ -6344,11 +6488,11 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.WorkExperience:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import WorkExperience
 
@@ -6379,17 +6523,17 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.Payslip:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import Payslip, sofia_now
         
         payslip = await db.get(Payslip, payslip_id)
         if not payslip:
-            raise Exception("Payslip not found")
+            raise NotFoundException.resource("Payslip")
             
         payslip.payment_status = "paid"
         payslip.actual_payment_date = payment_date or sofia_now()
@@ -6422,7 +6566,7 @@ class Mutation:
         Used for batch payment processing.
         """
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6457,7 +6601,7 @@ class Mutation:
         Generate SEPA XML file for payroll payments.
         """
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -6472,7 +6616,7 @@ class Mutation:
         company_bic = await crud.get_global_setting(db, f"company_{company_id}_bic") or ""
         
         if not company_iban:
-            raise Exception("Company IBAN not configured")
+            raise ValidationException(detail="Company IBAN not configured")
         
         # Get paid payslips for the period
         result = await db.execute(
@@ -6517,7 +6661,7 @@ class Mutation:
         
         validation = generator.validate_payments(payments)
         if not validation["valid"]:
-            raise Exception(f"Invalid payments: {', '.join(validation['errors'])}")
+            raise ValidationException(detail=f"Invalid payments: {', '.join(validation['errors'])}")
         
         return generator.generate_payment_xml(
             payments=payments,
@@ -6540,11 +6684,11 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.ContractAnnex:
         if not info:
-            raise Exception("Info is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractAnnex
         
@@ -6581,18 +6725,23 @@ class Mutation:
         overtime_rate: float,
         holiday_rate: float,
         work_class: Optional[str],
+        position_id: Optional[int] = None,
+        department_id: Optional[int] = None,
+        base_salary: Optional[float] = None,
+        clause_ids: Optional[str] = None,  # JSON string like "[1,2,3]"
         info: Optional[strawberry.Info] = None
     ) -> types.ContractTemplate:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
-        from backend.database.models import ContractTemplate, ContractTemplateVersion, ContractTemplateSection
+        from backend.database.models import ContractTemplate, ContractTemplateVersion, ContractTemplateSection, ContractTemplateClause
         from backend.database.models import sofia_now
         from decimal import Decimal
+        import json
 
         template = ContractTemplate(
             company_id=current_user.company_id,
@@ -6607,10 +6756,27 @@ class Mutation:
             overtime_rate=Decimal(str(overtime_rate)),
             holiday_rate=Decimal(str(holiday_rate)),
             work_class=work_class,
+            position_id=position_id,
+            department_id=department_id,
+            base_salary=Decimal(str(base_salary)) if base_salary else None,
             is_active=True,
         )
         db.add(template)
         await db.flush()
+
+        # Добавяне на клаузи
+        if clause_ids:
+            try:
+                clause_id_list = json.loads(clause_ids)
+                for idx, clause_id in enumerate(clause_id_list):
+                    clause_assoc = ContractTemplateClause(
+                        template_id=template.id,
+                        clause_id=clause_id,
+                        order_index=idx
+                    )
+                    db.add(clause_assoc)
+            except:
+                pass
 
         version = ContractTemplateVersion(
             template_id=template.id,
@@ -6624,6 +6790,9 @@ class Mutation:
             overtime_rate=Decimal(str(overtime_rate)),
             holiday_rate=Decimal(str(holiday_rate)),
             work_class=work_class,
+            position_id=position_id,
+            department_id=department_id,
+            base_salary=Decimal(str(base_salary)) if base_salary else None,
             is_current=True,
             created_by=f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email,
             change_note="Първоначална версия"
@@ -6690,18 +6859,18 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.ContractTemplate:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractTemplate, ContractTemplateVersion
         from decimal import Decimal
 
         template = await db.get(ContractTemplate, id)
         if not template:
-            raise Exception("Template not found")
+            raise NotFoundException.resource("Template")
 
         template.name = name
         template.description = description
@@ -6770,17 +6939,17 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> bool:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractTemplate
 
         template = await db.get(ContractTemplate, id)
         if not template:
-            raise Exception("Template not found")
+            raise NotFoundException.resource("Template")
 
         template.is_active = False
         await db.commit()
@@ -6793,22 +6962,22 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.ContractTemplate:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractTemplate, ContractTemplateVersion
         from decimal import Decimal
 
         version = await db.get(ContractTemplateVersion, version_id)
         if not version:
-            raise Exception("Version not found")
+            raise NotFoundException.resource("Version")
 
         template = await db.get(ContractTemplate, version.template_id)
         if not template:
-            raise Exception("Template not found")
+            raise NotFoundException.resource("Template")
 
         stmt = select(ContractTemplateVersion).where(
             ContractTemplateVersion.template_id == template.id,
@@ -6867,11 +7036,11 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.AnnexTemplate:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import AnnexTemplate, AnnexTemplateVersion, AnnexTemplateSection
         from decimal import Decimal
@@ -6947,17 +7116,17 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> bool:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import AnnexTemplate
 
         template = await db.get(AnnexTemplate, id)
         if not template:
-            raise Exception("Template not found")
+            raise NotFoundException.resource("Template")
 
         template.is_active = False
         await db.commit()
@@ -6974,11 +7143,11 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.ClauseTemplate:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ClauseTemplate
 
@@ -7012,17 +7181,17 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.ClauseTemplate:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ClauseTemplate
 
         clause = await db.get(ClauseTemplate, id)
         if not clause:
-            raise Exception("Clause not found")
+            raise NotFoundException.resource("Clause")
 
         clause.title = title
         clause.content = content
@@ -7047,17 +7216,17 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> bool:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ClauseTemplate
 
         clause = await db.get(ClauseTemplate, id)
         if not clause:
-            raise Exception("Clause not found")
+            raise NotFoundException.resource("Clause")
 
         clause.is_active = False
         await db.commit()
@@ -7074,17 +7243,17 @@ class Mutation:
     ) -> types.ContractTemplateSection:
         """Добавя секция към шаблон за договор"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractTemplate, ContractTemplateSection, ContractTemplateVersion
         
         template = await db.get(ContractTemplate, template_id)
         if not template:
-            raise Exception("Template not found")
+            raise NotFoundException.resource("Template")
         
         # Намираме текущата версия
         stmt = select(ContractTemplateVersion).where(
@@ -7095,7 +7264,7 @@ class Mutation:
         current_version = result.scalar_one_or_none()
         
         if not current_version:
-            raise Exception("No current version found")
+            raise NotFoundException.resource("Version")
         
         # Създаваме секцията
         new_section = ContractTemplateSection(
@@ -7129,17 +7298,17 @@ class Mutation:
     ) -> types.ContractTemplateSection:
         """Обновява секция в шаблон за договор"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractTemplateSection
         
         db_section = await db.get(ContractTemplateSection, section_id)
         if not db_section:
-            raise Exception("Section not found")
+            raise NotFoundException.resource("Section")
         
         if section.title is not None:
             db_section.title = section.title
@@ -7171,17 +7340,17 @@ class Mutation:
     ) -> bool:
         """Изтрива секция от шаблон за договор"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractTemplateSection
         
         db_section = await db.get(ContractTemplateSection, section_id)
         if not db_section:
-            raise Exception("Section not found")
+            raise NotFoundException.resource("Section")
         
         await db.delete(db_section)
         await db.commit()
@@ -7198,17 +7367,17 @@ class Mutation:
     ) -> types.AnnexTemplateSection:
         """Добавя секция към шаблон за анекс"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import AnnexTemplate, AnnexTemplateSection, AnnexTemplateVersion
         
         template = await db.get(AnnexTemplate, template_id)
         if not template:
-            raise Exception("Template not found")
+            raise NotFoundException.resource("Template")
         
         # Намираме текущата версия
         stmt = select(AnnexTemplateVersion).where(
@@ -7219,7 +7388,7 @@ class Mutation:
         current_version = result.scalar_one_or_none()
         
         if not current_version:
-            raise Exception("No current version found")
+            raise NotFoundException.resource("Version")
         
         # Създаваме секцията
         new_section = AnnexTemplateSection(
@@ -7253,17 +7422,17 @@ class Mutation:
     ) -> types.AnnexTemplateSection:
         """Обновява секция в шаблон за анекс"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import AnnexTemplateSection
         
         db_section = await db.get(AnnexTemplateSection, section_id)
         if not db_section:
-            raise Exception("Section not found")
+            raise NotFoundException.resource("Section")
         
         if section.title is not None:
             db_section.title = section.title
@@ -7295,17 +7464,17 @@ class Mutation:
     ) -> bool:
         """Изтрива секция от шаблон за анекс"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import AnnexTemplateSection
         
         db_section = await db.get(AnnexTemplateSection, section_id)
         if not db_section:
-            raise Exception("Section not found")
+            raise NotFoundException.resource("Section")
         
         await db.delete(db_section)
         await db.commit()
@@ -7321,17 +7490,17 @@ class Mutation:
         info: Optional[strawberry.Info] = None
     ) -> types.ContractAnnex:
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractAnnex, EmploymentContract, sofia_now
         
         annex = await db.get(ContractAnnex, annex_id)
         if not annex:
-            raise Exception("Annex not found")
+            raise NotFoundException.resource("Annex")
         
         now = sofia_now()
         
@@ -7378,17 +7547,17 @@ class Mutation:
     ) -> types.ContractAnnex:
         """Отхвърля анекс"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin", "employee"]:
-            raise Exception("Not authorized")
+            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractAnnex
         
         annex = await db.get(ContractAnnex, annex_id)
         if not annex:
-            raise Exception("Annex not found")
+            raise NotFoundException.resource("Annex")
         
         annex.status = "rejected"
         annex.rejection_reason = reason
@@ -7408,7 +7577,7 @@ class Mutation:
     ) -> JSONScalar:
         """Генерира годишна справка за осигурени лица"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7428,7 +7597,7 @@ class Mutation:
     ) -> JSONScalar:
         """Генерира справка по чл. 73, ал. 6 ЗДДФЛ"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7448,7 +7617,7 @@ class Mutation:
     ) -> JSONScalar:
         """Генерира експорт за електронната трудова книжка"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7469,7 +7638,7 @@ class Mutation:
     ) -> JSONScalar:
         """Генерира месечна декларация за НАП"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
@@ -7488,14 +7657,14 @@ class Mutation:
     ) -> types.EmploymentContract:
         """Създава нов трудов договор"""
         if not info:
-            raise Exception("Info context is required")
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
         
-        from backend.database.models import EmploymentContract
+        from backend.database.models import EmploymentContract, ContractTemplate
         
         company_id = input.company_id
         if not company_id and current_user.company_id:
@@ -7504,12 +7673,31 @@ class Mutation:
         if not company_id:
             raise ValidationException.required_field("ID на фирмата")
         
+        # Ако е избран шаблон, зареждаме данните от него
+        template = None
+        template_clauses = []
+        if input.template_id:
+            template = await db.get(ContractTemplate, input.template_id)
+            # Зареждаме клаузите от шаблона
+            if template:
+                from backend.database.models import ContractTemplateClause
+                clauses_result = await db.execute(
+                    select(ContractTemplateClause).where(ContractTemplateClause.template_id == input.template_id)
+                )
+                template_clauses = [c.clause_id for c in clauses_result.scalars().all()]
+        
+        # Определяме clause_ids - от input или от шаблон
+        final_clause_ids = input.clause_ids
+        if not final_clause_ids and template_clauses:
+            final_clause_ids = json.dumps(template_clauses) if template_clauses else None
+        
         contract = EmploymentContract(
             employee_name=input.employee_name,
             employee_egn=input.employee_egn,
             company_id=company_id,
             department_id=input.department_id,
             position_id=input.position_id,
+            template_id=input.template_id,
             user_id=None,
             contract_type=input.contract_type,
             contract_number=input.contract_number,
@@ -7517,7 +7705,17 @@ class Mutation:
             end_date=input.end_date,
             base_salary=input.base_salary,
             work_hours_per_week=input.work_hours_per_week,
+            job_description=input.job_description,
             status="draft",
+            clause_ids=final_clause_ids,
+            # TRZ полета - от шаблон или от input
+            probation_months=input.probation_months if input.probation_months is not None else (template.probation_months if template else None),
+            salary_calculation_type=input.salary_calculation_type or (template.salary_calculation_type if template else 'gross'),
+            payment_day=input.payment_day if input.payment_day is not None else (template.payment_day if template else 25),
+            night_work_rate=input.night_work_rate if input.night_work_rate is not None else (template.night_work_rate if template else 0.5),
+            overtime_rate=input.overtime_rate if input.overtime_rate is not None else (template.overtime_rate if template else 1.5),
+            holiday_rate=input.holiday_rate if input.holiday_rate is not None else (template.holiday_rate if template else 2.0),
+            work_class=input.work_class or (template.work_class if template else None),
         )
         
         db.add(contract)
@@ -7602,7 +7800,7 @@ class Mutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+        if current_user is None or current_user.role is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
         
         from backend.database.models import EmploymentContract, Company

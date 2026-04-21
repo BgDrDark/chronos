@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from backend.database import models
 from backend.database.models import sofia_now
 from backend.utils.json_type import JSONScalar
+from backend.crud.repositories import time_repo, settings_repo
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
@@ -785,11 +786,9 @@ class User:
     @strawberry.field
     async def leave_balance(self, info: strawberry.Info, year: Optional[int] = None) -> Optional["LeaveBalance"]:
         db = info.context["db"]
-        from backend import crud
         target_year = year if year is not None else datetime.datetime.now().year
-        from backend.database.models import LeaveBalance as DbLeaveBalance
-        balance = await crud.get_leave_balance(db, self.id, target_year)
-        return DbLeaveBalance.from_instance(balance) if balance else None
+        balance = await time_repo.get_leave_balance(db, self.id, target_year)
+        return LeaveBalance.from_instance(balance) if balance else None
 
     @strawberry.field
     async def is_smtp_configured(self, info: strawberry.Info) -> bool:
@@ -802,7 +801,7 @@ class User:
         
         from backend import crud
         db = info.context["db"]
-        return await crud.is_smtp_configured(db)
+        return await settings_repo.is_smtp_configured(db)
 
     @classmethod
     def from_instance(cls, instance: models.User) -> "User":
@@ -1112,8 +1111,7 @@ class WorkSchedule:
     @strawberry.field
     async def shift(self, info: strawberry.Info) -> Optional["Shift"]:
         db = info.context["db"]
-        from backend import crud
-        db_shift = await crud.get_shift_by_id(db, self.shift_id)
+        db_shift = await time_repo.get_shift_by_id(db, self.shift_id)
         return Shift.from_instance(db_shift) if db_shift else None
 
     @classmethod
@@ -1886,7 +1884,7 @@ class RecipeIngredient:
             ingredient_id=instance.ingredient_id,
             workstation_id=instance.workstation_id,
             quantity_gross=instance.quantity_gross,
-            quantity_net=instance.quantity_gross,
+            quantity_net=instance.quantity_net,
             waste_percentage=Decimal(instance.waste_percentage or 0),
         )
 
@@ -2804,6 +2802,7 @@ class SAFTFileResult:
 class ProformaInvoice:
     id: int
     number: str
+    type: str = "proforma"
     date: datetime.date
     client_name: Optional[str]
     client_eik: Optional[str]
@@ -2819,12 +2818,36 @@ class ProformaInvoice:
     company_id: int
     created_by: Optional[int]
     created_at: datetime.datetime
+    # Missing fields (identical to Invoice)
+    document_type: Optional[str] = "ПРОФОРМА"
+    griff: Optional[str] = "ОРИГИНАЛ"
+    description: Optional[str] = None
+    payment_method: Optional[str] = None
+    delivery_method: Optional[str] = "Доставка до адрес"
+    due_date: Optional[datetime.date] = None
+    payment_date: Optional[datetime.date] = None
+
+    @strawberry.field
+    async def items(self, info: strawberry.Info) -> List[InvoiceItem]:
+        results = await info.context["dataloaders"]["invoice_items_by_invoice_id"].load(self.id)
+        return [InvoiceItem.from_instance(t) for t in results]
+
+    @strawberry.field
+    async def company(self, info: strawberry.Info) -> Optional[Company]:
+        result = await info.context["dataloaders"]["company_by_id"].load(self.company_id)
+        return Company.from_instance(result) if result else None
+
+    @strawberry.field
+    async def creator(self, info: strawberry.Info) -> Optional[User]:
+        if not self.created_by: return None
+        return await info.context["dataloaders"]["user_by_id"].load(self.created_by)
 
     @classmethod
     def from_instance(cls, instance: models.Invoice) -> "ProformaInvoice":
         return cls(
             id=instance.id,
             number=instance.number,
+            type=instance.type or "proforma",
             date=instance.date,
             client_name=instance.client_name,
             client_eik=instance.client_eik,
@@ -2839,7 +2862,14 @@ class ProformaInvoice:
             notes=instance.notes,
             company_id=instance.company_id,
             created_by=instance.created_by,
-            created_at=instance.created_at
+            created_at=instance.created_at,
+            document_type=instance.document_type or "ПРОФОРМА",
+            griff=instance.griff or "ОРИГИНАЛ",
+            description=instance.description,
+            payment_method=instance.payment_method,
+            delivery_method=instance.delivery_method or "Доставка до адрес",
+            due_date=instance.due_date,
+            payment_date=instance.payment_date
         )
 
 

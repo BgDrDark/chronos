@@ -32,6 +32,7 @@ import {
   ChevronRight as ChevronRightIcon,
   Work as WorkIcon,
   AttachMoney as MoneyIcon,
+  Kitchen as KitchenIcon,
 } from '@mui/icons-material';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useApolloClient } from '@apollo/client';
@@ -351,6 +352,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Справки', icon: <ReportsIcon />, path: '/admin/fleet/reports', visible: isAdmin },
     { text: 'Терминал за присъствие', icon: <QrCodeScannerIcon />, path: '/kiosk', visible: isAdmin },
     { text: 'Терминал за достъп', icon: <DoorIcon />, path: '/kiosk/terminal', visible: isAdmin },
+    { text: 'Производствен терминал', icon: <KitchenIcon />, path: '/admin/production/kiosk', visible: isAdmin && isEnabled('confectionery') },
   ];
 
   const drawerContent = (

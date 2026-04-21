@@ -186,7 +186,10 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         self.payment_schedule = schedule_result.scalar_one_or_none()
         
         # Load employment contract
-        contract_query = select(EmploymentContract).where(
+        from sqlalchemy.orm import selectinload
+        contract_query = select(EmploymentContract).options(
+            selectinload(EmploymentContract.user)
+        ).where(
             and_(
                 EmploymentContract.user_id == self.user_id,
                 EmploymentContract.company_id == self.company_id,

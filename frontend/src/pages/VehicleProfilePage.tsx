@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useCurrency, formatCurrencyValue } from '../currencyContext';
 import {
   Box,
   Tabs,
@@ -55,6 +56,7 @@ function TabPanel(props: TabPanelProps) {
 const VehicleProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { currency } = useCurrency();
   const [tabValue, setTabValue] = useState(0);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -203,7 +205,7 @@ const VehicleProfilePage: React.FC = () => {
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
               <FuelIcon color="primary" />
-              <Typography variant="h6">{expenseSummary.fuel} лв</Typography>
+              <Typography variant="h6">{formatCurrencyValue(expenseSummary.fuel, currency)}</Typography>
               <Typography variant="body2" color="text.secondary">Гориво</Typography>
             </CardContent>
           </Card>
@@ -212,7 +214,7 @@ const VehicleProfilePage: React.FC = () => {
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
               <RepairIcon color="warning" />
-              <Typography variant="h6">{expenseSummary.repairs} лв</Typography>
+              <Typography variant="h6">{formatCurrencyValue(expenseSummary.repairs, currency)}</Typography>
               <Typography variant="body2" color="text.secondary">Ремонти</Typography>
             </CardContent>
           </Card>
@@ -221,7 +223,7 @@ const VehicleProfilePage: React.FC = () => {
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
               <InsuranceIcon color="info" />
-              <Typography variant="h6">{expenseSummary.insurance} лв</Typography>
+              <Typography variant="h6">{formatCurrencyValue(expenseSummary.insurance, currency)}</Typography>
               <Typography variant="body2" color="text.secondary">Застраховки</Typography>
             </CardContent>
           </Card>
@@ -230,7 +232,7 @@ const VehicleProfilePage: React.FC = () => {
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
               <ExpenseIcon color="success" />
-              <Typography variant="h6">{expenseSummary.total} лв</Typography>
+              <Typography variant="h6">{formatCurrencyValue(expenseSummary.total, currency)}</Typography>
               <Typography variant="body2" color="text.secondary">Общо</Typography>
             </CardContent>
           </Card>
@@ -347,7 +349,7 @@ const VehicleProfilePage: React.FC = () => {
                   <TableCell>{ins.type}</TableCell>
                   <TableCell>{ins.company}</TableCell>
                   <TableCell>{ins.endDate}</TableCell>
-                  <TableCell>{ins.premium} лв</TableCell>
+                  <TableCell>{formatCurrencyValue(ins.premium, currency)}</TableCell>
                   <TableCell>
                     <Chip 
                       label={new Date(ins.endDate) > new Date() ? 'Активна' : 'Изтекла'} 

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { 
     Box, Typography, Paper, Button, Container, Dialog, 
-    DialogTitle, DialogContent, DialogActions, TextField, Alert, Avatar 
+    DialogTitle, DialogContent, DialogActions, TextField, Alert, Avatar, InputAdornment
 } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -10,6 +10,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import LockIcon from '@mui/icons-material/Lock';
 import { useNavigate } from 'react-router-dom';
 import { getApiUrl } from '../utils/api';
+import { InfoIcon } from '../components/ui/InfoIcon';
 
 const KioskPage: React.FC = () => {
     const [scanResult, setScanResult] = useState<{ 
@@ -264,6 +265,15 @@ const KioskPage: React.FC = () => {
                             margin="normal"
                             value={adminEmail}
                             onChange={(e) => setAdminEmail(e.target.value)}
+                            slotProps={{
+                                input: {
+                                    endAdornment: (
+                                        <InputAdornment position="end">
+                                            <InfoIcon helpText="Имейл на администратор с права за изход" />
+                                        </InputAdornment>
+                                    )
+                                }
+                            }}
                         />
                         <TextField
                             fullWidth
@@ -272,6 +282,15 @@ const KioskPage: React.FC = () => {
                             margin="normal"
                             value={adminPassword}
                             onChange={(e) => setAdminPassword(e.target.value)}
+                            slotProps={{
+                                input: {
+                                    endAdornment: (
+                                        <InputAdornment position="end">
+                                            <InfoIcon helpText="Администраторска парола" />
+                                        </InputAdornment>
+                                    )
+                                }
+                            }}
                         />
                         {exitError && <Alert severity="error" sx={{ mt: 2 }}>{exitError}</Alert>}
                     </DialogContent>

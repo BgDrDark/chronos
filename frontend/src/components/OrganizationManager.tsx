@@ -4,7 +4,7 @@ import {
   TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   List, ListItem, ListItemText, IconButton,
   MenuItem, Divider, CircularProgress, Alert,
-  FormControl, InputLabel, Select
+  FormControl, InputLabel, Select, InputAdornment
 } from '@mui/material';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { useForm, Controller } from 'react-hook-form';
@@ -16,6 +16,8 @@ import BadgeIcon from '@mui/icons-material/Badge';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { type Company, type Department, type Position, type User, type Account } from '../types';
+import { InfoIcon } from './ui/InfoIcon';
+import { organizationFieldsHelp, commonFieldsHelp } from './ui/fieldsHelpText';
 
 // --- GraphQL ---
 const GET_STRUCTURE_QUERY = gql`
@@ -406,22 +408,40 @@ const OrganizationManager: React.FC = () => {
             <DialogContent dividers>
                 <Grid container spacing={2}>
                     <Grid size={{ xs: 12 }}>
-                        <Controller name="name" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="Име на фирмата" size="small" required />} />
+                        <Controller name="name" control={companyForm.control} render={({ field }) => {
+                            const endAdornment = <InputAdornment position="end"><InfoIcon helpText={organizationFieldsHelp.companyName} /></InputAdornment>;
+                            return <TextField {...field} fullWidth label="Име на фирмата" size="small" required slotProps={{ input: { endAdornment } }} />;
+                        }} />
                     </Grid>
                     <Grid size={{ xs: 6 }}>
-                        <Controller name="eik" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="ЕИК" size="small" />} />
+                        <Controller name="eik" control={companyForm.control} render={({ field }) => {
+                            const endAdornment = <InputAdornment position="end"><InfoIcon helpText={organizationFieldsHelp.eik} /></InputAdornment>;
+                            return <TextField {...field} fullWidth label="ЕИК" size="small" slotProps={{ input: { endAdornment } }} />;
+                        }} />
                     </Grid>
                     <Grid size={{ xs: 6 }}>
-                        <Controller name="bulstat" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="БУЛСТАТ" size="small" />} />
+                        <Controller name="bulstat" control={companyForm.control} render={({ field }) => {
+                            const endAdornment = <InputAdornment position="end"><InfoIcon helpText={organizationFieldsHelp.bulstat} /></InputAdornment>;
+                            return <TextField {...field} fullWidth label="БУЛСТАТ" size="small" slotProps={{ input: { endAdornment } }} />;
+                        }} />
                     </Grid>
                     <Grid size={{ xs: 12 }}>
-                        <Controller name="vatNumber" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="ДДС Номер" size="small" />} />
+                        <Controller name="vatNumber" control={companyForm.control} render={({ field }) => {
+                            const endAdornment = <InputAdornment position="end"><InfoIcon helpText={organizationFieldsHelp.vatNumber} /></InputAdornment>;
+                            return <TextField {...field} fullWidth label="ДДС Номер" size="small" slotProps={{ input: { endAdornment } }} />;
+                        }} />
                     </Grid>
                     <Grid size={{ xs: 12 }}>
-                        <Controller name="address" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="Адрес" size="small" multiline rows={2} />} />
+                        <Controller name="address" control={companyForm.control} render={({ field }) => {
+                            const endAdornment = <InputAdornment position="end"><InfoIcon helpText={commonFieldsHelp.address} /></InputAdornment>;
+                            return <TextField {...field} fullWidth label="Адрес" size="small" multiline rows={2} slotProps={{ input: { endAdornment } }} />;
+                        }} />
                     </Grid>
                     <Grid size={{ xs: 12 }}>
-                        <Controller name="molName" control={companyForm.control} render={({ field }) => <TextField {...field} fullWidth label="МОЛ" size="small" />} />
+                        <Controller name="molName" control={companyForm.control} render={({ field }) => {
+                            const endAdornment = <InputAdornment position="end"><InfoIcon helpText={organizationFieldsHelp.mol} /></InputAdornment>;
+                            return <TextField {...field} fullWidth label="МОЛ" size="small" slotProps={{ input: { endAdornment } }} />;
+                        }} />
                     </Grid>
                 </Grid>
             </DialogContent>
@@ -439,7 +459,10 @@ const OrganizationManager: React.FC = () => {
             <DialogContent dividers>
                 <Grid container spacing={2}>
                     <Grid size={{ xs: 12 }}>
-                        <Controller name="name" control={deptForm.control} render={({ field }) => <TextField {...field} fullWidth label="Име на отдела" size="small" required />} />
+                        <Controller name="name" control={deptForm.control} render={({ field }) => {
+                            const endAdornment = <InputAdornment position="end"><InfoIcon helpText={organizationFieldsHelp.departmentName} /></InputAdornment>;
+                            return <TextField {...field} fullWidth label="Име на отдела" size="small" required slotProps={{ input: { endAdornment } }} />;
+                        }} />
                     </Grid>
                     <Grid size={{ xs: 12 }}>
                         <Controller name="companyId" control={deptForm.control} render={({ field }) => (
@@ -472,7 +495,10 @@ const OrganizationManager: React.FC = () => {
             <DialogContent dividers>
                 <Grid container spacing={2}>
                     <Grid size={{ xs: 12 }}>
-                        <Controller name="title" control={posForm.control} render={({ field }) => <TextField {...field} fullWidth label="Наименование" size="small" required />} />
+                        <Controller name="title" control={posForm.control} render={({ field }) => {
+                            const endAdornment = <InputAdornment position="end"><InfoIcon helpText={organizationFieldsHelp.positionTitle} /></InputAdornment>;
+                            return <TextField {...field} fullWidth label="Наименование" size="small" required slotProps={{ input: { endAdornment } }} />;
+                        }} />
                     </Grid>
                     <Grid size={{ xs: 12 }}>
                         <Controller name="departmentId" control={posForm.control} render={({ field }) => (

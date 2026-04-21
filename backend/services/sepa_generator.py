@@ -4,7 +4,7 @@ Generates ISO 20022 pain.001.001.03 compliant XML files for batch payments.
 """
 from decimal import Decimal
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import xml.etree.ElementTree as ET
 
 
@@ -49,7 +49,7 @@ class SEPAGenerator:
         self,
         payments: List[Dict[str, Any]],
         batch_name: str = "Payroll",
-        execution_date: str = None
+        execution_date: Optional[str] = None
     ) -> str:
         """
         Generate SEPA XML for batch payments.

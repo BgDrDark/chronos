@@ -9,13 +9,17 @@ import {
   MenuItem,
   Alert,
   Grid,
-  Box
+  Box,
+  InputAdornment
 } from '@mui/material';
 import { useMutation, gql } from '@apollo/client';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { type User } from '../types';
+import { InfoIcon } from './ui/InfoIcon';
+import { scheduleFieldsHelp } from './ui/fieldsHelpText';
+import { extractErrorMessage } from '../context/ErrorContext';
 
 const CREATE_MANUAL_TIME_LOG_MUTATION = gql`
   mutation CreateManualTimeLog($userId: Int!, $startTime: DateTime!, $endTime: DateTime!, $breakDurationMinutes: Int) {
@@ -95,7 +99,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
       refetch();
       onClose();
     } catch (err) {
-      setApiError(err instanceof Error ? err.message : 'Възникна грешка');
+      setApiError(extractErrorMessage(err));
     }
   };
 
@@ -142,6 +146,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
                     error={!!errors.date}
                     helperText={errors.date?.message}
                     size="small"
+                    slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={scheduleFieldsHelp.scheduleDate} /></InputAdornment> } }}
                   />
                 )}
               />
@@ -160,6 +165,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
                     error={!!errors.startTime}
                     helperText={errors.startTime?.message}
                     size="small"
+                    slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={scheduleFieldsHelp.startTime} /></InputAdornment> } }}
                   />
                 )}
               />
@@ -178,6 +184,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
                     error={!!errors.endTime}
                     helperText={errors.endTime?.message}
                     size="small"
+                    slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={scheduleFieldsHelp.endTime} /></InputAdornment> } }}
                   />
                 )}
               />
@@ -193,6 +200,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
                     fullWidth
                     label="Почивка (минути)"
                     size="small"
+                    slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={scheduleFieldsHelp.breakMinutes} /></InputAdornment> } }}
                   />
                 )}
               />

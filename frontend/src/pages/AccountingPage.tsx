@@ -40,6 +40,7 @@ import {
   Divider,
   InputAdornment,
   Tooltip,
+  Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -48,6 +49,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Print as PrintIcon,
   Close as CloseIcon,
+  FileCopy as FileCopyIcon,
 } from '@mui/icons-material';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -273,6 +275,15 @@ const GET_INGREDIENT_BATCHES_WITH_STOCK = gql`
 const CREATE_INVOICE = gql`
   mutation CreateInvoice($invoiceData: InvoiceInput!) {
     createInvoice(invoiceData: $invoiceData) {
+      id
+      number
+    }
+  }
+`;
+
+const CREATE_PROFORMA_INVOICE = gql`
+  mutation CreateProformaInvoice($clientName: String!, $clientEik: String, $clientAddress: String, $date: String!, $items: [InvoiceItemInput!]!, $vatRate: Float!, $discountPercent: Float!, $notes: String) {
+    createProformaInvoice(clientName: $clientName, clientEik: $clientEik, clientAddress: $clientAddress, date: $date, items: $items, vatRate: $vatRate, discountPercent: $discountPercent, notes: $notes) {
       id
       number
     }
@@ -526,6 +537,36 @@ const GET_INVOICE_CORRECTIONS = gql`
       originalInvoiceId
       clientName
       clientEik
+      reason
+      subtotal
+      vatAmount
+      total
+      status
+    }
+  }
+`;
+
+const CREATE_INVOICE_CORRECTION = gql`
+  mutation CreateInvoiceCorrection(
+    $originalInvoiceId: Int!
+    $correctionType: String!
+    $reason: String!
+    $correctionDate: Date!
+    $createNewInvoice: Boolean
+  ) {
+    createInvoiceCorrection(
+      originalInvoiceId: $originalInvoiceId
+      correctionType: $correctionType
+      reason: $reason
+      correctionDate: $correctionDate
+      createNewInvoice: $createNewInvoice
+    ) {
+      id
+      number
+      type
+      date
+      originalInvoiceId
+      clientName
       reason
       subtotal
       vatAmount
@@ -858,6 +899,7 @@ export default function AccountingPage({ tab }: Props) {
   }, [batchesData, loadingBatchItemIndex]);
 
   const [createInvoice] = useMutation(CREATE_INVOICE);
+  const [createProformaInvoice] = useMutation(CREATE_PROFORMA_INVOICE);
   const [updateInvoice] = useMutation(UPDATE_INVOICE);
   const [deleteInvoice] = useMutation(DELETE_INVOICE);
   const [getInvoicePdfUrl] = useMutation(GET_INVOICE_PDF_URL);
@@ -1540,14 +1582,37 @@ function YearlyReportTab() {
 // ============== NEW TAB COMPONENTS ==============
 
 // Proforma Invoices Tab
-function ProformaTab() {
+function ProformaTab({ 
+  handleOpenDialog 
+}: { 
+  handleOpenDialog: (invoice?: Invoice) => void;
+}) {
   const [search, setSearch] = useState('');
-  
-  const { data, loading } = useQuery(GET_PROFORMA_INVOICES, {
+  const { showSuccess, showError } = useError();
+  const { data, loading, refetch } = useQuery(GET_PROFORMA_INVOICES, {
     variables: { search: search || undefined },
   });
 
+  const [convertProformaToInvoice] = useMutation(gql`
+    mutation ConvertProformaToInvoice($proformaId: Int!, $invoiceType: String!) {
+      convertProformaToInvoice(proformaId: $proformaId, invoiceType: $invoiceType) {
+        id
+        number
+      }
+    }
+  `);
+
   const proformas = data?.proformaInvoices || [];
+
+  const handleConvert = async (proformaId: number, invoiceType: string) => {
+    try {
+      await convertProformaToInvoice({ variables: { proformaId, invoiceType } });
+      showSuccess('Проформата е конвертирана във фактура');
+      refetch();
+    } catch (err) {
+      showError(getErrorMessage(err));
+    }
+  };
 
   return (
     <Box>
@@ -1559,7 +1624,7 @@ function ProformaTab() {
           onChange={(e) => setSearch(e.target.value)}
           sx={{ width: 300 }}
         />
-        <Button variant="contained" startIcon={<AddIcon />}>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
           Нова проформа
         </Button>
       </Box>
@@ -1575,6 +1640,7 @@ function ProformaTab() {
                 <TableCell align="right">Сума</TableCell>
                 <TableCell>ДДС</TableCell>
                 <TableCell>Статус</TableCell>
+                <TableCell align="center">Действия</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -1588,11 +1654,20 @@ function ProformaTab() {
                   <TableCell>
                     <Chip label={getInvoiceStatusText(inv.status)} color={getInvoiceStatusColor(inv.status)} size="small" />
                   </TableCell>
+                  <TableCell align="center">
+                    {inv.status !== 'converted' && (
+                      <Tooltip title="Конвертирай в изходяща фактура">
+                        <IconButton size="small" onClick={() => handleConvert(inv.id, 'outgoing')}>
+                          <FileCopyIcon />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
               {proformas.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">Няма проформа фактури</TableCell>
+                  <TableCell colSpan={7} align="center">Няма проформа фактури</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -1622,6 +1697,8 @@ function CorrectionsTab() {
     variables: { type: undefined, status: undefined },
   });
 
+  const [createCorrection] = useMutation(CREATE_INVOICE_CORRECTION);
+
   const corrections = data?.invoiceCorrections || [];
   const invoices = invoicesData?.invoices || [];
 
@@ -1636,12 +1713,25 @@ function CorrectionsTab() {
     }
     
     try {
-      // TODO: Implement mutation call when backend is ready
-      showSuccess('Корекцията е създадена успешно');
-      setDialogOpen(false);
-      setSelectedInvoiceId(null);
-      setReason('');
-      refetch();
+      const { data: result } = await createCorrection({
+        variables: {
+          originalInvoiceId: selectedInvoiceId,
+          correctionType,
+          reason,
+          correctionDate,
+          createNewInvoice,
+        },
+      });
+      
+      if (result?.createInvoiceCorrection) {
+        showSuccess(`Корекция ${result.createInvoiceCorrection.number} е създадена успешно`);
+        setDialogOpen(false);
+        setSelectedInvoiceId(null);
+        setReason('');
+        setCorrectionType('credit');
+        setCreateNewInvoice(false);
+        refetch();
+      }
     } catch (err) {
       showError(extractErrorMessage(err));
     }
@@ -1723,26 +1813,21 @@ function CorrectionsTab() {
               </RadioGroup>
             </FormControl>
 
-            <FormControl fullWidth>
-              <InputLabel>Оригинална фактура</InputLabel>
-              <Select
-                value={selectedInvoiceId || ''}
-                onChange={(e) => setSelectedInvoiceId(e.target.value as number)}
-                label="Оригинална фактура"
-              >
-                {invoices
-                  .filter((inv: Invoice) => inv.status === 'paid')
-                  .map((inv: Invoice) => (
-                    <MenuItem key={inv.id} value={inv.id}>
-                      {inv.number} - {inv.clientName || 'Без име'} - {formatPrice(Number(inv.total))}
-                    </MenuItem>
-                  ))}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              options={invoices.filter((inv: Invoice) => inv.status !== 'paid' && inv.status !== 'cancelled' && inv.status !== 'corrected')}
+              getOptionLabel={(inv: Invoice) => `${inv.number} - ${inv.clientName || 'Без име'} - ${formatPrice(Number(inv.total))}`}
+              value={selectedInvoice || null}
+              onChange={(_, newValue) => setSelectedInvoiceId(newValue ? newValue.id : null)}
+              renderInput={(params) => (
+                <TextField {...params} label="Оригинална фактура" placeholder="Търсете по номер или клиент..." />
+              )}
+              noOptionsText="Няма намерени фактури за корекция"
+            />
 
             {selectedInvoice && (
               <Alert severity="info">
                 <strong>Оригинална фактура:</strong> {selectedInvoice.number}<br />
+                <strong>Клиент:</strong> {selectedInvoice.clientName || '-'}<br />
                 <strong>Сума:</strong> {formatPrice(Number(selectedInvoice.total))}<br />
                 <strong>ДДС:</strong> {formatPrice(Number(selectedInvoice.vatAmount))}
               </Alert>
@@ -1765,6 +1850,13 @@ function CorrectionsTab() {
               placeholder="Въведете причината за корекцията..."
             />
 
+            {selectedInvoice && (
+              <Alert severity="warning">
+                <strong>Внимание!</strong><br />
+                След създаване на корекция, оригиналната фактура #{selectedInvoice.number} ще бъде маркирана като „коригирана" и няма да може да се редактира.
+              </Alert>
+            )}
+
             <FormControlLabel
               control={
                 <Checkbox 
@@ -1774,6 +1866,15 @@ function CorrectionsTab() {
               }
               label="Създай нова коригирана фактура"
             />
+
+            {selectedInvoice && (
+              <Alert severity={correctionType === 'credit' ? 'warning' : 'info'}>
+                <strong>Корекция ({correctionType === 'credit' ? 'Кредитно' : 'Дебитно'}):</strong><br />
+                <strong>Сума:</strong> {correctionType === 'credit' ? '-' : '+'}{formatPrice(Number(selectedInvoice.subtotal))}<br />
+                <strong>ДДС:</strong> {correctionType === 'credit' ? '-' : '+'}{formatPrice(Number(selectedInvoice.vatAmount))}<br />
+                <strong>Общо:</strong> {correctionType === 'credit' ? '-' : '+'}{formatPrice(Number(selectedInvoice.total))}
+              </Alert>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -2567,17 +2668,22 @@ function SAFTTab() {
 }
 
   const handleOpenDialog = (invoice?: Invoice) => {
+    // Determine the invoice type - default based on current tab, or from invoice
+    const defaultType = invoiceType;
+    
     if (invoice) {
-      // READONLY check: paid, cancelled, corrected invoices cannot be edited
-      const readonlyStatuses = ['paid', 'cancelled', 'corrected'];
+      // READONLY check: paid, cancelled, corrected, converted invoices cannot be edited
+      const readonlyStatuses = ['paid', 'cancelled', 'corrected', 'converted'];
       if (readonlyStatuses.includes(invoice.status)) {
         showError(`Фактура с статус '${invoice.status}' е в READONLY режим и не може да се редактира.`);
         return;
       }
       
       setEditingInvoice(invoice);
+      // Handle proforma type - set type to outgoing by default
+      const invoiceDataType = invoice.type === 'proforma' ? 'outgoing' : invoice.type;
       setFormData({
-        type: invoice.type,
+        type: invoiceDataType,
         documentType: invoice.documentType || 'ФАКТУРА',
         griff: invoice.griff || 'ОРИГИНАЛ',
         description: invoice.description || '',
@@ -2598,9 +2704,11 @@ function SAFTTab() {
       });
     } else {
       setEditingInvoice(null);
+      // Check if called from Proforma tab (tabValue === 7)
+      const isProformaTab = tabValue === 7;
       setFormData({
-        type: invoiceType,
-        documentType: 'ФАКТУРА',
+        type: isProformaTab ? 'proforma' : invoiceType,
+        documentType: isProformaTab ? 'ПРОФОРМА' : 'ФАКТУРА',
         griff: 'ОРИГИНАЛ',
         description: '',
         date: new Date().toISOString().split('T')[0],
@@ -2742,6 +2850,22 @@ function SAFTTab() {
       return;
     }
     
+    // Warning when cancelling a paid invoice
+    if (editingInvoice && editingInvoice.status === 'paid' && formData.status === 'cancelled') {
+      const confirmed = window.confirm(
+        '⚠️ ВНИМАНИЕ!\n\n' +
+        'Вие анулирате платена фактура!\n\n' +
+        'Тази фактура има свързани записи в:\n' +
+        '• Касовата книга\n' +
+        '• Счетоводните записи\n\n' +
+        'Моля, анулирайте ги ръчно преди да продължите.\n\n' +
+        'Желаете ли да продължите?'
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+    
     try {
       const invoiceData = {
         type: formData.type,
@@ -2779,20 +2903,47 @@ function SAFTTab() {
 
       if (editingInvoice) {
         await updateInvoice({ variables: { id: editingInvoice.id, invoiceData } });
+      } else if (formData.type === 'proforma') {
+        await createProformaInvoice({
+          variables: {
+            clientName: formData.clientName,
+            clientEik: formData.clientEik || null,
+            clientAddress: formData.clientAddress || null,
+            date: formData.date,
+            items: formData.items.map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+              unit: item.unit,
+              unitPrice: item.unitPrice,
+              unitPriceWithVat: item.unitPriceWithVat,
+              batchNumber: item.batchNumber || null,
+              expirationDate: item.expirationDate || null,
+              discountPercent: item.discountPercent || 0,
+            })),
+            vatRate: formData.vatRate,
+            discountPercent: formData.discountPercent,
+            notes: formData.notes || null,
+          },
+        });
       } else {
         await createInvoice({ variables: { invoiceData } });
       }
 
       handleCloseDialog();
+      // Refresh both regular invoices and proforma invoices
       refetch();
+      // Also refresh proforma invoices if we created one
+      if (formData.type === 'proforma') {
+        // The proforma query should be refetched automatically via cache
+      }
     } catch (err) {
-      console.error('Error saving invoice:', err);
+      showError(getErrorMessage(err));
     }
   };
 
   const handleDelete = async (id: number) => {
     // DELETION IS ALWAYS BLOCKED - Show message
-    showError('Фактурите не могат да се изтриват. Вместо това ги анулирайте или коригирайте.');
+    showError('Създадена фактура не може да се изтрие. Може само да се анулира.');
   };
 
   const { subtotal, discountAmount, vatAmount, total } = calculateTotals();
@@ -2807,7 +2958,7 @@ function SAFTTab() {
         {tabValue === 4 && <DailySummaryTab />}
         {tabValue === 5 && <MonthlyReportTab />}
         {tabValue === 6 && <YearlyReportTab />}
-        {tabValue === 7 && <ProformaTab />}
+        {tabValue === 7 && <ProformaTab handleOpenDialog={handleOpenDialog} />}
         {tabValue === 8 && <CorrectionsTab />}
         {tabValue === 9 && <BankTab />}
         {tabValue === 10 && <AccountsTab />}
@@ -2817,7 +2968,11 @@ function SAFTTab() {
       </Paper>
 
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
-        <DialogTitle>{editingInvoice ? 'Редактирай фактура' : 'Нова фактура'}</DialogTitle>
+        <DialogTitle>
+          {editingInvoice 
+            ? (editingInvoice.type === 'proforma' ? 'Редактирай проформа' : 'Редактирай фактура') 
+            : (formData.documentType === 'ПРОФОРМА' ? 'Нова проформа' : 'Нова фактура')}
+        </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid size={{ xs: 12, sm: 4 }}>

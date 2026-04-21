@@ -24,6 +24,19 @@ from backend.jobs.fleet_notifications_job import check_fleet_notifications
 from fastapi.responses import JSONResponse
 from fastapi import status
 import logging
+import sys
+
+# Configure logging for the application
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
+# Set specific loggers to INFO
+logging.getLogger("uvicorn").setLevel(logging.INFO)
+logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+
 from backend.auth.limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from backend.exceptions import CHRONOSException
@@ -221,6 +234,7 @@ app.add_middleware(
         re.compile(r"^/gateways/.*"),  # Exempt Gateway endpoints
         re.compile(r"^/kiosk/scan"),   # Exempt Kiosk scan
         re.compile(r"^/kiosk/terminal/.*"), # Exempt unified terminal endpoints
+        re.compile(r"^/terminal/.*"),   # Exempt terminal endpoints
     ],
     safe_methods={"GET", "HEAD", "OPTIONS", "TRACE"},
 )
@@ -293,7 +307,10 @@ async def get_context(
         "dataloaders": dataloaders,
     }
 
-graphql_app = GraphQLRouter(schema, context_getter=get_context)
+graphql_app = GraphQLRouter(
+    schema, 
+    context_getter=get_context
+)
 app.include_router(graphql_app, prefix="/graphql")
 
 

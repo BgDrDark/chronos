@@ -28,9 +28,10 @@ import {
   FormControl,
   InputLabel,
   IconButton,
-  Tooltip,
   Switch,
   FormControlLabel,
+  InputAdornment,
+  Tooltip,
 } from '@mui/material';
 import {
   Inventory as InventoryIcon,
@@ -52,6 +53,7 @@ import { ME_QUERY, INVENTORY_SESSIONS_QUERY, INVENTORY_SESSION_ITEMS_QUERY, INVE
 import { CONSUME_FROM_BATCH, AUTO_CONSUME_FEFO, GET_FEFO_SUGGESTION, GET_CONSUMPTION_LOGS } from '../graphql/warehouseMutations';
 import { getErrorMessage, type Ingredient, type Batch, type Supplier, type StorageZone, type InventorySession, type InventorySessionItem, type StockConsumptionLog, type FefoSuggestion } from '../types';
 import { type SxProps, type Theme } from '@mui/material';
+import { InfoIcon } from '../components/ui/InfoIcon';
 
 interface BatchItem {
   ingredientId: string;
@@ -89,55 +91,61 @@ const ValidatedTextField: React.FC<ValidatedTextFieldProps> = ({
 }) => {
   const showError = !!error;
   const hasValue = value !== '' && value !== null && value !== undefined;
+
+  const endAdornment = tooltip ? (
+    <InputAdornment position="end">
+      <InfoIcon helpText={tooltip} />
+    </InputAdornment>
+  ) : undefined;
   
   return (
-    <Tooltip title={tooltip || ''} arrow placement="top">
-      <TextField
-        label={label}
-        value={value}
-        onChange={(e) => {
-          if (type === 'number') {
-            onChange(e.target.value.replace(/[^0-9.]/g, ''));
-          } else {
-            onChange(e.target.value);
-          }
-        }}
-        placeholder={placeholder}
-        error={showError}
-        helperText={error}
-        required={required}
-        type={type}
-        select={select}
-        size={size}
-        fullWidth={fullWidth}
-        disabled={disabled}
-        multiline={multiline}
-        rows={rows}
-        sx={sx}
-        InputProps={{
-          ...InputProps,
-          sx: {
-            ...InputProps?.sx,
-            '& .MuiOutlinedInput-root': {
-              '&.Mui-error': {
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'error.main',
-                  borderWidth: 2,
-                },
+    <TextField
+      label={label}
+      value={value}
+      onChange={(e) => {
+        if (type === 'number') {
+          onChange(e.target.value.replace(/[^0-9.]/g, ''));
+        } else {
+          onChange(e.target.value);
+        }
+      }}
+      placeholder={placeholder}
+      error={showError}
+      helperText={error}
+      required={required}
+      type={type}
+      select={select}
+      size={size}
+      fullWidth={fullWidth}
+      disabled={disabled}
+      multiline={multiline}
+      rows={rows}
+      sx={sx}
+      slotProps={{
+        input: { endAdornment }
+      }}
+      InputProps={{
+        sx: {
+          ...InputProps?.sx,
+          '& .MuiOutlinedInput-root': {
+            '&.Mui-error': {
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'error.main',
+                borderWidth: 2,
               },
-              ...(hasValue && !showError && {
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'success.main',
-                  borderWidth: 2,
-                },
-              }),
             },
+            ...(hasValue && !showError && {
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'success.main',
+                borderWidth: 2,
+              },
+            }),
           },
-        }}
-      >
-        {children}
-      </TextField>
-    </Tooltip>
+        },
+      }}
+    >
+      {children}
+    </TextField>
   );
 };
 

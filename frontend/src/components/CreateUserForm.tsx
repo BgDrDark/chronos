@@ -3,7 +3,7 @@ import {
   TextField, Button, Box, Alert, CircularProgress, 
   MenuItem, FormControl, InputLabel, Select, Grid,
   Checkbox, Dialog, DialogTitle, DialogContent, DialogActions,
-  IconButton, Typography
+  IconButton, Typography, InputAdornment, OutlinedInput
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { useForm, Controller } from 'react-hook-form';
@@ -11,6 +11,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { gql, useMutation, useQuery } from '@apollo/client';
 import PersonIcon from '@mui/icons-material/Person';
+import { InfoIcon } from './ui/InfoIcon';
+import { userFieldsHelp } from './ui/fieldsHelpText';
 
 const CREATE_COMPANY_MUTATION = gql`
   mutation CreateCompany($input: CompanyCreateInput!) {
@@ -470,58 +472,148 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
         
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
-            fullWidth label="Първо име *"
+            fullWidth
+            label="Първо име *"
+            size="small"
             {...register('firstName')}
             error={!!errors.firstName}
             helperText={errors.firstName?.message}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.firstName} />
+                  </InputAdornment>
+                )
+              }
+            }}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <TextField
+            fullWidth
+            label="Презиме"
             size="small"
+            {...register('surname')}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.surname} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
-            fullWidth label="Презиме"
-            {...register('surname')} size="small"
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 4 }}>
-          <TextField
-            fullWidth label="Фамилия *"
+            fullWidth
+            label="Фамилия *"
+            size="small"
             {...register('lastName')}
             error={!!errors.lastName}
             helperText={errors.lastName?.message}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.lastName} />
+                  </InputAdornment>
+                )
+              }
+            }}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField
+            fullWidth
+            label="ЕГН"
             size="small"
+            {...register('egn')}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.egn} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
           <TextField
-            fullWidth label="ЕГН"
-            {...register('egn')} size="small"
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField
-            fullWidth label="Телефон"
-            {...register('phoneNumber')} size="small"
+            fullWidth
+            label="Телефон"
+            size="small"
+            {...register('phoneNumber')}
             error={!!errors.phoneNumber}
             helperText={errors.phoneNumber?.message}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.phoneNumber} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
           <TextField
-            fullWidth label="Дата на раждане" type="date"
-            {...register('birthDate')} InputLabelProps={{ shrink: true }} size="small"
+            fullWidth
+            label="Дата на раждане"
+            type="date"
+            InputLabelProps={{ shrink: true }}
+            {...register('birthDate')}
+            size="small"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.birthDate} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
           <TextField
-            fullWidth label="IBAN"
-            {...register('iban')} size="small"
+            fullWidth
+            label="IBAN"
+            size="small"
+            {...register('iban')}
+            InputLabelProps={{ shrink: true }}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.iban} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12 }}>
           <TextField
-            fullWidth label="Адрес"
-            {...register('address')} size="small"
+            fullWidth
+            label="Адрес"
+            size="small"
+            {...register('address')}
+            InputLabelProps={{ shrink: true }}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.address} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
 
@@ -532,23 +624,60 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
 
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
-            fullWidth label="Потребителско име"
+            fullWidth
+            label="Потребителско име"
             {...register('username')}
             error={!!errors.username}
             helperText={errors.username?.message}
             size="small"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.username} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
-            required fullWidth label="Имейл адрес"
-            {...register('email')} error={!!errors.email} size="small"
+            required
+            fullWidth
+            label="Имейл адрес"
+            {...register('email')}
+            error={!!errors.email}
+            size="small"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.email} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
-            required fullWidth label="Парола" type="password"
-            {...register('password')} error={!!errors.password} size="small"
+            required
+            fullWidth
+            label="Парола"
+            type="password"
+            {...register('password')}
+            error={!!errors.password}
+            size="small"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.password} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
 
@@ -736,40 +865,97 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
-            fullWidth label="Основна заплата" type="number"
+            fullWidth
+            label="Основна заплата"
+            type="number"
             {...register('baseSalary', { valueAsNumber: true })}
             error={!!errors.baseSalary}
             helperText={errors.baseSalary?.message}
             size="small"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.baseSalary} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
 
         <Grid size={{ xs: 12, sm: 3 }}>
           <TextField
-            fullWidth label="Часове/седмица" type="number"
+            fullWidth
+            label="Часове/седмица"
+            type="number"
             {...register('workHoursPerWeek', { valueAsNumber: true })}
             size="small"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.workHoursPerWeek} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
           <TextField
-            fullWidth label="Изпитателен срок (мес.)" type="number"
+            fullWidth
+            label="Изпитателен срок (мес.)"
+            type="number"
             {...register('probationMonths', { valueAsNumber: true })}
             size="small"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.probationMonths} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
           <TextField
-            fullWidth label="Дата на започване" type="date"
+            fullWidth
+            label="Дата на започване"
+            type="date"
             InputLabelProps={{ shrink: true }}
-            {...register('contractStartDate')} size="small"
+            {...register('contractStartDate')}
+            size="small"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.contractStartDate} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
           <TextField
-            fullWidth label="Дата на изтичане" type="date"
+            fullWidth
+            label="Дата на изтичане"
+            type="date"
             InputLabelProps={{ shrink: true }}
-            {...register('contractEndDate')} size="small"
+            {...register('contractEndDate')}
+            size="small"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.contractEndDate} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
 
@@ -823,26 +1009,62 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
 
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
-            fullWidth label="Множител Нощен труд" type="number"
+            fullWidth
+            label="Множител Нощен труд"
+            type="number"
             {...register('nightWorkRate', { valueAsNumber: true })}
             size="small"
             helperText="Напр. 0.50 за +50%"
+            InputLabelProps={{ shrink: true }}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.nightWorkRate} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
-            fullWidth label="Множител Извънреден" type="number"
+            fullWidth
+            label="Множител Извънреден"
+            type="number"
             {...register('overtimeRate', { valueAsNumber: true })}
             size="small"
             helperText="Напр. 1.50 за +50%"
+            InputLabelProps={{ shrink: true }}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.overtimeRate} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
-            fullWidth label="Множител Празник" type="number"
+            fullWidth
+            label="Множител Празник"
+            type="number"
             {...register('holidayRate', { valueAsNumber: true })}
             size="small"
             helperText="Напр. 2.00 за +100%"
+            InputLabelProps={{ shrink: true }}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText={userFieldsHelp.holidayRate} />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
         </Grid>
 

@@ -763,3 +763,445 @@ async def generate_report(...) -> dict:  # Грешка!
 ```
 
 **Защо?** Strawberry GraphQL не поддържа Python `dict` като return тип в mutations.
+
+---
+
+## 15. Проверка на грешки в Backend
+
+### Python типове (mypy)
+
+```bash
+# Проверка на конкретен файл преди билд
+cd backend
+mypy routers/gateway.py
+
+# Проверка на цялия backend
+mypy . --ignore-missing-imports
+
+# Само грешки (без предупреждения)
+mypy . --no-error-summary
+```
+
+### Docker логове
+
+```bash
+# Основни логове
+docker compose logs backend
+
+# Само грешки
+docker compose logs backend 2>&1 | grep -E "ERROR|Traceback"
+
+# Реално време
+docker compose logs -f backend
+```
+
+### Чести грешки
+
+- **MissingGreenlet** - липсващ `selectinload` при async заявки
+- **InvalidRequestError** - липсващ `back_populates` relationship
+- **AttributeError** - грешен тип на променлива
+- **sqlalchemy.exc.*** - SQLAlchemy грешки
+
+### Health check
+
+```bash
+# Проверка на backend
+curl http://localhost:14240/health
+
+# Проверка на GraphQL
+curl -X POST http://localhost:14240/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query":"{ __typename }"}'
+```
+
+---
+
+## 16. Архитектура на Проекта
+
+### 1. База Данни (`backend/database/`)
+
+```
+backend/database/
+├── models.py          # SQLAlchemy модели (~169 класа)
+├── database.py         # DB връзка
+├── session_proxy.py    # Session proxy
+└── transaction_manager.py  # Транзакци управление
+```
+
+**Основни Модели:**
+
+| Категория | Модели |
+|-----------|--------|
+| HR | User, Role, Permission, Company, Department, Position |
+| Трудови договори | EmploymentContract, ContractAnnex, ContractTemplate |
+| Отчитане | TimeLog, Shift, WorkSchedule |
+| Заплати | Payroll, Payslip, Bonus |
+| Отпуски | LeaveRequest, LeaveBalance |
+| Производство | Recipe, Ingredient, Batch, ProductionOrder, ProductionTask |
+| Склад | Supplier, WarehouseItem |
+| Фактури | Invoice, InvoiceItem |
+| Автопарк | Vehicle, VehicleTrip, VehicleFuel |
+| Хардуер | Gateway, Terminal, AccessDoor, AccessZone |
+
+### 2. Бизнес Логика (`backend/services/`)
+
+```
+backend/services/
+├── payroll_calculator.py         # Основни изчисления
+├── enhanced_payroll_calculator.py  # TRZ изчисления
+├── trz_calculators.py            # Нощен/извънреден труд
+├── recipe_cost_calculator.py     # Себестойност
+├── saft_generator.py             # SAF-T справки
+├── accounting_service.py          # Счетоводство
+├── compliance_service.py          # Законова съответствие
+├── google_calendar_service.py    # Google Calendar
+└── holiday_service.py           # Празници
+```
+
+### 3. API Слой (`backend/routers/` + `backend/graphql/`)
+
+**REST Рутери:**
+
+| Рутер | Път | Описание |
+|-------|-----|----------|
+| auth | `/auth/*` | OAuth, login, tokens |
+| export | `/export/*` | Excel, PDF експорт |
+| warehouse | `/warehouse/*` | Склад |
+| kiosk | `/kiosk/*` | Терминали |
+| gateway | `/gateways/*` | Хардуер |
+| terminal | `/terminal/*` | Комуникация |
+
+**GraphQL:**
+
+| Файл | Редове |
+|------|--------|
+| queries.py | 2779 |
+| mutations.py | 7852 |
+| types.py | 4549 |
+
+### 4. Frontend (`frontend/src/`)
+
+```
+frontend/src/
+├── components/     # Reusable компоненти
+├── pages/          # Страници
+├── graphql/        # GraphQL заявки
+├── context/        # React contexts
+├── hooks/          # Custom hooks
+├── services/       # API услуги
+├── utils/          # Помощни фунцкии
+└── types.ts        # TypeScript интерфейси
+```
+
+### 5. Ключови Технологии
+
+| Технология | Употреба |
+|-------------|----------|
+| FastAPI | REST API |
+| SQLAlchemy (async) | ORM |
+| Strawberry GraphQL | GraphQL API |
+| PostgreSQL | База данни |
+| React 18 | Frontend |
+| Apollo Client | GraphQL клиент |
+| MUI | UI компоненти |
+
+### 6. Зависимости
+
+```
+Backend:
+├── FastAPI
+├── SQLAlchemy (async)
+├── Strawberry GraphQL
+├── PostgreSQL
+├── Pydantic
+└── Aiohttp
+
+Frontend:
+├── React 18
+├── TypeScript
+├── Apollo Client
+├── MUI
+└── React Router
+```
+
+---
+
+## 17. Изведени Правила от Практиката
+
+### 17.1 Използвай logging, не print()
+
+```python
+# ❌ НЕ
+print(f"Error: {e}")
+
+# ✅ ДА
+logger = logging.getLogger(__name__)
+logger.error(f"Error: {e}")
+```
+
+### 17.2 Не използвай bare except:
+
+```python
+# ❌ НЕ
+except:
+    pass
+
+# ✅ ДА
+except (ValueError, TypeError):
+    pass
+
+# ИЛИ
+except Exception as e:
+    logger.error(f"Error: {e}")
+    raise
+```
+
+### 17.3 Annotated със Depends - внимавай с подредбата
+
+```python
+# ⚠️ Внимавай - параметри без default трябва да са преди параметри със default
+# Това работи:
+async def my_endpoint(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
+
+# Това НЕ работи (SyntaxError):
+async def my_endpoint(skip: int, limit: int, db: AsyncSession = Depends(get_db)):
+```
+
+### 17.4 DRY - извличай дублиран код
+
+```python
+# ❌ НЕ - дублиране на функция
+def calculate_distance(...):
+    ...
+
+# В различни файлове
+
+# ✅ ДА - един път
+# backend/utils/geo.py
+def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    ...
+
+# Използвай навсякъде
+from backend.utils.geo import calculate_distance
+```
+
+### 17.5 Hardcoded стойности - използвай config
+
+```python
+# ❌ НЕ
+ALLOWED_ORIGINS = ["https://dev.oblak24.org", ...]
+
+# ✅ ДА
+from backend.config import settings
+cors_origins = settings.BACKEND_CORS_ORIGINS if settings.BACKEND_CORS_ORIGINS else DEFAULT_ORIGINS
+```
+
+---
+
+## 18. База Данни - Най-добри Практики
+
+### 18.1 Connection Pool
+
+```python
+# ❌ НЕ - използвай default конфигурация
+engine = create_async_engine(str(settings.DATABASE_URL))
+
+# ✅ ДА - експлицитна конфигурация
+engine = create_async_engine(
+    str(settings.DATABASE_URL),
+    pool_size=20,
+    max_overflow=10,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
+```
+
+### 18.2 N+1 Queries - Използвай selectinload
+
+```python
+# ❌ НЕ - N+1 проблем
+for user in users:
+    print(user.role.name)  # За всяка итерация = нова заявка
+
+# ✅ ДА - eager loading
+result = await db.execute(
+    select(User).options(selectinload(User.role))
+)
+```
+
+### 18.3 Паралелни Заявки - asyncio.gather
+
+```python
+# ❌ НЕ - последователно изпълнение
+for u in users:
+    amount = await calc.calculate_forecast(u.id, year, month)
+
+# ✅ ДА - паралелно изпълнение
+import asyncio
+amounts = await asyncio.gather(*[
+    calc.calculate_forecast(u.id, year, month) 
+    for u in users
+])
+```
+
+### 18.4 Transaction Management
+
+```python
+# ✅ ДА - използвай atomic_transaction
+from backend.database.transaction_manager import atomic_transaction
+
+async def my_mutation(db: AsyncSession, ...):
+    async with atomic_transaction(db) as tx:
+        #，自动ни commit/rollback
+        await tx.execute(...)
+```
+
+### 18.5 SQL Injection - Използвай ORM
+
+```python
+# ❌ НЕ - raw SQL
+await db.execute(f"SELECT * FROM users WHERE email = '{email}'")
+
+# ✅ ДА - ORM parameter binding
+await db.execute(select(User).where(User.email == email))
+```
+
+---
+
+## 19. Repository Pattern & GraphQL Mutations
+
+### 19.1 Структура
+
+```
+backend/crud/repositories/
+├── __init__.py           # Експортира всички repositories
+├── base.py             # BaseRepository с основни CRUD методи
+├── user_repo.py        # UserRepository
+├── company_repo.py    # CompanyRepository
+├── time_repo.py       # TimeTrackingRepository
+├── payroll_repo.py    # PayrollRepository
+├── trz_repo.py       # TRZRepository
+├── production_repo.py # ProductionRepository
+├── warehouse_repo.py # WarehouseRepository
+├── access_repo.py    # AccessRepository
+├── settings_repo.py   # SettingsRepository
+└── vehicle_repo.py   # VehicleRepository
+```
+
+### 18.2 Импорт и използване
+
+```python
+# ❌ НЕ - директен import от crud
+from backend import crud
+await crud.create_user(db, ...)
+
+# ✅ ДА - от repositories
+from backend.crud.repositories import user_repo, time_repo, settings_repo, vehicle_repo
+
+# Използване:
+await user_repo.create_user(db, user_data=..., role_id=1)
+await time_repo.create_shift(db, name="Сутрешна", ...)
+await settings_repo.set_setting(db, key="smtp_server", value="smtp.example.com")
+```
+
+### 18.3 Правила за Strawberry mutations
+
+**Подредба на параметрите:**
+```python
+# ❌ НЕ - optional параметри преди info
+async def my_mutation(
+    self,
+    optional_param: str = None,  # ❌ Грешно
+    info: strawberry.Info
+):
+
+# ✅ ДА - info ПЪРВО, после optional
+async def my_mutation(
+    self,
+    info: strawberry.Info,
+    required_param: int,           # Задължителни първо
+    optional_param: str = None   # Optional след това
+):
+```
+
+**Mutation имена:**
+```python
+# Когато GraphQL името се различава от Python функцията
+@strawberry.mutation(name="requestLeave")  # GraphQL име
+async def create_leave_request(...):       # Python име
+
+@strawberry.mutation(name="approveLeave")
+async def approve_leave(...):
+
+@strawberry.mutation(name="rejectLeave")
+async def reject_leave(...):
+```
+
+### 19.4 Мигрирани Mutations
+
+| GraphQL функция | Repository | Бележки |
+|---------------|-----------|---------|
+| `requestLeave` | - | Директен model |
+| `approveLeave` | `time_repo.update_leave_request_status` | |
+| `rejectLeave` | `time_repo.update_leave_request_status` | |
+| `createCompany` | `company_repo.create_company` | |
+| `updateCompany` | `company_repo.update_company` | |
+| `createDepartment` | `company_repo.create_department` | |
+| `createPosition` | `company_repo.create_position` | |
+| `deletePosition` | `company_repo.delete_position` | |
+| `createShift` | `time_repo.create_shift` | |
+| `updateShift` | `time_repo.update_shift` | |
+| `deleteShift` | `time_repo.delete_shift` | |
+| `createRole` | `time_repo.create_role` | |
+| `deleteRole` | `time_repo.delete_role` | |
+| `createScheduleTemplate` | `time_repo.create_schedule_template` | |
+| `deleteScheduleTemplate` | `time_repo.delete_schedule_template` | |
+| `updateLeaveRequestStatus` | `time_repo.update_leave_request_status` | |
+| `deleteLeaveRequest` | `time_repo.delete_leave_request` | |
+| `setWorkSchedule` | `time_repo.create_or_update_schedule` | |
+| `deleteWorkSchedule` | `time_repo.delete_schedule` | |
+| `bulkSetSchedule` | `time_repo.create_bulk_schedules` | |
+| `createVehicle` | `vehicle_repo.create_vehicle` | |
+| `updateVehicle` | `vehicle_repo.update_vehicle` | |
+| `deleteVehicle` | `vehicle_repo.delete_vehicle` | |
+| `createVehicleMileage` | `vehicle_repo.create_vehicle_mileage` | |
+| `updateVehicleMileage` | `vehicle_repo.update_vehicle_mileage` | |
+| `createVehicleFuel` | `vehicle_repo.create_vehicle_fuel` | |
+| `updateVehicleFuel` | `vehicle_repo.update_vehicle_fuel` | |
+| `createVehicleRepair` | `vehicle_repo.create_vehicle_repair` | |
+| `updateVehicleRepair` | `vehicle_repo.update_vehicle_repair` | |
+| `createVehicleInsurance` | `vehicle_repo.create_vehicle_insurance` | |
+| `updateVehicleInsurance` | `vehicle_repo.update_vehicle_insurance` | |
+| `createVehicleInspection` | `vehicle_repo.create_vehicle_inspection` | |
+| `updateVehicleInspection` | `vehicle_repo.update_vehicle_inspection` | |
+| `createVehicleDriver` | `vehicle_repo.create_vehicle_driver` | |
+| `updateVehicleDriver` | `vehicle_repo.update_vehicle_driver` | |
+| `createVehicleTrip` | `vehicle_repo.create_vehicle_trip` | |
+| `updateVehicleTrip` | `vehicle_repo.update_vehicle_trip` | |
+| `invalidateSession` | `user_repo.invalidate_user_session` | |
+| `setGlobalSetting` | `settings_repo.set_setting` | |
+| SMTP настройки | `settings_repo.set_setting` | |
+| Payroll настройки | `settings_repo.set_setting` | |
+| Office location | `settings_repo.set_setting` | |
+| Password settings | `settings_repo.set_setting` | |
+| Security config | `settings_repo.set_setting` | |
+
+### 19.5 GraphQL Queries миграции
+
+| Query | Repository |
+|-------|----------|
+| `activeTimeLog` | `time_repo.get_active_timelog` |
+| `shifts` | `time_repo.get_all_shifts` |
+| `role` | `time_repo.get_role_by_id` |
+| `roles` | `time_repo.get_all_roles` |
+| `workSchedules` | `time_repo.get_schedules_by_period` |
+| `myLeaveRequests` | `time_repo.get_leave_requests` |
+| `pendingLeaveRequests` | `time_repo.get_leave_requests` |
+| `allLeaveRequests` | `time_repo.get_leave_requests` |
+| `smtpSettings` | `settings_repo.get_setting` |
+| `officeLocation` | `settings_repo.get_setting` |
+| `passwordSettings` | `settings_repo.get_setting` |
+| `kioskSettings` | `settings_repo.get_setting` |
+| `activeSessions` | `user_repo.get_active_sessions` |
+| `payrollLegalSettings` | `settings_repo.get_setting` |
+| `vapidPublicKey` | `settings_repo.get_setting` |

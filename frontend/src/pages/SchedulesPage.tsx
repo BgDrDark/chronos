@@ -4,8 +4,9 @@ import {
   Container, Typography, Box, TextField, Button,
   Dialog, DialogTitle, DialogContent, DialogActions,
   MenuItem, Card, CardContent, IconButton, Alert, CircularProgress,
-  useTheme, useMediaQuery, Grid, Stack, Tooltip
+  useTheme, useMediaQuery, Grid, Stack, Tooltip, InputAdornment
 } from '@mui/material';
+import { InfoIcon } from '../components/ui/InfoIcon';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { type Shift, type User, type WorkSchedule, type TimeLog, type ScheduleTemplate, type PublicHoliday, type ScheduleLog } from '../types';
 import FullCalendar from '@fullcalendar/react';
@@ -206,22 +207,100 @@ const ShiftManager: React.FC = () => {
       <Typography variant="h6" gutterBottom>Създаване на нова смяна</Typography>
       <Grid container spacing={2} alignItems="center">
         <Grid size={{ xs: 12, sm: 2 }}>
-          <TextField fullWidth label="Име на смяната" value={name} onChange={(e) => setName(e.target.value)} />
+          <TextField
+            fullWidth label="Име на смяната" value={name}
+            onChange={(e) => setName(e.target.value)}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText="Наименование на смяната (напр. Сутрешна, Вечерна)" />
+                  </InputAdornment>
+                )
+              }
+            }}
+          />
         </Grid>
         <Grid size={{ xs: 6, sm: 2 }}>
-          <TextField fullWidth label="Начало" type="time" value={start} onChange={(e) => setStart(e.target.value)} InputLabelProps={{ shrink: true }} />
+          <TextField
+            fullWidth label="Начало" type="time" value={start}
+            onChange={(e) => setStart(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText="Час на започване на смяната" />
+                  </InputAdornment>
+                )
+              }
+            }}
+          />
         </Grid>
         <Grid size={{ xs: 6, sm: 2 }}>
-          <TextField fullWidth label="Край" type="time" value={end} onChange={(e) => setEnd(e.target.value)} InputLabelProps={{ shrink: true }} />
+          <TextField
+            fullWidth label="Край" type="time" value={end}
+            onChange={(e) => setEnd(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText="Час на приключване на смяната" />
+                  </InputAdornment>
+                )
+              }
+            }}
+          />
         </Grid>
         <Grid size={{ xs: 4, sm: 1.5 }}>
-          <TextField fullWidth label="Толеранс (мин)" type="number" value={tolerance} onChange={(e) => setTolerance(e.target.value)} helperText="Прилепване на времето" />
+          <TextField
+            fullWidth label="Толеранс (мин)" type="number" value={tolerance}
+            onChange={(e) => setTolerance(e.target.value)}
+            helperText="Прилепване на времето"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText="Толеранс в минути за късно влизане/ранно излизане" />
+                  </InputAdornment>
+                )
+              }
+            }}
+          />
         </Grid>
         <Grid size={{ xs: 4, sm: 1.5 }}>
-          <TextField fullWidth label="Почивка (мин)" type="number" value={breakDuration} onChange={(e) => setBreakDuration(e.target.value)} helperText="Автоматично удържане" />
+          <TextField
+            fullWidth label="Почивка (мин)" type="number" value={breakDuration}
+            onChange={(e) => setBreakDuration(e.target.value)}
+            helperText="Автоматично удържане"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText="Продължителност на почивката в минути" />
+                  </InputAdornment>
+                )
+              }
+            }}
+          />
         </Grid>
         <Grid size={{ xs: 4, sm: 2 }}>
-          <TextField fullWidth label="Коефициент Заплащане" type="number" value={payMultiplier} onChange={(e) => setPayMultiplier(e.target.value)} inputProps={{ step: "0.01" }} helperText="Умножител за надницата" />
+          <TextField
+            fullWidth label="Коефициент Заплащане" type="number" value={payMultiplier}
+            onChange={(e) => setPayMultiplier(e.target.value)}
+            inputProps={{ step: "0.01" }}
+            helperText="Умножител за надницата"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText="Коефициент за изчисление на заплатата" />
+                  </InputAdornment>
+                )
+              }
+            }}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 1 }}>
           <Tooltip title="Създай нова смяна" arrow>
@@ -594,12 +673,32 @@ const CalendarView: React.FC = () => {
                 </TextField>
                 <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                     <TextField 
-                        fullWidth label="От дата" type="date" margin="normal" InputLabelProps={{ shrink: true }}
+                        fullWidth label="От дата" type="date" margin="normal"
+                        InputLabelProps={{ shrink: true }}
                         value={tmplStartDate} onChange={e => setTmplStartDate(e.target.value)}
+                        slotProps={{
+                          input: {
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <InfoIcon helpText="Начална дата за прилагане на шаблона" />
+                              </InputAdornment>
+                            )
+                          }
+                        }}
                     />
                     <TextField 
-                        fullWidth label="До дата" type="date" margin="normal" InputLabelProps={{ shrink: true }}
+                        fullWidth label="До дата" type="date" margin="normal"
+                        InputLabelProps={{ shrink: true }}
                         value={tmplEndDate} onChange={e => setTmplEndDate(e.target.value)}
+                        slotProps={{
+                          input: {
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <InfoIcon helpText="Крайна дата за прилагане на шаблона" />
+                              </InputAdornment>
+                            )
+                          }
+                        }}
                     />
                 </Box>
             </DialogContent>
@@ -887,8 +986,34 @@ const BulkAssign: React.FC = () => {
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField fullWidth label="От дата" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} InputLabelProps={{ shrink: true }} margin="normal" />
-            <TextField fullWidth label="До дата" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} InputLabelProps={{ shrink: true }} margin="normal" />
+            <TextField
+              fullWidth label="От дата" type="date" value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              InputLabelProps={{ shrink: true }} margin="normal"
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <InfoIcon helpText="Начална дата за назначаване на смени" />
+                    </InputAdornment>
+                  )
+                }
+              }}
+            />
+            <TextField
+              fullWidth label="До дата" type="date" value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              InputLabelProps={{ shrink: true }} margin="normal"
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <InfoIcon helpText="Крайна дата за назначаване на смени" />
+                    </InputAdornment>
+                  )
+                }
+              }}
+            />
           </Box>
           <Typography variant="subtitle2" sx={{ mt: 2 }}>Работни дни от седмицата:</Typography>
           <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>

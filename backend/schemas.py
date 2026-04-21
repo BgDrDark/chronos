@@ -19,6 +19,7 @@ class UserBase(BaseModel):
     email: Optional[EmailStr] = None
     username: Optional[str] = None
     first_name: Optional[str] = None
+    surname: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
     address: Optional[str] = None
@@ -48,34 +49,36 @@ class UserBase(BaseModel):
             raise ValueError('Потребителското име трябва да е между 3 и 50 символа')
         return v
 
-    @field_validator('egn')
+    @field_validator('egn', mode='before')
     @classmethod
     def validate_egn(cls, v):
-        if v is not None:
-            # БГ ЕГН: 10 цифри
-            if not re.match(r'^\d{10}$', v):
-                raise ValueError('ЕГН трябва да съдържа точно 10 цифри')
+        if v is None or v == '':
+            return None
+        # БГ ЕГН: 10 цифри
+        if not re.match(r'^\d{10}$', v):
+            raise ValueError('ЕГН трябва да съдържа точно 10 цифри')
         return v
 
-    @field_validator('iban')
+    @field_validator('iban', mode='before')
     @classmethod
     def validate_iban(cls, v):
-        if v is not None:
-            # IBAN формат - премахваме разстояния и правим главни букви
-            v = v.replace(' ', '').upper()
-            if not re.match(r'^[A-Z]{2}\d{2}[A-Z0-9]{4,}$', v):
-                raise ValueError('Невалиден IBAN формат')
-            v = v  # Връщаме форматирания IBAN
+        if v is None or v == '':
+            return None
+        # IBAN формат - премахваме разстояния и правим главни букви
+        v = v.replace(' ', '').upper()
+        if not re.match(r'^[A-Z]{2}\d{2}[A-Z0-9]{4,}$', v):
+            raise ValueError('Невалиден IBAN формат')
         return v
 
-    @field_validator('phone_number')
+    @field_validator('phone_number', mode='before')
     @classmethod
     def validate_phone(cls, v):
-        if v is not None:
-            # Български телефонен номер - премахваме разстояния и тирета
-            v = v.replace(' ', '').replace('-', '')
-            if not re.match(r'^\+?359?\d{9}$', v):
-                raise ValueError('Невалиден телефонен номер (очакван формат: +359888123456 или 0888123456)')
+        if v is None or v == '':
+            return None
+        # Български телефонен номер - премахваме разстояния и тирета
+        v = v.replace(' ', '').replace('-', '')
+        if not re.match(r'^\+?359?\d{9}$', v):
+            raise ValueError('Невалиден телефонен номер (очакван формат: +359888123456 или 0888123456)')
         return v
 
 class UserCreate(UserBase):
@@ -84,6 +87,7 @@ class UserCreate(UserBase):
     
     # Employment Contract
     contract_type: Optional[str] = None
+    contract_number: Optional[str] = None
     contract_start_date: Optional[date] = None
     contract_end_date: Optional[date] = None
     base_salary: Optional[Decimal] = None
@@ -174,7 +178,6 @@ class User(UserBase):
     qr_token: Optional[str] = None
     password_force_change: bool = False
     profile_picture: Optional[str] = None
-
     model_config = ConfigDict(from_attributes=True)
 
 class CompanyBase(BaseModel):
@@ -272,201 +275,79 @@ class WorkplaceLocationBase(BaseModel):
     radius_meters: int
 
 class WorkplaceLocationCreate(WorkplaceLocationBase):
-
     pass
-
 
 
 class RecipeBase(BaseModel):
 
-
-
     name: str
-
-
-
     description: Optional[str] = None
-
-
-
     yield_quantity: Decimal
-
-
-
     yield_unit: str = "br"
-
     shelf_life_days: int = 7  # Срок на годност на готовия продукт в дни
-
-
-
     production_time_days: int = 1
-
-
-
     company_id: int
 
 
-
-
-
-
-
 class RecipeCreate(RecipeBase):
-
-
-
     pass
 
 
-
-
-
-
-
 class Recipe(RecipeBase):
-
-
-
     id: int
-
-
-
     model_config = ConfigDict(from_attributes=True)
-
-
-
-
-
 
 
 class ProductionOrderBase(BaseModel):
 
-
-
     recipe_id: int
-
-
-
     quantity: Decimal
-
-
-
     due_date: datetime
-
-
-
     status: str = "pending"
-
-
-
     notes: Optional[str] = None
-
-
-
     company_id: int
 
 
-
-
-
-
-
 class ProductionOrderCreate(ProductionOrderBase):
-
-
-
     pass
-
-
-
-
-
-
 
 class ProductionOrderUpdate(BaseModel):
 
-
-
     status: Optional[str] = None
-
-
-
     notes: Optional[str] = None
-
-
-
     completed_by: Optional[int] = None
-
-
-
-
-
 
 
 class ProductionOrder(ProductionOrderBase):
 
-
-
     id: int
-
-
-
     created_at: datetime
-
-
-
     completed_at: Optional[datetime] = None
-
-
-
     completed_by: Optional[int] = None
-
     confirmed_at: Optional[datetime] = None
-
     confirmed_by: Optional[int] = None
-
-
-
     model_config = ConfigDict(from_attributes=True)
-
-
-
-
-
 
 
 class SmtpSettings(BaseModel):
 
     smtp_server: str
-
     smtp_port: int
-
     smtp_username: str
-
     smtp_password: str
-
     sender_email: str
-
     use_tls: bool
-
 
 
 class StorageZoneBase(BaseModel):
 
     name: str
-
     temp_min: Optional[Decimal] = None
-
     temp_max: Optional[Decimal] = None
-
     description: Optional[str] = None
-
     company_id: int
-
     is_active: bool = True
-
     asset_type: str = "KMA" # ДМА/КМА
-
     zone_type: str = "food" # хранителен/нехранителен
 
 
@@ -504,169 +385,41 @@ class Ingredient(IngredientBase):
 
 class BatchBase(BaseModel):
 
-
-
     ingredient_id: int
-
-
-
     batch_number: Optional[str] = None
-
-
-
     quantity: Decimal
-
-
-
     unit_value: Optional[Decimal] = None
-
-
-
     production_date: Optional[date] = None
-
-
-
     expiry_date: date
-
-
-
     price_no_vat: Optional[Decimal] = None
-
-
-
-    vat_percent: Optional[Decimal] = 20.0
-
-
-
+    vat_percent: Optional[Decimal] = 20
     price_with_vat: Optional[Decimal] = None
-
-
-
     supplier_id: Optional[int] = None
-
-
-
     is_stock_receipt: bool = False
-
-
-
     invoice_number: Optional[str] = None
-
-
-
     invoice_date: Optional[date] = None
-
-
-
-
-
 
 
 class BatchCreate(BatchBase):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def validate_production_info(self):
-
-
-
         # Rule 9: Both batch_number and production_date must be present if one is
-
-
-
         if (self.batch_number or self.production_date) and not (self.batch_number and self.production_date):
-
-
-
             raise ValueError("Партиден номер и дата на производство трябва да бъдат въведени заедно.")
-
-
-
         return self
-
-
-
-
-
-
-
     # Pydantic v2 validator
 
-
-
     @model_validator(mode='after')
-
-
-
     def check_production_fields(self) -> 'BatchCreate':
-
-
-
         if (self.batch_number or self.production_date) and not (self.batch_number and self.production_date):
-
-
-
             raise ValueError("Партиден номер и дата на производство трябва да бъдат въведени заедно.")
-
-
-
         return self
-
-
-
-
-
 
 
 class Batch(BatchBase):
-
-
-
-
-
-
-
     id: int
-
-
-
-
-
-
-
     received_by: Optional[int] = None
-
-
-
-
-
-
-
     status: str
-
-
-
-
-
-
-
     received_at: datetime
-
-
-
-
-
-
-
     model_config = ConfigDict(from_attributes=True)
-
-
-
-
-
-
-
-
-
-
-
-

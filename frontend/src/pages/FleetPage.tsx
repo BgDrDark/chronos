@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { getErrorMessage } from '../types';
+import { useCurrency, getCurrencySymbolForCurrency } from '../currencyContext';
 import {
   Box,
   Tabs,
@@ -32,7 +33,9 @@ import {
   CircularProgress,
   Chip,
   IconButton,
+  InputAdornment,
 } from '@mui/material';
+import { InfoIcon } from '../components/ui/InfoIcon';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -157,10 +160,12 @@ const GET_VEHICLES_QUERY = gql`
 const GET_USERS_QUERY = gql`
   query GetUsers {
     users {
-      id
-      firstName
-      lastName
-      email
+      users {
+        id
+        firstName
+        lastName
+        email
+      }
     }
   }
 `;
@@ -181,6 +186,8 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const FleetPage: React.FC = () => {
+  const { currency } = useCurrency();
+  const currencySymbol = getCurrencySymbolForCurrency(currency);
   const [tabValue, setTabValue] = useState(0);
   const [vehiclesOpen, setVehiclesOpen] = useState(false);
   const [mileageOpen, setMileageOpen] = useState(false);
@@ -732,6 +739,15 @@ const FleetPage: React.FC = () => {
                 variant="outlined" 
                 value={vehicleForm.registrationNumber}
                 onChange={(e) => handleVehicleChange('registrationNumber', e.target.value)}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Регистрационен номер на МПС (напр. СА 1234 АА)" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -742,6 +758,15 @@ const FleetPage: React.FC = () => {
                 variant="outlined" 
                 value={vehicleForm.vin}
                 onChange={(e) => handleVehicleChange('vin', e.target.value)}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Идентификационен номер на превозното средство (17 символа)" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -752,6 +777,15 @@ const FleetPage: React.FC = () => {
                 variant="outlined" 
                 value={vehicleForm.make}
                 onChange={(e) => handleVehicleChange('make', e.target.value)}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Марка на превозното средство (напр. Volkswagen, BMW)" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -762,6 +796,15 @@ const FleetPage: React.FC = () => {
                 variant="outlined" 
                 value={vehicleForm.model}
                 onChange={(e) => handleVehicleChange('model', e.target.value)}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Модел на превозното средство (напр. Passat, 320d)" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -773,6 +816,15 @@ const FleetPage: React.FC = () => {
                 variant="outlined" 
                 value={vehicleForm.year}
                 onChange={(e) => handleVehicleChange('year', parseInt(e.target.value))}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Година на производство на автомобила" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -829,6 +881,15 @@ const FleetPage: React.FC = () => {
                 variant="outlined" 
                 value={vehicleForm.color}
                 onChange={(e) => handleVehicleChange('color', e.target.value)}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Цвят на каросерията" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -840,6 +901,15 @@ const FleetPage: React.FC = () => {
                 variant="outlined" 
                 value={vehicleForm.initialMileage}
                 onChange={(e) => handleVehicleChange('initialMileage', parseInt(e.target.value) || 0)}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Начален пробег в километри при добавяне на автомобила" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
@@ -1009,6 +1079,15 @@ const FleetPage: React.FC = () => {
                 InputLabelProps={{ shrink: true }}
                 value={mileageForm.date}
                 onChange={(e) => setMileageForm({ ...mileageForm, date: e.target.value })}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Дата на отчитане на километрите" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -1016,6 +1095,15 @@ const FleetPage: React.FC = () => {
                 margin="dense" label="Километри" type="number" fullWidth variant="outlined" 
                 value={mileageForm.mileage}
                 onChange={(e) => setMileageForm({ ...mileageForm, mileage: parseInt(e.target.value) || 0 })}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Пробег в километри" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
@@ -1056,16 +1144,62 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField autoFocus margin="dense" label="Дата" type="date" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} />
+              <TextField
+                autoFocus margin="dense" label="Дата" type="date" fullWidth variant="outlined"
+                InputLabelProps={{ shrink: true }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Дата на зареждането" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Километри" type="number" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Километри" type="number" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Километри на автомобила при зареждане" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Литри" type="number" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Литри" type="number" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Количество заредено гориво в литри" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Цена" type="number" fullWidth variant="outlined" InputProps={{ startAdornment: 'лв.' }} />
+              <TextField
+                margin="dense" label="Цена" type="number" fullWidth variant="outlined"
+                InputProps={{ startAdornment: currencySymbol }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Обща стойност на горивото" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth margin="dense">
@@ -1079,7 +1213,18 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Бензиностанция" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Бензиностанция" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Име/локация на бензиностанцията" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12 }}>
               <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" />
@@ -1115,19 +1260,65 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField autoFocus margin="dense" label="Дата" type="date" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} />
+              <TextField
+                autoFocus margin="dense" label="Дата" type="date" fullWidth variant="outlined"
+                InputLabelProps={{ shrink: true }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Дата на извършения ремонт" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Километри" type="number" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Километри" type="number" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Километри на автомобила при ремонта" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12 }}>
               <TextField margin="dense" label="Описание" fullWidth multiline rows={2} variant="outlined" />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Сервиз" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Сервиз" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Име на сервиза/фирмата извършила ремонта" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Стойност" type="number" fullWidth variant="outlined" InputProps={{ startAdornment: 'лв.' }} />
+              <TextField
+                margin="dense" label="Стойност" type="number" fullWidth variant="outlined"
+                InputProps={{ startAdornment: currencySymbol }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Стойност на ремонта в лева" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12 }}>
               <FormControl fullWidth margin="dense">
@@ -1176,10 +1367,32 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField autoFocus margin="dense" label="Застрахователна компания" fullWidth variant="outlined" />
+              <TextField
+                autoFocus margin="dense" label="Застрахователна компания" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Име на застрахователната компания" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Номер на полица" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Номер на полица" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Уникален номер на застрахователната полица" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth margin="dense">
@@ -1192,13 +1405,49 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Начална дата" type="date" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} />
+              <TextField
+                margin="dense" label="Начална дата" type="date" fullWidth variant="outlined"
+                InputLabelProps={{ shrink: true }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Начална дата на застрахователната полица" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Крайна дата" type="date" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} />
+              <TextField
+                margin="dense" label="Крайна дата" type="date" fullWidth variant="outlined"
+                InputLabelProps={{ shrink: true }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Крайна дата на застрахователната полица" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Стойност" type="number" fullWidth variant="outlined" InputProps={{ startAdornment: 'лв.' }} />
+              <TextField
+                margin="dense" label="Стойност" type="number" fullWidth variant="outlined"
+                InputProps={{ startAdornment: currencySymbol }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Застрахователна премия в лева" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12 }}>
               <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" />
@@ -1234,16 +1483,63 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField autoFocus margin="dense" label="Дата на преглед" type="date" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} />
+              <TextField
+                autoFocus margin="dense" label="Дата на преглед" type="date" fullWidth variant="outlined"
+                InputLabelProps={{ shrink: true }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Дата на техническия преглед (ГТП)" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Валиден до" type="date" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} />
+              <TextField
+                margin="dense" label="Валиден до" type="date" fullWidth variant="outlined"
+                InputLabelProps={{ shrink: true }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Дата на изтичане на техническия преглед" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Номер на протокол" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Номер на протокол" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Номер на протокола от техническия преглед" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Стойност" type="number" fullWidth variant="outlined" InputProps={{ startAdornment: 'лв.' }} />
+              <TextField
+                margin="dense" label="Стойност" type="number" fullWidth variant="outlined"
+                InputProps={{ startAdornment: currencySymbol }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Такса за техническия преглед" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12 }}>
               <FormControl fullWidth margin="dense">
@@ -1280,7 +1576,7 @@ const FleetPage: React.FC = () => {
                   onChange={(e) => setDriverForm({ ...driverForm, userId: e.target.value })}
                 >
                   <MenuItem value="">-- Изберете служител --</MenuItem>
-                  {usersData?.users?.map((user: { id: number; firstName: string; lastName: string; email: string }) => (
+                  {usersData?.users?.users?.map((user: { id: number; firstName: string; lastName: string; email: string }) => (
                     <MenuItem key={user.id} value={user.id}>
                       {user.firstName} {user.lastName} ({user.email})
                     </MenuItem>
@@ -1306,16 +1602,62 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField autoFocus margin="dense" label="Номер на шофьорска книжка" fullWidth variant="outlined" />
+              <TextField
+                autoFocus margin="dense" label="Номер на шофьорска книжка" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Номер на свидетелството за управление" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Валидна до" type="date" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} />
+              <TextField
+                margin="dense" label="Валидна до" type="date" fullWidth variant="outlined"
+                InputLabelProps={{ shrink: true }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Дата на изтичане на свидетелството" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Телефон" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Телефон" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Телефон за връзка с водача" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Категория" fullWidth variant="outlined" placeholder="B, C, D..." />
+              <TextField
+                margin="dense" label="Категория" fullWidth variant="outlined"
+                placeholder="B, C, D..."
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Категория на свидетелството (B, C, D...)" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12 }}>
               <FormControl margin="dense">
@@ -1364,7 +1706,7 @@ const FleetPage: React.FC = () => {
                   onChange={(e) => setTripForm({ ...tripForm, userId: e.target.value })}
                 >
                   <MenuItem value="">-- Изберете водач --</MenuItem>
-                  {usersData?.users?.map((user: { id: number; firstName: string; lastName: string; email: string }) => (
+                  {usersData?.users?.users?.map((user: { id: number; firstName: string; lastName: string; email: string }) => (
                     <MenuItem key={user.id} value={user.id}>
                       {user.firstName} {user.lastName} ({user.email})
                     </MenuItem>
@@ -1373,19 +1715,76 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField autoFocus margin="dense" label="Дата тръгване" type="datetime-local" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} />
+              <TextField
+                autoFocus margin="dense" label="Дата тръгване" type="datetime-local" fullWidth variant="outlined"
+                InputLabelProps={{ shrink: true }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Дата и час на тръгване" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Дата връщане" type="datetime-local" fullWidth variant="outlined" InputLabelProps={{ shrink: true }} />
+              <TextField
+                margin="dense" label="Дата връщане" type="datetime-local" fullWidth variant="outlined"
+                InputLabelProps={{ shrink: true }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Дата и час на връщане" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Място тръгване" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Място тръгване" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Начална локация на маршрута" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Място пристигане" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Място пристигане" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Крайна локация на маршрута" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField margin="dense" label="Километри" type="number" fullWidth variant="outlined" />
+              <TextField
+                margin="dense" label="Километри" type="number" fullWidth variant="outlined"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <InfoIcon helpText="Общо изминати километри" />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth margin="dense">

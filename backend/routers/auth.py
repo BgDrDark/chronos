@@ -383,6 +383,12 @@ async def upload_avatar(
     db: AsyncSession = Depends(get_db)
 ):
     """Качване на профилна снимка"""
+    from backend.database.models import User as DbUser
+    
+    db_user = await db.get(DbUser, current_user.id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="Потребителят не е намерен")
+    
     # 1. Валидация на файл
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Файлът трябва да бъде изображение.")
@@ -415,14 +421,14 @@ async def upload_avatar(
 
     # 4. Update user record
     # Remove old avatar if exists
-    if current_user.profile_picture:
-        old_path = os.path.join(UPLOAD_DIR, current_user.profile_picture)
+    if db_user.profile_picture:
+        old_path = os.path.join(UPLOAD_DIR, db_user.profile_picture)
         if os.path.exists(old_path):
             try: os.remove(old_path)
             except: pass
 
-    current_user.profile_picture = filename
-    db.add(current_user)
+    db_user.profile_picture = filename
+    db.add(db_user)
     await db.commit()
     
     return {"status": "success", "profile_picture": filename}

@@ -17,16 +17,12 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from database.models import (
+from backend.database.models import (
     Company, User, Invoice, InvoiceItem, Supplier, 
     CashJournalEntry, BankAccount, BankTransaction,
     AccountingEntry, Account, VATRegister
 )
-from database.models import sofia_now
+from backend.database.models import sofia_now
 
 
 class SAFTGenerator:
@@ -662,7 +658,7 @@ async def generate_saft_file(
     company_id: int,
     year: int,
     month: int,
-    saft_type: str = 'monthly'
+    saft_type: Optional[str] = 'monthly'
 ) -> Dict[str, Any]:
     """
     Main function to generate SAF-T file.

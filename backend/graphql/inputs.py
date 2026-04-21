@@ -412,6 +412,8 @@ class BatchInput:
 class RecipeIngredientInput:
     ingredient_id: int
     quantity_gross: Decimal
+    quantity_net: Optional[Decimal] = Decimal("0")
+    waste_percentage: Optional[Decimal] = Decimal("0")
     workstation_id: Optional[int] = None
 
 

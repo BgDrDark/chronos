@@ -1,8 +1,7 @@
 import time
 import asyncio
 import logging
-import strawberry
-from typing import Any, Callable, Dict, Optional, Union, List
+from typing import Any, Callable, Dict
 from strawberry.extensions import SchemaExtension
 from graphql import GraphQLList, GraphQLNonNull, OperationType
 from backend.auth.module_guard import verify_module_enabled, ModuleDisabledException
@@ -100,7 +99,7 @@ THROTTLE_CONFIG = {
 class ModuleGuardMiddleware(SchemaExtension):
     _last_calls: Dict[str, float] = {}
 
-    async def resolve(self, next_: Callable, root: Any, info: Any, **kwargs) -> Any:
+    async def resolve(self, next_: Callable, root: Any, info: Any, *args, **kwargs) -> Any:
         # field_name from GraphQLResolveInfo is in camelCase
         field_name = info.field_name
         current_user = info.context.get("current_user")
@@ -143,7 +142,7 @@ class ModuleGuardMiddleware(SchemaExtension):
             
             self._last_calls[throttle_key] = now
         
-        result = next_(root, info, **kwargs)
+        result = next_(root, info, *args, **kwargs)
         if asyncio.iscoroutine(result):
             return await result
         return result

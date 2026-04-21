@@ -18,6 +18,7 @@ import {
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { UPDATE_TASK_STATUS, SCRAP_TASK } from '../graphql/confectioneryMutations';
 import { type TerminalOrder, type ProductionTask, type Workstation } from '../types';
+import { getApiUrl } from '../utils/api';
 
 const GET_WORKSTATIONS = gql`
   query GetWorkstations {
@@ -83,12 +84,21 @@ const ProductionKioskPage: React.FC = () => {
   
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { data: wsData, loading: wsLoading } = useQuery(GET_WORKSTATIONS);
+  const { data: wsData, loading: wsLoading, error: wsError } = useQuery(GET_WORKSTATIONS, {
+    errorPolicy: 'all',
+    onError: (error) => {
+      console.error('Workstations query error:', error);
+    }
+  });
   
-  const { data: orderData, loading: ordersLoading, refetch: refetchOrders } = useQuery(GET_TERMINAL_ORDERS, {
+  const { data: orderData, loading: ordersLoading, refetch: refetchOrders, error: ordersError } = useQuery(GET_TERMINAL_ORDERS, {
     variables: { workstationId: selectedStation },
     skip: !selectedStation,
     pollInterval: 3000,
+    errorPolicy: 'all',
+    onError: (error) => {
+      console.error('Orders query error:', error);
+    }
   });
   
   const [updateStatus] = useMutation(UPDATE_TASK_STATUS);
@@ -108,22 +118,32 @@ const ProductionKioskPage: React.FC = () => {
     setQrError('');
     
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${API_URL}/api/terminal/identify`, {
+      const url = getApiUrl('terminal/identify');
+      console.log('Fetching:', url);
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qr_token: qrInput.trim() })
       });
       
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || 'Невалиден QR код');
+      const text = await response.text();
+      console.log('Response status:', response.status, 'text:', text);
+      
+      if (!text || text.trim() === '') {
+        throw new Error('Празен отговор от сървъра');
       }
       
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(`Грешка ${response.status}: ${text}`);
+      }
+      
+      const data = JSON.parse(text);
+      console.log('Parsed data:', data);
       setEmployee(data as Employee);
       setQrInput('');
     } catch (err: unknown) {
+      console.error('Identify error:', err);
       const error = err as { message?: string };
       setQrError(error.message || 'Грешка при идентификация');
     } finally {
@@ -302,6 +322,14 @@ const ProductionKioskPage: React.FC = () => {
           </Typography>
           {wsLoading ? (
             <CircularProgress sx={{ mt: 4 }} />
+          ) : wsError ? (
+            <Alert severity="error" sx={{ mt: 4 }}>
+              Грешка при зареждане на станции: {wsError.message}
+            </Alert>
+          ) : wsData?.workstations?.length === 0 ? (
+            <Alert severity="warning" sx={{ mt: 4 }}>
+              Няма налични работни станции
+            </Alert>
           ) : (
             <Grid container spacing={3} sx={{ mt: 4 }}>
               {wsData?.workstations.map((ws: Workstation) => (

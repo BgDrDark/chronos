@@ -17,9 +17,10 @@ activity:
   heartbeat_interval: 30
   timeout: 120
 backend:
-  api_key: gw_bbda6eec16021f0c8a9f9c759d4ca9041a295d3e543b0d6f
-  url: https://dev.chronos.org
-  ssl_verify_disabled: true  # Set to false in production with valid SSL certificate
+  api_key: gw_cd356dd9637a9e2896fbf4f4b15dc29760906fdf4ebd69fe
+  fallback_url: https://chronos.oblak24.org
+  ssl_verify_disabled: true
+  url: https://dev.oblak24.org
 cluster:
   enabled: false
 gateway:

@@ -48,6 +48,38 @@ const GET_PRODUCTION_ORDERS_FOR_DAY = gql`
   }
 `;
 
+const GET_ALL_PRODUCTION_ORDERS = gql`
+  query GetAllProductionOrders($status: String) {
+    productionOrders(status: $status) {
+      id
+      quantity
+      dueDate
+      productionDeadline
+      status
+      notes
+      recipe {
+        id
+        name
+      }
+      tasks {
+        id
+        name
+        status
+        workstation {
+          id
+          name
+        }
+        startedAt
+        completedAt
+      }
+    }
+    workstations {
+      id
+      name
+    }
+  }
+`;
+
 const GET_OVERDUE_ORDERS = gql`
   query GetOverdueOrders {
     overdueProductionOrders {
@@ -95,7 +127,9 @@ const UPDATE_ORDER_QUANTITY = gql`
 const ProductionControlPage: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [showOverdue, setShowOverdue] = useState(false);
+  const [showAllOrders, setShowAllOrders] = useState(false);
   const [selectedWorkstation, setSelectedWorkstation] = useState<number | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string>('');
   const [reassignDialog, setReassignDialog] = useState<{open: boolean, taskId: number | null, currentWorkstation: string}>({
     open: false, taskId: null, currentWorkstation: ''
   });
@@ -105,15 +139,18 @@ const ProductionControlPage: React.FC = () => {
   });
   const [dailyQuantity, setDailyQuantity] = useState<string>('');
 
-  const { data, loading, error, refetch } = useQuery(showOverdue ? GET_OVERDUE_ORDERS : GET_PRODUCTION_ORDERS_FOR_DAY, {
-    variables: { date: selectedDate },
-    skip: showOverdue
-  });
+  const { data, loading, error, refetch } = useQuery(
+    showOverdue ? GET_OVERDUE_ORDERS : (showAllOrders ? GET_ALL_PRODUCTION_ORDERS : GET_PRODUCTION_ORDERS_FOR_DAY),
+    {
+      variables: showAllOrders ? { status: filterStatus || undefined } : { date: selectedDate },
+      skip: showOverdue
+    }
+  );
 
   const [reassignTask, { loading: reassignLoading }] = useMutation(REASSIGN_TASK_WORKSTATION);
   const [updateQuantity, { loading: updateQuantityLoading }] = useMutation(UPDATE_ORDER_QUANTITY);
 
-  const allOrders: ProductionOrder[] = showOverdue ? data?.overdueProductionOrders : data?.productionOrdersForDay;
+  const allOrders: ProductionOrder[] = showOverdue ? data?.overdueProductionOrders : (showAllOrders ? data?.productionOrders : data?.productionOrdersForDay);
   const workstations: Workstation[] = data?.workstations || [];
 
   // Filter orders by workstation
@@ -180,22 +217,61 @@ const ProductionControlPage: React.FC = () => {
           Контрол Производство
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Управление на поръчките за деня
+          {showAllOrders ? 'Всички поръчки' : 'Управление на поръчките за деня'}
         </Typography>
       </Box>
 
       <Paper sx={{ p: 2, mb: 3 }}>
         <Grid container spacing={2} alignItems="center">
-          <Grid size={{ xs: 12, sm: 4, md: 2 }}>
-            <TextField
-              type="date"
-              label="Дата"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+            <Button
+              variant={!showAllOrders && !showOverdue ? 'contained' : 'outlined'}
+              onClick={() => { setShowAllOrders(false); setShowOverdue(false); }}
               fullWidth
-              InputLabelProps={{ shrink: true }}
-            />
+            >
+              За деня
+            </Button>
           </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+            <Button
+              variant={showAllOrders ? 'contained' : 'outlined'}
+              onClick={() => { setShowAllOrders(true); setShowOverdue(false); }}
+              fullWidth
+            >
+              Всички
+            </Button>
+          </Grid>
+          {!showOverdue && !showAllOrders && (
+            <Grid size={{ xs: 12, sm: 4, md: 2 }}>
+              <TextField
+                type="date"
+                label="Дата"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+          )}
+          {showAllOrders && (
+            <Grid size={{ xs: 12, sm: 4, md: 2 }}>
+              <FormControl fullWidth>
+                <InputLabel>Статус</InputLabel>
+                <Select
+                  value={filterStatus}
+                  label="Статус"
+                  onChange={(e) => setFilterStatus(e.target.value as string)}
+                >
+                  <MenuItem value="">Всички</MenuItem>
+                  <MenuItem value="pending">Чакащ</MenuItem>
+                  <MenuItem value="ready">Готов</MenuItem>
+                  <MenuItem value="in_progress">В процес</MenuItem>
+                  <MenuItem value="completed">Завършен</MenuItem>
+                  <MenuItem value="cancelled">Отказан</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          )}
           <Grid size={{ xs: 12, sm: 4, md: 3 }}>
             <FormControl fullWidth>
               <InputLabel>Отдел/Станция</InputLabel>
@@ -215,14 +291,14 @@ const ProductionControlPage: React.FC = () => {
             <Button
               variant={showOverdue ? 'contained' : 'outlined'}
               color="error"
-              onClick={() => setShowOverdue(!showOverdue)}
+              onClick={() => { setShowOverdue(!showOverdue); setShowAllOrders(false); }}
               startIcon={<WarningIcon />}
               fullWidth
             >
               Просрочени
             </Button>
           </Grid>
-          <Grid size={{ xs: 12, sm: 4, md: 2 }}>
+          <Grid size={{ xs: 12, sm: 4, md: 1 }}>
             <Button
               variant="outlined"
               onClick={() => refetch()}

@@ -5,7 +5,7 @@ Comprehensive batch loading for GraphQL N+1 problem resolution
 
 import asyncio
 from collections import defaultdict
-from typing import List, Dict, Any, Optional, Type, Union
+from typing import List, Dict, Any, Optional, Type, Union, TypeVar, Generic
 from datetime import datetime, date, time
 from decimal import Decimal
 
@@ -62,7 +62,8 @@ class OptimizedDataLoader:
     
     async def batch_load(self, keys: List[KeyType]) -> List[Optional[Any]]:
         """Override this method in subclasses"""
-        raise NotImplementedError
+        return []
+    
 
 class UserDataLoader(OptimizedDataLoader):
     """Optimized user data loader with comprehensive relationship loading"""
@@ -87,14 +88,20 @@ class UserDataLoader(OptimizedDataLoader):
                 selectinload(User.company_rel),
                 selectinload(User.department_rel),
                 selectinload(User.position_rel),
-                selectinload(User.timelogs).limit(10),  # Limit recent timelogs
-                selectinload(User.schedules).limit(10),  # Limit recent schedules
-                selectinload(User.leave_requests).limit(10),  # Limit recent requests
+                selectinload(User.timelogs),  
+                selectinload(User.schedules),  
+                selectinload(User.leave_requests),
             )
             .where(User.id.in_(uncached_keys))
         )
-        
-        users = result.scalars().unique().all()
+        users = result.scalars().all()
+        for user in users:
+            # Limit timelogs to recent 10
+            user.timelogs = sorted(user.timelogs, key=lambda t: t.start_time, reverse=True)[:10]
+            # Limit schedules to recent 10
+            user.schedules = sorted(user.schedules, key=lambda s: s.date, reverse=True)[:10]
+            # Limit leave requests to recent 10
+            user.leave_requests = sorted(user.leave_requests, key=lambda l: l.created_at, reverse=True)[:10]
         user_map = {int(user.id): user for user in users}
         
         # Update cache
@@ -435,6 +442,12 @@ class DataLoaderFactory:
         self._loaders: Dict[str, DataLoader] = {}
         self._optimized_loaders: Dict[str, OptimizedDataLoader] = {}
     
+    def _get_loader(self, key: str, loader_class: Any) -> OptimizedDataLoader:
+        """Generic factory method for creating optimized loaders"""
+        if key not in self._optimized_loaders:
+            self._optimized_loaders[key] = loader_class(self.session)
+        return self._optimized_loaders[key]
+    
     def get_user_loader(self) -> DataLoader:
         """Get user data loader"""
         if 'user' not in self._loaders:
@@ -448,33 +461,23 @@ class DataLoaderFactory:
     
     def get_timelog_loader(self) -> TimeLogDataLoader:
         """Get timelog data loader"""
-        if 'timelog' not in self._optimized_loaders:
-            self._optimized_loaders['timelog'] = TimeLogDataLoader(self.session)
-        return self._optimized_loaders['timelog']
+        return self._get_loader('timelog', TimeLogDataLoader)  # type: ignore
     
     def get_schedule_loader(self) -> WorkScheduleDataLoader:
         """Get work schedule data loader"""
-        if 'schedule' not in self._optimized_loaders:
-            self._optimized_loaders['schedule'] = WorkScheduleDataLoader(self.session)
-        return self._optimized_loaders['schedule']
+        return self._get_loader('schedule', WorkScheduleDataLoader)  # type: ignore
     
     def get_leave_loader(self) -> LeaveRequestDataLoader:
         """Get leave request data loader"""
-        if 'leave' not in self._optimized_loaders:
-            self._optimized_loaders['leave'] = LeaveRequestDataLoader(self.session)
-        return self._optimized_loaders['leave']
+        return self._get_loader('leave', LeaveRequestDataLoader)  # type: ignore
     
     def get_payslip_loader(self) -> PayslipDataLoader:
         """Get payslip data loader"""
-        if 'payslip' not in self._optimized_loaders:
-            self._optimized_loaders['payslip'] = PayslipDataLoader(self.session)
-        return self._optimized_loaders['payslip']
+        return self._get_loader('payslip', PayslipDataLoader)  # type: ignore
     
     def get_presence_loader(self) -> UserPresenceDataLoader:
         """Get user presence data loader"""
-        if 'presence' not in self._optimized_loaders:
-            self._optimized_loaders['presence'] = UserPresenceDataLoader(self.session)
-        return self._optimized_loaders['presence']
+        return self._get_loader('presence', UserPresenceDataLoader)  # type: ignore
     
     def clear_cache(self) -> None:
         """Clear all data loader caches"""
@@ -515,7 +518,7 @@ def create_dataloaders(session: AsyncSession) -> dict:
     factory = DataLoaderFactory(session)
     
     return {
-        "role_by_id": DataLoader(load_fn=lambda keys: load_roles_by_ids(session, keys)),
+        "role_by_id": DataLoader(load_fn=lambda keys: load_roles_by_ids(session, keys)),  # type: ignore
         "user_by_id": factory.get_user_loader(),
     }
 

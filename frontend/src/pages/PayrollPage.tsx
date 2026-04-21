@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import {
   Container, Typography, Box, TextField, Button, MenuItem,
   Alert, CircularProgress, Card, CardContent, Divider, Grid, Link, FormControlLabel, Checkbox,
-  Tooltip, Switch, type SelectChangeEvent, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
-  InputLabel, Select, FormControl
+  Switch, type SelectChangeEvent, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
+  InputLabel, Select, FormControl, InputAdornment
 } from '@mui/material';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import PaidIcon from '@mui/icons-material/Paid';
@@ -11,8 +11,9 @@ import ReceiptIcon from '@mui/icons-material/Receipt';
 import AddIcon from '@mui/icons-material/Add';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import { useQuery, useMutation, gql, useLazyQuery } from '@apollo/client';
+import { InfoIcon } from '../components/ui/InfoIcon';
 import { useForm, Controller, useWatch, FormProvider } from 'react-hook-form';
-import { useCurrency } from '../currencyContext';
+import { useCurrency, formatCurrencyValue, getCurrencySymbolForCurrency } from '../currencyContext';
 import { 
   type PayrollLegalSettings, 
   type UserWithPayroll, 
@@ -431,13 +432,13 @@ const GET_CONTRACTS = gql`
 const CREATE_CONTRACT_ANNEX = gql`
   mutation CreateContractAnnex(
     $contractId: Int!,
-    $effectiveDate: String!,
+    $effectiveDate: Date!,
     $annexNumber: String,
-    $baseSalary: Float,
+    $baseSalary: Decimal,
     $workHoursPerWeek: Int,
-    $nightWorkRate: Float,
-    $overtimeRate: Float,
-    $holidayRate: Float
+    $nightWorkRate: Decimal,
+    $overtimeRate: Decimal,
+    $holidayRate: Decimal
   ) {
     createContractAnnex(
       contractId: $contractId,
@@ -631,6 +632,8 @@ const PayrollLegalSettings: React.FC = () => {
     const [updateLegal, { loading: updating }] = useMutation(UPDATE_PAYROLL_LEGAL_MUTATION);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [defaultTaxResident, setDefaultTaxResident] = useState(true);
+    const { currency } = useCurrency();
+    const currencySymbol = getCurrencySymbolForCurrency(currency);
 
     const { control, handleSubmit, reset, setValue } = useForm<PayrollLegalSettings>({
         defaultValues: {
@@ -693,7 +696,7 @@ const PayrollLegalSettings: React.FC = () => {
                     <Grid container spacing={3}>
                         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                             <Controller name="maxInsuranceBase" control={control} render={({ field }) => (
-                                <TextField {...field} fullWidth label="Макс. осигурителен праг" type="number" size="small" helperText="лв. за месец" />
+                                <TextField {...field} fullWidth label="Макс. осигурителен праг" type="number" size="small" helperText={`${currencySymbol} за месец`} />
                             )} />
                         </Grid>
                         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -847,31 +850,64 @@ const PayrollReports: React.FC = () => {
                     </Typography>
                     <Grid container spacing={2} alignItems="center">
                         <Grid size={{ xs: 12, sm: 3 }}>
-                            <Tooltip title="Начална дата на периода за ведомостта" arrow>
-                                <TextField fullWidth type="date" label="От" InputLabelProps={{ shrink: true }} value={startDate} onChange={e => setStartDate(e.target.value)} size="small" placeholder="2026-01-01" />
-                            </Tooltip>
+                            <TextField
+                                fullWidth type="date" label="От"
+                                InputLabelProps={{ shrink: true }}
+                                value={startDate}
+                                onChange={e => setStartDate(e.target.value)}
+                                size="small" placeholder="2026-01-01"
+                                slotProps={{
+                                    input: {
+                                        endAdornment: (
+                                            <InputAdornment position="end">
+                                                <InfoIcon helpText="Начална дата на периода за ведомостта" />
+                                            </InputAdornment>
+                                        )
+                                    }
+                                }}
+                            />
                         </Grid>
                         <Grid size={{ xs: 12, sm: 3 }}>
-                            <Tooltip title="Крайна дата на периода за ведомостта" arrow>
-                                <TextField fullWidth type="date" label="До" InputLabelProps={{ shrink: true }} value={endDate} onChange={e => setEndDate(e.target.value)} size="small" placeholder="2026-01-31" />
-                            </Tooltip>
+                            <TextField
+                                fullWidth type="date" label="До"
+                                InputLabelProps={{ shrink: true }}
+                                value={endDate}
+                                onChange={e => setEndDate(e.target.value)}
+                                size="small" placeholder="2026-01-31"
+                                slotProps={{
+                                    input: {
+                                        endAdornment: (
+                                            <InputAdornment position="end">
+                                                <InfoIcon helpText="Крайна дата на периода за ведомостта" />
+                                            </InputAdornment>
+                                        )
+                                    }
+                                }}
+                            />
                         </Grid>
                         <Grid size={{ xs: 12, sm: 4 }}>
-                            <Tooltip title="Избери конкретни служители или остави празно за всички" arrow>
-                                <TextField 
-                                    select fullWidth label="Служители (по избор)" 
-                                    SelectProps={{ 
-                                        multiple: true, 
-                                        value: selectedUserIds, 
-                                        onChange: (e: SelectChangeEvent<unknown>) => setSelectedUserIds(e.target.value as number[]) 
-                                    }}
-                                    size="small"
-                                >
-                                    {usersData?.users?.users.map((u: User) => (
-                                        <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>
-                                    ))}
-                                </TextField>
-                            </Tooltip>
+                            <TextField
+                                select fullWidth label="Служители (по избор)"
+                                SelectProps={{
+                                    multiple: true,
+                                    value: selectedUserIds,
+                                    onChange: (e: SelectChangeEvent<unknown>) => setSelectedUserIds(e.target.value as number[])
+                                }}
+                                size="small"
+                                slotProps={{
+                                    input: {
+                                        endAdornment: (
+                                            <InputAdornment position="end">
+                                                <InfoIcon helpText="Избери конкретни служители или остави празно за всички" />
+                                            </InputAdornment>
+                                        )
+                                    }
+                                }}
+                            >
+                                {usersData?.users?.users.map((u: User) => (
+                                    <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>
+                                ))}
+                            </TextField>
                         </Grid>
                         <Grid size={{ xs: 12, sm: 2 }}>
                             <Button variant="contained" fullWidth onClick={handleGenerate} disabled={loading}>Генерирай</Button>
@@ -2463,6 +2499,7 @@ const TemplatesSettings: React.FC = () => {
 
 // --- Component: Annexes Settings ---
 const AnnexesSettings: React.FC = () => {
+  const { currency } = useCurrency();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -2612,7 +2649,7 @@ const AnnexesSettings: React.FC = () => {
                     )}
                     {annex.baseSalary && (
                       <Typography variant="body2" color="primary.main">
-                        Нова заплата: {Number(annex.baseSalary).toFixed(2)} лв.
+                        Нова заплата: {formatCurrencyValue(annex.baseSalary, currency)}
                       </Typography>
                     )}
                   </Box>

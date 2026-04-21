@@ -87,7 +87,6 @@ class TaskResponse(BaseModel):
 
 
 @router.post("/identify", response_model=TerminalIdentifyResponse)
-@require_module("confectionery")
 async def identify_terminal(
     request: TerminalIdentifyRequest,
     db: AsyncSession = Depends(get_db)

@@ -5,8 +5,9 @@ import {
   Card, CardContent, Grid, Chip, Alert, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Select, InputLabel, FormControl,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Tooltip,
-  FormControlLabel, Checkbox
+  FormControlLabel, Checkbox, InputAdornment
 } from '@mui/material';
+import { InfoIcon } from '../components/ui/InfoIcon';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { Navigate } from 'react-router-dom';
 import AddIcon from '@mui/icons-material/Add';
@@ -483,6 +484,15 @@ const MyLeavesTab: React.FC<{ user: any }> = ({ user }) => {
             InputLabelProps={{ shrink: true }}
             margin="normal"
             variant="outlined"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText="Начална дата на отпуската/болничния" />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
           <TextField
             fullWidth
@@ -493,6 +503,15 @@ const MyLeavesTab: React.FC<{ user: any }> = ({ user }) => {
             InputLabelProps={{ shrink: true }}
             margin="normal"
             variant="outlined"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText="Крайна дата на отпуската/болничния" />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
           <TextField
             fullWidth
@@ -503,6 +522,15 @@ const MyLeavesTab: React.FC<{ user: any }> = ({ user }) => {
             onChange={(e) => setReason(e.target.value)}
             margin="normal"
             variant="outlined"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <InfoIcon helpText="Причина/основание за заявката (незадължително)" />
+                  </InputAdornment>
+                )
+              }
+            }}
           />
           
           <Box sx={{ mt: 2, p: 2, border: '1px dashed grey', borderRadius: 1, textAlign: 'center' }}>

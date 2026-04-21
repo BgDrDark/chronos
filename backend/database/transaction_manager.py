@@ -7,6 +7,7 @@ data consistency and prevent race conditions in critical operations.
 
 import asyncio
 import logging
+import random
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional, Any, Callable
 from functools import wraps
@@ -204,7 +205,9 @@ def atomic(
                     last_exception = e
                     if attempt < max_retries:
                         logger.warning(f"Deadlock detected, retrying (attempt {attempt + 1}/{max_retries})")
-                        await asyncio.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
+                        delay = retry_delay * (2 ** attempt)
+                        jitter = delay * 0.2 * random.random()
+                        await asyncio.sleep(delay + jitter)  # Exponential backoff with jitter
                     else:
                         logger.error(f"Max retries exceeded for deadlock: {e}")
                         raise
@@ -235,6 +238,40 @@ def read_committed(max_retries: int = 3) -> Callable:
         readonly=True,
         max_retries=max_retries
     )
+
+
+@asynccontextmanager
+async def atomic_with_savepoint(db: AsyncSession, name: str = "sp1"):
+    """
+    Context manager for savepoint within a transaction.
+    
+    Allows partial rollback to a specific point without rolling back
+    the entire transaction. Useful for complex operations where
+    some steps are critical and others are optional.
+    
+    Args:
+        db: Database session
+        name: Savepoint name (must be unique within transaction)
+    
+    Example:
+        async with atomic_transaction(db):
+            await create_user(...)
+            async with atomic_with_savepoint(db, "user_created"):
+                await send_welcome_email(...)  # If fails, user remains
+    """
+    safe_name = "".join(c for c in name if c.isalnum() or c in "_-").lower()
+    await db.execute(text(f"SAVEPOINT {safe_name}"))
+    try:
+        yield
+    except Exception as e:
+        await db.execute(text(f"ROLLBACK TO SAVEPOINT {safe_name}"))
+        logger.info(f"Rolled back to savepoint {safe_name}: {e}")
+        raise
+    finally:
+        try:
+            await db.execute(text(f"RELEASE SAVEPOINT {safe_name}"))
+        except Exception:
+            pass  # Already released or no active savepoint
 
 
 async def with_row_lock(
@@ -352,6 +389,7 @@ __all__ = [
     'atomic',
     'read_committed',
     'with_row_lock',
+    'atomic_with_savepoint',
     'TransactionError',
     'DeadlockError',
     'ConcurrentModificationError',
