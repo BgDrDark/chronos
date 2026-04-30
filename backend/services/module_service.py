@@ -13,7 +13,7 @@ class ModuleService:
     async def is_enabled(cls, db: AsyncSession, module_code: str) -> bool:
         """Check if a module is enabled. Uses internal cache."""
         # Core modules are always enabled
-        core_modules = ["shifts", "users", "companies", "accounting", "confectionery"]
+        core_modules = ["shifts", "accounting", "confectionery", "cost_centers"]
         if module_code in core_modules:
             return True
         
@@ -39,7 +39,7 @@ class ModuleService:
         cls._cache = {}
 
     @classmethod
-    async def toggle_module(cls, db: AsyncSession, module_code: str, enabled: bool):
+    async def toggle_module(cls, db: AsyncSession, module_code: str, enabled: bool) -> bool:
         """Enable or disable a module."""
         logger.info(f"toggle_module called: {module_code}, enabled: {enabled}")
         
@@ -47,14 +47,21 @@ class ModuleService:
         if module_code == "shifts" and not enabled:
             logger.warning("Attempted to disable core 'shifts' module. Operation denied.")
             return True # Pretend it worked but keep it enabled
+        
+        # Safety: NEVER allow disabling core modules
+        core_modules = ["shifts", "accounting", "confectionery", "cost_centers"]
+        if module_code in core_modules and not enabled:
+            logger.warning(f"Attempted to disable core '{module_code}' module. Operation denied.")
+            return True
 
         result = await db.execute(select(Module).where(Module.code == module_code))
         module = result.scalar_one_or_none()
         
         if module:
             logger.info(f"Found module: {module.code}, current is_enabled: {module.is_enabled}")
-            # If it's shifts, force it to be enabled
-            if module_code == "shifts":
+            # If it's a core module, force it to be enabled
+            core_modules = ["shifts", "accounting", "confectionery", "cost_centers"]
+            if module_code in core_modules:
                 module.is_enabled = True
             else:
                 module.is_enabled = enabled
@@ -68,7 +75,7 @@ class ModuleService:
         return False
 
     @classmethod
-    async def get_all_modules(cls, db: AsyncSession):
+    async def get_all_modules(cls, db: AsyncSession) -> list[Module]:
         """Get list of all modules and their status."""
         result = await db.execute(select(Module).order_by(Module.id))
         modules = result.scalars().all()

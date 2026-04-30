@@ -9,7 +9,13 @@ from backend.config import settings
 from backend.database.session_proxy import LockedSession
 
 # Use create_async_engine for async operations
-engine = create_async_engine(str(settings.DATABASE_URL))
+engine = create_async_engine(
+    str(settings.DATABASE_URL),
+    pool_size=20,
+    max_overflow=10,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
 
 # AsyncSessionLocal will be used to create new AsyncSession objects
 AsyncSessionLocal = sessionmaker(

@@ -163,7 +163,7 @@ class EnhancedPayrollCalculator(PayrollCalculator):
             'business_trip_count': len(self.business_trips),
         }
     
-    async def _apply_preloaded_data(self):
+    async def _apply_preloaded_data(self) -> None:
         """Map preloaded data to calculator attributes"""
         if not self.preloaded_data:
             return
@@ -175,7 +175,7 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         self.advance_payments = self.preloaded_data.get('advances', {}).get(self.user_id, [])
         self.active_loans = self.preloaded_data.get('loans', {}).get(self.user_id, [])
 
-    async def _load_additional_components(self):
+    async def _load_additional_components(self) -> None:
         """Load all additional components for payroll calculation"""
         # Load payment schedule
         schedule_query = select(PayrollPaymentSchedule).where(

@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: Optional[str] = None
     ENCRYPTION_KEY: Optional[str] = None
     CSRF_SECRET_KEY: Optional[str] = None
+    DEPLOY_API_KEY: Optional[str] = None
+    
+    # Application Version
+    VERSION: str = "unknown"
 
     @computed_field
     @property

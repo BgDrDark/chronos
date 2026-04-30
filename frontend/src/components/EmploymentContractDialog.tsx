@@ -2,9 +2,9 @@ import React, { useState, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, FormControl, InputLabel, Select, MenuItem,
-  Grid, Alert, CircularProgress, Box, InputAdornment
+  Grid, Alert, CircularProgress, Box, InputAdornment, Checkbox, ListItemText
 } from '@mui/material';
-import { useMutation, useQuery } from '@apollo/client';
+import { useMutation, useQuery, gql } from '@apollo/client';
 import {
   CREATE_EMPLOYMENT_CONTRACT,
   GENERATE_CONTRACT_NUMBER,
@@ -13,6 +13,39 @@ import {
 import { type LaborContract, type LaborContractFormData, getErrorMessage } from '../types';
 import { InfoIcon } from './ui/InfoIcon';
 import { userFieldsHelp } from './ui/fieldsHelpText';
+
+const GET_CONTRACT_TEMPLATES = gql`
+  query GetContractTemplatesForDialog {
+    contractTemplates {
+      id
+      name
+      contractType
+      baseSalary
+      workHoursPerWeek
+      probationMonths
+      salaryCalculationType
+      paymentDay
+      nightWorkRate
+      overtimeRate
+      holidayRate
+      position { id title }
+      department { id name }
+      clauses {
+        clause { id title category }
+      }
+    }
+  }
+`;
+
+const GET_CLAUSE_TEMPLATES = gql`
+  query GetClauseTemplatesForDialog {
+    clauseTemplates {
+      id
+      title
+      category
+    }
+  }
+`;
 
 interface EmploymentContractDialogProps {
   open: boolean;
@@ -26,6 +59,7 @@ const initialFormData: LaborContractFormData = {
   companyId: null,
   departmentId: null,
   positionId: null,
+  templateId: null,
   employeeName: '',
   employeeEgn: '',
   contractNumber: '',
@@ -34,7 +68,8 @@ const initialFormData: LaborContractFormData = {
   endDate: '',
   baseSalary: '',
   workHoursPerWeek: '40',
-  jobDescription: ''
+  jobDescription: '',
+  clauseIds: []
 };
 
 interface OrgData {
@@ -56,6 +91,31 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
   const prevOpenRef = React.useRef<boolean>(open);
 
   const { data: orgData } = useQuery<OrgData>(GET_ORG_DATA_FOR_CONTRACT);
+  const { data: templatesData } = useQuery(GET_CONTRACT_TEMPLATES);
+  const { data: clausesData } = useQuery(GET_CLAUSE_TEMPLATES);
+
+  const templates = templatesData?.contractTemplates || [];
+  const availableClauses = clausesData?.clauseTemplates || [];
+
+  // Функция за импорт на данни от шаблон
+  const handleTemplateSelect = (templateId: string) => {
+    if (!templateId) {
+      setFormData(prev => ({ ...prev, templateId: null }));
+      return;
+    }
+    const template = templates.find((t: { id: number; position?: { id: number }; department?: { id: number }; baseSalary?: number; workHoursPerWeek?: number; clauses?: Array<{ clause: { id: number } }> }) => t.id === Number(templateId));
+    if (template) {
+      setFormData(prev => ({
+        ...prev,
+        templateId: Number(templateId),
+        positionId: template.position?.id || prev.positionId,
+        departmentId: template.department?.id || prev.departmentId,
+        baseSalary: template.baseSalary?.toString() || prev.baseSalary,
+        workHoursPerWeek: template.workHoursPerWeek?.toString() || '40',
+        clauseIds: template.clauses?.map((c: { clause: { id: number } }) => c.clause.id) || prev.clauseIds || []
+      }));
+    }
+  };
 
   React.useEffect(() => {
     if (prevOpenRef.current && !open) {
@@ -73,6 +133,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
           companyId: contract.company?.id || null,
           departmentId: contract.department?.id || null,
           positionId: contract.position?.id || null,
+          templateId: contract.templateId || null,
           employeeName: contract.employeeName || '',
           employeeEgn: contract.employeeEgn || '',
           contractNumber: contract.contractNumber || '',
@@ -81,7 +142,8 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
           endDate: contract.endDate || '',
           baseSalary: contract.baseSalary?.toString() || '',
           workHoursPerWeek: contract.workHoursPerWeek?.toString() || '40',
-          jobDescription: ''
+          jobDescription: '',
+          clauseIds: contract.clauseIds || []
         });
       } else {
         setFormData({
@@ -173,7 +235,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
   const handleSubmit = () => {
     if (!validateForm()) return;
 
-    const input = {
+    const input: Record<string, unknown> = {
       employeeName: formData.employeeName,
       employeeEgn: formData.employeeEgn,
       companyId: formData.companyId,
@@ -187,6 +249,14 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
       workHoursPerWeek: parseInt(formData.workHoursPerWeek, 10) || 40,
       jobDescription: formData.jobDescription || null
     };
+
+    if (formData.templateId) {
+      input.templateId = formData.templateId;
+    }
+
+    if (formData.clauseIds && formData.clauseIds.length > 0) {
+      input.clauseIds = JSON.stringify(formData.clauseIds);
+    }
 
     createContract({ variables: { input } });
   };
@@ -369,6 +439,50 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
               size="small"
               placeholder="Описание на длъжността и задълженията..."
             />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Шаблон</InputLabel>
+              <Select
+                value={formData.templateId ?? ''}
+                label="Шаблон"
+                onChange={(e) => handleTemplateSelect(String(e.target.value))}
+              >
+                <MenuItem value="">-- Изберете шаблон --</MenuItem>
+                {templates.map((t: { id: number; name: string; contractType: string }) => (
+                  <MenuItem key={t.id} value={t.id}>{t.name} ({t.contractType})</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Клаузи</InputLabel>
+              <Select
+                multiple
+                value={formData.clauseIds}
+                label="Клаузи"
+                renderValue={(selected) => {
+                  const selectedClauses = availableClauses.filter((c: { id: number; title: string }) => 
+                    selected.includes(c.id)
+                  );
+                  return selectedClauses.length > 0
+                    ? selectedClauses.map((c: { title: string }) => c.title).join(', ')
+                    : 'Изберете клаузи';
+                }}
+                onChange={(e) => {
+                  const value = e.target.value as number[];
+                  setFormData(prev => ({ ...prev, clauseIds: value }));
+                }}
+              >
+                {availableClauses.map((clause: { id: number; title: string; category: string }) => (
+                  <MenuItem key={clause.id} value={clause.id}>
+                    <Checkbox checked={formData.clauseIds.includes(clause.id)} />
+                    <ListItemText primary={clause.title} secondary={clause.category} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
         </Grid>
       </DialogContent>

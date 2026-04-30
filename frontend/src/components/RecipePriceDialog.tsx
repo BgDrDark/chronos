@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Grid, Divider, Box, Typography, InputAdornment
@@ -37,19 +37,10 @@ const RecipePriceDialog: React.FC<RecipePriceDialogProps> = ({
   const { currency } = useCurrency();
   const currencySymbol = getCurrencySymbolForCurrency(currency);
   
-  const [markupPercentage, setMarkupPercentage] = useState('');
-  const [premiumAmount, setPremiumAmount] = useState('');
-  const [portions, setPortions] = useState('');
+  const [markupPercentage, setMarkupPercentage] = useState(() => recipe?.markupPercentage?.toString() ?? '50');
+  const [premiumAmount, setPremiumAmount] = useState(() => recipe?.premiumAmount?.toString() ?? '0');
+  const [portions, setPortions] = useState(() => recipe?.portions?.toString() ?? '12');
   const [reason, setReason] = useState('');
-
-  useEffect(() => {
-    if (recipe && open) {
-      setMarkupPercentage(recipe.markupPercentage?.toString() ?? '50');
-      setPremiumAmount(recipe.premiumAmount?.toString() ?? '0');
-      setPortions(recipe.portions?.toString() ?? '12');
-      setReason('');
-    }
-  }, [recipe, open]);
 
   const preview = useMemo((): PricePreview => {
     const costPrice = recipe?.costPrice || 0;
@@ -78,7 +69,7 @@ const RecipePriceDialog: React.FC<RecipePriceDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog key={open ? 'open' : 'closed'} open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Редактиране на цена - {recipe?.name}</DialogTitle>
       <DialogContent>
         <Box sx={{ pt: 2 }}>

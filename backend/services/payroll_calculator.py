@@ -3,8 +3,21 @@ from datetime import datetime, timedelta, date, time
 from typing import List, Dict, Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend import crud
+from typing import Optional, Dict, Any
+from datetime import date
+from decimal import Decimal
+from datetime import datetime
+import calendar
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
 from backend.database.models import TimeLog, Payroll, Payslip, sofia_now, MonthlyWorkDays, Bonus
+
+
+def _get_crud():
+    """Lazy import to avoid circular import"""
+    from backend import crud
+    return crud
 
 def get_standard_working_days(year: int, month: int) -> List[date]:
     """Връща списък от всички делнични дни (Пон-Пет) в месеца."""
@@ -73,6 +86,8 @@ class PayrollCalculator:
         """
         Calculates the payroll for a user within a given period using Interval Logic and Smart Break Deduction.
         """
+        crud = _get_crud()
+        
         # 1. Get Payroll Config
         config = await crud.get_payroll_config(self.db, user_id)
         if not config:
@@ -336,6 +351,7 @@ class PayrollCalculator:
         """
         Calculates Net Balance (Overtime - Debt) in real-time based on Schedule vs Actual Logs.
         """
+        crud = _get_crud()
         start_of_week = ref_date - timedelta(days=ref_date.weekday())
         end_of_week = start_of_week + timedelta(days=6)
         
@@ -427,6 +443,7 @@ class PayrollCalculator:
         }
 
     async def get_daily_stats(self, user_id: int, start_date: date, end_date: date) -> List[Dict[str, Any]]:
+        crud = _get_crud()
         stats_list = []
         loop_date = start_date
         while loop_date <= end_date:

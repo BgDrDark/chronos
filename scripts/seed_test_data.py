@@ -14,7 +14,9 @@ from backend.database.models import (
     StorageZone, Supplier, Ingredient, Batch,
     Shift, WorkSchedule, Payroll, Workstation,
     Invoice, InvoiceItem,
-    Recipe, RecipeSection, RecipeIngredient, RecipeStep
+    Recipe, RecipeSection, RecipeIngredient, RecipeStep,
+    EmploymentContract,
+    ContractTemplate, ContractTemplateVersion, ContractTemplateSection
 )
 
 
@@ -749,7 +751,7 @@ async def seed_all():
                         first_name=first_name,
                         last_name=last_name,
                         phone_number=f"+35988{company_idx:02d}{role_idx:02d}{users_created % 100:02d}",
-                        egn=f"75550{company_idx:02d}{role_idx:02d}{users_created % 100:02d}",
+                        egn=f"75520{company_idx:02d}{role_idx:02d}{users_created % 100:02d}"[:10],
                         iban=f"BG80BNBG96611020{company_idx:02d}{role_idx:02d}",
                         hashed_password=hashed_password,
                         company_id=company.id,
@@ -775,6 +777,51 @@ async def seed_all():
                         has_health_insurance=True,
                     )
                     db.add(payroll)
+                    
+                    # Създаваме трудовия договор
+                    # Взимаме позиция и отдел за потребителя
+                    result = await db.execute(select(Position))
+                    positions = result.scalars().all()
+                    
+                    result = await db.execute(select(Department))
+                    departments = result.scalars().all()
+                    
+                    if positions and departments:
+                        pos_idx = (users_created) % len(positions)
+                        dept_idx = (users_created) % len(departments)
+                        
+                        contract = EmploymentContract(
+                            user_id=user.id,
+                            company_id=company.id,
+                            contract_type="full_time",
+                            contract_number=f"TR-2026-{users_created:04d}",
+                            start_date=date.today() - timedelta(days=30 * (users_created % 12 + 1)),
+                            end_date=None,
+                            base_salary=Decimal("2500"),
+                            work_hours_per_week=40,
+                            probation_months=6,
+                            is_active=True,
+                            salary_calculation_type="gross",
+                            salary_installments_count=1,
+                            monthly_advance_amount=Decimal("500"),
+                            tax_resident=True,
+                            insurance_contributor=True,
+                            has_income_tax=True,
+                            payment_day=25,
+                            experience_start_date=date.today() - timedelta(days=365 * (users_created % 5 + 1)),
+                            night_work_rate=Decimal("0.5"),
+                            overtime_rate=Decimal("1.5"),
+                            holiday_rate=Decimal("2.0"),
+                            work_class=None,
+                            dangerous_work=False,
+                            position_id=positions[pos_idx].id if positions else None,
+                            department_id=departments[dept_idx].id if departments else None,
+                            employee_name=f"{first_name} {last_name}",
+                            employee_egn=user.egn,
+                            status="linked",
+                            signed_at=datetime.now()
+                        )
+                        db.add(contract)
                     
                     for day_offset in range(22):
                         schedule_date = date.today() + timedelta(days=day_offset)

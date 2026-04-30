@@ -54,10 +54,18 @@ const GET_USER_PROFILE = gql`
       }
       activeContract {
         id
-        baseSalary
+        contractNumber
         contractType
+        startDate
+        endDate
+        baseSalary
         salaryInstallmentsCount
         monthlyAdvanceAmount
+        positionTitle
+        department {
+          id
+          name
+        }
       }
     }
     me {
@@ -141,7 +149,13 @@ const PersonalDataSection: React.FC<{ user: any }> = ({ user }) => {
                             <Grid size={{ xs: 12, sm: 6 }}>
                                 <Typography variant="caption" color="text.secondary">Длъжност</Typography>
                                 <Typography variant="body1" fontWeight="medium">
-                                    {user.activeContract.positionTitle || '—'}
+                                    {user.activeContract.positionTitle || user.activeContract.position?.title || '—'}
+                                </Typography>
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <Typography variant="caption" color="text.secondary">Отдел</Typography>
+                                <Typography variant="body1" fontWeight="medium">
+                                    {user.activeContract.department?.name || '—'}
                                 </Typography>
                             </Grid>
                             <Grid size={{ xs: 12, sm: 6 }}>

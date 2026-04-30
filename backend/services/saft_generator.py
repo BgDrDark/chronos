@@ -50,7 +50,7 @@ class SAFTGenerator:
         self.period_end = period_end
         self.company: Optional[Company] = None
     
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Load company data"""
         result = await self.db.execute(
             select(Company).where(Company.id == self.company_id)

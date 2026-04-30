@@ -13,6 +13,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import HistoryIcon from '@mui/icons-material/History';
 import GoogleIcon from '@mui/icons-material/Google';
 import FingerprintIcon from '@mui/icons-material/Fingerprint';
+import SystemUpdateIcon from '@mui/icons-material/SystemUpdate';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { formatHours } from '../utils/formatUtils';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -763,6 +764,151 @@ const SystemSettings: React.FC = () => {
     );
 };
 
+const DeploymentSettings: React.FC = () => {
+    const [deploying, setDeploying] = useState(false);
+    const [checking, setChecking] = useState(false);
+    const [msg, setMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
+    const [lastCheck, setLastCheck] = useState<string | null>(null);
+    const [updateAvailable, setUpdateAvailable] = useState<{available: boolean, version: string} | null>(null);
+    const [currentVersion, setCurrentVersion] = useState<string>('loading...');
+    
+    const API_URL = import.meta.env.VITE_API_URL || '';
+    const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || 'BgDrDark/chronos';
+
+    // Get current version on mount
+    React.useEffect(() => {
+        fetch(`${API_URL}/webhook/health`)
+            .then(res => res.json())
+            .then(data => setCurrentVersion(data.version || 'unknown'))
+            .catch(() => setCurrentVersion('unknown'));
+    }, [API_URL]);
+
+    const handleCheckUpdate = async () => {
+        setChecking(true);
+        setUpdateAvailable(null);
+        setMsg(null);
+        
+        try {
+            const response = await fetch(
+                `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
+                {
+                    headers: {
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error('Неуспешна връзка с GitHub');
+            }
+            
+            const data = await response.json();
+            const latestVersion = (data.tag_name || '').replace(/^v/, '') || 'unknown';
+            const hasUpdate = latestVersion !== currentVersion;
+            
+            setUpdateAvailable({ available: hasUpdate, version: latestVersion });
+            setLastCheck(new Date().toLocaleString('bg-BG'));
+            
+            if (hasUpdate) {
+                setMsg({ type: 'success', text: `Налична е нова версия: ${latestVersion}` });
+            } else {
+                setMsg({ type: 'success', text: 'Използвате най-новата версия' });
+            }
+        } catch (err: any) {
+            setMsg({ type: 'error', text: err.message || 'Грешка при проверка' });
+        } finally {
+            setChecking(false);
+        }
+    };
+
+    const handleDeploy = async () => {
+        if (!window.confirm('Сигурен ли си, че искаш да обновиш продукцията?')) return;
+
+        setDeploying(true);
+        setMsg(null);
+        
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setMsg({ type: 'error', text: 'Не сте логнати' });
+                return;
+            }
+            
+            const res = await fetch(`${API_URL}/webhook/deploy`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok) {
+                setMsg({ type: 'success', text: `Успешно обновяване! Commit: ${data.commit || 'unknown'}` });
+            } else {
+                setMsg({ type: 'error', text: data.detail || 'Грешка при обновяване' });
+            }
+        } catch (err: any) {
+            setMsg({ type: 'error', text: err.message || 'Грешка при обновяване' });
+        } finally {
+            setDeploying(false);
+        }
+    };
+
+    return (
+        <Card sx={{ mb: 4, border: '1px solid #607d8b' }}>
+            <CardContent>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#455a64' }}>
+                    <SystemUpdateIcon /> Обновяване на Продукцията
+                </Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                    GitHub repository: {GITHUB_REPO}
+                </Typography>
+
+                {msg && <Alert severity={msg.type} sx={{ mb: 2 }}>{msg.text}</Alert>}
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Typography variant="body1" fontWeight="bold">
+                        Текуща версия: {currentVersion}
+                    </Typography>
+                    <Button 
+                        variant="outlined" 
+                        size="small"
+                        onClick={handleCheckUpdate}
+                        disabled={checking}
+                        startIcon={checking ? <CircularProgress size={16} /> : undefined}
+                    >
+                        {checking ? 'Проверка...' : 'Провери'}
+                    </Button>
+                </Box>
+
+                {updateAvailable?.available && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                        Налична е нова версия: {updateAvailable.version}
+                    </Alert>
+                )}
+
+                <Button 
+                    variant="contained" 
+                    color="warning"
+                    onClick={handleDeploy}
+                    disabled={deploying}
+                    startIcon={deploying ? <CircularProgress size={20} color="inherit" /> : <SystemUpdateIcon />}
+                >
+                    {deploying ? 'Обновяване...' : 'Обнови Продукцията'}
+                </Button>
+
+                {lastCheck && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                        Последенa проверка: {lastCheck}
+                    </Typography>
+                )}
+            </CardContent>
+        </Card>
+    );
+};
+
 const SettingsPage: React.FC = () => {
   const { data, loading, error } = useQuery(SETTINGS_QUERY);
   const { mode, toggleTheme, dashboardConfig, toggleDashboardWidget } = useAppTheme();
@@ -928,6 +1074,8 @@ const SettingsPage: React.FC = () => {
             </Box>
 
             {isSuperAdmin && <ModuleManager />}
+
+            {isSuperAdmin && <DeploymentSettings />}
 
             <SystemSettings />
 

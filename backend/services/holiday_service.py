@@ -1,12 +1,15 @@
 import httpx
 import datetime
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.database.models import PublicHoliday, sofia_now
 
+logger = logging.getLogger(__name__)
+
 API_URL = "https://date.nager.at/api/v3/PublicHolidays/{year}/BG"
 
-async def fetch_and_store_holidays(db: AsyncSession, year: int):
+async def fetch_and_store_holidays(db: AsyncSession, year: int) -> int | bool:
     url = API_URL.format(year=year)
     
     try:
@@ -15,7 +18,7 @@ async def fetch_and_store_holidays(db: AsyncSession, year: int):
             response.raise_for_status()
             holidays_data = response.json()
     except Exception as e:
-        print(f"Error fetching holidays: {e}")
+        logger.error(f"Error fetching holidays: {e}")
         return False
 
     count_new = 0

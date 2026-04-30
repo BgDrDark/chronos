@@ -163,6 +163,7 @@ export interface ContractTemplateVersion {
   templateId: number;
   version: number;
   contractType: string;
+  baseSalary?: number | null;
   workHoursPerWeek: number;
   probationMonths: number;
   salaryCalculationType: string;
@@ -171,6 +172,8 @@ export interface ContractTemplateVersion {
   overtimeRate: number;
   holidayRate: number;
   workClass: string | null;
+  positionId?: number | null;
+  departmentId?: number | null;
   isCurrent: boolean;
   createdBy: string | null;
   createdAt: string;
@@ -184,6 +187,7 @@ export interface ContractTemplate {
   name: string;
   description: string | null;
   contractType: string;
+  baseSalary?: number | null;
   workHoursPerWeek: number;
   probationMonths: number;
   salaryCalculationType: string;
@@ -194,6 +198,8 @@ export interface ContractTemplate {
   workClass: string | null;
   isActive: boolean;
   createdAt: string;
+  position?: { id: number; title: string } | null;
+  department?: { id: number; name: string } | null;
   currentVersion?: ContractTemplateVersion | null;
 }
 
@@ -1189,6 +1195,8 @@ export interface LaborContract {
   department: { id: number; name: string } | null;
   position: { id: number; title: string } | null;
   annexes: LaborContractAnnex[];
+  templateId: number | null;
+  clauseIds: number[];
 }
 
 export interface CreateLaborContractInput {
@@ -1208,6 +1216,7 @@ export interface LaborContractFormData {
   companyId: number | null;
   departmentId: number | null;
   positionId: number | null;
+  templateId: number | null;
   employeeName: string;
   employeeEgn: string;
   contractNumber: string;
@@ -1217,6 +1226,7 @@ export interface LaborContractFormData {
   baseSalary: string;
   workHoursPerWeek: string;
   jobDescription: string;
+  clauseIds: number[];
 }
 
 export interface LaborContractListFilters {

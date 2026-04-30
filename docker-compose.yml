@@ -62,6 +62,9 @@ services:
       - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-60}
       # RBAC Settings
       - PERMISSION_CACHE_TTL=${PERMISSION_CACHE_TTL:-300}
+      # Deployment Settings
+      - DEPLOY_API_KEY=${DEPLOY_API_KEY}
+      - VERSION=${VERSION}
     ports:
       - "14240:14240"
     depends_on:

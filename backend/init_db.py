@@ -7,7 +7,7 @@ from backend.database.models import (
     Base, Role, User, Shift, ShiftType, Permission, RolePermission,
     AdvancePayment, ServiceLoan, EmploymentContract, PayrollDeduction, LeaveRequest,
     Company, Workstation, ContractTemplate, ContractTemplateVersion, ContractTemplateSection,
-    AnnexTemplate, AnnexTemplateVersion, AnnexTemplateSection, ClauseTemplate
+    AnnexTemplate, AnnexTemplateVersion, AnnexTemplateSection, ClauseTemplate, ThrottleLog
 )
 from backend import crud, schemas
 from backend.auth.rbac_service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
@@ -204,9 +204,18 @@ async def init_db():
         await crud.set_global_setting(session, "password_settings_version", "1") # Initial version
         
         # Seed TRZ Templates (Шаблони за договори и анекси)
-        # Проверяваме дали вече има шаблони
+        # Винаги обновяваме шаблоните с актуално съдържание
         result = await session.execute(select(ContractTemplate).limit(1))
         existing_templates = result.scalars().first()
+        
+        # Ако има съществуващи шаблони, ги изтриваме и създаваме наново
+        if existing_templates:
+            logger.info("Обновяване на TRZ шаблони...")
+            await session.execute(text("DELETE FROM contract_template_sections"))
+            await session.execute(text("DELETE FROM contract_template_versions"))
+            await session.execute(text("DELETE FROM contract_templates"))
+            await session.flush()
+            logger.info("Изтрити съществуващи TRZ шаблони.")
         
         # Вземаме или създаваме default company за шаблоните
         company_result = await session.execute(select(Company).limit(1))
@@ -224,11 +233,11 @@ async def init_db():
             await session.flush()
             logger.info(f"Създадена default компания: {default_company.id}")
         
-        if not existing_templates:
-            logger.info("Създаване на TRZ шаблони...")
-            
-            # 1. Contract Templates (Шаблони за договори)
-            contract_templates_data = [
+        # Винаги създаваме шаблоните (или пресъздаваме)
+        logger.info("Създаване на TRZ шаблони...")
+        
+        # 1. Contract Templates (Шаблони за договори)
+        contract_templates_data = [
                 {
                     "name": "Трудов договор - пълно работно време",
                     "description": "Стандартен трудов договор с пълно работно време",
@@ -266,136 +275,153 @@ async def init_db():
                     "holiday_rate": 1.0,
                 },
             ]
+        for template_data in contract_templates_data:
+            template = ContractTemplate(
+                company_id=default_company.id,
+                name=template_data["name"],
+                description=template_data["description"],
+                contract_type=template_data["contract_type"],
+                work_hours_per_week=template_data["work_hours_per_week"],
+                probation_months=template_data["probation_months"],
+                salary_calculation_type=template_data["salary_calculation_type"],
+                payment_day=template_data["payment_day"],
+                night_work_rate=template_data["night_work_rate"],
+                overtime_rate=template_data["overtime_rate"],
+                holiday_rate=template_data["holiday_rate"],
+                is_active=True,
+            )
+            session.add(template)
+            await session.flush()
             
-            for template_data in contract_templates_data:
-                template = ContractTemplate(
-                    company_id=default_company.id,  # Default company
-                    name=template_data["name"],
-                    description=template_data["description"],
-                    contract_type=template_data["contract_type"],
-                    work_hours_per_week=template_data["work_hours_per_week"],
-                    probation_months=template_data["probation_months"],
-                    salary_calculation_type=template_data["salary_calculation_type"],
-                    payment_day=template_data["payment_day"],
-                    night_work_rate=template_data["night_work_rate"],
-                    overtime_rate=template_data["overtime_rate"],
-                    holiday_rate=template_data["holiday_rate"],
-                    is_active=True,
-                )
-                session.add(template)
-                await session.flush()
-                
-                # Create first version
-                version = ContractTemplateVersion(
-                    template_id=template.id,
-                    version=1,
-                    contract_type=template_data["contract_type"],
-                    work_hours_per_week=template_data["work_hours_per_week"],
-                    probation_months=template_data["probation_months"],
-                    salary_calculation_type=template_data["salary_calculation_type"],
-                    payment_day=template_data["payment_day"],
-                    night_work_rate=template_data["night_work_rate"],
-                    overtime_rate=template_data["overtime_rate"],
-                    holiday_rate=template_data["holiday_rate"],
-                    is_current=True,
-                    created_by="system",
-                    change_note="Първоначална версия",
-                )
-                session.add(version)
-                await session.flush()
-                
-                # Create default sections
-                default_sections = [
-                    {"title": "Предмет на договора", "content": "Работодателят предоставя на Работника работата на длъжността съгласно утвърдената длъжностна характеристика.", "order_index": 0, "is_required": True},
-                    {"title": "Работно време и почивки", "content": f"Работникът изпълнява работата си в рамките на {template_data['work_hours_per_week']} часа седмично.", "order_index": 1, "is_required": True},
-                    {"title": "Права и задължения на работодателя", "content": "Работодателят е длъжен да осигури на Работника работата, за която е сключен договорът, както и необходимите материално-технически условия.", "order_index": 2, "is_required": True},
-                    {"title": "Права и задължения на работника", "content": "Работникът е длъжен да изпълнява работата лично, да спазва установения ред в предприятието и да изпълнява указанията на работодателя.", "order_index": 3, "is_required": True},
-                    {"title": "Заплащане", "content": "За извършената работа Работодателят заплаща на Работника трудовото възнаграждение, определено в договора.", "order_index": 4, "is_required": True},
-                    {"title": "Конфиденциалност", "content": "Работникът се задължава да не разкрива на трети лица информация, станала му известна при или по повод изпълнението на работата.", "order_index": 5, "is_required": False},
+            version = ContractTemplateVersion(
+                template_id=template.id,
+                version=1,
+                contract_type=template_data["contract_type"],
+                work_hours_per_week=template_data["work_hours_per_week"],
+                probation_months=template_data["probation_months"],
+                salary_calculation_type=template_data["salary_calculation_type"],
+                payment_day=template_data["payment_day"],
+                night_work_rate=template_data["night_work_rate"],
+                overtime_rate=template_data["overtime_rate"],
+                holiday_rate=template_data["holiday_rate"],
+                is_current=True,
+                created_by="system",
+                change_note="Първоначална версия",
+            )
+            session.add(version)
+            await session.flush()
+            
+            if template_data["contract_type"] == "full_time":
+                sections = [
+                    {"title": "Предмет на договора", "content": "Настоящият трудов договор се сключва съгласно Кодекса на труда между Работодателя и Работника за изпълнение на работа по определена длъжност - [ДЛЪЖНОСТ], отдел [ОТДЕЛ]. Работникът изпълнява работата лично.", "order_index": 0, "is_required": True},
+                    {"title": "Работно време и почивка", "content": "Работникът изпълнява работата си в рамките на 40 часа седмично, при 8-часов работен ден от понеделник до петък. Работодателят осигурява почивка между работните дни съгласно чл. 151 КТ.", "order_index": 1, "is_required": True},
+                    {"title": "Заплащане", "content": "За извършената работа Работодателят заплаща на Работника основно трудово възнаграждение в размер на [СУМА] лева, начислявано на брутна / нето основа. Възнаграждението се изплаща до [ДЕН] число на текущия месец.", "order_index": 2, "is_required": True},
+                    {"title": "Права и задължения на работодателя", "content": "Работодателят е длъжен да: 1) осигури на Работника работата, за която е сключен договорът; 2) заплаща своевременно трудовото възнаграждение; 3) осигури здравословни и безопасни условия на труд; 4) предостави необходимите материално-технически средства.", "order_index": 3, "is_required": True},
+                    {"title": "Права и задължения на работника", "content": "Работникът е длъжен да: 1) изпълнява работата лично и добросъвестно; 2) спазва установения ред в предприятието; 3) изпълнява указанията на работодателя; 4) пази търговската тайна на работодателя; 5) спазва правилата за безопасност и здраве при работа.", "order_index": 4, "is_required": True},
+                    {"title": "Клаузи", "content": "1) Изпитателен срок: до 6 месеца съгласно чл. 67 КТ. \n2) Нощен труд: заплаща се с увеличение 0.5% за всеки час съгласно чл. 8 КТ. \n3) Извънреден труд: заплаща се с увеличение 50% съгласно чл. 9 КТ. \n4) Труд по празници: заплаща се с увеличение 100% съгласно чл. 10 КТ.", "order_index": 5, "is_required": True},
+                    {"title": "Заключителни разпоредби", "content": "Настоящият договор влиза в сила от [ДАТА НА СКЛЮЧВАНЕ] и е валиден за неопределено време. Всички изменения и допълнения са валидни само в писмена форма. За неуредените въпроси се прилагат разпоредбите на Кодекса на труда и Закona за трудовата миграция и трудовата мобилност.", "order_index": 6, "is_required": True},
                 ]
-                
-                for section_data in default_sections:
-                    section = ContractTemplateSection(
-                        template_id=template.id,
-                        version_id=version.id,
-                        title=section_data["title"],
-                        content=section_data["content"],
-                        order_index=section_data["order_index"],
-                        is_required=section_data["is_required"],
-                    )
-                    session.add(section)
+            elif template_data["contract_type"] == "part_time":
+                sections = [
+                    {"title": "Предмет на договора", "content": "Настоящият трудов договор за непълно работно време се сключва съгласно чл. 138 КТ между Работодателя и Работника за изпълнение на работа по определена длъжност - [ДЛЪЖНОСТ], отдел [ОТДЕЛ]. Работникът изпълнява работата лично.", "order_index": 0, "is_required": True},
+                    {"title": "Работно време и почивка", "content": "Работникът изпълнява работата си в рамките на 20 часа седмично, при намален работен ден съгласно чл. 138, ал. 1 КТ. Работното време се разпределя равномерно през работните дни на седмицата.", "order_index": 1, "is_required": True},
+                    {"title": "Заплащане", "content": "За извършената работа Работодателят заплаща на Работника основно трудово възнаграждение в размер на [СУМА] лева, съответстващо на 4 часа дневно. Възнаграждението се изплаща пропорционално на отработеното време до [ДЕН] число на текущия месец.", "order_index": 2, "is_required": True},
+                    {"title": "Права и задължения на работодателя", "content": "Работодателят е длъжен да: 1) осигури на Работника работата за уговореното работно време; 2) заплаща своевременно трудовото възнаграждение пропорционално на отработеното време; 3) осигури здравословни и безопасни условия на труд; 4) не допуска дискриминация поради непълно работно време.", "order_index": 3, "is_required": True},
+                    {"title": "Права и задължения на работника", "content": "Работникът е длъжен да: 1) изпълнява работата лично и добросъвестно; 2) спазва установения ред в предприятието; 3) изпълнява указанията на работодателя в рамките на уговореното работно време; 4) пази търговската тайна на работодателя.", "order_index": 4, "is_required": True},
+                    {"title": "Клаузи", "content": "1) Изпитателен срок: до 6 месеца съгласно чл. 67 КТ. \n2) Работникът има право на всички права по КТ, включително платен годишен отпуск, пропорционален на отработеното време (чл. 155 КТ). \n3) Нощен труд: заплаща се с увеличение 0.5% за всеки час. \n4) Извънреден труд: допустим само при условията на чл. 144 КТ.", "order_index": 5, "is_required": True},
+                    {"title": "Заключителни разпоредби", "content": "Настоящият договор влиза в сила от [ДАТА НА СКЛЮЧВАНЕ]. Работникът има равни права с работниците на пълно работно време съгласно чл. 138, ал. 3 КТ. За неуредените въпроси се прилагат разпоредбите на Кодекса на труда.", "order_index": 6, "is_required": True},
+                ]
+            else:
+                sections = [
+                    {"title": "Предмет на договора", "content": "Настоящият граждански договор (договор за услуга) се сключва по чл. 280 от Закона за задълженията и договорите (ЗЗД) между ВЪЗЛОЖИТЕЛЯ и ИЗПЪЛНИТЕЛЯ за извършване на услугата: [ОПИСАНИЕ НА УСЛУГАТА].", "order_index": 0, "is_required": True},
+                    {"title": "Работно време и почивка", "content": "Изпълнителят извършва услугата самостоятелно, без да е обвързан с определено работно време. ВЪЗЛОЖИТЕЛЯТ определя конкретните задачи и срокове за изпълнение. Изпълнителят няма право на почивки по смисъла на КТ.", "order_index": 1, "is_required": True},
+                    {"title": "Заплащане", "content": "За извършената услуга ВЪЗЛОЖИТЕЛЯТ заплаща на Изпълнителя възнаграждение в размер на [СУМА] лева, платимо в срок до [ДЕН] дни след приемане на услугата. Възнаграждението е окончателно и не подлежи на осигуровки.", "order_index": 2, "is_required": True},
+                    {"title": "Права и задължения на ВЪЗЛОЖИТЕЛЯ", "content": "ВЪЗЛОЖИТЕЛЯТ е длъжен да: 1) предостави на Изпълнителя необходимата информация за изпълнение на услугата; 2) приеме извършената услуга, ако е качествено изпълнена; 3) заплати уговореното възнаграждение в срок.", "order_index": 3, "is_required": True},
+                    {"title": "Права и задължения на Изпълнителя", "content": "Изпълнителят е длъжен да: 1) извърши услугата лично и качествено; 2) предаде резултата в уговорения срок; 3) информира ВЪЗЛОЖИТЕЛЯ за хода на работата; 4) пази конфиденциалността на информацията.", "order_index": 4, "is_required": True},
+                    {"title": "Клаузи", "content": "1) Срок за изпълнение: [СРОК] от сключване на договора. \n2) Гражданският договор не установява трудови правоотношения и не подлежи на КТ. \n3) При забава от страна на Изпълнителя, ВЪЗЛОЖИТЕЛЯТ може да прекрати договора. \n4) При неизпълнение, страните носят отговорност съгласно ЗЗД.", "order_index": 5, "is_required": True},
+                    {"title": "Заключителни разпоредби", "content": "Настоящият договор влиза в сила от датата на подписването му. Всички изменения са валидни само в писмена форма. За неуредените въпроси се прилагат разпоредбите на ЗЗД. Договорът се прекратява с изпълнението на услугата или по взаимно съгласие.", "order_index": 6, "is_required": True},
+                ]
             
-            # 2. Annex Templates (Шаблони за анекси)
-            annex_templates_data = [
-                {"name": "Повишение на заплатата", "description": "Повишение на основното трудово възнаграждение", "change_type": "salary"},
-                {"name": "Промяна на длъжността", "description": "Промяна на длъжността по трудовия договор", "change_type": "position"},
-                {"name": "Промяна на работното време", "description": "Промяна на режима на работа", "change_type": "hours"},
-                {"name": "Промяна на надбавки", "description": "Промяна на процентите за нощен труд, извънреден труд и труд по празници", "change_type": "rate"},
+            for section_data in sections:
+                section = ContractTemplateSection(
+                    template_id=template.id,
+                    version_id=version.id,
+                    title=section_data["title"],
+                    content=section_data["content"],
+                    order_index=section_data["order_index"],
+                    is_required=section_data["is_required"],
+                )
+                session.add(section)
+
+        logger.info("TRZ шаблоните са създадени успешно.")
+
+        # 2. Annex Templates (Шаблони за анекси)
+        annex_templates_data = [
+            {"name": "Повишение на заплатата", "description": "Повишение на основното трудово възнаграждение", "change_type": "salary"},
+            {"name": "Промяна на длъжността", "description": "Промяна на длъжността по трудовия договор", "change_type": "position"},
+            {"name": "Промяна на работното време", "description": "Промяна на режима на работа", "change_type": "hours"},
+            {"name": "Промяна на надбавки", "description": "Промяна на процентите за нощен труд, извънреден труд и труд по празници", "change_type": "rate"},
+        ]
+        
+        for template_data in annex_templates_data:
+            template = AnnexTemplate(
+                company_id=default_company.id,
+                name=template_data["name"],
+                description=template_data["description"],
+                change_type=template_data["change_type"],
+                is_active=True,
+            )
+            session.add(template)
+            await session.flush()
+            
+            version = AnnexTemplateVersion(
+                template_id=template.id,
+                version=1,
+                change_type=template_data["change_type"],
+                is_current=True,
+                created_by="system",
+                change_note="Първоначална версия",
+            )
+            session.add(version)
+            await session.flush()
+            
+            default_sections = [
+                {"title": "Описание на промените", "content": "С настоящото споразумение се променят следните условия от трудовия договор:", "order_index": 0, "is_required": True},
+                {"title": "Основание", "content": "Настоящото споразумение се сключва на основание чл. 119, ал. 1 от Кодекса на труда.", "order_index": 1, "is_required": False},
             ]
             
-            for template_data in annex_templates_data:
-                template = AnnexTemplate(
-                    company_id=default_company.id,
-                    name=template_data["name"],
-                    description=template_data["description"],
-                    change_type=template_data["change_type"],
-                    is_active=True,
-                )
-                session.add(template)
-                await session.flush()
-                
-                # Create first version
-                version = AnnexTemplateVersion(
+            for section_data in default_sections:
+                section = AnnexTemplateSection(
                     template_id=template.id,
-                    version=1,
-                    change_type=template_data["change_type"],
-                    is_current=True,
-                    created_by="system",
-                    change_note="Първоначална версия",
+                    version_id=version.id,
+                    title=section_data["title"],
+                    content=section_data["content"],
+                    order_index=section_data["order_index"],
+                    is_required=section_data["is_required"],
                 )
-                session.add(version)
-                await session.flush()
-                
-                # Create default sections
-                default_sections = [
-                    {"title": "Описание на промените", "content": "С настоящото споразумение се променят следните условия от трудовия договор:", "order_index": 0, "is_required": True},
-                    {"title": "Основание", "content": "Настоящото споразумение се сключва на основание чл. 119, ал. 1 от Кодекса на труда.", "order_index": 1, "is_required": False},
-                ]
-                
-                for section_data in default_sections:
-                    section = AnnexTemplateSection(
-                        template_id=template.id,
-                        version_id=version.id,
-                        title=section_data["title"],
-                        content=section_data["content"],
-                        order_index=section_data["order_index"],
-                        is_required=section_data["is_required"],
-                    )
-                    session.add(section)
-            
-            # 3. Clause Templates (Библиотека от клаузи)
-            clause_templates_data = [
-                {"title": "Конфиденциалност", "category": "confidentiality", "content": "Работникът се задължава да не разкрива на трети лица информация, станала му известна при или по повод изпълнението на работата, включително след прекратяване на договора."},
-                {"title": "Забрана за конкуренция", "category": "other", "content": "Работникът се задължава да не извършва дейност, конкурентна на работодателя, за срока на договора и 6 месеца след неговото прекратяване."},
-                {"title": "Право на обучение", "category": "rights_employee", "content": "Работникът има право на професионално обучение и квалификация, съгласно Закона за професионалното образование и обучение."},
-                {"title": "Допълнителен платен отпуск", "category": "rights_employee", "content": "Работникът има право на допълнителен платен отпуск при смърт на брачен партньор или роднина - 2 дни."},
-                {"title": "Задължения на работодателя - осигуряване", "category": "rights_employer", "content": "Работодателят е длъжен да осигури на Работника всички необходими лични предпазни средства съгласно изискванията на ЗЗБУТ."},
-            ]
-            
-            for clause_data in clause_templates_data:
-                clause = ClauseTemplate(
-                    company_id=default_company.id,
-                    title=clause_data["title"],
-                    content=clause_data["content"],
-                    category=clause_data["category"],
-                    is_active=True,
-                )
-                session.add(clause)
-            
-            logger.info("TRZ шаблоните са създадени успешно.")
+                session.add(section)
+
+        # 3. Clause Templates (Библиотека от клаузи)
+        clause_templates_data = [
+            {"title": "Конфиденциалност", "category": "confidentiality", "content": "Работникът се задължава да не разкрива на трети лица информация, станала му известна при или по повод изпълнението на работата, включително след прекратяване на договора."},
+            {"title": "Забрана за конкуренция", "category": "other", "content": "Работникът се задължава да не извършва дейност, конкурентна на работодателя, за срока на договора и 6 месеца след неговото прекратяване."},
+            {"title": "Право на обучение", "category": "rights_employee", "content": "Работникът има право на професионално обучение и квалификация, съгласно Закона за професионалното образование и обучение."},
+            {"title": "Допълнителен платен отпуск", "category": "rights_employee", "content": "Работникът има право на допълнителен платен отпуск при смърт на брачен партньор или роднина - 2 дни."},
+            {"title": "Задължения на работодателя - осигуряване", "category": "rights_employer", "content": "Работодателят е длъжен да осигури на Работника всички необходими лични предпазни средства съгласно изискванията на ЗЗБУТ."},
+        ]
+        
+        for clause_data in clause_templates_data:
+            clause = ClauseTemplate(
+                company_id=default_company.id,
+                title=clause_data["title"],
+                content=clause_data["content"],
+                category=clause_data["category"],
+                is_active=True,
+            )
+            session.add(clause)
         
         await session.commit()
-            
+        
     logger.info("Структурата на таблиците е проверена/създадена.")
 
     async with AsyncSessionLocal() as session:

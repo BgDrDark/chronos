@@ -169,6 +169,22 @@ class StorageZoneInput:
 
 
 @strawberry.input
+class CostCenterInput:
+    name: str
+    department_id: Optional[int] = None
+    is_active: Optional[bool] = True
+    company_id: int
+
+
+@strawberry.input
+class UpdateCostCenterInput:
+    id: int
+    name: Optional[str] = None
+    department_id: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+@strawberry.input
 class UpdateStorageZoneInput:
     id: int
     name: str
@@ -786,6 +802,7 @@ class EmploymentContractCreateInput:
     company_id: Optional[int] = None
     department_id: Optional[int] = None
     position_id: Optional[int] = None
+    template_id: Optional[int] = None  # Избор на шаблон
     contract_type: str
     contract_number: Optional[str] = None
     start_date: datetime.date
@@ -793,6 +810,15 @@ class EmploymentContractCreateInput:
     base_salary: Optional[float] = None
     work_hours_per_week: int = 40
     job_description: Optional[str] = None
+    # TRZ полета от шаблон
+    probation_months: Optional[int] = None
+    salary_calculation_type: Optional[str] = 'gross'
+    payment_day: Optional[int] = 25
+    night_work_rate: Optional[float] = 0.5
+    overtime_rate: Optional[float] = 1.5
+    holiday_rate: Optional[float] = 2.0
+    work_class: Optional[str] = None
+    clause_ids: Optional[str] = None  # JSON string like "[1,2,3]"
 
 
 @strawberry.input
@@ -802,12 +828,20 @@ class EmploymentContractUpdateInput:
     company_id: Optional[int] = None
     department_id: Optional[int] = None
     position_id: Optional[int] = None
+    template_id: Optional[int] = None
     contract_number: Optional[str] = None
     start_date: Optional[datetime.date] = None
     end_date: Optional[datetime.date] = None
     base_salary: Optional[float] = None
     work_hours_per_week: Optional[int] = None
     job_description: Optional[str] = None
+    probation_months: Optional[int] = None
+    salary_calculation_type: Optional[str] = None
+    payment_day: Optional[int] = None
+    night_work_rate: Optional[float] = None
+    overtime_rate: Optional[float] = None
+    holiday_rate: Optional[float] = None
+    work_class: Optional[str] = None
 
 
 @strawberry.input

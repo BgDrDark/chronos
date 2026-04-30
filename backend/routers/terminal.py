@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 import asyncio
 
@@ -61,8 +61,7 @@ class WorkstationResponse(BaseModel):
     name: str
     description: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrderResponse(BaseModel):
@@ -72,8 +71,7 @@ class OrderResponse(BaseModel):
     quantity: int
     status: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TaskResponse(BaseModel):
@@ -82,8 +80,7 @@ class TaskResponse(BaseModel):
     quantity: int
     status: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.post("/identify", response_model=TerminalIdentifyResponse)

@@ -120,13 +120,13 @@ const style = {
 const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refetchUsers }) => {
   const [apiError, setApiError] = useState('');
 
-  // Local state for checkboxes (like FleetPage - direct onChange)
-  const [isActive, setIsActive] = useState(true);
-  const [passwordForceChange, setPasswordForceChange] = useState(false);
-  const [taxResident, setTaxResident] = useState(true);
-  const [hasIncomeTax, setHasIncomeTax] = useState(true);
-  const [insuranceContributor, setInsuranceContributor] = useState(true);
-  const [dangerousWork, setDangerousWork] = useState(false);
+  // Local state for checkboxes - initialized from user when modal opens
+  const [isActive, setIsActive] = useState(() => user?.isActive ?? true);
+  const [passwordForceChange, setPasswordForceChange] = useState(() => user?.passwordForceChange ?? false);
+  const [taxResident, setTaxResident] = useState(() => user?.employmentContract?.taxResident ?? true);
+  const [hasIncomeTax, setHasIncomeTax] = useState(() => user?.employmentContract?.hasIncomeTax ?? true);
+  const [insuranceContributor, setInsuranceContributor] = useState(() => user?.employmentContract?.insuranceContributor ?? true);
+  const [dangerousWork, setDangerousWork] = useState(() => user?.employmentContract?.dangerousWork ?? false);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(null);
 
@@ -146,13 +146,6 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
   useEffect(() => {
     if (user && open) {
       const contract = user.employmentContract;
-      // Set local checkbox states from user data
-      setIsActive(user.isActive ?? true);
-      setPasswordForceChange(false);
-      setTaxResident(true);
-      setHasIncomeTax(contract?.hasIncomeTax ?? true);
-      setInsuranceContributor(contract?.insuranceContributor ?? true);
-      setDangerousWork(contract?.dangerousWork ?? false);
       
       reset({
         id: user.id ? Number(user.id) : undefined,

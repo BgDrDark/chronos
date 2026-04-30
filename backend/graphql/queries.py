@@ -1416,7 +1416,50 @@ class Query:
         
         res = await db.execute(stmt)
         return [types.StorageZone.from_instance(z) for z in res.scalars().all()]
-
+    
+    @strawberry.field
+    async def cost_centers(self, info: strawberry.Info, company_id: Optional[int] = None) -> List[types.VehicleCostCenter]:
+        """Всички разходни центрове"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+        
+        from backend.database.models import VehicleCostCenter
+        stmt = select(VehicleCostCenter)
+        
+        # Filter by company if not super_admin
+        if current_user.role.name != "super_admin":
+            stmt = stmt.where(VehicleCostCenter.company_id == current_user.company_id)
+        elif company_id:
+            stmt = stmt.where(VehicleCostCenter.company_id == company_id)
+        
+        # Only active cost centers
+        stmt = stmt.where(VehicleCostCenter.is_active == True)
+        
+        res = await db.execute(stmt)
+        return [types.VehicleCostCenter.from_instance(c) for c in res.scalars().all()]
+    
+    @strawberry.field
+    async def cost_center(self, id: int, info: strawberry.Info) -> Optional[types.VehicleCostCenter]:
+        """Разходен център по ID"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+        
+        from backend.database.models import VehicleCostCenter
+        result = await db.get(VehicleCostCenter, id)
+        
+        if not result:
+            raise NotFoundException.record("CostCenter")
+        
+        # Check company access
+        if current_user.role.name != "super_admin" and result.company_id != current_user.company_id:
+            raise PermissionDeniedException.for_action("view")
+        
+        return types.VehicleCostCenter.from_instance(result)
+    
     @strawberry.field
     async def suppliers(self, info: strawberry.Info) -> List[types.Supplier]:
         db = info.context["db"]

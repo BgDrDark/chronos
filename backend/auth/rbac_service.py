@@ -110,23 +110,35 @@ class PermissionService:
             return user_id == resource_user_id
         
         return False
+    
+    async def clear_cache(self, user_id: Optional[int] = None):
+        """Clear permission cache for a user or all users"""
+        if user_id:
+            keys_to_remove = [k for k in self._permission_cache.keys() if f"user_{user_id}" in k]
+            for key in keys_to_remove:
+                del self._permission_cache[key]
+        else:
+            self._permission_cache = {}
+    
+    async def verify_company_access(
+        self,
+        user_id: int,
+        company_id: int,
+        permission: str
+    ) -> bool:
+        """Verify user has permission for specific company"""
+        assignment_stmt = select(CompanyRoleAssignment).where(
+            CompanyRoleAssignment.user_id == user_id,
+            CompanyRoleAssignment.company_id == company_id,
+            CompanyRoleAssignment.is_active == True
+        )
+        result = await self.db.execute(assignment_stmt)
+        assignment = result.scalars().first()
         
-        if resource_type == "users":
-            return user_id == resource_id
-        elif resource_type == "timelogs":
-            from backend.database.models import TimeLog
-            result = await self.db.execute(
-                select(TimeLog.user_id).where(TimeLog.id == resource_id)
-            )
-            return user_id == result.scalar_one_or_none()
-        elif resource_type == "payroll":
-            from backend.database.models import Payroll
-            result = await self.db.execute(
-                select(Payroll.user_id).where(Payroll.id == resource_id)
-            )
-            return user_id == result.scalar_one_or_none()
+        if not assignment:
+            return False
         
-        return False
+        return await self.check_permission(user_id, permission, company_id=company_id)
     
     async def log_permission_decision(
         self,

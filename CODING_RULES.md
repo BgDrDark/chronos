@@ -1205,3 +1205,506 @@ async def reject_leave(...):
 | `activeSessions` | `user_repo.get_active_sessions` |
 | `payrollLegalSettings` | `settings_repo.get_setting` |
 | `vapidPublicKey` | `settings_repo.get_setting` |
+
+---
+
+## 20. Services Pattern (Business Logic Layer)
+
+### Структура
+
+```
+backend/services/
+├── shift_swap_service.py        # Shift swap workflow
+├── leave_service.py            # Leave management
+├── time_tracking_service.py     # Clock in/out + geofencing
+├── notification_service.py      # Push + in-app notifications
+├── contract_service.py          # Employment contracts
+├── auth_service.py             # Auth operations (login, sessions)
+├── schedule_template_service.py # Schedule templates
+├── payroll_calculator.py       # Payroll calculations
+├── google_calendar_service.py  # Google Calendar integration
+└── ...
+```
+
+### Правила за Services
+
+#### Създаване на нов Service
+
+```python
+# services/new_service.py
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.database.models import YourModel
+
+
+class YourService:
+    """Service за бизнес логика"""
+    
+    def __init__(self, db: AsyncSession):
+        self.db = db
+    
+    async def your_method(self, param: type) -> ReturnType:
+        """Документация"""
+        # Business logic here
+        pass
+
+
+your_service = YourService
+```
+
+#### Правила
+
+1. **Всяка бизнес логика отива в services** - НЕ в mutations.py
+2. **mutations.py само извиква services** - НЕ директно CRUD
+3. **CRUD е само за database операции** - create/read/update/delete
+
+#### Примери
+
+```python
+# ❌ НЕ - business logic в mutations
+@strawberry.mutation
+async def clock_in(...):
+    # Geofencing validation тук
+    if not is_in_geofence:
+        raise Error("Outside geofence")
+    ...
+
+# ✅ ДА - delegate to service
+@strawberry.mutation
+async def clock_in(...):
+    service = time_tracking_service(db)
+    log = await service.clock_in(...)
+    return log
+```
+
+---
+
+## 21. Списък на Services
+
+### Services (2026-04-26)
+
+| # | Service | Файл | Статус |
+|---|---------|------|--------|
+| 1 | shift_swap_service | services/shift_swap_service.py | ✅ |
+| 2 | leave_service | services/leave_service.py | ✅ |
+| 3 | time_tracking_service | services/time_tracking_service.py | ✅ |
+| 4 | notification_service | services/notification_service.py | ✅ |
+| 5 | contract_service | services/contract_service.py | ✅ |
+| 6 | auth_service | services/auth_service.py | ✅ |
+| 7 | schedule_template_service | services/schedule_template_service.py | ✅ |
+| 8 | google_calendar_service | services/google_calendar_service.py | ✅ |
+| 9 | payroll_calculator | services/payroll_calculator.py | ✅ |
+| 10 | payroll_service | services/payroll_service.py | ✅ |
+| 11 | settings_service | services/settings_service.py | ✅ |
+
+---
+
+## 21.1 CRUD vs Services разделение
+
+### Repository (CRUD)
+- Database операции: create, read, update, delete
+- Заявки към базата данни
+- Единични операции върху модели
+
+```python
+# repository.py
+async def create_user(...) -> User:
+    user = User(...)
+    db.add(user)
+    await db.commit()
+    return user
+```
+
+### Service (Business Logic)
+- Комплексна бизнес логика
+- Координация между няколко repository
+- Валидации, геолокация, изчисления
+
+```python
+# service.py
+async def clock_in(self, user_id: int, location: dict):
+    # Geofencing validation
+    await self.validate_geofence(location)
+    
+    # Shift matching
+    shift = await self.find_matching_shift(user_id)
+    
+    # Time snapping
+    snapped_time = self.snap_to_shift(shift)
+    
+    # Create log via repository
+    return await self.repo.create_timelog(...)
+```
+
+### Правило
+> **CRUD е само за database операции**  
+> **Service е за бизнес логика**
+
+---
+
+## 22. Error Handling подробно
+
+### Exception йерархия
+
+```python
+# exceptions.py
+class AppException(Exception):
+    """Базов exception"""
+    code: str = "UNKNOWN_ERROR"
+    status_code: int = 500
+
+class NotFoundException(AppException):
+    code = "NOT_FOUND"
+    status_code = 404
+
+class ValidationException(AppException):
+    code = "VALIDATION_ERROR"
+    status_code = 400
+
+class PermissionDeniedException(AppException):
+    code = "PERMISSION_DENIED"
+    status_code = 403
+
+class AuthenticationException(AppException):
+    code = "AUTHENTICATION_FAILED"
+    status_code = 401
+```
+
+### Използване в mutations
+
+```python
+# ✅ ДА - конкретен exception
+raise NotFoundException(f"User с id={user_id} не е намерен")
+
+# ❌ НЕ - generic exception
+raise Exception("User not found")
+```
+
+### Използване в frontend
+
+```typescript
+// ✅ ДА - getErrorMessage
+} catch (err) {
+  setError(getErrorMessage(err));
+}
+
+// types.ts
+export function getErrorMessage(err: unknown): string {
+  if (err instanceof GraphQLError) {
+    const code = err.extensions?.code;
+    return ERROR_MESSAGES[code] || err.message;
+  }
+  return "Възрачи грешка";
+}
+```
+
+---
+
+## 23. Тестване с Pytest
+
+### Конвенции
+
+```python
+# tests/test_services.py
+import pytest
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from backend.database.models import Base
+
+@pytest.fixture
+async def db_session():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with AsyncSession(engine) as session:
+        yield session
+
+@pytest.mark.asyncio
+async def test_payroll_service_calculates_correctly(db_session):
+    service = PayrollService(db_session)
+    result = await service.calculate_payroll(
+        user_id=1,
+        start_date=datetime(2026, 1, 1),
+        end_date=datetime(2026, 1, 31)
+    )
+    assert result["gross_amount"] == Decimal("1000")
+```
+
+### Правила
+- Използвай `pytest.mark.asyncio` за async тестове
+- Използвай in-memory SQLite за unit тестове
+- Тествай business logic, не database операции
+- Mock-вай външни зависимости (API, calendar)
+
+---
+
+## 24. поправени Deprecated Warnings
+
+### Pydantic V2 Migration
+
+```python
+# ❌ НЕ - class-based config (deprecated)
+class Response(BaseModel):
+    class Config:
+        from_attributes = True
+
+# ✅ ДА - model_config
+from pydantic import ConfigDict
+
+class Response(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+```
+
+### Поправени файлове
+- `backend/routers/terminal.py`
+- `backend/routers/gateway.py`
+
+---
+
+## 25. RBAC (Role-Based Access Control)
+
+### Компоненти
+
+| Компонент | Файл | Състояние |
+|-----------|------|-----------|
+| PermissionService | `auth/rbac_service.py` | ✅ |
+| permission_helper | `auth/permission_helper.py` | ✅ НОВ |
+| require_permission | `auth/dependencies.py` | ✅ |
+
+### Permission Helper
+
+```python
+# Импорт
+from backend.auth.permission_helper import check_permission, require_permission_or_role
+
+# Използване в mutations
+await require_permission_or_role(
+    current_user,
+    "users:create",  # Ново permission име
+    db,
+    ["admin", "super_admin"]  # Fallback роли
+)
+```
+
+### Permission Именуване
+
+```
+{resource}:{action}        # users:create, timelogs:read
+{resource}:{action}_own  # users:read_own, timelogs:create_own
+```
+
+### Примери за Миграция
+
+```python
+# ❌ НЕ - hard-coded role check
+if current_user.role.name not in ["admin", "super_admin"]:
+    raise PermissionDeniedException.for_action("manage")
+
+# ✅ ДА - hybrid permission check
+await require_permission_or_role(
+    current_user,
+    "users:create",
+    db,
+    ["admin", "super_admin"]
+)
+```
+
+### Компоненти
+- `backend/auth/rbac_service.py` - PermissionService
+- `backend/auth/permission_helper.py` - НОВ
+- `backend/auth/dependencies.py` - require_permission
+
+---
+
+## 26. Модулна Система (Feature Toggles)
+
+### Компоненти
+
+| Компонент | Файл | Описание |
+|----------|------|----------|
+| MODULE_MAPPING | `graphql/module_middleware.py` | Карта на полетата към модули |
+| ModuleGuardMiddleware | `graphql/module_middleware.py` | Мидъруер за проверка |
+| ModuleService | `services/module_service.py` | Управление на модули |
+| Module Model | `database/models.py` | База данни |
+
+### Списък на Модули
+
+| Модул | Тип | GraphQL Полета |
+|-------|-----|----------------|
+| `shifts` | **Core** | clockIn, clockOut, schedules... |
+| `accounting` | **Core** | invoices... |
+| `confectionery` | **Core** | suppliers, batches... |
+| `cost_centers` | **Core** | cost_centers, createCostCenter... |
+| `salaries` | Опционален | payroll, payslips... |
+| `kiosk` | Опционален | terminals, gateways... |
+| `integrations` | Опционален | googleCalendar, webhooks... |
+| `notifications` | Опционален | smtpSettings... |
+| `fleet` | Опционален | vehicles, drivers, trips... |
+| `inventory` | Опционален | batches, inventorySessions... |
+
+### Core Модули (не могат да се деактивират)
+
+```python
+# services/module_service.py
+core_modules = ["shifts", "accounting", "confectionery", "cost_centers"]
+```
+
+### Използване
+
+```python
+# Проверка дали модул е активен
+from backend.services.module_service import ModuleService
+is_active = await ModuleService.is_enabled(db, "fleet")
+
+# Toggle модул
+await ModuleService.toggle_module(db, "fleet", False)
+```
+
+### Throttling
+
+| Компонент | Файл | Описание |
+|----------|------|----------|
+| THROTTLE_CONFIG | `graphql/module_middleware.py` | Конфигурация на лимити |
+| ThrottleLog | `database/models.py` | Таблица за логване |
+| ModuleGuardMiddleware | `graphql/module_middleware.py` | Middleware за проверка |
+
+### ThrottleLog Таблица
+
+```python
+# database/models.py
+class ThrottleLog(Base):
+    __tablename__ = "throttle_logs"
+    id: int = mapped_column(Integer, primary_key=True)
+    user_id: int = mapped_column(Integer, nullable=False, index=True)
+    field_name: str = mapped_column(String(100), nullable=False, index=True)
+    called_at: datetime = mapped_column(DateTime, default=sofia_now, index=True)
+    ip_address: Optional[str] = mapped_column(String(45), nullable=True)
+```
+
+### Throttle Конфигурация
+
+```python
+# module_middleware.py
+THROTTLE_CONFIG = {
+    "generatePayslip": 10,      # seconds
+    "generateMyPayslip": 10,
+    "calculatePayroll": 5,
+    "payrollSummary": 10,
+    "syncGoogleCalendar": 60,
+}
+```
+
+### Пример
+
+```python
+# Проверка на throttle (автоматично в middleware)
+if field_name in THROTTLE_CONFIG:
+    throttle_key = f"{user_id}:{field_name}"
+    now = time.time()
+    last_call = self._last_calls.get(throttle_key, 0)
+    
+if now - last_call < THROTTLE_CONFIG[field_name]:
+         raise Exception(f"Твърте много заявки за '{field_name}'. Моля, изчакайте {wait_time} секунди.")
+```
+
+---
+
+## 28. Safe Update Система
+
+### Компоненти
+
+| Компонент | Файл | Описание |
+|----------|------|----------|
+| backup.sh | `scripts/backup.sh` | Backup на DB + Docker images |
+| deploy-safe.sh | `scripts/deploy-safe.sh` | Deploy + health check + rollback |
+| rollback.sh | `scripts/rollback.sh` | Restore от backup |
+| DeploymentSettings | `frontend/src/pages/SettingsPage.tsx` | Frontend UI |
+
+### Структура
+
+```
+/backups/chronos/
+├── db_20260430_020000.dump
+├── backend_20260430_020000.tar
+└── frontend_20260430_020000.tar
+```
+
+### scripts/backup.sh
+
+```bash
+#!/bin/bash
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_DIR="/backups/chronos"
+
+# DB Backup
+pg_dump -U postgres -Fc chronosdb -f $BACKUP_DIR/db_$TIMESTAMP.dump
+
+# Docker Images
+docker save chronos-backend:latest -o $BACKUP_DIR/backend_$TIMESTAMP.tar
+docker save chronos-frontend:latest -o $BACKUP_DIR/frontend_$TIMESTAMP.tar
+```
+
+### scripts/deploy-safe.sh
+
+```bash
+#!/bin/bash
+# 1. Health check (current)
+curl -sf http://localhost:14240/webhook/health || exit 1
+
+# 2. Backup
+./scripts/backup.sh
+
+# 3. Build
+docker compose build backend frontend
+
+# 4. Deploy backend + health
+docker compose up -d backend
+for i in {1..60}; do
+    curl -sf http://localhost:14240/webhook/health && break
+    sleep 1
+done
+
+# 5. Deploy frontend
+docker compose up -d frontend
+
+# 6. Final check
+curl -sf http://localhost:3000 || ./scripts/rollback.sh
+```
+
+### Frontend Check for Update
+
+```typescript
+const checkForUpdate = async () => {
+    const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO;
+    const response = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
+    );
+    const data = await response.json();
+    const latestVersion = data.tag_name.replace('v', '');
+    return latestVersion;
+};
+```
+
+### Конфигурация
+
+```bash
+# .env
+GITHUB_REPO=https://github.com/BgDrDark/chronos
+VERSION=3.6.1.0
+DEPLOY_API_KEY=...
+
+# frontend/.env
+VITE_GITHUB_REPO=BgDrDark/chronos
+```
+
+### Версии
+
+| Променлива | Описание |
+|------------|----------|
+| `VERSION` | Текуща версия на приложението |
+| `GITHUB_REPO` | GitHub repository URL |
+| `VITE_GITHUB_REPO` | GitHub repo за frontend |
+| `DEPLOY_API_KEY` | API ключ за deployment |
+
+---
+
+**Край на документацията**

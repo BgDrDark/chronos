@@ -5,6 +5,8 @@ from typing import Any, Callable, Dict
 from strawberry.extensions import SchemaExtension
 from graphql import GraphQLList, GraphQLNonNull, OperationType
 from backend.auth.module_guard import verify_module_enabled, ModuleDisabledException
+from backend.database.models import ThrottleLog
+from backend.database.models import sofia_now
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,54 @@ MODULE_MAPPING = {
     "scrapTask": "confectionery",
     "getScrapLogs": "confectionery",
     "markTaskScrap": "confectionery",
+    
+    # Fleet (NEW - optional)
+    "vehicles": "fleet",
+    "vehicleDocuments": "fleet",
+    "vehicleMileage": "fleet",
+    "vehicleFuelLogs": "fleet",
+    "vehicleRepairs": "fleet",
+    "vehicleInsurances": "fleet",
+    "vehicleInspections": "fleet",
+    "vehicleDrivers": "fleet",
+    "vehicleTrips": "fleet",
+    "createVehicle": "fleet",
+    "updateVehicle": "fleet",
+    "createVehicleDriver": "fleet",
+    "updateVehicleDriver": "fleet",
+    "createVehicleTrip": "fleet",
+    "updateVehicleTrip": "fleet",
+    "fuelCards": "fleet",
+    "createFuelCard": "fleet",
+    "updateFuelCard": "fleet",
+    "vignettes": "fleet",
+    "createVignette": "fleet",
+    "updateVignette": "fleet",
+    "tolls": "fleet",
+    "createToll": "fleet",
+    "updateToll": "fleet",
+    "fleetReports": "fleet",
+    
+    # Cost Centers (NEW - core)
+    "costCenters": "cost_centers",
+    "createCostCenter": "cost_centers",
+    "updateCostCenter": "cost_centers",
+    "deleteCostCenter": "cost_centers",
+    
+    # Inventory (NEW - optional)
+    "batches": "inventory",
+    "batch": "inventory",
+    "addBatch": "inventory",
+    "updateBatch": "inventory",
+    "updateBatchStatus": "inventory",
+    "consumeFromBatch": "inventory",
+    "inventorySessions": "inventory",
+    "inventorySessionItems": "inventory",
+    "inventoryByBarcode": "inventory",
+    "startInventorySession": "inventory",
+    "addInventoryItem": "inventory",
+    "completeInventorySession": "inventory",
+    "stockConsumptionLogs": "inventory",
 }
 
 # Throttling Configuration: {field_name: seconds_between_calls}
@@ -130,7 +180,7 @@ class ModuleGuardMiddleware(SchemaExtension):
                     
                     return None
         
-        # 2. Throttling Check
+# 2. Throttling Check
         if field_name in THROTTLE_CONFIG:
             throttle_key = f"{user_id}:{field_name}"
             now = time.time()
@@ -141,6 +191,20 @@ class ModuleGuardMiddleware(SchemaExtension):
                 raise Exception(f"Твърде много заявки за '{field_name}'. Моля, изчакайте {wait_time} секунди.")
             
             self._last_calls[throttle_key] = now
+            
+            db = info.context.get("db")
+            if db:
+                try:
+                    ip_address = info.context.get("ip_address")
+                    throttle_log = ThrottleLog(
+                        user_id=current_user.id if current_user else 0,
+                        field_name=field_name,
+                        ip_address=ip_address,
+                        called_at=sofia_now()
+                    )
+                    db.add(throttle_log)
+                except Exception as e:
+                    logger.warning(f"Failed to log throttle: {e}")
         
         result = next_(root, info, *args, **kwargs)
         if asyncio.iscoroutine(result):

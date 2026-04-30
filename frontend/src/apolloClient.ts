@@ -112,7 +112,10 @@ const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
         'Not authorized',
         'expired_token',
         'token is expired',
-        'UNAUTHENTICATED'
+        'UNAUTHENTICATED',
+        'Не сте автентикирани',
+        'Not authenticated',
+        'AuthenticationException'
       ];
       
       const isAuthError = authErrors.some(e => 

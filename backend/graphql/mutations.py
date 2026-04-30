@@ -1,3 +1,9 @@
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message=".*strawberry.scalar.*")
+warnings.filterwarnings("ignore", message=".*Extension.*")
+warnings.filterwarnings("ignore", message=".*Pydantic.*")
+
 import strawberry
 from strawberry.file_uploads import Upload
 from typing import Optional, List
@@ -10,6 +16,15 @@ from backend.graphql import types, inputs
 from backend.utils.json_type import JSONScalar
 from backend import crud, schemas
 from backend.crud.repositories import time_repo, settings_repo, user_repo, company_repo, vehicle_repo, payroll_repo
+from backend.services.shift_swap_service import shift_swap_service
+from backend.services.leave_service import leave_service
+from backend.services.time_tracking_service import time_tracking_service
+from backend.services.notification_service import notification_service
+from backend.services.auth_service import auth_service
+from backend.services.schedule_template_service import schedule_template_service
+from backend.services.payroll_service import payroll_service
+from backend.services.settings_service import settings_service
+from backend.auth.permission_helper import check_permission, require_role, require_permission_or_role
 from backend.database.transaction_manager import atomic_transaction, atomic_with_savepoint
 from backend.exceptions import (
     PermissionDeniedException,
@@ -31,7 +46,8 @@ from backend.graphql.inputs import (
     VehicleMileageInput, VehicleFuelInput, VehicleRepairInput,
     VehicleInsuranceInput, VehicleInspectionInput, VehicleDriverInput, VehicleTripInput,
     VehicleMileageUpdateInput, VehicleFuelUpdateInput, VehicleRepairUpdateInput,
-    VehicleInsuranceUpdateInput, VehicleInspectionUpdateInput, VehicleDriverUpdateInput, VehicleTripUpdateInput
+    VehicleInsuranceUpdateInput, VehicleInspectionUpdateInput, VehicleDriverUpdateInput, VehicleTripUpdateInput,
+    CostCenterInput, UpdateCostCenterInput,
 )
 from backend.services.holiday_service import fetch_and_store_holidays
 from backend.services.orthodox_holiday_service import fetch_and_store_orthodox_holidays
@@ -360,8 +376,13 @@ class Mutation:
     async def create_user(self, userInput: UserCreateInput, info: strawberry.Info) -> types.User:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        
+        await require_permission_or_role(
+            current_user,
+            "users:create",
+            db,
+            ["admin", "super_admin"]
+        )
 
         user_data = schemas.UserCreate(**userInput.model_dump())
 
@@ -375,8 +396,13 @@ class Mutation:
         if current_user is None:
             raise AuthenticationException(detail=authenticate_msg)
 
-        if current_user.id != userInput.id and current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        if current_user.id != userInput.id:
+            await require_permission_or_role(
+                current_user,
+                "users:update",
+                db,
+                ["admin", "super_admin"]
+            )
 
         # Build update data - exclude None values to preserve existing data
         update_data = {}
@@ -542,8 +568,14 @@ class Mutation:
     async def delete_user(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        
+        await require_permission_or_role(
+            current_user,
+            "users:delete",
+            db,
+            ["admin", "super_admin"]
+        )
+        
         return await user_repo.delete_user(db, id)
 
     @strawberry.mutation
@@ -1192,12 +1224,24 @@ class Mutation:
             "has_tax_deduction": has_tax_deduction,
             "has_health_insurance": has_health_insurance,
         }
-        await crud.update_global_payroll_config(db, **config_data)
+        payroll_svc = payroll_service(db)
+        await payroll_svc.update_global_config(
+            hourly_rate=config_data.get("hourly_rate", 0),
+            overtime_multiplier=config_data.get("overtime_multiplier", 0),
+            standard_hours_per_day=config_data.get("standard_hours_per_day", 0),
+            monthly_salary=config_data.get("monthly_salary", 0),
+            currency=currency,
+            annual_leave_days=annual_leave_days,
+            tax_percent=tax_percent,
+            health_insurance_percent=health_insurance_percent,
+            has_tax_deduction=has_tax_deduction,
+            has_health_insurance=has_health_insurance
+        )
         await settings_repo.set_setting(db, "qr_token_regen_minutes", str(qr_regen_interval_minutes))
 
         # Re-fetch the updated config with the new QR setting
-        config = await crud.get_global_payroll_config(db)
-        qr_setting = await crud.get_global_setting(db, "qr_token_regen_minutes")
+        config = await payroll_svc.get_global_config()
+        qr_setting = await settings_repo.get_setting(db, "qr_token_regen_minutes")
         return types.GlobalPayrollConfig(
             id="global",
             hourly_rate=Decimal(str(config.hourly_rate)),
@@ -1243,13 +1287,20 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        req = await time_repo.update_leave_request_status(
-            db,
-            request_id=input.request_id,
-            status=input.status,
-            admin_comment=input.admin_comment,
-            employer_top_up=input.employer_top_up
-        )
+        service = leave_service(db)
+        if input.status == "approved":
+            req = await service.approve_request(
+                request_id=input.request_id,
+                admin_comment=input.admin_comment,
+                admin_user_id=current_user.id,
+                employer_top_up=input.employer_top_up
+            )
+        else:
+            req = await service.reject_request(
+                request_id=input.request_id,
+                admin_comment=input.admin_comment,
+                admin_user_id=current_user.id
+            )
         return types.LeaveRequest.from_instance(req)
 
     @strawberry.mutation(name="approveLeave")
@@ -1259,15 +1310,14 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        req = await time_repo.update_leave_request_status(
-            db,
-            request_id=request_id,
-            status="approved",
-            admin_comment=admin_comment,
-            employer_top_up=employer_top_up
-        )
+        service = leave_service(db)
         async with atomic_with_savepoint(db, "leave_approved"):
-            pass  # Reserved for future notifications
+            req = await service.approve_request(
+                request_id=request_id,
+                admin_comment=admin_comment,
+                admin_user_id=current_user.id,
+                employer_top_up=employer_top_up
+            )
         return types.LeaveRequest.from_instance(req)
 
     @strawberry.mutation(name="rejectLeave")
@@ -1277,15 +1327,13 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        req = await time_repo.update_leave_request_status(
-            db,
-            request_id=request_id,
-            status="rejected",
-            admin_comment=admin_comment
-        )
+        service = leave_service(db)
         async with atomic_with_savepoint(db, "leave_rejected"):
-            pass  # Reserved for future notifications
-        return types.LeaveRequest.from_instance(req)
+            req = await service.reject_request(
+                request_id=request_id,
+                admin_comment=admin_comment,
+                admin_user_id=current_user.id
+            )
         return types.LeaveRequest.from_instance(req)
 
     @strawberry.mutation
@@ -1556,7 +1604,8 @@ class Mutation:
             raise ValidationException(detail="Краен час е задължителен за ръчно въвеждане")
 
         # Pre-validation: check for overlaps BEFORE creating
-        has_overlap = await crud.check_time_overlap(db, user_id, start_time, end_time)
+        time_svc = time_tracking_service(db)
+        has_overlap = await time_svc.check_time_overlap(user_id, start_time, end_time)
         if has_overlap:
             raise ValidationException(detail="Записът се застъпва с друг запис за този период")
 
@@ -1601,8 +1650,6 @@ class Mutation:
             latitude: Optional[float] = None,
             longitude: Optional[float] = None
     ) -> types.TimeLog:
-        from backend.database.transaction_manager import atomic_transaction
-        
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
@@ -1610,14 +1657,11 @@ class Mutation:
 
         await verify_module_enabled("shifts", db)
 
-        active_log = await time_repo.get_active_timelog(db, current_user.id)
-        if active_log:
-            raise InvalidOperationException.cannot_complete("User already has an active time log")
-
-        async with atomic_transaction(db) as tx:
-            log = await crud.start_time_log(tx, current_user.id)
-            async with atomic_with_savepoint(tx, "clock_in_complete"):
-                pass  # Reserved for future notifications
+        service = time_tracking_service(db)
+        async with atomic_transaction(db):
+            log = await service.clock_in(current_user.id, latitude, longitude)
+            async with atomic_with_savepoint(db, "clock_in_complete"):
+                pass
             return types.TimeLog.from_instance(log)
 
     @strawberry.mutation
@@ -1628,8 +1672,6 @@ class Mutation:
             latitude: Optional[float] = None,
             longitude: Optional[float] = None
     ) -> types.TimeLog:
-        from backend.database.transaction_manager import atomic_transaction
-        
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
@@ -1637,32 +1679,25 @@ class Mutation:
 
         await verify_module_enabled("shifts", db)
 
-        active_log = await time_repo.get_active_timelog(db, current_user.id)
+        service = time_tracking_service(db)
+        active_log = await service.get_active_timelog(current_user.id)
+
         if not active_log:
             raise InvalidOperationException.cannot_complete("No active time log found")
 
-        async with atomic_transaction(db) as tx:
-            log = await crud.end_time_log(tx, current_user.id, notes=notes)
-            
-            log_date = active_log.start_time.date()
-            sched_stmt = select(WorkSchedule.shift_id).where(
-                WorkSchedule.user_id == current_user.id,
-                WorkSchedule.date == log_date
-            )
-            res = await tx.execute(sched_stmt)
-            shift_id = res.scalar_one_or_none()
-            
-            await create_trz_records_on_clock_out(
-                db=tx,
-                user_id=current_user.id,
-                clock_in=active_log.start_time,
-                clock_out=log.end_time
-            )
-            
-            async with atomic_with_savepoint(tx, "clock_out_complete"):
-                pass  # Reserved for future notifications
-            
-            return types.TimeLog.from_instance(log)
+        log = await service.clock_out(current_user.id, latitude, longitude, notes=notes)
+
+        await create_trz_records_on_clock_out(
+            db=db,
+            user_id=current_user.id,
+            clock_in=active_log.start_time,
+            clock_out=log.end_time
+        )
+
+        async with atomic_with_savepoint(db, "clock_out_complete"):
+            pass
+
+        return types.TimeLog.from_instance(log)
 
     @strawberry.mutation(name="adminClockIn")
     async def admin_clock_in(
@@ -1671,46 +1706,22 @@ class Mutation:
             info: strawberry.Info,
             custom_time: Optional[datetime.datetime] = None
     ) -> types.TimeLog:
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"=== admin_clock_in START ===")
-        logger.info(f"user_id: {user_id}")
-        logger.info(f"custom_time: {custom_time}")
-        
         db = info.context["db"]
         current_user = info.context["current_user"]
         
-        logger.info(f"current_user: {current_user}")
-        logger.info(f"current_user.role: {current_user.role.name if current_user.role else None}")
-        
         if current_user is None or current_user.role is None or current_user.role.name not in ["admin", "super_admin"]:
-            logger.warning(f"admin_clock_in: unauthorized user: {current_user}")
             raise PermissionDeniedException.for_action("manage")
         
-        logger.info(f"Checking module 'shifts' enabled...")
         await verify_module_enabled("shifts", db)
-        logger.info(f"Module 'shifts' enabled: OK")
         
-        logger.info(f"Checking for active_time_log...")
-        active_log = await time_repo.get_active_timelog(db, user_id)
+        service = time_tracking_service(db)
+        active_log = await service.get_active_timelog(user_id)
         if active_log:
-            logger.warning(f"User already has active time log: {active_log.id}")
             raise InvalidOperationException.cannot_complete("User already has an active time log")
         
-        logger.info(f"Calling time_repo.start_time_log...")
-        try:
-            log = await time_repo.start_time_log(db, user_id, custom_time=custom_time)
-            logger.info(f"time_repo.start_time_log result: id={log.id}, start_time={log.start_time}")
-            logger.info(f"Committing transaction...")
-            await db.commit()
-            logger.info(f"Transaction committed successfully!")
-            logger.info(f"=== admin_clock_in SUCCESS ===")
-            return types.TimeLog.from_instance(log)
-        except Exception as e:
-            logger.error(f"time_repo.start_time_log FAILED: {e}", exc_info=True)
-            await db.rollback()
-            raise
+        log = await service.clock_in(user_id, custom_time=custom_time)
+        
+        return types.TimeLog.from_instance(log)
 
     @strawberry.mutation(name="adminClockOut")
     async def admin_clock_out(
@@ -1720,59 +1731,30 @@ class Mutation:
             notes: Optional[str] = None,
             custom_time: Optional[datetime.datetime] = None
     ) -> types.TimeLog:
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"=== admin_clock_out START ===")
-        logger.info(f"user_id: {user_id}")
-        logger.info(f"custom_time: {custom_time}")
-        
         db = info.context["db"]
         current_user = info.context["current_user"]
         
         if current_user is None or current_user.role is None or current_user.role.name not in ["admin", "super_admin"]:
-            logger.warning(f"admin_clock_out: unauthorized user: {current_user}")
             raise PermissionDeniedException.for_action("manage")
         
-        logger.info(f"Checking module 'shifts' enabled...")
         await verify_module_enabled("shifts", db)
         
-        active_log = await time_repo.get_active_timelog(db, user_id)
-        logger.info(f"active_log: {active_log}")
+        service = time_tracking_service(db)
+        active_log = await service.get_active_timelog(user_id)
         
         if not active_log:
-            logger.warning(f"No active time log found for user {user_id}")
             raise InvalidOperationException.cannot_complete("No active time log found")
         
-        logger.info(f"Calling time_repo.end_time_log...")
-        try:
-            log = await time_repo.end_time_log(db, user_id, notes=notes, custom_time=custom_time)
-            logger.info(f"time_repo.end_time_log result: id={log.id}, end_time={log.end_time}")
-            
-            # Fetch shift_id from WorkSchedule for this user and date
-            log_date = active_log.start_time.date()
-            sched_stmt = select(WorkSchedule.shift_id).where(
-                WorkSchedule.user_id == user_id,
-                WorkSchedule.date == log_date
-            )
-            res = await db.execute(sched_stmt)
-            shift_id = res.scalar_one_or_none()
-            
-            # Автоматично създаване на TRZ записи (Фаза 3)
-            await create_trz_records_on_clock_out(
-                db=db,
-                user_id=user_id,
-                clock_in=active_log.start_time,
-                clock_out=log.end_time,
-            )
-            
-            await db.commit()
-            logger.info(f"=== admin_clock_out SUCCESS ===")
-            return types.TimeLog.from_instance(log)
-        except Exception as e:
-            logger.error(f"time_repo.end_time_log FAILED: {e}", exc_info=True)
-            await db.rollback()
-            raise
+        log = await service.clock_out(user_id, custom_time=custom_time, notes=notes)
+        
+        await create_trz_records_on_clock_out(
+            db=db,
+            user_id=user_id,
+            clock_in=active_log.start_time,
+            clock_out=log.end_time,
+        )
+        
+        return types.TimeLog.from_instance(log)
 
     @strawberry.mutation
     async def create_schedule_template(self, name: str, description: Optional[str],
@@ -1856,7 +1838,7 @@ class Mutation:
         await settings_repo.set_setting(db, "password_settings_version", str(current_version + 1))
 
         # Set password_force_change to True for all users
-        await crud.force_password_change_for_all_users(db)
+        await auth_service.force_password_change_for_all_users(db)
 
         await db.commit()
         return types.PasswordSettings(
@@ -1941,7 +1923,7 @@ class Mutation:
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
 
-        return await crud.regenerate_user_qr_token(db, current_user.id)
+        return await auth_service.regenerate_user_qr_token(db, current_user.id)
 
     @strawberry.mutation
     async def create_advance_payment(
@@ -1993,7 +1975,8 @@ class Mutation:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        res = await crud.set_monthly_work_days(db, input.year, input.month, input.days_count)
+        payroll_svc = payroll_service(db)
+        res = await payroll_svc.set_monthly_work_days(input.year, input.month, input.days_count)
         return types.MonthlyWorkDays.from_instance(res)
 
     @strawberry.mutation
@@ -2014,7 +1997,8 @@ class Mutation:
             raise PermissionDeniedException.for_action("manage")
 
         # Pre-validation: check for overlaps BEFORE creating
-        has_overlap = await crud.check_time_overlap(db, user_id, start_time, end_time)
+        time_svc = time_tracking_service(db)
+        has_overlap = await time_svc.check_time_overlap(user_id, start_time, end_time)
         if has_overlap:
             raise ValidationException(detail="Записът се застъпва с друг запис за този период")
 
@@ -2063,7 +2047,8 @@ class Mutation:
             raise AuthenticationException(detail=authenticate_msg)
 
         new_status = "accepted" if accept else "rejected"
-        res = await time_repo.update_swap_status(db, swap_id, new_status)
+        service = shift_swap_service(db)
+        res = await service.update_status(swap_id, new_status)
         return types.ShiftSwapRequest.from_instance(res)
 
     @strawberry.mutation
@@ -2074,9 +2059,9 @@ class Mutation:
             raise PermissionDeniedException.for_action("manage")
 
         new_status = "approved" if approve else "rejected"
-        res = await time_repo.update_swap_status(db, swap_id, new_status, admin_user_id=current_user.id)
+        service = shift_swap_service(db)
         async with atomic_with_savepoint(db, "swap_approved"):
-            pass  # Reserved for future notifications
+            res = await service.update_status(swap_id, new_status, admin_user_id=current_user.id)
         return types.ShiftSwapRequest.from_instance(res)
 
     @strawberry.mutation
@@ -2087,10 +2072,9 @@ class Mutation:
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
 
-        res = await time_repo.create_swap_request(db, current_user.id, requestor_schedule_id, target_user_id,
-                                             target_schedule_id)
+        service = shift_swap_service(db)
         async with atomic_with_savepoint(db, "swap_created"):
-            pass  # Reserved for future notifications
+            res = await service.create_request(current_user.id, requestor_schedule_id, target_user_id, target_schedule_id)
         return types.ShiftSwapRequest.from_instance(res)
 
     # --- Confectionery Module Mutations ---
@@ -2154,6 +2138,78 @@ class Mutation:
         await db.commit()
         await db.refresh(zone)
         return types.StorageZone.from_instance(zone)
+    
+    @strawberry.mutation
+    async def create_cost_center(self, input: inputs.CostCenterInput, info: strawberry.Info) -> types.VehicleCostCenter:
+        """Създай разходен център"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage")
+        
+        target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
+        if not target_company_id:
+            raise ValidationException.required_field("company_id")
+        
+        from backend.database.models import VehicleCostCenter, Company
+        stmt = select(Company).where(Company.id == target_company_id)
+        res = await db.execute(stmt)
+        if not res.scalar_one_or_none():
+            raise NotFoundException.resource("Company", target_company_id)
+        
+        cost_center = VehicleCostCenter(
+            name=input.name,
+            department_id=input.department_id,
+            is_active=input.is_active if input.is_active is not None else True,
+            company_id=target_company_id
+        )
+        db.add(cost_center)
+        await db.commit()
+        await db.refresh(cost_center)
+        return types.VehicleCostCenter.from_instance(cost_center)
+    
+    @strawberry.mutation
+    async def update_cost_center(self, input: inputs.UpdateCostCenterInput, info: strawberry.Info) -> types.VehicleCostCenter:
+        """Обнови разходен център"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage")
+        
+        from backend.database.models import VehicleCostCenter
+        cost_center = await db.get(VehicleCostCenter, input.id)
+        if not cost_center:
+            raise NotFoundException.record("CostCenter")
+        
+        if input.name is not None:
+            cost_center.name = input.name
+        if input.department_id is not None:
+            cost_center.department_id = input.department_id
+        if input.is_active is not None:
+            cost_center.is_active = input.is_active
+        
+        await db.commit()
+        await db.refresh(cost_center)
+        return types.VehicleCostCenter.from_instance(cost_center)
+    
+    @strawberry.mutation
+    async def delete_cost_center(self, id: int, info: strawberry.Info) -> bool:
+        """Изтрий разходен център"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage")
+        
+        from backend.database.models import VehicleCostCenter
+        cost_center = await db.get(VehicleCostCenter, id)
+        if not cost_center:
+            raise NotFoundException.record("CostCenter")
+        
+        # Soft delete - mark as inactive
+        cost_center.is_active = False
+        await db.commit()
+        return True
+    
     @strawberry.mutation
     async def create_supplier(self, input: inputs.SupplierInput, info: strawberry.Info) -> types.Supplier:
         db = info.context["db"]
@@ -6543,8 +6599,7 @@ class Mutation:
         await db.refresh(payslip)
         
         # Notify user
-        from backend import crud
-        await crud.create_notification(
+        await notification_service.create_notification(
             db, 
             user_id=payslip.user_id, 
             message=f"Заплата за период {payslip.period_start.strftime('%d.%m.%Y')} - {payslip.period_end.strftime('%d.%m.%Y')} е маркирана като платена."
@@ -6611,9 +6666,9 @@ class Mutation:
         from backend.services.sepa_generator import SEPAGenerator
         from sqlalchemy import select, and_
         # Get company settings
-        company_name = await crud.get_global_setting(db, f"company_{company_id}_name") or "Company"
-        company_iban = await crud.get_global_setting(db, f"company_{company_id}_iban") or ""
-        company_bic = await crud.get_global_setting(db, f"company_{company_id}_bic") or ""
+        company_name = await settings_repo.get_setting(db, f"company_{company_id}_name") or "Company"
+        company_iban = await settings_repo.get_setting(db, f"company_{company_id}_iban") or ""
+        company_bic = await settings_repo.get_setting(db, f"company_{company_id}_bic") or ""
         
         if not company_iban:
             raise ValidationException(detail="Company IBAN not configured")

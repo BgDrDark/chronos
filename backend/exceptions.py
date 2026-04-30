@@ -432,6 +432,26 @@ class InvalidOperationException(CHRONOSException):
             error_code="OPERATION_CANNOT_COMPLETE",
             context={"reason": reason}
         )
+    
+    @classmethod
+    def info_required(cls):
+        """Info обектът е задължителен за GraphQL операции"""
+        return cls(
+            detail="Info обектът е задължителен за тази операция",
+            error_code="INFO_REQUIRED",
+            context={"reason": "missing_info_context"}
+        )
+    
+    @classmethod
+    def resource_not_found(cls, resource_type: str, resource_id: int = None):
+        """Ресурсът не е намерен"""
+        msg = f"{resource_type} не е намерен"
+        context = {"resource": resource_type}
+        if resource_id:
+            msg += f" (ID: {resource_id})"
+            context["id"] = resource_id
+        error_code = f"{resource_type.upper().replace(' ', '_')}_NOT_FOUND"
+        return cls(detail=msg, error_code=error_code, context=context)
 
 
 class RetentionPeriodException(CHRONOSException):

@@ -1,11 +1,13 @@
 # Environments
 .env
+.env.backup
 .venv/
 venv/
 env/
 
 # IDE
 .idea/
+.vscode/
 
 # Frontend
 frontend/node_modules/
@@ -44,16 +46,22 @@ postgres_data/
 postgres_DB*/
 redis-data/
 
-# Archives
+# Archives & Backups
 *.tar
 *.zip
 *.gz
+/backups/
+backups/
+
+# Docker
+docker-compose.override.yml
+*.dockerignore
 
 # Logs
 logs/
 backend/logs/
 chronos-gateway/logs/
-chronos_extracted
+chronos_extracted/
 
 # NPM/Docker data
 npm/data/
@@ -61,4 +69,38 @@ npm/letsencrypt/
 
 # Local topology
 lan_topology/
+plans/
+
+# Cache
+.cache/
+.npm/
+.eslintcache
+.stylelintcache
+
+# Temp
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Certificates (local)
+*.key
+*.cert
+*.pem
+letsencrypt/
+
+# Version files (generated)
+VERSION
+version.txt
 

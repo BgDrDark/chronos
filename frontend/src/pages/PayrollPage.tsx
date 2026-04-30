@@ -339,6 +339,13 @@ const GET_CONTRACT_TEMPLATES = gql`
         createdBy
         createdAt
         changeNote
+        sections {
+          id
+          title
+          content
+          orderIndex
+          isRequired
+        }
       }
     }
   }
@@ -471,7 +478,11 @@ const CREATE_CONTRACT_TEMPLATE = gql`
     $nightWorkRate: Float!,
     $overtimeRate: Float!,
     $holidayRate: Float!,
-    $workClass: String
+    $workClass: String,
+    $positionId: Int,
+    $departmentId: Int,
+    $baseSalary: Float,
+    $clauseIds: String
   ) {
     createContractTemplate(
       name: $name,
@@ -484,7 +495,11 @@ const CREATE_CONTRACT_TEMPLATE = gql`
       nightWorkRate: $nightWorkRate,
       overtimeRate: $overtimeRate,
       holidayRate: $holidayRate,
-      workClass: $workClass
+      workClass: $workClass,
+      positionId: $positionId,
+      departmentId: $departmentId,
+      baseSalary: $baseSalary,
+      clauseIds: $clauseIds
     ) {
       id
       name
@@ -2018,6 +2033,21 @@ const TemplatesSettings: React.FC = () => {
     variables: { category: null }
   });
 
+  // Зареждане на длъжности и отдели
+  const { data: positionsData } = useQuery(gql`
+    query GetPositions {
+      positions { id title }
+    }
+  `);
+  const { data: departmentsData } = useQuery(gql`
+    query GetDepartments {
+      departments { id name }
+    }
+  `);
+
+  const positions: Array<{id: number, title: string}> = positionsData?.positions || [];
+  const departments: Array<{id: number, name: string}> = departmentsData?.departments || [];
+
   const [createContractTemplate] = useMutation(CREATE_CONTRACT_TEMPLATE);
   const [deleteContractTemplate] = useMutation(DELETE_CONTRACT_TEMPLATE);
   const [createAnnexTemplate] = useMutation(CREATE_ANNEX_TEMPLATE);
@@ -2035,6 +2065,8 @@ const TemplatesSettings: React.FC = () => {
   const [editingItem, setEditingItem] = useState<ContractTemplate | AnnexTemplate | ClauseTemplate | null>(null);
   const [openSectionDialog, setOpenSectionDialog] = useState<boolean>(false);
   const [editingSection, setEditingSection] = useState<{ id?: number; title: string; content: string; orderIndex: number; isRequired: boolean } | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<ContractTemplate | AnnexTemplate | null>(null);
+  const [selectedClauses, setSelectedClauses] = useState<string[]>([]);
 
   const contractTypes = [
     { value: 'full_time', label: 'Пълно работно време' },
@@ -2202,6 +2234,10 @@ const TemplatesSettings: React.FC = () => {
           data.overtimeRate = Number(formData.get('overtimeRate'));
           data.holidayRate = Number(formData.get('holidayRate'));
           data.workClass = formData.get('workClass') || null;
+          data.positionId = formData.get('positionId') ? Number(formData.get('positionId')) : null;
+          data.departmentId = formData.get('departmentId') ? Number(formData.get('departmentId')) : null;
+          data.baseSalary = formData.get('baseSalary') ? Number(formData.get('baseSalary')) : null;
+          data.clauseIds = selectedClauses.length > 0 ? JSON.stringify(selectedClauses.map(Number)) : null;
         } else if (isAnnexes) {
           data.name = formData.get('name');
           data.description = formData.get('description');
@@ -2256,6 +2292,38 @@ const TemplatesSettings: React.FC = () => {
                   <MenuItem value="gross">Брутно</MenuItem>
                   <MenuItem value="net">Нетно</MenuItem>
                 </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <TextField name="baseSalary" label="Основна заплата (лв.)" type="number" fullWidth defaultValue={(editingItem as ContractTemplate | null)?.baseSalary || ''} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <TextField select name="positionId" label="Длъжност" fullWidth value={(editingItem as ContractTemplate | null)?.position?.id || ''}>
+                  <MenuItem value="">-- Избери --</MenuItem>
+                  {positions.map((p) => <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <TextField select name="departmentId" label="Отдел" fullWidth value={(editingItem as ContractTemplate | null)?.department?.id || ''}>
+                  <MenuItem value="">-- Избери --</MenuItem>
+                  {departments.map((d) => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Клаузи</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedClauses}
+                    onChange={(e) => setSelectedClauses(e.target.value as string[])}
+                    label="Клаузи"
+                  >
+                    {clauseData?.clauseTemplates?.map((clause: ClauseTemplate) => (
+                      <MenuItem key={clause.id} value={String(clause.id)}>
+                        {clause.title} ({clause.category})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
             </>
           )}
@@ -2353,6 +2421,7 @@ const TemplatesSettings: React.FC = () => {
                         )}
                       </Box>
                       <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button size="small" variant="outlined" onClick={() => setPreviewTemplate(template)}>Преглед</Button>
                         <Button size="small" variant="outlined" onClick={() => handleOpenSectionDialog()}>Добав секция</Button>
                         <Button size="small" color="error" onClick={() => handleDelete(template.id)}>Изтрий</Button>
                       </Box>
@@ -2492,6 +2561,41 @@ const TemplatesSettings: React.FC = () => {
         </Card>
       )}
       {openSectionDialog && <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 999 }} onClick={() => { setOpenSectionDialog(false); setEditingSection(null); }} />}
+
+      {/* Preview Dialog */}
+      <Dialog open={!!previewTemplate} onClose={() => setPreviewTemplate(null)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Преглед на шаблон: {previewTemplate?.name}
+        </DialogTitle>
+        <DialogContent>
+          {!previewTemplate?.currentVersion?.sections || previewTemplate.currentVersion.sections.length === 0 ? (
+            <Alert severity="warning">Няма секции в този шаблон</Alert>
+          ) : (
+            <Box>
+              {[...previewTemplate.currentVersion.sections]
+                .sort((a: any, b: any) => a.orderIndex - b.orderIndex)
+                .map((section: any, index: number) => (
+                  <Box key={section.id || index} sx={{ mb: 3, pb: 2, borderBottom: '1px solid #eee' }}>
+                    <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                      {index + 1}. {section.title}
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                      {section.content}
+                    </Typography>
+                    {section.isRequired && (
+                      <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+                        Задължителна секция
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPreviewTemplate(null)}>Затвори</Button>
+        </DialogActions>
+      </Dialog>
 
     </Box>
   );

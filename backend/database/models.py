@@ -183,6 +183,7 @@ class Department(Base):
     manager = relationship("User", foreign_keys=[manager_id])
     users = relationship("User", back_populates="department_rel", foreign_keys="[User.department_id]")
     positions = relationship("Position", back_populates="department")
+    contract_template_versions = relationship("ContractTemplateVersion", back_populates="department")
 
 
 class Position(Base):
@@ -195,6 +196,7 @@ class Position(Base):
     department = relationship("Department", back_populates="positions")
     users = relationship("User", back_populates="position_rel")
     payrolls = relationship("Payroll", back_populates="position", cascade="all, delete-orphan")
+    contract_template_versions = relationship("ContractTemplateVersion", back_populates="position")
 
 
 class KioskDevice(Base):
@@ -601,6 +603,17 @@ class Module(Base):
     name:Mapped[str] = mapped_column(String(100), nullable=False)
     description:Mapped[str] = mapped_column(String, nullable=True)
     updated_at:Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
+
+
+class ThrottleLog(Base):
+    __tablename__ = "throttle_logs"
+
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id:Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    field_name:Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    called_at:Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, nullable=False, index=True)
+    ip_address:Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+
 
 class PublicHoliday(Base):
     __tablename__ = "public_holidays"
@@ -1460,6 +1473,8 @@ class EmploymentContract(Base):
     template_id: Mapped[int] = mapped_column(Integer, ForeignKey("contract_templates.id", ondelete="SET NULL"), nullable=True)
     position_id: Mapped[int] = mapped_column(Integer, ForeignKey("positions.id", ondelete="SET NULL"), nullable=True)
     department_id: Mapped[int] = mapped_column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+    # Клаузи - JSON string с ID-та на клаузи
+    clause_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Нови полета за трудов договор (преди регистрация)
     employee_name: Mapped[str] = mapped_column(String(200), nullable=True)  # Име на служителя (преди регистрация)
     employee_egn: Mapped[str] = mapped_column(String(10), nullable=True)  # ЕГН (преди регистрация)
@@ -1522,6 +1537,8 @@ class ContractTemplate(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     contract_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Заплащане
+    base_salary: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     work_hours_per_week: Mapped[int] = mapped_column(Integer, default=40)
     probation_months: Mapped[int] = mapped_column(Integer, default=6)
     salary_calculation_type: Mapped[str] = mapped_column(String(20), default='gross')
@@ -1530,12 +1547,18 @@ class ContractTemplate(Base):
     overtime_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=1.5)
     holiday_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=2.0)
     work_class: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    # Длъжност и отдел
+    position_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("positions.id", ondelete="SET NULL"), nullable=True)
+    department_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True, onupdate=sofia_now)
     
     company = relationship("Company", backref="contract_templates")
+    position = relationship("Position", backref="contract_templates")
+    department = relationship("Department", backref="contract_templates")
     versions = relationship("ContractTemplateVersion", back_populates="template", cascade="all, delete-orphan")
+    clauses = relationship("ContractTemplateClause", back_populates="template", cascade="all, delete-orphan")
 
 
 class ContractTemplateVersion(Base):
@@ -1546,6 +1569,8 @@ class ContractTemplateVersion(Base):
     template_id: Mapped[int] = mapped_column(Integer, ForeignKey("contract_templates.id", ondelete="CASCADE"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     contract_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Заплащане
+    base_salary: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     work_hours_per_week: Mapped[int] = mapped_column(Integer, nullable=False)
     probation_months: Mapped[int] = mapped_column(Integer, nullable=False)
     salary_calculation_type: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -1554,13 +1579,31 @@ class ContractTemplateVersion(Base):
     overtime_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
     holiday_rate: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
     work_class: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    # Длъжност и отдел
+    position_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("positions.id", ondelete="SET NULL"), nullable=True)
+    department_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
     is_current: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     change_note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     
     template = relationship("ContractTemplate", back_populates="versions")
+    position = relationship("Position", back_populates="contract_template_versions")
+    department = relationship("Department", back_populates="contract_template_versions")
     sections = relationship("ContractTemplateSection", back_populates="version", cascade="all, delete-orphan")
+
+
+class ContractTemplateClause(Base):
+    """Асоциация между шаблон на договор и клаузи"""
+    __tablename__ = "contract_template_clauses"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    template_id: Mapped[int] = mapped_column(Integer, ForeignKey("contract_templates.id", ondelete="CASCADE"), nullable=False)
+    clause_id: Mapped[int] = mapped_column(Integer, ForeignKey("clause_templates.id", ondelete="CASCADE"), nullable=False)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    
+    template = relationship("ContractTemplate")
+    clause = relationship("ClauseTemplate")
 
 
 class ContractTemplateSection(Base):

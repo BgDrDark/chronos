@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from strawberry.fastapi import GraphQLRouter
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette_csrf.middleware import CSRFMiddleware
-from backend.routers import auth, export, system, kiosk, webauthn, google, documents, notifications, warehouse, gateway, terminal, trz_export
+from backend.routers import auth, export, system, kiosk, webauthn, google, documents, notifications, warehouse, gateway, terminal, trz_export, deploy
 from backend.graphql.schema import schema
 from backend.database.database import get_db
 from backend.database.session_proxy import LockedSession
@@ -114,19 +114,6 @@ async def transaction_exception_handler(request: Request, exc: TransactionError)
         }
     )
 
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
-    """Handle rate limit exceeded errors"""
-    logger.warning(f"Rate limit exceeded: {request.method} {request.url}")
-    return JSONResponse(
-        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        content={
-            "error": "Rate limit exceeded",
-            "message": "Превишихте броя на заявките. Моля, изчакайте малко и опитайте отново.",
-            "retry_after": 1
-        }
-    )
-
 @app.exception_handler(DeadlockError)
 async def deadlock_exception_handler(request: Request, exc: DeadlockError):
     """Handle deadlock errors with user-friendly message"""
@@ -222,26 +209,27 @@ app.add_middleware(
     cookie_name="csrf_token",
     cookie_path="/",
     cookie_domain=None,
-    cookie_secure=True,           # HTTPS only
-    cookie_httponly=False,        # Allow JS to read for double-submit
-    cookie_samesite="strict",    # Strict same-site policy
+    cookie_secure=True,
+    cookie_httponly=False,
+    cookie_samesite="strict",
     exempt_urls=[
-        re.compile(r"^/auth/.*"),      # Exempt auth endpoints
-        re.compile(r"^/google/.*"),   # Exempt Google auth
-        re.compile(r"^/docs.*"),      # Exempt docs
-        re.compile(r"^/redoc.*"),     # Exempt redoc
-        re.compile(r"^/graphql.*"),    # Exempt GraphQL for now
-        re.compile(r"^/gateways/.*"),  # Exempt Gateway endpoints
-        re.compile(r"^/kiosk/scan"),   # Exempt Kiosk scan
-        re.compile(r"^/kiosk/terminal/.*"), # Exempt unified terminal endpoints
-        re.compile(r"^/terminal/.*"),   # Exempt terminal endpoints
+        re.compile(r"^/auth/"),
+        re.compile(r"^/google/"),
+        re.compile(r"^/docs"),
+        re.compile(r"^/redoc"),
+        re.compile(r"^/graphql"),
+        re.compile(r"^/gateways/"),
+        re.compile(r"^/webhook/"),
+        re.compile(r"^/kiosk/scan"),
+        re.compile(r"^/kiosk/terminal/"),
+        re.compile(r"^/terminal/"),
     ],
     safe_methods={"GET", "HEAD", "OPTIONS", "TRACE"},
 )
 
 
-# Configure CORS - specific origins only
-ALLOWED_ORIGINS = [
+# Configure CORS - from config with fallback defaults
+DEFAULT_ORIGINS = [
     "https://dev.oblak24.org",
     "https://chronos.oblak24.org",
     "https://auth.chronos.oblak24.org",
@@ -252,10 +240,13 @@ ALLOWED_ORIGINS = [
     "http://192.168.1.92:4173",
     "http://192.168.1.92:14240",
 ]
+cors_origins = settings.BACKEND_CORS_ORIGINS if settings.BACKEND_CORS_ORIGINS else DEFAULT_ORIGINS
+if isinstance(cors_origins, str):
+    cors_origins = [cors_origins]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
@@ -280,6 +271,7 @@ app.include_router(gateway.router)
 app.include_router(terminal.router)
 app.include_router(webauthn.router)
 app.include_router(google.router)
+app.include_router(deploy.router)
 from fastapi.staticfiles import StaticFiles
 import os
 

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime, timedelta
 import secrets
 import logging
@@ -39,7 +39,44 @@ class GatewayRegisterResponse(BaseModel):
     is_active: bool
     api_key: str
     registered_at: datetime
-    class Config: from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GatewayUpdate(BaseModel):
+    alias: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class GatewayResponse(BaseModel):
+    id: int
+    name: str
+    hardware_uuid: str
+    alias: Optional[str]
+    ip_address: Optional[str]
+    local_hostname: Optional[str]
+    terminal_port: int
+    web_port: int
+    is_active: bool
+    system_mode: str
+    last_heartbeat: Optional[datetime]
+    registered_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TerminalResponse(BaseModel):
+    id: int
+    hardware_uuid: str
+    device_name: Optional[str]
+    device_type: str
+    gateway_id: Optional[int]
+    is_active: bool
+    last_seen: Optional[datetime]
+    total_scans: int
+    alias: Optional[str]
+
+    model_config = ConfigDict(from_attributes=True)
 
 class GatewayUpdate(BaseModel):
     alias: Optional[str] = None
@@ -58,7 +95,9 @@ class GatewayResponse(BaseModel):
     system_mode: str
     last_heartbeat: Optional[datetime]
     registered_at: datetime
-    class Config: from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class TerminalResponse(BaseModel):
     id: int
@@ -70,7 +109,47 @@ class TerminalResponse(BaseModel):
     last_seen: Optional[datetime]
     total_scans: int
     alias: Optional[str]
-    class Config: from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PrinterCreate(BaseModel):
+    name: str
+    printer_type: str
+    ip_address: Optional[str] = None
+    port: int = 9100
+    protocol: str = "raw"
+    windows_share_name: Optional[str] = None
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    is_default: bool = False
+
+
+class PrinterResponse(BaseModel):
+    id: int
+    name: str
+    printer_type: str
+    ip_address: Optional[str]
+    port: int
+    protocol: str
+    gateway_id: int
+    is_active: bool
+    is_default: bool
+    last_test: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+class TerminalResponse(BaseModel):
+    id: int
+    hardware_uuid: str
+    device_name: Optional[str]
+    device_type: str
+    gateway_id: Optional[int]
+    is_active: bool
+    last_seen: Optional[datetime]
+    total_scans: int
+    alias: Optional[str]
+    model_config = ConfigDict(from_attributes=True)
 
 class PrinterCreate(BaseModel):
     name: str
@@ -94,7 +173,7 @@ class PrinterResponse(BaseModel):
     is_active: bool
     is_default: bool
     last_test: Optional[datetime]
-    class Config: from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class GatewayHeartbeatRequest(BaseModel):
     status: str
@@ -127,7 +206,7 @@ class AccessZoneResponse(BaseModel):
     anti_passback_type: str
     anti_passback_timeout: int
     is_active: bool
-    class Config: from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AccessDoorCreate(BaseModel):
     door_id: str
@@ -148,7 +227,7 @@ class AccessDoorResponse(BaseModel):
     relay_number: int
     terminal_id: Optional[str]
     is_active: bool
-    class Config: from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AccessCodeCreate(BaseModel):
     code: Optional[str] = None
@@ -165,7 +244,7 @@ class AccessCodeResponse(BaseModel):
     uses_remaining: int
     expires_at: Optional[datetime]
     is_active: bool
-    class Config: from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AccessLogSync(BaseModel):
     timestamp: datetime
@@ -192,7 +271,7 @@ class AccessLogResponse(BaseModel):
     result: str
     method: str
     gateway_id: int
-    class Config: from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @router.post("/register", response_model=GatewayRegisterResponse)
 async def register_gateway(gateway: GatewayCreate, db: AsyncSession = Depends(get_db)):

@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore", message=".*strawberry.scalar.*")
+
 import strawberry
 from typing import Any
 
@@ -10,3 +13,6 @@ class JSONScalar:
     
     def parse_value(self, value: Any) -> Any:
         return value
+
+
+__all__ = ["JSONScalar"]

@@ -4,7 +4,8 @@ from starlette.responses import JSONResponse
 from backend.exceptions import (
     CHRONOSException,
     ValidationException,
-    PermissionDeniedException
+    PermissionDeniedException,
+    AuthenticationException
 )
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,10 @@ class ChronosErrorExtension(Extension):
     
     async def on_error(self, error: Exception) -> Exception:
         """Handle errors during GraphQL execution"""
+        
+        if isinstance(error, AuthenticationException):
+            logger.warning(f"Authentication error in GraphQL: {error}")
+            return error
         
         if isinstance(error, CHRONOSException):
             logger.warning(f"CHRONOS error in GraphQL: {error}")

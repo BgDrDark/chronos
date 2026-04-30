@@ -138,14 +138,70 @@ const EmploymentContractsList: React.FC<EmploymentContractsListProps> = ({ compa
     }
   }, [selectedContractForLink, selectedUserId, linkContract, refetch]);
 
-  const handlePrint = useCallback((contractId: number) => {
-    const apiUrl = import.meta.env.VITE_API_URL || 'https://dev.oblak24.org';
-    window.open(`${apiUrl}/export/contract/${contractId}/pdf`, '_blank');
+  const getApiUrl = () => {
+    const envUrl = import.meta.env.VITE_API_URL;
+    if (!envUrl || envUrl === '/') return 'https://dev.oblak24.org';
+    return envUrl.endsWith('/') ? envUrl.slice(0, -1) : envUrl;
+  };
+  
+  const handlePrint = useCallback(async (contractId: number) => {
+    const apiUrl = getApiUrl();
+    const token = localStorage.getItem('token');
+    
+    try {
+      const response = await fetch(`${apiUrl}/export/contract/${contractId}/pdf`, {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contract_${contractId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Print error:', err);
+      alert('Грешка при генериране на PDF');
+    }
   }, []);
 
-  const handlePrintAnnex = useCallback((annexId: number) => {
-    const apiUrl = import.meta.env.VITE_API_URL || 'https://dev.oblak24.org';
-    window.open(`${apiUrl}/export/annex/${annexId}/pdf`, '_blank');
+  const handlePrintAnnex = useCallback(async (annexId: number) => {
+    const apiUrl = getApiUrl();
+    const token = localStorage.getItem('token');
+    
+    try {
+      const response = await fetch(`${apiUrl}/export/annex/${annexId}/pdf`, {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `annex_${annexId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Print annex error:', err);
+      alert('Грешка при генериране на PDF');
+    }
   }, []);
 
   if (loading) {
