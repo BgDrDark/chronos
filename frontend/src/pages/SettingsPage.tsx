@@ -862,12 +862,18 @@ const DeploymentSettings: React.FC = () => {
         
         try {
             const token = localStorage.getItem('token');
+            console.log('Deploy token:', token ? 'FOUND' : 'NOT FOUND');
+            console.log('API_URL:', API_URL);
+            
             if (!token) {
                 setMsg({ type: 'error', text: 'Не сте логнати' });
                 return;
             }
             
-            const res = await fetch(`${API_URL}/webhook/deploy`, {
+            const deployUrl = `${API_URL}/webhook/deploy`;
+            console.log('Deploy URL:', deployUrl);
+            
+            const res = await fetch(deployUrl, {
                 method: 'POST',
                 headers: { 
                     'Authorization': `Bearer ${token}`,
