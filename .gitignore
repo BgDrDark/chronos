@@ -107,6 +107,7 @@ version.txt
 # Documentation (local)
 CODING_RULES.md
 REPOSITORY_PATTERN_PLAN.md
+FRONTEND_REFACTOR_PLAN.md
 
 # Docker Images (local backup)
 *.tar
