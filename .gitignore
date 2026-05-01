@@ -106,4 +106,29 @@ version.txt
 
 # Documentation (local)
 CODING_RULES.md
+REPOSITORY_PATTERN_PLAN.md
+
+# Docker Images (local backup)
+*.tar
+chronos_images*.tar
+docker_images/
+
+# Database
+postgres_DB*/
+postgres_data/
+
+# Documentation (docs folder - optional)
+docs/
+
+# OpenCode
+.opencode/
+
+# Migrations (local)
+migrations/
+
+# Nginx config (local)
+nginx/
+
+# Docker Hub
+docker-compose.hub.yml
 

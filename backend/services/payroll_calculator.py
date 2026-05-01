@@ -11,7 +11,7 @@ import calendar
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from backend.database.models import TimeLog, Payroll, Payslip, sofia_now, MonthlyWorkDays, Bonus
+from backend.database.models import TimeLog, Payroll, Payslip, sofia_now, MonthlyWorkDays, Bonus, LeaveRequest
 
 
 def _get_crud():
@@ -100,7 +100,11 @@ class PayrollCalculator:
                 standard_hours_per_day=8,
                 currency="EUR"
             )
-
+        
+        # Get monthly_salary OUTSIDE the loop for use throughout
+        monthly_salary = float(config.monthly_salary) if config.monthly_salary else 0.0
+        hourly_rate = float(config.hourly_rate) if config.hourly_rate else 0.0
+        
         # 2. Get TimeLogs and Schedules
         logs = await crud.get_timelogs_by_user_and_period(self.db, user_id, start_date, end_date)
         
@@ -241,17 +245,15 @@ class PayrollCalculator:
             # Finalize Totals
             total_reg_hours += final_daily_reg
             total_ot_hours += daily_pure_ot
-
+            
             # --- Financial Calculation for Day ---
-            working_days_count = await self.get_total_working_days_for_month(user_id, day.year, day.month)
-            monthly_salary = float(config.monthly_salary) if config.monthly_salary else 0.0
-            hourly_rate = float(config.hourly_rate) if config.hourly_rate else 0.0
+            day_working_days = await self.get_total_working_days_for_month(user_id, day.year, day.month)
             
             day_pay = 0.0
             
             # Regular Pay
-            if working_days_count > 0 and monthly_salary > 0:
-                daily_rate = monthly_salary / working_days_count
+            if day_working_days > 0 and monthly_salary > 0:
+                daily_rate = monthly_salary / day_working_days
                 if daily_standard > 0:
                     fraction = min(1.0, final_daily_reg / daily_standard)
                     day_pay = daily_rate * fraction
@@ -264,7 +266,11 @@ class PayrollCalculator:
             # Overtime Pay
             ot_mult = float(config.overtime_multiplier) if config.overtime_multiplier else 1
             overtime_amount += daily_pure_ot * hourly_rate * ot_mult
-
+        
+        # Define monthly_salary and hourly_rate OUTSIDE the loop for use in leave calculation
+        monthly_salary = float(config.monthly_salary) if config.monthly_salary else 0.0
+        hourly_rate = float(config.hourly_rate) if config.hourly_rate else 0.0
+        
         # --- 3. Calculate Bonuses ---
         # Fetch bonuses that fall within the requested period
         bonus_result = await self.db.execute(
@@ -276,29 +282,84 @@ class PayrollCalculator:
         bonuses = bonus_result.scalars().all()
         bonus_amount = sum(float(b.amount) for b in bonuses)
 
+        # --- 3.1. Calculate Leave Days ---
+        leave_result = await self.db.execute(
+            select(LeaveRequest)
+            .where(LeaveRequest.user_id == user_id)
+            .where(LeaveRequest.status == 'approved')
+            .where(LeaveRequest.start_date >= sd_date)
+            .where(LeaveRequest.start_date <= ed_date)
+        )
+        leave_requests = leave_result.scalars().all()
+        
+        paid_leave_days = 0
+        unpaid_leave_days = 0
+        sick_leave_days = 0
+        
+        for lr in leave_requests:
+            if lr.leave_type in ['annual_paid', 'paid_leave']:
+                paid_leave_days += (lr.end_date - lr.start_date).days + 1
+            elif lr.leave_type == 'unpaid':
+                unpaid_leave_days += (lr.end_date - lr.start_date).days + 1
+            elif lr.leave_type in ['sick', 'sick_leave']:
+                sick_leave_days += (lr.end_date - lr.start_date).days + 1
+        
+        leave_days_count = paid_leave_days
+        sick_days_count = sick_leave_days
+        
+        # Calculate working days count for leave pay calculation
+        from datetime import date as dt_date
+        year = sd_date.year
+        month = sd_date.month
+        working_days_count = await self.get_total_working_days_for_month(user_id, year, month)
+        
+        # Add leave pay to regular amount (paid leave days get full daily rate)
+        if paid_leave_days > 0 and working_days_count > 0 and monthly_salary > 0:
+            daily_rate = monthly_salary / working_days_count
+            leave_pay = daily_rate * paid_leave_days
+            regular_amount += leave_pay
+        
         gross_salary = regular_amount + overtime_amount + bonus_amount
         
-        # --- 4. Deductions (Tax & Health) ---
+        # --- 4. Get Employment Contract for Tax/Insurance Settings ---
+        from backend.database.models import EmploymentContract
+        contract_result = await self.db.execute(
+            select(EmploymentContract)
+            .where(EmploymentContract.user_id == user_id)
+            .where(EmploymentContract.is_active == True)
+            .order_by(EmploymentContract.start_date.desc())
+            .limit(1)
+        )
+        contract = contract_result.scalar_one_or_none()
+        
+        # Default tax/insurance settings
+        tax_resident = True
+        insurance_contributor = True
+        has_income_tax = True
+        
+        if contract:
+            tax_resident = contract.tax_resident if contract.tax_resident is not None else True
+            insurance_contributor = contract.insurance_contributor if contract.insurance_contributor is not None else True
+            has_income_tax = contract.has_income_tax if contract.has_income_tax is not None else True
+        
+        # --- 5. Deductions (Tax & Insurance) ---
         tax_pct = float(config.tax_percent) if hasattr(config, 'tax_percent') and config.tax_percent is not None else 10.0
         health_pct = float(config.health_insurance_percent) if hasattr(config, 'health_insurance_percent') and config.health_insurance_percent is not None else 13.78
         
-        has_tax = getattr(config, 'has_tax_deduction', True)
-        has_health = getattr(config, 'has_health_insurance', True)
-        
         deductions = 0.0
         
-        # 4.1 Health Insurance (Deducted from Gross)
+        # 5.1 Health Insurance (Deducted from Gross) - only if insurance_contributor
         health_amount = 0.0
-        if has_health:
+        if insurance_contributor and tax_resident:
             health_amount = gross_salary * (health_pct / 100.0)
             deductions += health_amount
             
-        # 4.2 Taxable Base = Gross - Health Insurance
+        # 5.2 Taxable Base = Gross - Health Insurance
         taxable_base = max(0.0, gross_salary - health_amount)
         
-        # 4.3 Income Tax (Deducted from Taxable Base)
+        # 5.3 Income Tax (Deducted from Taxable Base) - only if has_income_tax
         tax_amount = 0.0
-        if has_tax:
+        if has_income_tax and tax_resident:
             tax_amount = taxable_base * (tax_pct / 100.0)
             deductions += tax_amount
             
@@ -313,10 +374,12 @@ class PayrollCalculator:
             "regular_amount": round(regular_amount, 2),
             "overtime_amount": round(overtime_amount, 2),
             "bonus_amount": round(bonus_amount, 2),
+            "leave_days": leave_days_count,
+            "paid_leave_days": paid_leave_days,
+            "sick_days": sick_days_count,
             "tax_amount": round(tax_amount, 2),
             "insurance_amount": round(health_amount, 2),
-            "sick_days": sick_days_count,
-            "leave_days": leave_days_count,
+            "taxable_base": round(taxable_base, 2),
             "total_amount": round(net_salary, 2),
             "hourly_rate": float(config.hourly_rate) if config.hourly_rate else 0.0
         }

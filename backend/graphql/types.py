@@ -705,7 +705,9 @@ class User:
         ).where(
             EmploymentContractModel.user_id == self.id,
             EmploymentContractModel.is_active == True
-        )
+        ).order_by(
+            EmploymentContractModel.start_date.desc()
+        ).limit(1)
         result = await db.execute(stmt)
         contract = result.scalar_one_or_none()
         return EmploymentContract.from_instance(contract) if contract else None

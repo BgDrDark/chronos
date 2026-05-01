@@ -15,7 +15,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./postgres_DB5:/var/lib/postgresql/data/
+      - ./postgres_DB:/var/lib/postgresql/data/
       # Add performance optimization volumes
       - ./scripts/init-extensions.sql:/docker-entrypoint-initdb.d/init-extensions.sql:ro
     healthcheck:

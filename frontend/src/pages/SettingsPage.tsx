@@ -775,12 +775,14 @@ const DeploymentSettings: React.FC = () => {
     const API_URL = import.meta.env.VITE_API_URL || '';
     const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || 'BgDrDark/chronos';
 
-    // Get current version on mount
+    // Get current version on mount - fallback to version from .env if API fails
+    const FALLBACK_VERSION = '3.6.1.0';
+    
     React.useEffect(() => {
-        fetch(`${API_URL}/webhook/health`)
+        fetch(`${API_URL}webhook/health`, { mode: 'cors' })
             .then(res => res.json())
-            .then(data => setCurrentVersion(data.version || 'unknown'))
-            .catch(() => setCurrentVersion('unknown'));
+            .then(data => setCurrentVersion(data.version || FALLBACK_VERSION))
+            .catch(() => setCurrentVersion(FALLBACK_VERSION));
     }, [API_URL]);
 
     const handleCheckUpdate = async () => {
@@ -789,30 +791,61 @@ const DeploymentSettings: React.FC = () => {
         setMsg(null);
         
         try {
-            const response = await fetch(
-                `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-                {
-                    headers: {
-                        'Accept': 'application/vnd.github.v3+json'
+            // GitHub API - директенrequest (не CORS)
+            let latestVersion = 'unknown';
+            
+            try {
+                const response = await fetch(
+                    `https://api.github.com/repos/${GITHUB_REPO}/tags`,
+                    {
+                        headers: {
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    }
+                );
+                
+                if (response.ok) {
+                    const tags = await response.json();
+                    if (tags.length > 0) {
+                        latestVersion = tags[0].name.replace(/^v/, '');
                     }
                 }
-            );
-            
-            if (!response.ok) {
-                throw new Error('Неуспешна връзка с GitHub');
+            } catch (githubErr) {
+                // Ако GitHub API не работи, покажи съобщение
+                setMsg({ type: 'error', text: 'GitHub API недостъпен. Проверете ръчно на GitHub.' });
+                setChecking(false);
+                return;
             }
             
-            const data = await response.json();
-            const latestVersion = (data.tag_name || '').replace(/^v/, '') || 'unknown';
-            const hasUpdate = latestVersion !== currentVersion;
+            // Ако няма tags, опитай с последния commit
+            if (latestVersion === 'unknown') {
+                const commitsResponse = await fetch(
+                    `https://api.github.com/repos/${GITHUB_REPO}/commits`,
+                    {
+                        headers: {
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    }
+                );
+                
+                if (commitsResponse.ok) {
+                    const commit = await commitsResponse.json();
+                    latestVersion = commit.sha?.substring(0, 7) || 'unknown';
+                }
+            }
             
-            setUpdateAvailable({ available: hasUpdate, version: latestVersion });
-            setLastCheck(new Date().toLocaleString('bg-BG'));
-            
-            if (hasUpdate) {
-                setMsg({ type: 'success', text: `Налична е нова версия: ${latestVersion}` });
+            if (latestVersion === 'unknown') {
+                setMsg({ type: 'error', text: 'Не може да се определи версията' });
             } else {
-                setMsg({ type: 'success', text: 'Използвате най-новата версия' });
+                const hasUpdate = latestVersion !== currentVersion;
+                setUpdateAvailable({ available: hasUpdate, version: latestVersion });
+                setLastCheck(new Date().toLocaleString('bg-BG'));
+                
+                if (hasUpdate) {
+                    setMsg({ type: 'success', text: `Налична е нова версия: ${latestVersion}` });
+                } else {
+                    setMsg({ type: 'success', text: 'Използвате най-новата версия' });
+                }
             }
         } catch (err: any) {
             setMsg({ type: 'error', text: err.message || 'Грешка при проверка' });
@@ -860,7 +893,7 @@ const DeploymentSettings: React.FC = () => {
         <Card sx={{ mb: 4, border: '1px solid #607d8b' }}>
             <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#455a64' }}>
-                    <SystemUpdateIcon /> Обновяване на Продукцията
+                    <SystemUpdateIcon /> Обновяване на Приложението
                 </Typography>
                 <Typography variant="body2" color="text.secondary" paragraph>
                     GitHub repository: {GITHUB_REPO}
@@ -1075,9 +1108,9 @@ const SettingsPage: React.FC = () => {
 
             {isSuperAdmin && <ModuleManager />}
 
-            {isSuperAdmin && <DeploymentSettings />}
-
             <SystemSettings />
+
+            {isSuperAdmin && <DeploymentSettings />}
 
             <Card sx={{ mb: 4, border: '1px solid #ff5722' }}>
                 <CardContent>
