@@ -4,10 +4,13 @@ import logging
 from typing import Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi import APIRouter, Header, HTTPException, Request, status, Depends
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from backend.config import settings
+from backend.database.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,7 @@ async def deploy_health():
 @router.post("/deploy", response_model=DeployResponse)
 async def deploy_update(
     info: Request,
+    db: AsyncSession = Depends(get_db),
 ):
     """Trigger deployment via webhook - requires super_admin role"""
     from backend.auth.jwt_utils import verify_and_decode_token
@@ -55,7 +59,6 @@ async def deploy_update(
     
     # Decode token and check super_admin role
     try:
-        db = info.state.db
         payload = await verify_and_decode_token(db, token)
         
         if not payload:
@@ -66,13 +69,19 @@ async def deploy_update(
             raise HTTPException(status_code=401, detail="Invalid token")
         
         # Get user from database to check role
-        from backend.database.models import User
-        from sqlalchemy import select
+        from backend.database.models import User, Role
         
-        result = await db.execute(select(User).where(User.id == int(user_id)))
+        result = await db.execute(select(User).where(User.email == payload.get("sub")))
         user = result.scalar_one_or_none()
         
-        if not user or user.role.name != "super_admin":
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        
+        # Get role name
+        role_result = await db.execute(select(Role).where(Role.id == user.role_id))
+        role = role_result.scalar_one_or_none()
+        
+        if not role or role.name != "super_admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only super_admins can deploy"

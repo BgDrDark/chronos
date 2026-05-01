@@ -13,11 +13,12 @@ ENV PYTHONPATH=/app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
-        tesseract-ocr \
-        tesseract-ocr-bul \ 
-        poppler-utils \
-        fonts-dejavu-core \
-        && rm -rf /var/lib/apt/lists/*
+    tesseract-ocr \
+    tesseract-ocr-bul \
+    poppler-utils \
+    fonts-dejavu-core \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 # Copy requirements and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
