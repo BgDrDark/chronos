@@ -234,6 +234,8 @@ DEFAULT_ORIGINS = [
     "https://chronos.oblak24.org",
     "https://auth.chronos.oblak24.org",
     "https://auth.dev.oblak24.org",
+    "https://*.oblak24.org",
+    "https://api.github.com",
     "http://localhost:5173",
     "http://localhost:14240",
     "http://192.168.1.92:5173",

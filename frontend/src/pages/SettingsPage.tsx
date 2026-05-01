@@ -779,7 +779,7 @@ const DeploymentSettings: React.FC = () => {
     const FALLBACK_VERSION = '3.6.1.0';
     
     React.useEffect(() => {
-        fetch(`${API_URL}/webhook/health`, { mode: 'cors' })
+        fetch(`${API_URL}/webhook/health`)
             .then(res => res.json())
             .then(data => setCurrentVersion(data.version || FALLBACK_VERSION))
             .catch(() => setCurrentVersion(FALLBACK_VERSION));
