@@ -329,6 +329,16 @@ PULL_ELAPSED=$(( $(date +%s) - PULL_START ))
 echo -e "${GREEN}✓${NC} All images pulled (${PULL_ELAPSED}s)"
 log_deploy "PULL complete: ${PULL_ELAPSED}s"
 
+# Update .env with target version BEFORE running alembic
+# so docker compose run uses the new image
+if [ -n "$DEPLOY_VERSION" ]; then
+    if grep -q "^VERSION=" .env; then
+        sed -i "s/^VERSION=.*/VERSION=${TARGET_VERSION}/" .env
+    else
+        echo "VERSION=${TARGET_VERSION}" >> .env
+    fi
+fi
+
 # 4. Alembic dry-run + migration
 echo ""
 echo "[4/7] Running Alembic migrations..."
@@ -358,15 +368,6 @@ echo "[5/7] Deploying backend..."
 
 # Wait for active queries before restart
 wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
-
-# Update .env with target version if deploying specific version
-if [ -n "$DEPLOY_VERSION" ]; then
-    if grep -q "^VERSION=" .env; then
-        sed -i "s/^VERSION=.*/VERSION=${TARGET_VERSION}/" .env
-    else
-        echo "VERSION=${TARGET_VERSION}" >> .env
-    fi
-fi
 
 docker compose up -d --force-recreate --no-deps backend
 
