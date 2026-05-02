@@ -141,7 +141,7 @@ if [ -z "$DB_CONTAINER" ]; then
     exit 1
 fi
 
-if docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - < "$BACKUP_DIR/db_$TIMESTAMP.dump" >/dev/null 2>&1; then
+if cat "$BACKUP_DIR/db_$TIMESTAMP.dump" | docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - >/dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} Backup verified (valid format)"
 else
     echo -e "${RED}✗${NC} Backup verification failed"

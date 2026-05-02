@@ -81,7 +81,7 @@ fi
 
 # Verify backup is restore-able using pg_restore --list
 echo "Verifying backup can be restored..."
-if docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - < "$DB_BACKUP_FILE" >/dev/null 2>&1; then
+if cat "$DB_BACKUP_FILE" | docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - >/dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} Backup verified (valid format, restore-able)"
 else
     echo -e "${RED}✗${NC} Backup verification failed (invalid format)"
