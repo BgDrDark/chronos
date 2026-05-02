@@ -70,12 +70,21 @@ docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$DB_CONTAINER" pg_dump -U "$POST
 }
 echo -e "${GREEN}✓${NC} Database backup: db_$TIMESTAMP.dump"
 
-# Verify backup
+# Verify backup - check file exists and is non-empty
 if [ -f "$DB_BACKUP_FILE" ] && [ -s "$DB_BACKUP_FILE" ]; then
     BACKUP_SIZE=$(du -h "$DB_BACKUP_FILE" | cut -f1)
-    echo -e "${GREEN}✓${NC} Backup verified: $BACKUP_SIZE"
+    echo -e "${GREEN}✓${NC} Backup file created: $BACKUP_SIZE"
 else
     echo -e "${RED}✗${NC} Backup file is empty or missing"
+    exit 1
+fi
+
+# Verify backup is restore-able using pg_restore --list
+echo "Verifying backup can be restored..."
+if docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - < "$DB_BACKUP_FILE" >/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC} Backup verified (valid format, restore-able)"
+else
+    echo -e "${RED}✗${NC} Backup verification failed (invalid format)"
     exit 1
 fi
 

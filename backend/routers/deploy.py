@@ -8,7 +8,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request, status, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from backend.config import settings
 from backend.database.database import get_db
@@ -34,6 +34,8 @@ class DeployResponse(BaseModel):
 class HealthCheckResponse(BaseModel):
     status: str
     version: str
+    db_status: str = "unknown"
+    maintenance_mode: bool = False
 
 
 class DeployStatusResponse(BaseModel):
@@ -43,6 +45,11 @@ class DeployStatusResponse(BaseModel):
     version: Optional[str] = None
     output: Optional[str] = None
     timestamp: Optional[str] = None
+
+
+class MaintenanceModeResponse(BaseModel):
+    enabled: bool
+    reason: str = ""
 
 
 _deploy_status = {
@@ -57,6 +64,68 @@ _deploy_status = {
 _deploy_lock = threading.Lock()
 
 PROJECT_DIR = os.environ.get("PROJECT_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+
+async def _set_maintenance_mode(db: AsyncSession, enabled: bool, reason: str = ""):
+    """Set maintenance mode using pg_advisory_lock"""
+    lock_id = 1234567890
+    if enabled:
+        await db.execute(text(f"SELECT pg_advisory_lock({lock_id})"))
+        await db.execute(text(f"SELECT set_config('app.maintenance_reason', '{reason}', false)"))
+    else:
+        await db.execute(text(f"SELECT pg_advisory_unlock({lock_id})"))
+    await db.commit()
+
+
+async def _is_maintenance_mode(db: AsyncSession) -> bool:
+    """Check if maintenance mode is active"""
+    lock_id = 1234567890
+    result = await db.execute(text(f"SELECT pg_try_advisory_lock({lock_id})"))
+    locked = result.scalar()
+    if locked:
+        await db.execute(text(f"SELECT pg_advisory_unlock({lock_id})"))
+        await db.commit()
+        return False
+    return True
+
+
+async def _get_db_health(db: AsyncSession) -> dict:
+    """Check database health including connection pool and active queries"""
+    try:
+        pool_result = await db.execute(text("""
+            SELECT count(*) as total,
+                   count(*) FILTER (WHERE state = 'active') as active,
+                   count(*) FILTER (WHERE state = 'idle') as idle,
+                   count(*) FILTER (WHERE state = 'idle in transaction') as idle_in_txn
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+        """))
+        pool_stats = pool_result.fetchone()
+
+        return {
+            "status": "healthy",
+            "total_connections": pool_stats[0],
+            "active_queries": pool_stats[1],
+            "idle_connections": pool_stats[2],
+            "idle_in_transaction": pool_stats[3],
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+        }
+
+
+async def _wait_for_active_queries(db: AsyncSession, timeout: int = 30):
+    """Wait for active queries to finish before shutdown"""
+    import asyncio
+    start = datetime.now()
+    while (datetime.now() - start).seconds < timeout:
+        health = await _get_db_health(db)
+        if health.get("active_queries", 0) == 0:
+            return True
+        await asyncio.sleep(1)
+    return False
 
 
 def _update_deploy_status(status: str, progress: str, output: str = "", version: str = None):
@@ -115,14 +184,12 @@ def _run_deploy_script(app_dir: str, script_path: str, version: Optional[str]):
             cwd=app_dir,
         )
 
-        # Read output line by line for real-time updates
         for line in iter(process.stdout.readline, ""):
             if line:
                 line = line.rstrip()
                 full_output.append(line)
                 logger.info(f"deploy: {line}")
 
-                # Parse progress from output
                 progress = _parse_progress_line(line)
                 if progress:
                     _update_deploy_status("running", progress, "\n".join(full_output[-50:]), version)
@@ -188,10 +255,14 @@ async def _verify_super_admin(db: AsyncSession, token: str):
 
 
 @router.get("/health", response_model=HealthCheckResponse)
-async def deploy_health():
+async def deploy_health(db: AsyncSession = Depends(get_db)):
+    db_health = await _get_db_health(db)
+    maintenance = await _is_maintenance_mode(db)
     return HealthCheckResponse(
         status="ok",
-        version=settings.VERSION
+        version=settings.VERSION,
+        db_status=db_health.get("status", "unknown"),
+        maintenance_mode=maintenance,
     )
 
 
@@ -393,3 +464,65 @@ async def get_deploy_log(
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading log: {str(e)}")
+
+
+@router.get("/db-health")
+async def db_health_check(db: AsyncSession = Depends(get_db)):
+    """Detailed database health check"""
+    health = await _get_db_health(db)
+    maintenance = await _is_maintenance_mode(db)
+    return {
+        **health,
+        "maintenance_mode": maintenance,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@router.post("/maintenance-mode")
+async def set_maintenance(
+    info: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle maintenance mode using pg_advisory_lock"""
+    from backend.auth.jwt_utils import verify_and_decode_token
+    from backend.database.models import User, Role
+    from pydantic import BaseModel
+
+    class MaintenanceRequest(BaseModel):
+        enabled: bool
+        reason: str = ""
+
+    auth_header = info.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+
+    token = auth_header[7:]
+
+    try:
+        payload = await verify_and_decode_token(db, token)
+        if not payload:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        result = await db.execute(select(User).where(User.email == payload.get("sub")))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+
+        role_result = await db.execute(select(Role).where(Role.id == user.role_id))
+        role = role_result.scalar_one_or_none()
+
+        if not role or role.name != "super_admin":
+            raise HTTPException(status_code=403, detail="Only super_admins can toggle maintenance mode")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(401, "Invalid token")
+
+    body = await info.json()
+    req = MaintenanceRequest(**body)
+
+    await _set_maintenance_mode(db, req.enabled, req.reason)
+
+    return MaintenanceModeResponse(enabled=req.enabled, reason=req.reason)

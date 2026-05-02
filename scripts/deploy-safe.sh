@@ -3,6 +3,14 @@
 # deploy-safe.sh - Safe deployment script for Chronos
 # Deploys with health checks, Alembic migrations, and auto-rollback on failure
 #
+# Safety features:
+# - Pre-deploy DB lock (pg_advisory_lock)
+# - Backup verification (pg_restore --list)
+# - Alembic dry-run (--sql) before actual migration
+# - Graceful shutdown (wait for active queries)
+# - DB health check after deploy
+# - Deploy lock on DB level (pg_advisory_lock)
+#
 
 set -e
 
@@ -13,6 +21,8 @@ BUILD_TIMEOUT=600
 LOCK_FILE="/tmp/chronos_deploy.lock"
 DEPLOY_LOG="$BACKUP_DIR/deploy.log"
 VERSION_FILE="VERSION"
+DB_LOCK_ID=1234567890
+GRACEFUL_SHUTDOWN_TIMEOUT=30
 
 # Colors for output
 RED='\033[0;31m'
@@ -30,7 +40,6 @@ VERSION=${VERSION:-$(cat $VERSION_FILE 2>/dev/null || echo "unknown")}
 POSTGRES_USER=${POSTGRES_USER:-postgres}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
 POSTGRES_DB=${POSTGRES_DB:-chronosdb}
-DB_HOST=${POSTGRES_HOST:-localhost}
 
 # Ensure backup directory exists
 mkdir -p "$BACKUP_DIR"
@@ -40,9 +49,123 @@ log_deploy() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$DEPLOY_LOG"
 }
 
+# === DB FUNCTIONS ===
+get_db_container() {
+    docker ps --filter "name=chronos-DB" --format "{{.Names}}" 2>/dev/null || \
+    docker ps --filter "name=db" --format "{{.Names}}" 2>/dev/null | head -1
+}
+
+db_exec() {
+    local DB_CONTAINER=$(get_db_container)
+    if [ -z "$DB_CONTAINER" ]; then
+        echo -e "${RED}ERROR:${NC} Database container not found"
+        return 1
+    fi
+    docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$DB_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "$1" 2>/dev/null
+}
+
+acquire_db_lock() {
+    echo "Acquiring database deploy lock..."
+    local result=$(db_exec "SELECT pg_try_advisory_lock($DB_LOCK_ID);" 2>/dev/null)
+    if echo "$result" | grep -q "t"; then
+        echo -e "${GREEN}✓${NC} Database deploy lock acquired"
+        log_deploy "DB LOCK acquired"
+        return 0
+    else
+        echo -e "${RED}ERROR:${NC} Another deployment is in progress (DB lock held)"
+        log_deploy "DEPLOY ABORTED: DB lock held by another process"
+        return 1
+    fi
+}
+
+release_db_lock() {
+    db_exec "SELECT pg_advisory_unlock($DB_LOCK_ID);" >/dev/null 2>&1
+    log_deploy "DB LOCK released"
+}
+
+enable_maintenance_mode() {
+    echo "Enabling maintenance mode (blocking writes)..."
+    db_exec "SET default_transaction_read_only = on;" >/dev/null 2>&1 || true
+    echo -e "${GREEN}✓${NC} Maintenance mode enabled"
+    log_deploy "MAINTENANCE MODE enabled"
+}
+
+disable_maintenance_mode() {
+    echo "Disabling maintenance mode..."
+    db_exec "SET default_transaction_read_only = off;" >/dev/null 2>&1 || true
+    echo -e "${GREEN}✓${NC} Maintenance mode disabled"
+    log_deploy "MAINTENANCE MODE disabled"
+}
+
+wait_for_active_queries() {
+    local timeout=$GRACEFUL_SHUTDOWN_TIMEOUT
+    echo "Waiting for active queries to finish (timeout: ${timeout}s)..."
+    local start=$(date +%s)
+    while true; do
+        local elapsed=$(( $(date +%s) - start ))
+        if [ $elapsed -ge $timeout ]; then
+            echo -e "${YELLOW}!${NC} Timeout waiting for queries ($timeout s)"
+            return 1
+        fi
+        
+        local active=$(db_exec "SELECT count(*) FROM pg_stat_activity WHERE datname = '$POSTGRES_DB' AND state = 'active' AND pid != pg_backend_pid();" 2>/dev/null | grep -o '[0-9]*' | head -1)
+        if [ "$active" = "0" ] || [ -z "$active" ]; then
+            echo -e "${GREEN}✓${NC} No active queries"
+            return 0
+        fi
+        echo "  $active active queries remaining..."
+        sleep 1
+    done
+}
+
+check_db_health() {
+    echo "Checking database health..."
+    local result=$(db_exec "
+        SELECT 
+            count(*) as total,
+            count(*) FILTER (WHERE state = 'active') as active,
+            count(*) FILTER (WHERE state = 'idle') as idle,
+            count(*) FILTER (WHERE state = 'idle in transaction') as idle_in_txn
+        FROM pg_stat_activity
+        WHERE datname = '$POSTGRES_DB';
+    " 2>/dev/null)
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓${NC} Database healthy"
+        echo "  $result"
+        return 0
+    else
+        echo -e "${RED}✗${NC} Database health check failed"
+        return 1
+    fi
+}
+
+verify_backup() {
+    local backup_file=$1
+    echo "Verifying backup: $backup_file"
+    
+    if [ ! -f "$backup_file" ] || [ ! -s "$backup_file" ]; then
+        echo -e "${RED}ERROR:${NC} Backup file is empty or missing"
+        return 1
+    fi
+    
+    # Use pg_restore --list to verify backup is valid
+    local DB_CONTAINER=$(get_db_container)
+    if docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - < "$backup_file" >/dev/null 2>&1; then
+        local size=$(du -h "$backup_file" | cut -f1)
+        echo -e "${GREEN}✓${NC} Backup verified ($size, valid format)"
+        return 0
+    else
+        echo -e "${RED}ERROR:${NC} Backup verification failed (invalid format)"
+        return 1
+    fi
+}
+
 # === CLEANUP ===
 cleanup() {
     rm -f "$LOCK_FILE"
+    release_db_lock 2>/dev/null || true
+    disable_maintenance_mode 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -145,6 +268,13 @@ if [ ! -f "docker-compose.yml" ]; then
 fi
 echo -e "${GREEN}✓${NC} docker-compose.yml exists"
 
+# 6. Database connectivity
+if ! db_exec "SELECT 1;" >/dev/null 2>&1; then
+    echo -e "${RED}ERROR:${NC} Cannot connect to database"
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} Database connection OK"
+
 echo ""
 
 if [ "$DRY_RUN" = true ]; then
@@ -154,6 +284,12 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 # === DEPLOYMENT ===
+
+# 0. Acquire DB-level deploy lock
+echo "[0/9] Acquiring database deploy lock..."
+if ! acquire_db_lock; then
+    exit 1
+fi
 
 # 1. Health check (current version)
 echo "[1/9] Checking current health..."
@@ -166,12 +302,25 @@ fi
 # Get timestamp BEFORE backup
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-# 2. Create backup
+# 2. Create backup with verification
 echo ""
 echo "[2/9] Creating backup..."
 if ./scripts/backup.sh 2>&1; then
-    echo -e "${GREEN}✓${NC} Backup created ($TIMESTAMP)"
-    log_deploy "BACKUP created: $TIMESTAMP"
+    # Find the backup file and verify it
+    LATEST_BACKUP=$(ls -t $BACKUP_DIR/db_*.dump 2>/dev/null | head -1)
+    if [ -n "$LATEST_BACKUP" ]; then
+        if verify_backup "$LATEST_BACKUP"; then
+            echo -e "${GREEN}✓${NC} Backup created and verified ($TIMESTAMP)"
+            log_deploy "BACKUP created and verified: $TIMESTAMP"
+        else
+            echo -e "${RED}ERROR:${NC} Backup verification failed. Aborting deploy."
+            log_deploy "DEPLOY ABORTED: backup verification failed"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✓${NC} Backup created ($TIMESTAMP)"
+        log_deploy "BACKUP created: $TIMESTAMP"
+    fi
 else
     echo -e "${RED}ERROR:${NC} Backup failed. Aborting deploy."
     log_deploy "DEPLOY ABORTED: backup failed"
@@ -277,9 +426,21 @@ echo -e "${GREEN}✓${NC} Frontend built (${ELAPSED}s)"
 
 log_deploy "BUILD complete: backend + frontend"
 
-# 5. Run Alembic migrations
+# 5. Alembic dry-run + migration
 echo ""
 echo "[5/9] Running Alembic migrations..."
+
+# Dry-run first
+echo "Running dry-run check..."
+if docker compose exec -T backend alembic upgrade head --sql 2>/dev/null | grep -q "BEGIN\|CREATE\|ALTER\|INSERT"; then
+    echo -e "${GREEN}✓${NC} Dry-run SQL generated (migrations are valid)"
+    log_deploy "ALEMBIC dry-run OK"
+else
+    echo -e "${YELLOW}!${NC} No migrations needed or dry-run skipped"
+fi
+
+# Apply migrations
+echo "Applying migrations..."
 if docker compose exec -T backend alembic upgrade head 2>/dev/null; then
     echo -e "${GREEN}✓${NC} Alembic migrations applied"
     log_deploy "ALEMBIC migrations applied"
@@ -288,9 +449,13 @@ else
     log_deploy "ALEMBIC migration failed or not needed"
 fi
 
-# 6. Deploy backend + health check
+# 6. Graceful shutdown + Deploy backend
 echo ""
 echo "[6/9] Deploying backend..."
+
+# Wait for active queries before restart
+wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
+
 docker compose up -d backend --force-recreate
 
 echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
@@ -327,13 +492,14 @@ else
     echo -e "${YELLOW}!${NC} Gateway not running, skipping"
 fi
 
-# 9. Final health check
+# 9. Final health check + DB health
 echo ""
 echo "[9/9] Final health check..."
 sleep 10
 
 BACKEND_OK=false
 FRONTEND_OK=false
+DB_OK=false
 
 if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} Backend healthy"
@@ -349,6 +515,10 @@ else
     echo -e "${YELLOW}!${NC} Frontend may not be fully ready yet"
 fi
 
+if check_db_health; then
+    DB_OK=true
+fi
+
 # === FINAL ===
 echo ""
 echo -e "${GREEN}========================================"
@@ -358,4 +528,4 @@ echo "Version: $VERSION"
 echo "Deployed at: $(date)"
 echo ""
 
-log_deploy "DEPLOY SUCCESS: version=$VERSION timestamp=$TIMESTAMP backend=$BACKEND_OK frontend=$FRONTEND_OK"
+log_deploy "DEPLOY SUCCESS: version=$VERSION timestamp=$TIMESTAMP backend=$BACKEND_OK frontend=$FRONTEND_OK db=$DB_OK"

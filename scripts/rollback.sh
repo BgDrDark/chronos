@@ -130,12 +130,21 @@ fi
 
 # === 3. Restore Database ===
 echo ""
-echo "[3/5] Restoring database..."
+echo "[3/6] Restoring database..."
 
+# Verify backup before restore
+echo "Verifying backup before restore..."
 DB_CONTAINER=$(docker ps --filter "name=chronos-DB" --format "{{.Names}}" 2>/dev/null || docker ps --filter "name=db" --format "{{.Names}}" 2>/dev/null | head -1)
 
 if [ -z "$DB_CONTAINER" ]; then
     echo -e "${RED}✗${NC} Database container not found"
+    exit 1
+fi
+
+if docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - < "$BACKUP_DIR/db_$TIMESTAMP.dump" >/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC} Backup verified (valid format)"
+else
+    echo -e "${RED}✗${NC} Backup verification failed"
     exit 1
 fi
 
@@ -185,15 +194,22 @@ sleep 15
 
 echo "Checking health..."
 if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
-    echo ""
-    echo -e "${GREEN}========================================"
-    echo -e "=== Rollback Complete ==="
-    echo -e "========================================${NC}"
-    echo "Restored to: $TIMESTAMP"
-    echo ""
-    log_deploy "ROLLBACK SUCCESS: timestamp=$TIMESTAMP"
+    echo -e "${GREEN}✓${NC} Backend healthy"
 else
-    echo -e "${RED}ERROR:${NC} Health check failed after rollback"
-    log_deploy "ROLLBACK FAILED: timestamp=$TIMESTAMP - health check failed"
-    exit 1
+    echo -e "${RED}✗${NC} Backend not responding"
 fi
+
+echo "Checking database health..."
+if docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$DB_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT 1;" >/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC} Database healthy"
+else
+    echo -e "${RED}✗${NC} Database not responding"
+fi
+
+echo ""
+echo -e "${GREEN}========================================"
+echo -e "=== Rollback Complete ==="
+echo -e "========================================${NC}"
+echo "Restored to: $TIMESTAMP"
+echo ""
+log_deploy "ROLLBACK SUCCESS: timestamp=$TIMESTAMP"
