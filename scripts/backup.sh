@@ -7,7 +7,7 @@
 set -e
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="/backups/chronos"
+BACKUP_DIR="./backups/chronos"
 MAX_BACKUPS=5
 
 # Colors for output

@@ -7,7 +7,7 @@
 set -e
 
 # === CONFIG ===
-BACKUP_DIR="/backups/chronos"
+BACKUP_DIR="./backups/chronos"
 HEALTH_TIMEOUT=120
 BUILD_TIMEOUT=600
 LOCK_FILE="/tmp/chronos_deploy.lock"

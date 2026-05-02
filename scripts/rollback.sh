@@ -7,7 +7,7 @@
 set -e
 
 TIMESTAMP=${1:-""}
-BACKUP_DIR="/backups/chronos"
+BACKUP_DIR="./backups/chronos"
 LOCK_FILE="/tmp/chronos_deploy.lock"
 DEPLOY_LOG="$BACKUP_DIR/deploy.log"
 

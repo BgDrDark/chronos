@@ -56,6 +56,8 @@ _deploy_status = {
 
 _deploy_lock = threading.Lock()
 
+PROJECT_DIR = os.environ.get("PROJECT_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 
 def _update_deploy_status(status: str, progress: str, output: str = "", version: str = None):
     with _deploy_lock:
@@ -237,7 +239,7 @@ async def deploy_update(
             detail="Deploy API not configured on server"
         )
 
-    app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    app_dir = os.environ.get("PROJECT_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     script_path = os.path.join(app_dir, "scripts", "deploy-safe.sh")
 
     if not os.path.exists(script_path):
@@ -296,7 +298,7 @@ async def deploy_rollback(
     try:
         logger.info(f"Starting SAFE rollback to {timestamp or 'latest'}...")
 
-        app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        app_dir = PROJECT_DIR
         script_path = os.path.join(app_dir, "scripts", "rollback.sh")
 
         if not os.path.exists(script_path):
@@ -374,7 +376,7 @@ async def get_deploy_log(
     except Exception as e:
         raise HTTPException(401, "Invalid token")
 
-    app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    app_dir = PROJECT_DIR
     log_path = os.path.join(app_dir, "backups", "chronos", "deploy.log")
 
     if not os.path.exists(log_path):

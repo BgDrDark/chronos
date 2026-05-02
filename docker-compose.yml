@@ -75,6 +75,13 @@ services:
       - ./logs/backend:/app/logs
       # Mount performance scripts
       - ./scripts:/app/scripts:ro
+      # Mount Docker socket for deploy (needed by deploy-safe.sh)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount entire project root for deploy (git, .env, docker-compose.yml, backups)
+      - .:/project
+    environment:
+      # Tell deploy.py where the project root is mounted
+      - PROJECT_DIR=/project
     logging:
       driver: "json-file"
       options:
