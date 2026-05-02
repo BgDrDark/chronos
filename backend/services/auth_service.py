@@ -1,5 +1,6 @@
 from typing import Optional, List
 from datetime import datetime, timedelta
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
@@ -173,6 +174,22 @@ class AuthService:
             await self.db.commit()
         
         return count
+
+    async def regenerate_qr_token(self, user_id: int) -> str:
+        """Regenerate QR token for a user"""
+        stmt = select(User).where(User.id == user_id)
+        result = await self.db.execute(stmt)
+        user = result.scalars().first()
+        
+        if not user:
+            raise ValueError(f"User {user_id} not found")
+        
+        user.qr_token = str(uuid.uuid4())
+        self.db.add(user)
+        await self.db.commit()
+        await self.db.refresh(user)
+        
+        return user.qr_token
 
     async def _get_setting(self, key: str) -> Optional[str]:
         """Get global setting value"""
