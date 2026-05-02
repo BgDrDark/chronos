@@ -140,23 +140,21 @@ def _update_deploy_status(status: str, progress: str, output: str = "", version:
 
 def _parse_progress_line(line: str) -> Optional[str]:
     """Extract progress indicator from deploy script output"""
-    if "[1/9]" in line:
+    if "[0/7]" in line:
+        return "Acquiring DB lock..."
+    elif "[1/7]" in line:
         return "Health check (current)"
-    elif "[2/9]" in line:
+    elif "[2/7]" in line:
         return "Creating backup..."
-    elif "[3/9]" in line:
-        return "Fetching latest code..."
-    elif "[4/9]" in line:
-        return "Building images..."
-    elif "[5/9]" in line:
+    elif "[3/7]" in line:
+        return "Pulling images from GHCR..."
+    elif "[4/7]" in line:
         return "Running Alembic migrations..."
-    elif "[6/9]" in line:
+    elif "[5/7]" in line:
         return "Deploying backend..."
-    elif "[7/9]" in line:
+    elif "[6/7]" in line:
         return "Deploying frontend..."
-    elif "[8/9]" in line:
-        return "Restarting dependent services..."
-    elif "[9/9]" in line:
+    elif "[7/7]" in line:
         return "Final health check..."
     elif "Deploy Complete" in line:
         return "Deployment complete"

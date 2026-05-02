@@ -1,15 +1,15 @@
 #!/bin/bash
 #
-# deploy-safe.sh - Safe deployment script for Chronos
-# Deploys with health checks, Alembic migrations, and auto-rollback on failure
+# deploy-safe.sh - Safe deployment script for Chronos (CI/CD mode)
+# Pulls pre-built images from GHCR with health checks, Alembic migrations, and auto-rollback
 #
 # Safety features:
 # - Pre-deploy DB lock (pg_advisory_lock)
-# - Backup verification (pg_restore --list)
+# - Backup verification
 # - Alembic dry-run (--sql) before actual migration
 # - Graceful shutdown (wait for active queries)
 # - DB health check after deploy
-# - Deploy lock on DB level (pg_advisory_lock)
+# - Auto-rollback on failure
 #
 
 set -e
@@ -17,12 +17,13 @@ set -e
 # === CONFIG ===
 BACKUP_DIR="./backups/chronos"
 HEALTH_TIMEOUT=120
-BUILD_TIMEOUT=600
+PULL_TIMEOUT=300
 LOCK_FILE="/tmp/chronos_deploy.lock"
 DEPLOY_LOG="$BACKUP_DIR/deploy.log"
 VERSION_FILE="VERSION"
 DB_LOCK_ID=1234567890
 GRACEFUL_SHUTDOWN_TIMEOUT=30
+REGISTRY="ghcr.io/bgdrdark"
 
 # Colors for output
 RED='\033[0;31m'
@@ -81,20 +82,6 @@ acquire_db_lock() {
 release_db_lock() {
     db_exec "SELECT pg_advisory_unlock($DB_LOCK_ID);" >/dev/null 2>&1
     log_deploy "DB LOCK released"
-}
-
-enable_maintenance_mode() {
-    echo "Enabling maintenance mode (blocking writes)..."
-    db_exec "SET default_transaction_read_only = on;" >/dev/null 2>&1 || true
-    echo -e "${GREEN}✓${NC} Maintenance mode enabled"
-    log_deploy "MAINTENANCE MODE enabled"
-}
-
-disable_maintenance_mode() {
-    echo "Disabling maintenance mode..."
-    db_exec "SET default_transaction_read_only = off;" >/dev/null 2>&1 || true
-    echo -e "${GREEN}✓${NC} Maintenance mode disabled"
-    log_deploy "MAINTENANCE MODE disabled"
 }
 
 wait_for_active_queries() {
@@ -158,7 +145,6 @@ verify_backup() {
 cleanup() {
     rm -f "$LOCK_FILE"
     release_db_lock 2>/dev/null || true
-    disable_maintenance_mode 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -178,15 +164,10 @@ fi
 echo $$ > "$LOCK_FILE"
 
 # === ARGUMENTS ===
-FORCE_BUILD=false
 DRY_RUN=false
 DEPLOY_VERSION=""
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --force)
-            FORCE_BUILD=true
-            shift
-            ;;
         --dry-run)
             DRY_RUN=true
             shift
@@ -196,7 +177,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         *)
-            echo "Usage: $0 [--force] [--dry-run] [--version v3.6.2.0]"
+            echo "Usage: $0 [--dry-run] [--version v3.6.12.0]"
             exit 1
             ;;
     esac
@@ -204,9 +185,9 @@ done
 
 # === HEADER ===
 echo -e "${BLUE}========================================"
-echo -e "=== Chronos Safe Deploy ==="
+echo -e "=== Chronos Safe Deploy (CI/CD) ==="
 echo -e "========================================${NC}"
-echo "Version: $VERSION"
+echo "Current Version: $VERSION"
 if [ -n "$DEPLOY_VERSION" ]; then
     echo -e "Target:  ${DEPLOY_VERSION}"
 fi
@@ -228,40 +209,29 @@ if ! docker info >/dev/null 2>&1; then
 fi
 echo -e "${GREEN}✓${NC} Docker daemon is running"
 
-# 2. Disk space (min 1GB free)
+# 2. Disk space (min 500MB free for image pull)
 DISK_FREE=$(df -m / | awk 'NR==2 {print $4}')
-if [ "$DISK_FREE" -lt 1024 ]; then
-    echo -e "${RED}ERROR:${NC} Insufficient disk space (${DISK_FREE}MB available, need 1GB+)"
+if [ "$DISK_FREE" -lt 512 ]; then
+    echo -e "${RED}ERROR:${NC} Insufficient disk space (${DISK_FREE}MB available, need 512MB+)"
     exit 1
 fi
 echo -e "${GREEN}✓${NC} Disk space OK (${DISK_FREE}MB free)"
 
-# 3. Git status (warn on uncommitted changes)
-if git status --porcelain 2>/dev/null | grep -q .; then
-    echo -e "${YELLOW}!${NC} WARNING: Uncommitted changes detected"
-    git status --porcelain | head -5
-    if [ "$DRY_RUN" = true ]; then
-        echo -e "${YELLOW}[DRY RUN]${NC} Would deploy with uncommitted changes"
-    fi
-else
-    echo -e "${GREEN}✓${NC} Git working directory is clean"
-fi
-
-# 4. .env file
+# 3. .env file
 if [ ! -f ".env" ]; then
     echo -e "${RED}ERROR:${NC} .env file not found"
     exit 1
 fi
 echo -e "${GREEN}✓${NC} .env file exists"
 
-# 5. docker-compose.yml
+# 4. docker-compose.yml
 if [ ! -f "docker-compose.yml" ]; then
     echo -e "${RED}ERROR:${NC} docker-compose.yml not found"
     exit 1
 fi
 echo -e "${GREEN}✓${NC} docker-compose.yml exists"
 
-# 6. Database connectivity
+# 5. Database connectivity
 if ! db_exec "SELECT 1;" >/dev/null 2>&1; then
     echo -e "${RED}ERROR:${NC} Cannot connect to database"
     exit 1
@@ -278,14 +248,16 @@ fi
 
 # === DEPLOYMENT ===
 
+TARGET_VERSION="${DEPLOY_VERSION:-$VERSION}"
+
 # 0. Acquire DB-level deploy lock
-echo "[0/9] Acquiring database deploy lock..."
+echo "[0/7] Acquiring database deploy lock..."
 if ! acquire_db_lock; then
     exit 1
 fi
 
 # 1. Health check (current version)
-echo "[1/9] Checking current health..."
+echo "[1/7] Checking current health..."
 if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} Current version is healthy"
 else
@@ -297,9 +269,8 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # 2. Create backup with verification
 echo ""
-echo "[2/9] Creating backup..."
+echo "[2/7] Creating backup..."
 if ./scripts/backup.sh 2>&1; then
-    # Find the backup file and verify it
     LATEST_BACKUP=$(ls -t $BACKUP_DIR/db_*.dump 2>/dev/null | head -1)
     if [ -n "$LATEST_BACKUP" ]; then
         if verify_backup "$LATEST_BACKUP"; then
@@ -320,112 +291,47 @@ else
     exit 1
 fi
 
-# 3. Git fetch + checkout
+# 3. Pull new images from GHCR
 echo ""
-echo "[3/9] Fetching latest code..."
+echo "[3/7] Pulling images from GHCR..."
+PULL_START=$(date +%s)
 
-# Configure git credentials if GITHUB_REPO_TOKEN is set
-if [ -n "$GITHUB_REPO_TOKEN" ]; then
-    git config --global credential.helper '!f() { echo "username=x-access-token"; echo "password=$GITHUB_REPO_TOKEN"; }; f'
-    git config --global url."https://x-access-token:${GITHUB_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
+# Login to GHCR if token is available
+if [ -n "$GITHUB_TOKEN" ] || [ -n "$GITHUB_REPO_TOKEN" ]; then
+    echo "Logging in to GHCR..."
+    echo "${GITHUB_TOKEN:-$GITHUB_REPO_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR:-$(whoami)}" --password-stdin 2>/dev/null || \
+    echo -e "${YELLOW}!${NC} GHCR login failed, trying without auth..."
 fi
 
-# Fix dubious ownership (container runs as root, project mounted from host)
-git config --global --add safe.directory /project
-
-if [ -n "$DEPLOY_VERSION" ]; then
-    # Deploy specific version (tag)
-    echo "Fetching tags..."
-    if git fetch origin --tags; then
-        CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-        # Try tag with and without 'v' prefix
-        if git rev-parse "$DEPLOY_VERSION" >/dev/null 2>&1; then
-            git checkout "$DEPLOY_VERSION"
-        elif git rev-parse "v$DEPLOY_VERSION" >/dev/null 2>&1; then
-            git checkout "v$DEPLOY_VERSION"
-        else
-            echo -e "${RED}ERROR:${NC} Version tag '$DEPLOY_VERSION' not found"
-            log_deploy "DEPLOY ABORTED: version tag '$DEPLOY_VERSION' not found"
-            exit 1
-        fi
-        NEW_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-        echo -e "${GREEN}✓${NC} Code updated to $DEPLOY_VERSION: $CURRENT_COMMIT → $NEW_COMMIT"
-        log_deploy "GIT updated to $DEPLOY_VERSION: $NEW_COMMIT"
-    else
-        echo -e "${RED}ERROR:${NC} Git fetch tags failed"
-        log_deploy "DEPLOY ABORTED: git fetch tags failed"
-        exit 1
-    fi
-else
-    # Deploy latest main
-    if git fetch origin main; then
-        CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-        git reset --hard origin/main
-        NEW_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-        echo -e "${GREEN}✓${NC} Code updated: $CURRENT_COMMIT → $NEW_COMMIT"
-        log_deploy "GIT updated: $NEW_COMMIT"
-    else
-        echo -e "${YELLOW}!${NC} Git fetch failed, using local code"
-        log_deploy "GIT fetch failed, using local code"
-    fi
+# Pull backend
+echo "Pulling backend image: ${REGISTRY}/chronos-backend:${TARGET_VERSION}..."
+if ! timeout $PULL_TIMEOUT docker pull ${REGISTRY}/chronos-backend:${TARGET_VERSION}; then
+    echo -e "${RED}ERROR:${NC} Backend image pull failed"
+    log_deploy "DEPLOY ABORTED: backend pull failed"
+    exit 1
 fi
+echo -e "${GREEN}✓${NC} Backend image pulled"
 
-# 4. Build images
+# Pull frontend
+echo "Pulling frontend image: ${REGISTRY}/chronos-frontend:${TARGET_VERSION}..."
+if ! timeout $PULL_TIMEOUT docker pull ${REGISTRY}/chronos-frontend:${TARGET_VERSION}; then
+    echo -e "${RED}ERROR:${NC} Frontend image pull failed"
+    log_deploy "DEPLOY ABORTED: frontend pull failed"
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} Frontend image pulled"
+
+PULL_ELAPSED=$(( $(date +%s) - PULL_START ))
+echo -e "${GREEN}✓${NC} All images pulled (${PULL_ELAPSED}s)"
+log_deploy "PULL complete: ${PULL_ELAPSED}s"
+
+# 4. Alembic dry-run + migration
 echo ""
-echo "[4/9] Building images..."
-BUILD_ARGS=""
-if [ "$FORCE_BUILD" = true ]; then
-    BUILD_ARGS="--no-cache"
-    echo "Building without cache (--force)..."
-else
-    echo "Using build cache (use --force to rebuild)..."
-fi
-
-# Build backend with timeout
-echo "Building backend..."
-START_TIME=$(date +%s)
-docker compose build $BUILD_ARGS backend
-BUILD_STATUS=$?
-ELAPSED=$(( $(date +%s) - START_TIME ))
-if [ $BUILD_STATUS -ne 0 ]; then
-    echo -e "${RED}ERROR:${NC} Backend build failed"
-    log_deploy "DEPLOY ABORTED: backend build failed"
-    exit 1
-fi
-if [ $ELAPSED -ge $BUILD_TIMEOUT ]; then
-    echo -e "${RED}ERROR:${NC} Backend build timeout (${BUILD_TIMEOUT}s)"
-    log_deploy "DEPLOY ABORTED: backend build timeout"
-    exit 1
-fi
-echo -e "${GREEN}✓${NC} Backend built (${ELAPSED}s)"
-
-# Build frontend with timeout
-echo "Building frontend..."
-START_TIME=$(date +%s)
-docker compose build $BUILD_ARGS frontend
-BUILD_STATUS=$?
-ELAPSED=$(( $(date +%s) - START_TIME ))
-if [ $BUILD_STATUS -ne 0 ]; then
-    echo -e "${RED}ERROR:${NC} Frontend build failed"
-    log_deploy "DEPLOY ABORTED: frontend build failed"
-    exit 1
-fi
-if [ $ELAPSED -ge $BUILD_TIMEOUT ]; then
-    echo -e "${RED}ERROR:${NC} Frontend build timeout (${BUILD_TIMEOUT}s)"
-    log_deploy "DEPLOY ABORTED: frontend build timeout"
-    exit 1
-fi
-echo -e "${GREEN}✓${NC} Frontend built (${ELAPSED}s)"
-
-log_deploy "BUILD complete: backend + frontend"
-
-# 5. Alembic dry-run + migration
-echo ""
-echo "[5/9] Running Alembic migrations..."
+echo "[4/7] Running Alembic migrations..."
 
 # Dry-run first
 echo "Running dry-run check..."
-if docker compose exec -T backend alembic upgrade head --sql 2>/dev/null | grep -q "BEGIN\|CREATE\|ALTER\|INSERT"; then
+if docker compose run --rm backend alembic upgrade head --sql 2>/dev/null | grep -q "BEGIN\|CREATE\|ALTER\|INSERT"; then
     echo -e "${GREEN}✓${NC} Dry-run SQL generated (migrations are valid)"
     log_deploy "ALEMBIC dry-run OK"
 else
@@ -434,7 +340,7 @@ fi
 
 # Apply migrations
 echo "Applying migrations..."
-if docker compose exec -T backend alembic upgrade head 2>/dev/null; then
+if docker compose run --rm backend alembic upgrade head 2>/dev/null; then
     echo -e "${GREEN}✓${NC} Alembic migrations applied"
     log_deploy "ALEMBIC migrations applied"
 else
@@ -442,16 +348,26 @@ else
     log_deploy "ALEMBIC migration failed or not needed"
 fi
 
-# 6. Graceful shutdown + Deploy backend
+# 5. Graceful shutdown + Deploy backend
 echo ""
-echo "[6/9] Deploying backend..."
+echo "[5/7] Deploying backend..."
 
 # Wait for active queries before restart
 wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
 
 docker compose stop backend
 sleep 5
-docker compose up -d --no-deps backend
+
+# Update .env with target version if deploying specific version
+if [ -n "$DEPLOY_VERSION" ]; then
+    if grep -q "^VERSION=" .env; then
+        sed -i "s/^VERSION=.*/VERSION=${DEPLOY_VERSION}/" .env
+    else
+        echo "VERSION=${DEPLOY_VERSION}" >> .env
+    fi
+fi
+
+docker compose up -d backend
 
 echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
 BACKEND_HEALTHY=false
@@ -471,27 +387,17 @@ if [ "$BACKEND_HEALTHY" = false ]; then
     exit 1
 fi
 
-# 7. Deploy frontend
+# 6. Deploy frontend
 echo ""
-echo "[7/9] Deploying frontend..."
+echo "[6/7] Deploying frontend..."
 docker compose stop frontend
 sleep 3
-docker compose up -d --no-deps frontend
+docker compose up -d frontend
 echo -e "${GREEN}✓${NC} Frontend deployed"
 
-# 8. Restart dependent services
+# 7. Final health check + DB health
 echo ""
-echo "[8/9] Restarting dependent services..."
-if docker compose ps gateway 2>/dev/null | grep -q "Up"; then
-    docker compose restart gateway
-    echo -e "${GREEN}✓${NC} Gateway restarted"
-else
-    echo -e "${YELLOW}!${NC} Gateway not running, skipping"
-fi
-
-# 9. Final health check + DB health
-echo ""
-echo "[9/9] Final health check..."
+echo "[7/7] Final health check..."
 sleep 10
 
 BACKEND_OK=false
@@ -521,8 +427,8 @@ echo ""
 echo -e "${GREEN}========================================"
 echo -e "=== Deploy Complete ==="
 echo -e "========================================${NC}"
-echo "Version: $VERSION"
+echo "Version: $TARGET_VERSION"
 echo "Deployed at: $(date)"
 echo ""
 
-log_deploy "DEPLOY SUCCESS: version=$VERSION timestamp=$TIMESTAMP backend=$BACKEND_OK frontend=$FRONTEND_OK db=$DB_OK"
+log_deploy "DEPLOY SUCCESS: version=$TARGET_VERSION timestamp=$TIMESTAMP backend=$BACKEND_OK frontend=$FRONTEND_OK db=$DB_OK"
