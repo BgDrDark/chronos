@@ -249,6 +249,10 @@ fi
 # === DEPLOYMENT ===
 
 TARGET_VERSION="${DEPLOY_VERSION:-$VERSION}"
+# Ensure version has 'v' prefix for GHCR images
+if [[ ! "$TARGET_VERSION" =~ ^v ]]; then
+    TARGET_VERSION="v${TARGET_VERSION}"
+fi
 
 # 0. Acquire DB-level deploy lock
 echo "[0/7] Acquiring database deploy lock..."
@@ -361,9 +365,9 @@ sleep 5
 # Update .env with target version if deploying specific version
 if [ -n "$DEPLOY_VERSION" ]; then
     if grep -q "^VERSION=" .env; then
-        sed -i "s/^VERSION=.*/VERSION=${DEPLOY_VERSION}/" .env
+        sed -i "s/^VERSION=.*/VERSION=${TARGET_VERSION}/" .env
     else
-        echo "VERSION=${DEPLOY_VERSION}" >> .env
+        echo "VERSION=${TARGET_VERSION}" >> .env
     fi
 fi
 

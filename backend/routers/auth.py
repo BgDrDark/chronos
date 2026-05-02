@@ -120,7 +120,7 @@ async def login_for_access_token(
 
     response = JSONResponse(content=response_content)
     
-    # Set Access Token Cookie - HttpOnly, Secure, Strict
+    # Set Access Token Cookie - HttpOnly, Secure, None, Partitioned
     response.set_cookie(
         key="access_token", 
         value=access_token, 
@@ -128,9 +128,10 @@ async def login_for_access_token(
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, 
         samesite="none",
         secure=True,
+        partitioned=True,
         path="/",
     )
-    # Set Refresh Token Cookie - HttpOnly, Secure, None
+    # Set Refresh Token Cookie - HttpOnly, Secure, None, Partitioned
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
@@ -138,6 +139,7 @@ async def login_for_access_token(
         max_age=7 * 24 * 3600, # 7 days
         samesite="none",
         secure=True,
+        partitioned=True,
         path="/",
     )
     return response
@@ -182,8 +184,8 @@ async def refresh_token(
         "token_type": "bearer"
     })
     
-    response.set_cookie(key="access_token", value=new_access, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, samesite="none", secure=True, path="/")
-    response.set_cookie(key="refresh_token", value=new_refresh, httponly=True, max_age=7 * 24 * 3600, samesite="none", secure=True, path="/")
+    response.set_cookie(key="access_token", value=new_access, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, samesite="none", secure=True, partitioned=True, path="/")
+    response.set_cookie(key="refresh_token", value=new_refresh, httponly=True, max_age=7 * 24 * 3600, samesite="none", secure=True, partitioned=True, path="/")
     
     return response
 
@@ -200,10 +202,10 @@ async def logout(
         if payload and payload.get("jti"):
             await crud.invalidate_user_session(db, payload.get("jti"))
 
-    # Delete all auth cookies with strict samesite
-    response.delete_cookie(key="access_token", httponly=True, samesite="none", secure=True, path="/")
-    response.delete_cookie(key="refresh_token", httponly=True, samesite="none", secure=True, path="/")
-    response.delete_cookie(key="csrf_token", httponly=True, samesite="none", secure=True, path="/")
+    # Delete all auth cookies
+    response.delete_cookie(key="access_token", httponly=True, samesite="none", secure=True, partitioned=True, path="/")
+    response.delete_cookie(key="refresh_token", httponly=True, samesite="none", secure=True, partitioned=True, path="/")
+    response.delete_cookie(key="csrf_token", httponly=True, samesite="none", secure=True, partitioned=True, path="/")
     
     return {"message": "Successfully logged out"}
 
