@@ -30,7 +30,7 @@ services:
         max-file: "3"
 
   backend:
-    image: ghcr.io/bgdrdark/chronos-backend:${VERSION}
+    image: ghcr.io/bgdrdark/chronos-backend:${VERSION:-latest}
     container_name: ${BACKEND_NAME}
     restart: unless-stopped
     environment:
@@ -121,7 +121,7 @@ services:
       - dev
 
   frontend:
-    image: ghcr.io/bgdrdark/chronos-frontend:${VERSION}
+    image: ghcr.io/bgdrdark/chronos-frontend:${VERSION:-latest}
     container_name: ${FRONTEND_NAME}
     restart: unless-stopped
     ports:

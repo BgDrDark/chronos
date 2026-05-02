@@ -741,6 +741,18 @@ const DeploymentSettings: React.FC = () => {
     const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || 'BgDrDark/chronos';
 
     const FALLBACK_VERSION = '3.6.1.0';
+
+    const isNewerVersion = (latest: string, current: string): boolean => {
+        const parse = (v: string) => v.split('.').map(n => parseInt(n, 10) || 0);
+        const a = parse(latest), b = parse(current);
+        const len = Math.max(a.length, b.length);
+        for (let i = 0; i < len; i++) {
+            const ai = a[i] || 0, bi = b[i] || 0;
+            if (ai > bi) return true;
+            if (ai < bi) return false;
+        }
+        return false;
+    };
     
     React.useEffect(() => {
         fetch(`${API_URL}/webhook/health`)
@@ -853,7 +865,7 @@ const DeploymentSettings: React.FC = () => {
             if (latestVersion === 'unknown') {
                 setMsg({ type: 'error', text: 'Не може да се определи версията' });
             } else {
-                const hasUpdate = latestVersion !== currentVersion;
+                const hasUpdate = isNewerVersion(latestVersion, currentVersion);
                 setUpdateAvailable({ 
                     available: hasUpdate, 
                     version: latestVersion,
