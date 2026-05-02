@@ -456,7 +456,7 @@ echo "[6/9] Deploying backend..."
 # Wait for active queries before restart
 wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
 
-docker compose up -d backend --force-recreate
+docker compose up -d --no-deps backend --force-recreate
 
 echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
 BACKEND_HEALTHY=false
