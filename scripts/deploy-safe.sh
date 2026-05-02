@@ -151,7 +151,7 @@ verify_backup() {
     
     # Use pg_restore --list to verify backup is valid
     local DB_CONTAINER=$(get_db_container)
-    if head -c 5 "$backup_file" | grep -q "PGDMP"; then
+    if docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - < "$backup_file" >/dev/null 2>&1; then
         local size=$(du -h "$backup_file" | cut -f1)
         echo -e "${GREEN}✓${NC} Backup verified ($size, valid format)"
         return 0
@@ -456,7 +456,9 @@ echo "[6/9] Deploying backend..."
 # Wait for active queries before restart
 wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
 
-docker compose up -d --no-deps backend --force-recreate
+docker compose stop backend
+sleep 5
+docker compose up -d --no-deps backend
 
 echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
 BACKEND_HEALTHY=false
@@ -479,7 +481,9 @@ fi
 # 7. Deploy frontend
 echo ""
 echo "[7/9] Deploying frontend..."
-docker compose up -d frontend --force-recreate
+docker compose stop frontend
+sleep 3
+docker compose up -d --no-deps frontend
 echo -e "${GREEN}✓${NC} Frontend deployed"
 
 # 8. Restart dependent services
