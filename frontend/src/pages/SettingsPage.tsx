@@ -7,20 +7,13 @@ import {
 } from '@mui/material';
 import { InfoIcon } from '../components/ui/InfoIcon';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
-import ReceiptIcon from '@mui/icons-material/Receipt';
 import StorageIcon from '@mui/icons-material/Storage';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import HistoryIcon from '@mui/icons-material/History';
 import GoogleIcon from '@mui/icons-material/Google';
-import FingerprintIcon from '@mui/icons-material/Fingerprint';
 import SystemUpdateIcon from '@mui/icons-material/SystemUpdate';
 import { useQuery, useMutation, gql } from '@apollo/client';
-import { formatHours } from '../utils/formatUtils';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useAppTheme } from '../themeContext';
-import { useCurrency } from '../currencyContext';
-import { biometricService } from '../services/biometricService';
 import AuditLogViewer from '../components/AuditLogViewer';
 import PushNotificationManager from '../components/PushNotificationManager';
 import ApiKeyManager from '../components/ApiKeyManager';
@@ -28,7 +21,7 @@ import WebhookManager from '../components/WebhookManager';
 import ModuleManager from '../components/ModuleManager';
 import PasswordComplexitySettings from '../components/PasswordComplexitySettings';
 import { type SxProps, type Theme } from '@mui/material';
-import { type ActiveSession, type Payslip } from '../types';
+import { type ActiveSession } from '../types';
 
 interface ValidatedTextFieldProps {
   label: string;
@@ -112,16 +105,8 @@ const SETTINGS_QUERY = gql`
       jobTitle
       departmentName
       companyName
-      qrToken
       role {
         name
-      }
-      activeContract {
-        id
-        baseSalary
-        contractType
-        salaryInstallmentsCount
-        monthlyAdvanceAmount
       }
     }
   }
@@ -146,32 +131,6 @@ const UPDATE_OFFICE_LOC_MUTATION = gql`
     }
   }
  `;
-
-const CHANGE_PASSWORD_MUTATION = gql`
-  mutation ChangePassword($oldPassword: String!, $newPassword: String!) {
-    changePassword(oldPassword: $oldPassword, newPassword: $newPassword)
-  }
-`;
-
-const GET_ACTIVE_SESSIONS = gql`
-  query GetActiveSessions {
-    activeSessions {
-      id
-      user { email }
-      ipAddress
-      userAgent
-      expiresAt
-      lastUsedAt
-      isActive
-    }
-  }
-`;
-
-const INVALIDATE_SESSION = gql`
-  mutation InvalidateSession($sessionId: Int!) {
-    invalidateUserSession(sessionId: $sessionId)
-  }
-`;
 
 const UPDATE_SECURITY_CONFIG = gql`
   mutation UpdateSecurityConfig($maxLoginAttempts: Int!, $lockoutMinutes: Int!) {
@@ -220,23 +179,23 @@ const DISCONNECT_GOOGLE_MUTATION = gql`
   }
 `;
 
-const GENERATE_PAYSLIP_MUTATION = gql`
-  mutation GenerateMyPayslip($startDate: Date!, $endDate: Date!) {
-    generateMyPayslip(startDate: $startDate, endDate: $endDate) {
+const GET_ACTIVE_SESSIONS = gql`
+  query GetActiveSessions {
+    activeSessions {
       id
-      periodStart
-      periodEnd
-      totalAmount
-      regularAmount
-      overtimeAmount
-      bonusAmount
-      taxAmount
-      insuranceAmount
-      totalRegularHours
-      totalOvertimeHours
-      sickDays
-      leaveDays
+      user { email }
+      ipAddress
+      userAgent
+      expiresAt
+      lastUsedAt
+      isActive
     }
+  }
+`;
+
+const INVALIDATE_SESSION = gql`
+  mutation InvalidateSession($sessionId: Int!) {
+    invalidateUserSession(sessionId: $sessionId)
   }
 `;
 
@@ -1096,81 +1055,7 @@ const DeploymentSettings: React.FC = () => {
 
 const SettingsPage: React.FC = () => {
   const { data, loading, error } = useQuery(SETTINGS_QUERY);
-  const { mode, toggleTheme, dashboardConfig, toggleDashboardWidget } = useAppTheme();
-  const { currency } = useCurrency(); // Get global currency
-  const location = useLocation();
-  const navigate = useNavigate();
   
-  const [forcePasswordChange, setForcePasswordChange] = useState(false);
-  const passwordChangeSectionRef = React.useRef<HTMLDivElement>(null);
-
-  // Check for force_password_change query parameter
-  React.useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get('force_password_change') === 'true') {
-      setForcePasswordChange(true);
-      // Scroll to password change section
-      if (passwordChangeSectionRef.current) {
-        passwordChangeSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-      // Clear the query parameter from URL
-      navigate(location.pathname, { replace: true });
-    }
-  }, [location, navigate]);
-  
-  // Password State
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordMsg, setPasswordMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
-  const [changePassword] = useMutation(CHANGE_PASSWORD_MUTATION);
-
-  // Biometric State
-  const [biometricLoading, setBiometricLoading] = useState(false);
-  const [biometricMsg, setBiometricMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
-
-  const handleRegisterBiometric = async () => {
-    setBiometricLoading(true);
-    setBiometricMsg(null);
-    try {
-      await biometricService.registerBiometrics("Моят телефон");
-      setBiometricMsg({ type: 'success', text: 'Биометрията е регистрирана успешно!' });
-    } catch (err) {
-      setBiometricMsg({ type: 'error', text: getErrorMessage(err) || 'Грешка при регистрация' });
-    } finally {
-      setBiometricLoading(false);
-    }
-  };
-
-  // Payslip State
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [payslipResult, setPayslipResult] = useState<Payslip | null>(null);
-  const [generatePayslip] = useMutation(GENERATE_PAYSLIP_MUTATION);
-
-  const handlePasswordChange = async () => {
-    if (newPassword !== confirmPassword) {
-      setPasswordMsg({ type: 'error', text: 'Паролите не съвпадат' });
-      return;
-    }
-    try {
-      await changePassword({ variables: { oldPassword, newPassword } });
-      setPasswordMsg({ type: 'success', text: 'Паролата е променена успешно' });
-      setOldPassword(''); setNewPassword(''); setConfirmPassword('');
-    } catch (_err: unknown) {
-      setPasswordMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") });
-    }
-  };
-
-  const handleGeneratePayslip = async () => {
-    try {
-      const res = await generatePayslip({ variables: { startDate, endDate } });
-      setPayslipResult(res.data.generateMyPayslip);
-    } catch (err) {
-      alert(getErrorMessage(err));
-    }
-  };
-
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
   if (error) return <Alert severity="error">{error.message}</Alert>;
   if (!data || !data.me) return <Alert severity="warning">Няма данни за потребителя.</Alert>;
@@ -1183,61 +1068,12 @@ const SettingsPage: React.FC = () => {
     <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" gutterBottom fontWeight="bold">Настройки</Typography>
 
-      {/* 1. Настройки на таблото */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>Настройки на таблото</Typography>
-          <Box>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={mode === 'dark'}
-                  onChange={toggleTheme}
-                />
-              }
-              label="Тъмен режим (Dark Mode)"
-            />
-          </Box>
-          <Box>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={dashboardConfig.showChart}
-                  onChange={() => toggleDashboardWidget('showChart')}
-                />
-              }
-              label="Покажи графика с активност"
-            />
-          </Box>
-          <Box>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={dashboardConfig.showWeeklyTable}
-                  onChange={() => toggleDashboardWidget('showWeeklyTable')}
-                />
-              }
-              label="Покажи детайлна седмична таблица"
-            />
-          </Box>
-          <Box>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={dashboardConfig.showFleetCard}
-                  onChange={() => toggleDashboardWidget('showFleetCard')}
-                />
-              }
-              label="Покажи картичка Автопарк"
-            />
-          </Box>
-          <Box sx={{ mt: 3 }}>
-            <PushNotificationManager />
-          </Box>
-        </CardContent>
-      </Card>
+      {!isAdmin && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Персоналните настройки (парола, биометрия, фишове, известия) са преместени в <strong>Профил → Настройки и Сигурност</strong>.
+        </Alert>
+      )}
 
-      {/* Останалите админ настройки */}
       {isAdmin && (
         <>
             <OfficeLocationSettings />
@@ -1271,172 +1107,6 @@ const SettingsPage: React.FC = () => {
             </Card>
         </>
       )}
-
-      {/* 4. Смяна на парола */}
-      <Card sx={{ mb: 4 }} ref={passwordChangeSectionRef}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>Смяна на парола</Typography>
-          {forcePasswordChange && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-                Моля, сменете вашата парола, за да отговаря на новите изисквания за сигурност.
-            </Alert>
-          )}
-          {passwordMsg && <Alert severity={passwordMsg.type} sx={{ mb: 2 }}>{passwordMsg.text}</Alert>}
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12 }}>
-              <TextField 
-                fullWidth type="password" label="Текуща парола" 
-                value={oldPassword} onChange={e => setOldPassword(e.target.value)} 
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField 
-                fullWidth type="password" label="Нова парола" 
-                value={newPassword} onChange={e => setNewPassword(e.target.value)} 
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField 
-                fullWidth type="password" label="Потвърди парола" 
-                value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} 
-              />
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <Button variant="contained" onClick={handlePasswordChange}>Промени парола</Button>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
-
-      {/* 4.1. Регистрация на биометрия */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            <FingerprintIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
-            Биометрия (Passkey)
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Регистрирайте вашия пръстов отпечатък или FaceID за по-безопасен и бърз вход.
-          </Typography>
-          {biometricMsg && (
-            <Alert severity={biometricMsg.type} sx={{ mb: 2 }} onClose={() => setBiometricMsg(null)}>
-              {biometricMsg.text}
-            </Alert>
-          )}
-          <Button 
-            variant="outlined" 
-            startIcon={<FingerprintIcon />}
-            onClick={handleRegisterBiometric}
-            disabled={biometricLoading}
-          >
-            {biometricLoading ? 'Регистриране...' : 'Регистрирай биометрия'}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* 5. Фиш за заплата */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>Генериране на фиш</Typography>
-          <Grid container spacing={2} alignItems="center">
-            <Grid size={{ xs: 12, sm: 5 }}>
-              <TextField 
-                fullWidth type="date" label="От дата" InputLabelProps={{ shrink: true }}
-                value={startDate} onChange={e => setStartDate(e.target.value)}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 5 }}>
-              <TextField 
-                fullWidth type="date" label="До дата" InputLabelProps={{ shrink: true }}
-                value={endDate} onChange={e => setEndDate(e.target.value)}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 2 }}>
-              <Button variant="contained" fullWidth onClick={handleGeneratePayslip}>Генерирай</Button>
-            </Grid>
-          </Grid>
-
-          {payslipResult && (
-             <Box sx={{ mt: 3, p: 3, bgcolor: 'background.paper', borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <ReceiptIcon color="primary" sx={{ mr: 1 }} />
-                    <Typography variant="h6" fontWeight="bold">Детайлен отчет</Typography>
-                </Box>
-                
-                <Grid container spacing={2}>
-                    <Grid size={{ xs: 6 }}>
-                        <Typography variant="body2" color="text.secondary">Редовни часове:</Typography>
-                        <Typography fontWeight="bold">{formatHours(payslipResult.totalRegularHours)}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 6 }}>
-                        <Typography variant="body2" color="text.secondary">Сума (Редовни):</Typography>
-                        <Typography fontWeight="bold">{Number(payslipResult.regularAmount).toFixed(2)} {currency}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 6 }}>
-                        <Typography variant="body2" color="error">Извънреден труд:</Typography>
-                        <Typography fontWeight="bold" color="error">{formatHours(payslipResult.totalOvertimeHours)}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 6 }}>
-                        <Typography variant="body2" color="error">Сума (Извънредни):</Typography>
-                        <Typography fontWeight="bold" color="error">{Number(payslipResult.overtimeAmount).toFixed(2)} {currency}</Typography>
-                    </Grid>
-                    
-                    <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
-                    
-                    <Grid size={{ xs: 6 }}>
-                        <Typography variant="body2" color="warning.dark">Бонуси:</Typography>
-                        <Typography fontWeight="bold">+{Number(payslipResult.bonusAmount).toFixed(2)} {currency}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 6 }}>
-                        <Typography variant="body2" color="text.secondary">Отпуск / Болнични:</Typography>
-                        <Typography fontWeight="medium">{payslipResult.leaveDays} д. / {payslipResult.sickDays} д.</Typography>
-                    </Grid>
-                    
-                    <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
-                    
-                    <Grid size={{ xs: 6 }}>
-                        <Typography variant="body2" color="error.main">Осигуровки:</Typography>
-                        <Typography fontWeight="bold" color="error.main">-{Number(payslipResult.insuranceAmount).toFixed(2)} {currency}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 6 }}>
-                        <Typography variant="body2" color="error.main">Данък (ДДФЛ):</Typography>
-                        <Typography fontWeight="bold" color="error.main">-{Number(payslipResult.taxAmount).toFixed(2)} {currency}</Typography>
-                    </Grid>
-                </Grid>
-
-                <Box sx={{ mt: 3, p: 2, bgcolor: 'success.light', color: 'white', borderRadius: 2, textAlign: 'center' }}>
-                    <Typography variant="subtitle2" sx={{ opacity: 0.9 }}>ОБЩО ЗА ПОЛУЧАВАНЕ (НЕТО)</Typography>
-                    <Typography variant="h4" fontWeight="bold">{Number(payslipResult.totalAmount).toFixed(2)} {currency}</Typography>
-                </Box>
-                
-                <Box sx={{ mt: 2, textAlign: 'center' }}>
-                    <Button 
-                        variant="outlined" 
-                        size="small"
-                        onClick={async () => {
-                            try {
-                                const token = localStorage.getItem('token');
-                                const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:14240'}/export/payslip/${payslipResult.id}/pdf`, {
-                                    headers: { 'Authorization': `Bearer ${token}` }
-                                });
-                                if (!res.ok) throw new Error('Failed');
-                                const blob = await res.blob();
-                                const url = window.URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = `payslip_${payslipResult.id}.pdf`;
-                                a.click();
-                            } catch { alert('Грешка при сваляне'); }
-                        }}
-                    >
-                        Изтегли PDF
-                    </Button>
-                </Box>
-             </Box>
-          )}
-        </CardContent>
-      </Card>
-
     </Container>
   );
 };

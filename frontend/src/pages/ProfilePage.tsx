@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { 
   Container, Typography, Grid, Card, CardContent, Avatar, Box, 
   Chip, Tab, Tabs, List, ListItem, ListItemIcon, ListItemText,
-  Paper, CircularProgress, Alert, IconButton, Divider
+  Paper, CircularProgress, Alert, IconButton, Divider, TextField, Button,
+  FormControlLabel, Switch
 } from '@mui/material';
-import { useQuery, gql } from '@apollo/client';
+import { useQuery, useMutation, gql } from '@apollo/client';
 import { useParams } from 'react-router-dom';
 import PersonIcon from '@mui/icons-material/Person';
 import BusinessIcon from '@mui/icons-material/Business';
@@ -16,13 +17,20 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import ContractIcon from '@mui/icons-material/Assignment';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import FingerprintIcon from '@mui/icons-material/Fingerprint';
+import ReceiptIcon from '@mui/icons-material/Receipt';
 import axios from 'axios';
 import { useCurrency } from '../currencyContext';
+import { useAppTheme } from '../themeContext';
 import { formatDate } from '../utils/dateUtils';
+import { formatHours } from '../utils/formatUtils';
+import { getErrorMessage } from '../types';
 import PushNotificationManager from '../components/PushNotificationManager';
 import MyQrCard from '../components/MyQrCard';
 import DocumentManager from '../components/DocumentManager';
 import ContractDossier from '../components/ContractDossier';
+import { biometricService } from '../services/biometricService';
+import { type Payslip } from '../types';
 
 const GET_USER_PROFILE = gql`
   query GetUserProfile($id: Int) {
@@ -71,6 +79,32 @@ const GET_USER_PROFILE = gql`
     me {
       id
       role { name }
+    }
+  }
+`;
+
+const CHANGE_PASSWORD_MUTATION = gql`
+  mutation ChangePassword($oldPassword: String!, $newPassword: String!) {
+    changePassword(oldPassword: $oldPassword, newPassword: $newPassword)
+  }
+`;
+
+const GENERATE_PAYSLIP_MUTATION = gql`
+  mutation GenerateMyPayslip($startDate: Date!, $endDate: Date!) {
+    generateMyPayslip(startDate: $startDate, endDate: $endDate) {
+      id
+      periodStart
+      periodEnd
+      totalAmount
+      regularAmount
+      overtimeAmount
+      bonusAmount
+      taxAmount
+      insuranceAmount
+      totalRegularHours
+      totalOvertimeHours
+      sickDays
+      leaveDays
     }
   }
 `;
@@ -180,8 +214,26 @@ const ProfilePage: React.FC = () => {
     const { id } = useParams<{ id?: string }>();
     const userId = id ? parseInt(id) : undefined;
     const { currency } = useCurrency();
+    const { mode, toggleTheme, dashboardConfig, toggleDashboardWidget } = useAppTheme();
     const [activeTab, setActiveTab] = useState(0);
     const [uploading, setUploading] = useState(false);
+
+    // Password state
+    const [oldPassword, setOldPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [passwordMsg, setPasswordMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
+    const [changePassword] = useMutation(CHANGE_PASSWORD_MUTATION);
+
+    // Biometric state
+    const [biometricLoading, setBiometricLoading] = useState(false);
+    const [biometricMsg, setBiometricMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
+
+    // Payslip state
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [payslipResult, setPayslipResult] = useState<Payslip | null>(null);
+    const [generatePayslip] = useMutation(GENERATE_PAYSLIP_MUTATION);
 
     const { data, loading, error, refetch } = useQuery(GET_USER_PROFILE, {
         variables: { id: userId },
@@ -214,6 +266,42 @@ const ProfilePage: React.FC = () => {
             alert(error.response?.data?.detail || "Грешка при качване");
         } finally {
             setUploading(false);
+        }
+    };
+
+    const handlePasswordChange = async () => {
+        if (newPassword !== confirmPassword) {
+            setPasswordMsg({ type: 'error', text: 'Паролите не съвпадат' });
+            return;
+        }
+        try {
+            await changePassword({ variables: { oldPassword, newPassword } });
+            setPasswordMsg({ type: 'success', text: 'Паролата е променена успешно' });
+            setOldPassword(''); setNewPassword(''); setConfirmPassword('');
+        } catch (_err: unknown) {
+            setPasswordMsg({ type: 'error', text: (_err instanceof Error ? _err.message : "Грешка") });
+        }
+    };
+
+    const handleRegisterBiometric = async () => {
+        setBiometricLoading(true);
+        setBiometricMsg(null);
+        try {
+            await biometricService.registerBiometrics("Моят телефон");
+            setBiometricMsg({ type: 'success', text: 'Биометрията е регистрирана успешно!' });
+        } catch (err) {
+            setBiometricMsg({ type: 'error', text: getErrorMessage(err) || 'Грешка при регистрация' });
+        } finally {
+            setBiometricLoading(false);
+        }
+    };
+
+    const handleGeneratePayslip = async () => {
+        try {
+            const res = await generatePayslip({ variables: { startDate, endDate } });
+            setPayslipResult(res.data.generateMyPayslip);
+        } catch (err) {
+            alert(getErrorMessage(err));
         }
     };
 
@@ -368,8 +456,39 @@ const ProfilePage: React.FC = () => {
             )}
 
             {/* TAB 3: Settings & Security */}
-            {activeTab === 3 && (
+            {activeTab === 3 && isOwnProfile && (
                 <Grid container spacing={3}>
+                    {/* Dashboard Settings */}
+                    <Grid size={{ xs: 12 }}>
+                        <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                            <CardContent>
+                                <Typography variant="h6" gutterBottom fontWeight="bold">Настройки на таблото</Typography>
+                                <FormControlLabel
+                                    control={<Switch checked={mode === 'dark'} onChange={toggleTheme} />}
+                                    label="Тъмен режим (Dark Mode)"
+                                />
+                                <FormControlLabel
+                                    control={<Switch checked={dashboardConfig.showChart} onChange={() => toggleDashboardWidget('showChart')} />}
+                                    label="Покажи графика с активност"
+                                />
+                                <FormControlLabel
+                                    control={<Switch checked={dashboardConfig.showWeeklyTable} onChange={() => toggleDashboardWidget('showWeeklyTable')} />}
+                                    label="Покажи детайлна седмична таблица"
+                                />
+                                <FormControlLabel
+                                    control={<Switch checked={dashboardConfig.showFleetCard} onChange={() => toggleDashboardWidget('showFleetCard')} />}
+                                    label="Покажи картичка Автопарк"
+                                />
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Push Notifications */}
+                    <Grid size={{ xs: 12 }}>
+                        <PushNotificationManager />
+                    </Grid>
+
+                    {/* QR Card */}
                     <Grid size={{ xs: 12, md: 4 }}>
                         <MyQrCard 
                             token={user.qrToken} 
@@ -377,8 +496,139 @@ const ProfilePage: React.FC = () => {
                             variables={{ id: userId }}
                         />
                     </Grid>
+
+                    {/* Password Change */}
                     <Grid size={{ xs: 12, md: 8 }}>
-                        <PushNotificationManager />
+                        <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                            <CardContent>
+                                <Typography variant="h6" gutterBottom fontWeight="bold">Смяна на парола</Typography>
+                                {passwordMsg && <Alert severity={passwordMsg.type} sx={{ mb: 2 }}>{passwordMsg.text}</Alert>}
+                                <Grid container spacing={2}>
+                                    <Grid size={{ xs: 12 }}>
+                                        <TextField fullWidth type="password" label="Текуща парола" value={oldPassword} onChange={e => setOldPassword(e.target.value)} />
+                                    </Grid>
+                                    <Grid size={{ xs: 12, sm: 6 }}>
+                                        <TextField fullWidth type="password" label="Нова парола" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                                    </Grid>
+                                    <Grid size={{ xs: 12, sm: 6 }}>
+                                        <TextField fullWidth type="password" label="Потвърди парола" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
+                                    </Grid>
+                                    <Grid size={{ xs: 12 }}>
+                                        <Button variant="contained" onClick={handlePasswordChange}>Промени парола</Button>
+                                    </Grid>
+                                </Grid>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Biometric */}
+                    <Grid size={{ xs: 12 }}>
+                        <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                            <CardContent>
+                                <Typography variant="h6" gutterBottom fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <FingerprintIcon /> Биометрия (Passkey)
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    Регистрирайте вашия пръстов отпечатък или FaceID за по-безопасен и бърз вход.
+                                </Typography>
+                                {biometricMsg && (
+                                    <Alert severity={biometricMsg.type} sx={{ mb: 2 }} onClose={() => setBiometricMsg(null)}>
+                                        {biometricMsg.text}
+                                    </Alert>
+                                )}
+                                <Button variant="outlined" startIcon={<FingerprintIcon />} onClick={handleRegisterBiometric} disabled={biometricLoading}>
+                                    {biometricLoading ? 'Регистриране...' : 'Регистрирай биометрия'}
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Payslip */}
+                    <Grid size={{ xs: 12 }}>
+                        <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                            <CardContent>
+                                <Typography variant="h6" gutterBottom fontWeight="bold">Генериране на фиш</Typography>
+                                <Grid container spacing={2} alignItems="center">
+                                    <Grid size={{ xs: 12, sm: 5 }}>
+                                        <TextField fullWidth type="date" label="От дата" InputLabelProps={{ shrink: true }} value={startDate} onChange={e => setStartDate(e.target.value)} />
+                                    </Grid>
+                                    <Grid size={{ xs: 12, sm: 5 }}>
+                                        <TextField fullWidth type="date" label="До дата" InputLabelProps={{ shrink: true }} value={endDate} onChange={e => setEndDate(e.target.value)} />
+                                    </Grid>
+                                    <Grid size={{ xs: 12, sm: 2 }}>
+                                        <Button variant="contained" fullWidth onClick={handleGeneratePayslip}>Генерирай</Button>
+                                    </Grid>
+                                </Grid>
+
+                                {payslipResult && (
+                                    <Box sx={{ mt: 3, p: 3, bgcolor: 'background.paper', borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                                            <ReceiptIcon color="primary" sx={{ mr: 1 }} />
+                                            <Typography variant="h6" fontWeight="bold">Детайлен отчет</Typography>
+                                        </Box>
+                                        <Grid container spacing={2}>
+                                            <Grid size={{ xs: 6 }}>
+                                                <Typography variant="body2" color="text.secondary">Редовни часове:</Typography>
+                                                <Typography fontWeight="bold">{formatHours(payslipResult.totalRegularHours)}</Typography>
+                                            </Grid>
+                                            <Grid size={{ xs: 6 }}>
+                                                <Typography variant="body2" color="text.secondary">Сума (Редовни):</Typography>
+                                                <Typography fontWeight="bold">{Number(payslipResult.regularAmount).toFixed(2)} {currency}</Typography>
+                                            </Grid>
+                                            <Grid size={{ xs: 6 }}>
+                                                <Typography variant="body2" color="error">Извънреден труд:</Typography>
+                                                <Typography fontWeight="bold" color="error">{formatHours(payslipResult.totalOvertimeHours)}</Typography>
+                                            </Grid>
+                                            <Grid size={{ xs: 6 }}>
+                                                <Typography variant="body2" color="error">Сума (Извънредни):</Typography>
+                                                <Typography fontWeight="bold" color="error">{Number(payslipResult.overtimeAmount).toFixed(2)} {currency}</Typography>
+                                            </Grid>
+                                            <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
+                                            <Grid size={{ xs: 6 }}>
+                                                <Typography variant="body2" color="warning.dark">Бонуси:</Typography>
+                                                <Typography fontWeight="bold">+{Number(payslipResult.bonusAmount).toFixed(2)} {currency}</Typography>
+                                            </Grid>
+                                            <Grid size={{ xs: 6 }}>
+                                                <Typography variant="body2" color="text.secondary">Отпуск / Болнични:</Typography>
+                                                <Typography fontWeight="medium">{payslipResult.leaveDays} д. / {payslipResult.sickDays} д.</Typography>
+                                            </Grid>
+                                            <Grid size={{ xs: 12 }}><Divider sx={{ my: 1 }} /></Grid>
+                                            <Grid size={{ xs: 6 }}>
+                                                <Typography variant="body2" color="error.main">Осигуровки:</Typography>
+                                                <Typography fontWeight="bold" color="error.main">-{Number(payslipResult.insuranceAmount).toFixed(2)} {currency}</Typography>
+                                            </Grid>
+                                            <Grid size={{ xs: 6 }}>
+                                                <Typography variant="body2" color="error.main">Данък (ДДФЛ):</Typography>
+                                                <Typography fontWeight="bold" color="error.main">-{Number(payslipResult.taxAmount).toFixed(2)} {currency}</Typography>
+                                            </Grid>
+                                        </Grid>
+                                        <Box sx={{ mt: 3, p: 2, bgcolor: 'success.light', color: 'white', borderRadius: 2, textAlign: 'center' }}>
+                                            <Typography variant="subtitle2" sx={{ opacity: 0.9 }}>ОБЩО ЗА ПОЛУЧАВАНЕ (НЕТО)</Typography>
+                                            <Typography variant="h4" fontWeight="bold">{Number(payslipResult.totalAmount).toFixed(2)} {currency}</Typography>
+                                        </Box>
+                                        <Box sx={{ mt: 2, textAlign: 'center' }}>
+                                            <Button variant="outlined" size="small" onClick={async () => {
+                                                try {
+                                                    const token = localStorage.getItem('token');
+                                                    const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:14240'}/export/payslip/${payslipResult.id}/pdf`, {
+                                                        headers: { 'Authorization': `Bearer ${token}` }
+                                                    });
+                                                    if (!res.ok) throw new Error('Failed');
+                                                    const blob = await res.blob();
+                                                    const url = window.URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = url;
+                                                    a.download = `payslip_${payslipResult.id}.pdf`;
+                                                    a.click();
+                                                } catch { alert('Грешка при сваляне'); }
+                                            }}>
+                                                Изтегли PDF
+                                            </Button>
+                                        </Box>
+                                    </Box>
+                                )}
+                            </CardContent>
+                        </Card>
                     </Grid>
                 </Grid>
             )}
