@@ -830,30 +830,26 @@ const DeploymentSettings: React.FC = () => {
             let releaseNotes = '';
             
             try {
-                const response = await fetch(
-                    `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-                    {
-                        headers: {
-                            'Accept': 'application/vnd.github.v3+json'
-                        }
-                    }
+                // Check tags directly (more reliable than releases)
+                const tagsResponse = await fetch(
+                    `https://api.github.com/repos/${GITHUB_REPO}/tags`,
+                    { headers: { 'Accept': 'application/vnd.github.v3+json' } }
                 );
-                
-                if (response.ok) {
-                    const release = await response.json();
-                    latestVersion = release.tag_name?.replace(/^v/, '') || 'unknown';
-                    releaseNotes = release.body || '';
+                if (tagsResponse.ok) {
+                    const tags = await tagsResponse.json();
+                    if (tags.length > 0) {
+                        latestVersion = tags[0].name.replace(/^v/, '');
+                    }
                 } else {
-                    // Fallback to tags
-                    const tagsResponse = await fetch(
-                        `https://api.github.com/repos/${GITHUB_REPO}/tags`,
+                    // Fallback to releases
+                    const response = await fetch(
+                        `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
                         { headers: { 'Accept': 'application/vnd.github.v3+json' } }
                     );
-                    if (tagsResponse.ok) {
-                        const tags = await tagsResponse.json();
-                        if (tags.length > 0) {
-                            latestVersion = tags[0].name.replace(/^v/, '');
-                        }
+                    if (response.ok) {
+                        const release = await response.json();
+                        latestVersion = release.tag_name?.replace(/^v/, '') || 'unknown';
+                        releaseNotes = release.body || '';
                     }
                 }
             } catch {
