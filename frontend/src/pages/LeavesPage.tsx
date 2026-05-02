@@ -18,7 +18,6 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { formatDate } from '../utils/dateUtils';
-import { TabbedPage } from '../components/TabbedPage';
 
 // --- Helper for File Upload ---
 const uploadFile = async (requestId: number, file: File) => {
@@ -828,20 +827,12 @@ const LeavesPage: React.FC<Props> = ({ tab }) => {
 
   const isAdmin = user?.role?.name === 'admin' || user?.role?.name === 'super_admin';
 
-  const tabs = [
-    { label: 'Моите заявки', path: '/leaves/my-requests' },
-    ...(isAdmin ? [{ label: 'Одобрения', path: '/leaves/approvals' }] : []),
-    ...(isAdmin ? [{ label: 'Всички заявки', path: '/leaves/all' }] : []),
-  ];
-
-  const defaultTab = '/leaves/my-requests';
-
   return (
-    <TabbedPage tabs={tabs} defaultTabPath={defaultTab}>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       {tab === 'my-requests' && user && <MyLeavesTab user={user} />}
       {tab === 'approvals' && isAdmin && <ApprovalsTab />}
       {tab === 'all' && isAdmin && <AllLeavesTab />}
-    </TabbedPage>
+    </Container>
   );
 };
 

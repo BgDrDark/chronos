@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import dayjs from 'dayjs';
 import { getErrorMessage } from '../types';
 import {
-  Box, TextField, Button, Typography,
+  Box, TextField, Button, Typography, Container,
   Dialog, DialogTitle, DialogContent, DialogActions,
   MenuItem, Card, CardContent, IconButton, Alert, CircularProgress,
   useTheme, useMediaQuery, Grid, Stack, Tooltip, InputAdornment
 } from '@mui/material';
-import { TabbedPage } from '../components/TabbedPage';
 import { InfoIcon } from '../components/ui/InfoIcon';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { type Shift, type User, type WorkSchedule, type TimeLog, type ScheduleTemplate, type PublicHoliday, type ScheduleLog } from '../types';
@@ -1044,16 +1043,8 @@ interface Props {
 }
 
 const SchedulesPage: React.FC<Props> = ({ tab }) => {
-  const tabs = [
-    { label: 'Календар', path: '/admin/schedules/calendar' },
-    { label: 'Текущ график', path: '/admin/schedules/current' },
-    { label: 'Управление на смени', path: '/admin/schedules/shifts' },
-    { label: 'Шаблони и Ротации', path: '/admin/schedules/templates' },
-    { label: 'Масово назначаване', path: '/admin/schedules/bulk' },
-  ];
-
   return (
-    <TabbedPage tabs={tabs} defaultTabPath="/admin/schedules/calendar">
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" fontWeight="bold">Работни графици</Typography>
       </Box>
@@ -1062,7 +1053,7 @@ const SchedulesPage: React.FC<Props> = ({ tab }) => {
       {tab === 'shifts' && <ShiftManager />}
       {tab === 'templates' && <ScheduleTemplatesManager />}
       {tab === 'bulk' && <BulkAssign />}
-    </TabbedPage>
+    </Container>
   );
 };
 

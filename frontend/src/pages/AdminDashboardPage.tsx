@@ -32,7 +32,6 @@ import CloseIcon from '@mui/icons-material/Close';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import AnalyticsDashboard from '../components/AnalyticsDashboard';
-import { TabbedPage } from '../components/TabbedPage';
 
 const GET_USER_PRESENCES = gql`
   query GetUserPresences($date: Date!, $status: PresenceStatus) {
@@ -308,13 +307,8 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
     }
   };
 
-  const tabs = [
-    { label: 'Присъствие', path: '/admin/presence/attendance' },
-    { label: 'Анализи и KPI', path: '/admin/presence/analytics' },
-  ];
-
   return (
-    <TabbedPage tabs={tabs} defaultTabPath="/admin/presence/attendance">
+    <Box sx={{ p: 3 }}>
       {tab === 'attendance' && (
           <>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -403,7 +397,7 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
 
       <UserStatsDialog open={!!selectedUserId} onClose={() => setSelectedUserId(null)} userId={selectedUserId} userName={selectedUserName} />
       <AdminClockDialog open={clockDialogOpen} onClose={() => setClockDialogOpen(false)} onConfirm={handleClockAction} mode={clockDialogMode} userName={selectedUserName} targetDate={date} />
-    </TabbedPage>
+    </Box>
   );
 };
 

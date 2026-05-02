@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import {
-  Typography, Box, TextField, Button, MenuItem,
+  Typography, Box, TextField, Button, MenuItem, Container,
   Alert, CircularProgress, Card, CardContent, Divider, Grid, Link, FormControlLabel, Checkbox,
   Switch, type SelectChangeEvent, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   InputLabel, Select, FormControl, InputAdornment
 } from '@mui/material';
-import { TabbedPage } from '../components/TabbedPage';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import PaidIcon from '@mui/icons-material/Paid';
 import ReceiptIcon from '@mui/icons-material/Receipt';
@@ -1977,18 +1976,8 @@ const HolidaySettings: React.FC = () => {
   }
 
   const PayrollPage: React.FC<Props> = ({ tab }) => {
-    const tabs = [
-      { label: 'ТРЗ Настройки', path: '/admin/payroll/trz-settings' },
-      { label: 'Плащания', path: '/admin/payroll/payments' },
-      { label: 'Празници', path: '/admin/payroll/declarations' },
-      { label: 'Справки', path: '/admin/payroll/reports' },
-      { label: 'Шаблони', path: '/admin/payroll/templates' },
-      { label: 'Допълнителни споразумения', path: '/admin/payroll/annexes' },
-      { label: 'Трудови договори', path: '/admin/payroll/contracts' },
-    ];
-
     return (
-      <TabbedPage tabs={tabs} defaultTabPath="/admin/payroll/trz-settings">
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
         <Typography variant="h4" gutterBottom fontWeight="bold">Отдел финанси</Typography>
         
         {tab === 'settings' && (
@@ -2011,7 +2000,7 @@ const HolidaySettings: React.FC = () => {
         {tab === 'templates' && <TemplatesSettings />}
         {tab === 'annexes' && <AnnexesSettings />}
         {tab === 'contracts' && <EmploymentContractsList />}
-      </TabbedPage>
+      </Container>
     );
   };
 

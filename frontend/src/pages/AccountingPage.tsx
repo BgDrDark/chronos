@@ -5,6 +5,7 @@ import { useCurrency, formatCurrencyValue } from '../currencyContext';
 import {
   Typography,
   Box,
+  Container,
   Paper,
   Button,
   Table,
@@ -55,7 +56,6 @@ import AccordionDetails from '@mui/material/AccordionDetails';
 import { useQuery, useMutation, useLazyQuery, gql } from '@apollo/client';
 import { InfoIcon } from '../components/ui/InfoIcon';
 import { useError, extractErrorMessage } from '../context/ErrorContext';
-import { GroupedSidebarNav } from '../components/GroupedSidebarNav';
 import {
   InvoiceList,
   CashJournalTab,
@@ -823,72 +823,8 @@ interface Props {
   tab?: string;
 }
 
-const navGroups = [
-  {
-    title: 'Фактури',
-    items: [
-      { label: 'Входящи', path: '/admin/accounting/incoming' },
-      { label: 'Изходящи', path: '/admin/accounting/outgoing' },
-      { label: 'Проформа', path: '/admin/accounting/proforma' },
-      { label: 'Корекции', path: '/admin/accounting/corrections' },
-    ],
-  },
-  {
-    title: 'Дневници',
-    items: [
-      { label: 'Касов дневник', path: '/admin/accounting/cash-journal' },
-      { label: 'Операции', path: '/admin/accounting/operations' },
-    ],
-  },
-  {
-    title: 'Справки',
-    items: [
-      { label: 'Дневен отчет', path: '/admin/accounting/daily' },
-      { label: 'Месечен отчет', path: '/admin/accounting/monthly' },
-      { label: 'Годишен отчет', path: '/admin/accounting/yearly' },
-    ],
-  },
-  {
-    title: 'Банка',
-    items: [
-      { label: 'Трансакции', path: '/admin/accounting/bank' },
-    ],
-  },
-  {
-    title: 'Счетоводство',
-    items: [
-      { label: 'Сметкоплан', path: '/admin/accounting/accounts' },
-      { label: 'Счетоводни записи', path: '/admin/accounting/accounting-entries' },
-    ],
-  },
-  {
-    title: 'Данъци',
-    items: [
-      { label: 'ДДС регистри', path: '/admin/accounting/vat' },
-      { label: 'SAF-T', path: '/admin/accounting/saft' },
-    ],
-  },
-];
-
-const tabKeyMap: Record<string, string> = {
-  'incoming': 'incoming',
-  'outgoing': 'outgoing',
-  'cash-journal': 'cash-journal',
-  'operations': 'operations',
-  'daily': 'daily',
-  'monthly': 'monthly',
-  'yearly': 'yearly',
-  'proforma': 'proforma',
-  'corrections': 'corrections',
-  'bank': 'bank',
-  'accounts': 'accounts',
-  'vat': 'vat',
-  'saft': 'saft',
-  'accounting-entries': 'accounting-entries',
-};
-
-export default function AccountingPage({ tab }: Props) {
-  const activeTab = tab ? (tabKeyMap[tab] ?? 'incoming') : 'incoming';
+const AccountingPage = ({ tab }: Props) => {
+  const activeTab = tab ?? 'incoming';
   const { currency } = useCurrency();
   const { showError, showSuccess } = useError();
 
@@ -1299,7 +1235,7 @@ export default function AccountingPage({ tab }: Props) {
   const { subtotal, discountAmount, vatAmount, total } = calculateTotals();
 
   return (
-    <GroupedSidebarNav groups={navGroups} title="Счетоводство">
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Paper sx={{ width: '100%', mb: 2, p: 2 }}>
         {activeTab === 'incoming' && (
           <InvoiceList
@@ -1810,7 +1746,7 @@ export default function AccountingPage({ tab }: Props) {
         </DialogActions>
       </Dialog>
 
-    </GroupedSidebarNav>
+    </Container>
   );
 }
 

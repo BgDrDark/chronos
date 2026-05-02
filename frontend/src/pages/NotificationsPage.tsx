@@ -9,9 +9,8 @@ import {
   Switch,
   FormControlLabel,
   Alert,
-  CircularProgress,
+  CircularProgress, Container,
 } from '@mui/material';
-import { TabbedPage } from '../components/TabbedPage';
 import {
   Send as SendIcon,
   Save as SaveIcon,
@@ -261,13 +260,8 @@ export default function NotificationsPage({ tab }: Props) {
     return <CircularProgress />;
   }
 
-  const tabs = [
-    { label: 'Събития и Уведомления', path: '/admin/notifications/events' },
-    { label: 'SMTP Настройки', path: '/admin/notifications/smtp' },
-  ];
-
   return (
-    <TabbedPage tabs={tabs} defaultTabPath="/admin/notifications/events">
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       {tab === 'events' && (
         <Box sx={{ p: 3 }}>
             {message && (
@@ -533,6 +527,6 @@ export default function NotificationsPage({ tab }: Props) {
             </Grid>
         </Box>
       )}
-    </TabbedPage>
+    </Container>
   );
 }

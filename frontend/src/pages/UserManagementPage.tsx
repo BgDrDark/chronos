@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Typography, Box, Button, Dialog, DialogTitle, DialogContent, Tooltip } from '@mui/material';
+import { Typography, Box, Button, Dialog, DialogTitle, DialogContent, Tooltip, Container } from '@mui/material';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import CreateUserForm from '../components/CreateUserForm';
 import UserList from '../components/UserList';
 import OrganizationManager from '../components/OrganizationManager';
-import { TabbedPage } from '../components/TabbedPage';
 
 interface Props {
   tab?: string;
@@ -16,13 +15,8 @@ const UserManagementPage: React.FC<Props> = ({ tab }) => {
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
 
-  const tabs = [
-    { label: 'Списък служители', path: '/admin/users/list' },
-    { label: 'Организационна структура', path: '/admin/users/org-structure' },
-  ];
-
   return (
-    <TabbedPage tabs={tabs} defaultTabPath="/admin/users/list">
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
           Управление на ресурси
@@ -55,7 +49,7 @@ const UserManagementPage: React.FC<Props> = ({ tab }) => {
           }} />
         </DialogContent>
       </Dialog>
-    </TabbedPage>
+    </Container>
   );
 };
 
