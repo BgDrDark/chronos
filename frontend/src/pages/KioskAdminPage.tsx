@@ -140,6 +140,110 @@ const KioskSecuritySettings: React.FC = () => {
 const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const navigate = useNavigate();
 
+    // Queries
+    const { data: gatewaysData, loading: gatewaysLoading, refetch: refetchGateways } = useQuery(GATEWAYS_QUERY);
+    const { data: terminalsData, loading: terminalsLoading, refetch: refetchTerminals } = useQuery(TERMINALS_QUERY);
+    const { data: zonesData, loading: zonesLoading, refetch: refetchZones } = useQuery(ACCESS_ZONES_QUERY);
+    const { data: doorsData, loading: doorsLoading, refetch: refetchDoors } = useQuery(ACCESS_DOORS_QUERY);
+    const { data: codesData, loading: codesLoading, refetch: refetchCodes } = useQuery(ACCESS_CODES_QUERY);
+    const { data: logsData, loading: logsLoading, refetch: refetchLogs } = useQuery(ACCESS_LOGS_QUERY, {
+        variables: { limit: 50 }
+    });
+    const { data: usersData, loading: usersLoading } = useQuery(USERS_QUERY);
+
+    // Mutations
+    const [deleteZone] = useMutation(DELETE_ACCESS_ZONE);
+    const [deleteDoor] = useMutation(DELETE_ACCESS_DOOR);
+    const [openDoor] = useMutation(OPEN_DOOR);
+
+    const handleOpenDoor = async (id: number) => {
+        try {
+            const { data } = await openDoor({ variables: { id } });
+            if (data.openDoor) alert('Вратата е отворена успешно!');
+        } catch (e: unknown) {
+            const error = e as { message?: string };
+            alert(`Грешка: ${error.message || 'неизвестна'}`);
+        }
+    };
+    const [revokeCode] = useMutation(REVOKE_ACCESS_CODE);
+    const [deleteCode] = useMutation(DELETE_ACCESS_CODE);
+    const [deleteTerminal] = useMutation(DELETE_TERMINAL);
+
+    const handleDeleteTerminal = async (id: number) => {
+        if (window.confirm('Сигурни ли сте, че искате да изтриете този терминал?')) {
+            try {
+                await deleteTerminal({ variables: { id } });
+                refetchTerminals();
+            } catch (e) {
+                alert(getErrorMessage(e));
+            }
+        }
+    };
+
+    // Dialog States
+    const [zoneDialogOpen, setZoneDialogOpen] = useState(false);
+    const [zoneEditOpen, setZoneEditOpen] = useState(false);
+    const [doorDialogOpen, setDoorDialogOpen] = useState(false);
+    const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
+    const [selectedTerminal, setSelectedTerminal] = useState<Terminal | null>(null);
+    const [selectedUserForAccess, setSelectedUserForAccess] = useState<User | null>(null);
+    const [selectedZone, setSelectedZone] = useState<AccessZone | null>(null);
+    const [selectedGateway, setSelectedGateway] = useState<Gateway | null>(null);
+    const [codeDialogOpen, setCodeDialogOpen] = useState(false);
+    const [gatewayEditOpen, setGatewayEditOpen] = useState(false);
+    const [accessDialogOpen, setAccessDialogOpen] = useState(false);
+    const [usersDialogOpen, setUsersDialogOpen] = useState(false);
+    const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
+    const [syncingGateway, setSyncingGateway] = useState<number | null>(null);
+    const [syncingStatus, setSyncingStatus] = useState<string>('');
+
+    const [syncGateway] = useMutation(SYNC_GATEWAY_CONFIG);
+
+    const syncGatewayConfig = async (gatewayId: number, direction: 'push' | 'pull') => {
+        setSyncingGateway(gatewayId);
+        setSyncingStatus(direction === 'push' ? 'Изтегляне на данни от Gateway...' : 'Изпращане на данни към Gateway...');
+        try {
+            await syncGateway({ variables: { id: gatewayId, direction } });
+            setSyncingStatus(direction === 'push' ? 'Успешно изтеглено!' : 'Успешно изпратено!');
+            refetchGateways();
+            refetchZones();
+            refetchDoors();
+        } catch (err) {
+            setSyncingStatus(`Грешка: ${getErrorMessage(err)}`);
+        }
+        setTimeout(() => { setSyncingGateway(null); setSyncingStatus(''); }, 3000);
+    };
+
+
+    const formatTimeAgo = (dateStr: string | null) => {
+        if (!dateStr) return 'Никога';
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+        if (diff < 60) return `${diff}с`;
+        if (diff < 3600) return `${Math.floor(diff / 60)}м`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}ч`;
+        return `${Math.floor(diff / 86400)}д`;
+    };
+
+    const handleDeleteZone = async (id: number) => {
+        if (window.confirm('Сигурни ли сте, че искате да изтриете тази зона?')) {
+            try {
+                await deleteZone({ variables: { id } });
+                refetchZones();
+            } catch (e) { alert(getErrorMessage(e)); }
+        }
+    };
+
+    const handleDeleteDoor = async (id: number) => {
+        if (window.confirm('Сигурни ли сте, че искате да изтриете тази врата?')) {
+            try {
+                await deleteDoor({ variables: { id } });
+                refetchDoors();
+            } catch (e) { alert(getErrorMessage(e)); }
+        }
+    };
+
     return (
         <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
             <Typography variant="h4" gutterBottom fontWeight="bold">Отдел КД (Контрол на Достъпа)</Typography>

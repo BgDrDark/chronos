@@ -823,7 +823,7 @@ interface Props {
   tab?: string;
 }
 
-const AccountingPage = ({ tab }: Props) => {
+export default function AccountingPage({ tab }: Props) {
   const activeTab = tab ?? 'incoming';
   const { currency } = useCurrency();
   const { showError, showSuccess } = useError();
