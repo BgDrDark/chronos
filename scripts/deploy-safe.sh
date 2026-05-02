@@ -359,9 +359,6 @@ echo "[5/7] Deploying backend..."
 # Wait for active queries before restart
 wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
 
-docker compose stop backend
-sleep 5
-
 # Update .env with target version if deploying specific version
 if [ -n "$DEPLOY_VERSION" ]; then
     if grep -q "^VERSION=" .env; then
@@ -371,7 +368,7 @@ if [ -n "$DEPLOY_VERSION" ]; then
     fi
 fi
 
-docker compose up -d --no-deps backend
+docker compose up -d --force-recreate --no-deps backend
 
 echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
 BACKEND_HEALTHY=false
@@ -394,9 +391,7 @@ fi
 # 6. Deploy frontend
 echo ""
 echo "[6/7] Deploying frontend..."
-docker compose stop frontend
-sleep 3
-docker compose up -d --no-deps frontend
+docker compose up -d --force-recreate --no-deps frontend
 echo -e "${GREEN}✓${NC} Frontend deployed"
 
 # 7. Final health check + DB health
