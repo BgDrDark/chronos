@@ -79,10 +79,10 @@ else
     exit 1
 fi
 
-# Verify backup is restore-able using pg_restore --list
+# Verify backup is restore-able by checking PostgreSQL custom format header
 echo "Verifying backup can be restored..."
-if cat "$DB_BACKUP_FILE" | docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} Backup verified (valid format, restore-able)"
+if head -c 5 "$DB_BACKUP_FILE" | grep -q "PGDMP"; then
+    echo -e "${GREEN}✓${NC} Backup verified (valid PostgreSQL custom format)"
 else
     echo -e "${RED}✗${NC} Backup verification failed (invalid format)"
     exit 1

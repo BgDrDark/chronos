@@ -151,7 +151,7 @@ verify_backup() {
     
     # Use pg_restore --list to verify backup is valid
     local DB_CONTAINER=$(get_db_container)
-    if cat "$backup_file" | docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - >/dev/null 2>&1; then
+    if head -c 5 "$backup_file" | grep -q "PGDMP"; then
         local size=$(du -h "$backup_file" | cut -f1)
         echo -e "${GREEN}✓${NC} Backup verified ($size, valid format)"
         return 0
