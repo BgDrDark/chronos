@@ -126,17 +126,17 @@ async def login_for_access_token(
         value=access_token, 
         httponly=True, 
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, 
-        samesite="strict",
+        samesite="none",
         secure=True,
         path="/",
     )
-    # Set Refresh Token Cookie - HttpOnly, Secure, Strict
+    # Set Refresh Token Cookie - HttpOnly, Secure, None
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
         max_age=7 * 24 * 3600, # 7 days
-        samesite="strict",
+        samesite="none",
         secure=True,
         path="/",
     )
@@ -182,8 +182,8 @@ async def refresh_token(
         "token_type": "bearer"
     })
     
-    response.set_cookie(key="access_token", value=new_access, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, samesite="strict", secure=True, path="/")
-    response.set_cookie(key="refresh_token", value=new_refresh, httponly=True, max_age=7 * 24 * 3600, samesite="strict", secure=True, path="/")
+    response.set_cookie(key="access_token", value=new_access, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, samesite="none", secure=True, path="/")
+    response.set_cookie(key="refresh_token", value=new_refresh, httponly=True, max_age=7 * 24 * 3600, samesite="none", secure=True, path="/")
     
     return response
 
@@ -201,9 +201,9 @@ async def logout(
             await crud.invalidate_user_session(db, payload.get("jti"))
 
     # Delete all auth cookies with strict samesite
-    response.delete_cookie(key="access_token", httponly=True, samesite="strict", secure=True, path="/")
-    response.delete_cookie(key="refresh_token", httponly=True, samesite="strict", secure=True, path="/")
-    response.delete_cookie(key="csrf_token", httponly=True, samesite="strict", secure=True, path="/")
+    response.delete_cookie(key="access_token", httponly=True, samesite="none", secure=True, path="/")
+    response.delete_cookie(key="refresh_token", httponly=True, samesite="none", secure=True, path="/")
+    response.delete_cookie(key="csrf_token", httponly=True, samesite="none", secure=True, path="/")
     
     return {"message": "Successfully logged out"}
 

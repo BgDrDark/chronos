@@ -211,7 +211,7 @@ app.add_middleware(
     cookie_domain=None,
     cookie_secure=True,
     cookie_httponly=False,
-    cookie_samesite="strict",
+    cookie_samesite="none",
     exempt_urls=[
         re.compile(r"^/auth/"),
         re.compile(r"^/google/"),
