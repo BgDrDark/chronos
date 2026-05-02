@@ -331,7 +331,7 @@ echo "[4/7] Running Alembic migrations..."
 
 # Dry-run first
 echo "Running dry-run check..."
-if docker compose run --rm backend alembic upgrade head --sql 2>/dev/null | grep -q "BEGIN\|CREATE\|ALTER\|INSERT"; then
+if docker compose run --rm -w /app/backend backend alembic upgrade head --sql 2>/dev/null | grep -q "BEGIN\|CREATE\|ALTER\|INSERT"; then
     echo -e "${GREEN}✓${NC} Dry-run SQL generated (migrations are valid)"
     log_deploy "ALEMBIC dry-run OK"
 else
@@ -340,7 +340,7 @@ fi
 
 # Apply migrations
 echo "Applying migrations..."
-if docker compose run --rm backend alembic upgrade head 2>/dev/null; then
+if docker compose run --rm -w /app/backend backend alembic upgrade head 2>/dev/null; then
     echo -e "${GREEN}✓${NC} Alembic migrations applied"
     log_deploy "ALEMBIC migrations applied"
 else
