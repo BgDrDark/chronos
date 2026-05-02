@@ -743,7 +743,7 @@ const DeploymentSettings: React.FC = () => {
     const FALLBACK_VERSION = '3.6.1.0';
 
     const isNewerVersion = (latest: string, current: string): boolean => {
-        const parse = (v: string) => v.split('.').map(n => parseInt(n, 10) || 0);
+        const parse = (v: string) => v.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
         const a = parse(latest), b = parse(current);
         const len = Math.max(a.length, b.length);
         for (let i = 0; i < len; i++) {
