@@ -169,7 +169,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 # 2. Create backup
 echo ""
 echo "[2/9] Creating backup..."
-if ./scripts/backup.sh >/dev/null 2>&1; then
+if ./scripts/backup.sh 2>&1; then
     echo -e "${GREEN}✓${NC} Backup created ($TIMESTAMP)"
     log_deploy "BACKUP created: $TIMESTAMP"
 else
