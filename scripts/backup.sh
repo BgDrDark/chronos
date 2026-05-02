@@ -51,18 +51,24 @@ echo ""
 echo "[1/3] Creating database backup..."
 DB_BACKUP_FILE="$BACKUP_DIR/db_$TIMESTAMP.dump"
 
-if command -v pg_dump &> /dev/null; then
-    PGPASSWORD=$POSTGRES_PASSWORD pg_dump -U "$POSTGRES_USER" -h "$DB_HOST" -Fc "$POSTGRES_DB" -f "$DB_BACKUP_FILE" 2>/dev/null || \
-    pg_dump -U "$POSTGRES_USER" -h "$DB_HOST" -Fc "$POSTGRES_DB" -f "$DB_BACKUP_FILE"
-    echo -e "${GREEN}✓${NC} Database backup: db_$TIMESTAMP.dump"
-else
-    echo -e "${YELLOW}!${NC} pg_dump not found, trying docker exec..."
-    docker exec chronos-DB pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" > "$DB_BACKUP_FILE" 2>/dev/null || {
-        echo -e "${RED}✗${NC} Database backup failed"
-        exit 1
-    }
-    echo -e "${GREEN}✓${NC} Database backup: db_$TIMESTAMP.dump"
+# Use docker exec since pg_dump is not available in the container
+echo "Using docker exec for database backup..."
+DB_CONTAINER=$(docker ps --filter "name=chronos-DB" --format "{{.Names}}" 2>/dev/null || docker ps --filter "name=db" --format "{{.Names}}" 2>/dev/null | head -1)
+
+if [ -z "$DB_CONTAINER" ]; then
+    echo -e "${RED}✗${NC} Database container not found"
+    exit 1
 fi
+
+echo "Database container: $DB_CONTAINER"
+
+docker exec "$DB_CONTAINER" pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" > "$DB_BACKUP_FILE" 2>/dev/null || {
+    echo -e "${RED}✗${NC} Database backup failed"
+    # Show error for debugging
+    docker exec "$DB_CONTAINER" pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" 2>&1 | tail -5
+    exit 1
+}
+echo -e "${GREEN}✓${NC} Database backup: db_$TIMESTAMP.dump"
 
 # Verify backup
 if [ -f "$DB_BACKUP_FILE" ] && [ -s "$DB_BACKUP_FILE" ]; then
@@ -77,22 +83,32 @@ fi
 echo ""
 echo "[2/3] Creating image backups..."
 
-# Get current images
-BACKEND_IMAGE=$(docker compose images -q backend 2>/dev/null || echo "$BACKEND_NAME")
-FRONTEND_IMAGE=$(docker compose images -q frontend 2>/dev/null || echo "$FRONTEND_NAME")
+# Get current images using docker inspect (more reliable than docker compose images)
+BACKEND_IMAGE=$(docker inspect --format='{{.Config.Image}}' chronos-backend 2>/dev/null || echo "")
+FRONTEND_IMAGE=$(docker inspect --format='{{.Config.Image}}' chronos-frontend 2>/dev/null || echo "")
 
 if [ -n "$BACKEND_IMAGE" ]; then
-    docker save $BACKEND_IMAGE -o "$BACKUP_DIR/backend_$TIMESTAMP.tar"
-    BACKEND_SIZE=$(du -h "$BACKUP_DIR/backend_$TIMESTAMP.tar" | cut -f1)
-    echo -e "${GREEN}✓${NC} Backend image: backend_$TIMESTAMP.tar ($BACKEND_SIZE)"
+    docker save "$BACKEND_IMAGE" -o "$BACKUP_DIR/backend_$TIMESTAMP.tar" 2>/dev/null || {
+        echo -e "${YELLOW}!${NC} Failed to save backend image, skipping"
+        BACKEND_IMAGE=""
+    }
+    if [ -f "$BACKUP_DIR/backend_$TIMESTAMP.tar" ]; then
+        BACKEND_SIZE=$(du -h "$BACKUP_DIR/backend_$TIMESTAMP.tar" | cut -f1)
+        echo -e "${GREEN}✓${NC} Backend image: backend_$TIMESTAMP.tar ($BACKEND_SIZE)"
+    fi
 else
     echo -e "${YELLOW}!${NC} Backend image not found, skipping"
 fi
 
 if [ -n "$FRONTEND_IMAGE" ]; then
-    docker save $FRONTEND_IMAGE -o "$BACKUP_DIR/frontend_$TIMESTAMP.tar"
-    FRONTEND_SIZE=$(du -h "$BACKUP_DIR/frontend_$TIMESTAMP.tar" | cut -f1)
-    echo -e "${GREEN}✓${NC} Frontend image: frontend_$TIMESTAMP.tar ($FRONTEND_SIZE)"
+    docker save "$FRONTEND_IMAGE" -o "$BACKUP_DIR/frontend_$TIMESTAMP.tar" 2>/dev/null || {
+        echo -e "${YELLOW}!${NC} Failed to save frontend image, skipping"
+        FRONTEND_IMAGE=""
+    }
+    if [ -f "$BACKUP_DIR/frontend_$TIMESTAMP.tar" ]; then
+        FRONTEND_SIZE=$(du -h "$BACKUP_DIR/frontend_$TIMESTAMP.tar" | cut -f1)
+        echo -e "${GREEN}✓${NC} Frontend image: frontend_$TIMESTAMP.tar ($FRONTEND_SIZE)"
+    fi
 else
     echo -e "${YELLOW}!${NC} Frontend image not found, skipping"
 fi

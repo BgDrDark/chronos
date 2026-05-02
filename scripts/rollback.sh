@@ -132,20 +132,19 @@ fi
 echo ""
 echo "[3/5] Restoring database..."
 
-if command -v pg_restore &> /dev/null; then
-    PGPASSWORD=$POSTGRES_PASSWORD pg_restore -U "$POSTGRES_USER" -h "$DB_HOST" -d "$POSTGRES_DB" --clean --if-exists "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || {
-        echo -e "${YELLOW}!${NC} pg_restore with --clean failed, trying without..."
-        PGPASSWORD=$POSTGRES_PASSWORD pg_restore -U "$POSTGRES_USER" -h "$DB_HOST" -d "$POSTGRES_DB" "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || {
-            echo -e "${YELLOW}!${NC} Direct restore failed, trying via docker..."
-            docker exec -i chronos-DB pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists < "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || true
-        }
-    }
-    echo -e "${GREEN}✓${NC} Database restored"
-else
-    echo -e "${YELLOW}!${NC} pg_restore not found, trying docker exec..."
-    docker exec -i chronos-DB pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists < "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || true
-    echo -e "${GREEN}✓${NC} Database restored (via docker)"
+DB_CONTAINER=$(docker ps --filter "name=chronos-DB" --format "{{.Names}}" 2>/dev/null || docker ps --filter "name=db" --format "{{.Names}}" 2>/dev/null | head -1)
+
+if [ -z "$DB_CONTAINER" ]; then
+    echo -e "${RED}✗${NC} Database container not found"
+    exit 1
 fi
+
+echo "Restoring database to container: $DB_CONTAINER"
+docker exec -i "$DB_CONTAINER" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists < "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || {
+    echo -e "${YELLOW}!${NC} pg_restore with --clean failed, trying without..."
+    docker exec -i "$DB_CONTAINER" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || true
+}
+echo -e "${GREEN}✓${NC} Database restored"
 
 # === 4. Restore configuration (optional) ===
 echo ""
