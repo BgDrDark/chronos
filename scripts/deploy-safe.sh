@@ -343,9 +343,17 @@ fi
 echo ""
 echo "[4/7] Running Alembic migrations..."
 
+# Get the network used by the DB container
+DB_NETWORK=$(docker inspect chronos-DB --format '{{range $net, $v := .NetworkSettings.Networks}}{{$net}}{{end}}' 2>/dev/null || echo "host")
+echo "Using network: ${DB_NETWORK}"
+
+# Run alembic using the exact pulled image to avoid compose caching issues
+BACKEND_IMAGE="${REGISTRY}/chronos-backend:${TARGET_VERSION}"
+ALEMBIC_RUN="docker run --rm --network ${DB_NETWORK} -w /app/backend -e POSTGRES_USER=${POSTGRES_USER} -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} -e POSTGRES_HOST=chronos-DB -e POSTGRES_PORT=5432 -e POSTGRES_DB=${POSTGRES_DB} -e PYTHONPATH=/app ${BACKEND_IMAGE} alembic upgrade head"
+
 # Dry-run first
 echo "Running dry-run check..."
-if docker compose run --rm --no-deps -w /app/backend backend alembic upgrade head --sql 2>/dev/null | grep -q "BEGIN\|CREATE\|ALTER\|INSERT"; then
+if ${ALEMBIC_RUN} --sql 2>/dev/null | grep -q "BEGIN\|CREATE\|ALTER\|INSERT"; then
     echo -e "${GREEN}✓${NC} Dry-run SQL generated (migrations are valid)"
     log_deploy "ALEMBIC dry-run OK"
 else
@@ -354,7 +362,7 @@ fi
 
 # Apply migrations
 echo "Applying migrations..."
-if docker compose run --rm --no-deps -w /app/backend backend alembic upgrade head 2>/dev/null; then
+if ${ALEMBIC_RUN} 2>/dev/null; then
     echo -e "${GREEN}✓${NC} Alembic migrations applied"
     log_deploy "ALEMBIC migrations applied"
 else
