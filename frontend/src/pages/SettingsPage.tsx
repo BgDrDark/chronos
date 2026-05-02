@@ -778,7 +778,7 @@ const DeploymentSettings: React.FC = () => {
     const [deployProgress, setDeployProgress] = useState<string>('');
     const [deployOutput, setDeployOutput] = useState<string>('');
     
-    const API_URL = import.meta.env.VITE_API_URL || '';
+    const API_URL = import.meta.env.VITE_API_URL || 'https://dev.oblak24.org';
     const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || 'BgDrDark/chronos';
 
     const FALLBACK_VERSION = '3.6.1.0';
