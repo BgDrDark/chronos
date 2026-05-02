@@ -229,40 +229,41 @@ else
     echo "Using build cache (use --force to rebuild)..."
 fi
 
-# Build with timeout
-(
-    docker compose build $BUILD_ARGS backend &
-    PID=$!
-    WAIT=0
-    while kill -0 $PID 2>/dev/null; do
-        sleep 1
-        WAIT=$((WAIT + 1))
-        if [ $WAIT -ge $BUILD_TIMEOUT ]; then
-            kill $PID 2>/dev/null
-            echo -e "${RED}ERROR:${NC} Backend build timeout (${BUILD_TIMEOUT}s)"
-            exit 1
-        fi
-    done
-    wait $PID
-)
-echo -e "${GREEN}✓${NC} Backend built"
+# Build backend with timeout
+echo "Building backend..."
+START_TIME=$(date +%s)
+docker compose build $BUILD_ARGS backend
+BUILD_STATUS=$?
+ELAPSED=$(( $(date +%s) - START_TIME ))
+if [ $BUILD_STATUS -ne 0 ]; then
+    echo -e "${RED}ERROR:${NC} Backend build failed"
+    log_deploy "DEPLOY ABORTED: backend build failed"
+    exit 1
+fi
+if [ $ELAPSED -ge $BUILD_TIMEOUT ]; then
+    echo -e "${RED}ERROR:${NC} Backend build timeout (${BUILD_TIMEOUT}s)"
+    log_deploy "DEPLOY ABORTED: backend build timeout"
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} Backend built (${ELAPSED}s)"
 
-(
-    docker compose build $BUILD_ARGS frontend &
-    PID=$!
-    WAIT=0
-    while kill -0 $PID 2>/dev/null; do
-        sleep 1
-        WAIT=$((WAIT + 1))
-        if [ $WAIT -ge $BUILD_TIMEOUT ]; then
-            kill $PID 2>/dev/null
-            echo -e "${RED}ERROR:${NC} Frontend build timeout (${BUILD_TIMEOUT}s)"
-            exit 1
-        fi
-    done
-    wait $PID
-)
-echo -e "${GREEN}✓${NC} Frontend built"
+# Build frontend with timeout
+echo "Building frontend..."
+START_TIME=$(date +%s)
+docker compose build $BUILD_ARGS frontend
+BUILD_STATUS=$?
+ELAPSED=$(( $(date +%s) - START_TIME ))
+if [ $BUILD_STATUS -ne 0 ]; then
+    echo -e "${RED}ERROR:${NC} Frontend build failed"
+    log_deploy "DEPLOY ABORTED: frontend build failed"
+    exit 1
+fi
+if [ $ELAPSED -ge $BUILD_TIMEOUT ]; then
+    echo -e "${RED}ERROR:${NC} Frontend build timeout (${BUILD_TIMEOUT}s)"
+    log_deploy "DEPLOY ABORTED: frontend build timeout"
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} Frontend built (${ELAPSED}s)"
 
 log_deploy "BUILD complete: backend + frontend"
 
