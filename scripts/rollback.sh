@@ -140,9 +140,9 @@ if [ -z "$DB_CONTAINER" ]; then
 fi
 
 echo "Restoring database to container: $DB_CONTAINER"
-docker exec -i "$DB_CONTAINER" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists < "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || {
+docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists < "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || {
     echo -e "${YELLOW}!${NC} pg_restore with --clean failed, trying without..."
-    docker exec -i "$DB_CONTAINER" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || true
+    docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || true
 }
 echo -e "${GREEN}✓${NC} Database restored"
 

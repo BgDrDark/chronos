@@ -62,10 +62,10 @@ fi
 
 echo "Database container: $DB_CONTAINER"
 
-docker exec "$DB_CONTAINER" pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" > "$DB_BACKUP_FILE" 2>/dev/null || {
+docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$DB_CONTAINER" pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" > "$DB_BACKUP_FILE" 2>/dev/null || {
     echo -e "${RED}✗${NC} Database backup failed"
     # Show error for debugging
-    docker exec "$DB_CONTAINER" pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" 2>&1 | tail -5
+    docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$DB_CONTAINER" pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" 2>&1 | tail -5
     exit 1
 }
 echo -e "${GREEN}✓${NC} Database backup: db_$TIMESTAMP.dump"
