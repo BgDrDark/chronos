@@ -201,11 +201,12 @@ const ProfilePage: React.FC = () => {
                 ? (import.meta.env.VITE_API_URL.endsWith('/') ? import.meta.env.VITE_API_URL : `${import.meta.env.VITE_API_URL}/`)
                 : '';
             const url = apiUrl ? `${apiUrl}auth/users/me/avatar` : '/auth/users/me/avatar';
+            const token = localStorage.getItem('token');
             await axios.post(url, formData, {
                 headers: { 
-                    'Content-Type': 'multipart/form-data'
-                },
-                withCredentials: true
+                    'Content-Type': 'multipart/form-data',
+                    'Authorization': `Bearer ${token}`
+                }
             });
             refetch();
         } catch (err: unknown) {
