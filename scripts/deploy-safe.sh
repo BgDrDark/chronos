@@ -188,6 +188,9 @@ if [ -n "$GITHUB_REPO_TOKEN" ]; then
     git config --global url."https://x-access-token:${GITHUB_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
 fi
 
+# Fix dubious ownership (container runs as root, project mounted from host)
+git config --global --add safe.directory /project
+
 if [ -n "$DEPLOY_VERSION" ]; then
     # Deploy specific version (tag)
     echo "Fetching tags..."
