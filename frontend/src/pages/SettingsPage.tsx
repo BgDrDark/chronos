@@ -883,7 +883,7 @@ const DeploymentSettings: React.FC = () => {
     };
 
     const handleDeploy = async () => {
-        const targetVersion = updateAvailable?.available ? updateAvailable.version : null;
+        const targetVersion = updateAvailable?.available ? `v${updateAvailable.version}` : null;
         const confirmMsg = targetVersion 
             ? `Сигурен ли си, че искаш да обновиш до версия ${targetVersion}?`
             : 'Сигурен ли си, че искаш да обновиш приложението?';
