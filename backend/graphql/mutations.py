@@ -20,7 +20,7 @@ from backend.services.shift_swap_service import shift_swap_service
 from backend.services.leave_service import leave_service
 from backend.services.time_tracking_service import time_tracking_service
 from backend.services.notification_service import notification_service
-from backend.services.auth_service import auth_service
+from backend.services.auth_service import auth_service, regenerate_user_qr_token, force_password_change_for_all_users
 from backend.services.schedule_template_service import schedule_template_service
 from backend.services.payroll_service import payroll_service
 from backend.services.settings_service import settings_service
@@ -1838,7 +1838,7 @@ class Mutation:
         await settings_repo.set_setting(db, "password_settings_version", str(current_version + 1))
 
         # Set password_force_change to True for all users
-        await auth_service.force_password_change_for_all_users(db)
+        await force_password_change_for_all_users(db)
 
         await db.commit()
         return types.PasswordSettings(
@@ -1923,7 +1923,7 @@ class Mutation:
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
 
-        return await auth_service.regenerate_user_qr_token(db, current_user.id)
+        return await regenerate_user_qr_token(db, current_user.id)
 
     @strawberry.mutation
     async def create_advance_payment(

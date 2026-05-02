@@ -13,6 +13,8 @@ import SecurityIcon from '@mui/icons-material/Security';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
+import dayjs from 'dayjs';
+import { formatDate } from '../utils/dateUtils';
 import { 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip as MuiChip, Chip
 } from '@mui/material';
@@ -150,7 +152,7 @@ const DashboardPage: React.FC = () => {
 
   // Use backend stats directly
   const chartData = data?.myDailyStats?.map((stat: UserDailyStat) => ({
-    name: new Date(stat.date).toLocaleDateString('bg-BG', { weekday: 'short' }),
+    name: dayjs(stat.date).format('dd'),
     regular: stat.regularHours,
     overtime: stat.overtimeHours,
     total: stat.totalWorkedHours,
@@ -391,7 +393,7 @@ const DashboardPage: React.FC = () => {
                     return (
                       <TableRow key={day.fullDate} hover>
                         <TableCell>
-                            {day.name}, {new Date(day.fullDate).toLocaleDateString('bg-BG', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '.')}
+                            {day.name}, {formatDate(day.fullDate)}
                         </TableCell>
                         <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                           {day.shiftName ? (

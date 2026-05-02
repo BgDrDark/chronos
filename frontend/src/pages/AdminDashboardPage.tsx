@@ -1,3 +1,4 @@
+import { formatDate } from '../utils/dateUtils';
 import React, { useState } from 'react';
 import { UserDailyStat } from '../types';
 import {
@@ -13,7 +14,6 @@ import {
   TextField,
   MenuItem,
   Chip,
-  Container,
   Button,
   Dialog,
   DialogTitle,
@@ -32,6 +32,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import AnalyticsDashboard from '../components/AnalyticsDashboard';
+import { TabbedPage } from '../components/TabbedPage';
 
 const GET_USER_PRESENCES = gql`
   query GetUserPresences($date: Date!, $status: PresenceStatus) {
@@ -146,7 +147,7 @@ const UserStatsDialog: React.FC<{ open: boolean; onClose: () => void; userId: nu
                         {data?.userDailyStats.map((stat: UserDailyStat) => (
                             <TableRow key={stat.date} sx={{ bgcolor: stat.isWorkDay ? 'transparent' : 'action.hover' }}>
                                 <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
-                                    {new Date(stat.date).toLocaleDateString('bg-BG', { day: '2-digit', month: '2-digit' })}
+                                    {formatDate(stat.date)}
                                 </TableCell>
                                 <TableCell sx={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {stat.shiftName || '-'}
@@ -194,25 +195,11 @@ const AdminClockDialog: React.FC<{
     );
 };
 
-const AdminDashboardPageTabMap: Record<string, number> = {
-  'attendance': 0,
-  'analytics': 1,
-};
-
 interface Props {
   tab?: string;
 }
 
 const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
-  const initialTab = tab ? (AdminDashboardPageTabMap[tab] ?? 0) : 0;
-  const [tabValue, setTabValue] = useState(initialTab);
-  
-  // Update tab when URL changes
-  React.useEffect(() => {
-    const newTab = tab ? (AdminDashboardPageTabMap[tab] ?? 0) : 0;
-    setTabValue(newTab);
-  }, [tab]);
-  
   const [date, setDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -321,17 +308,21 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
     }
   };
 
-  return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" fontWeight="bold">Админ Панел</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-            <Tooltip title="Опресни"><IconButton onClick={() => refetch()} color="primary"><RefreshIcon /></IconButton></Tooltip>
-        </Box>
-      </Box>
+  const tabs = [
+    { label: 'Присъствие', path: '/admin/presence/attendance' },
+    { label: 'Анализи и KPI', path: '/admin/presence/analytics' },
+  ];
 
-      {tabValue === 0 && (
+  return (
+    <TabbedPage tabs={tabs} defaultTabPath="/admin/presence/attendance">
+      {tab === 'attendance' && (
           <>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Typography variant="h4" fontWeight="bold">Админ Панел</Typography>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Tooltip title="Опресни"><IconButton onClick={() => refetch()} color="primary"><RefreshIcon /></IconButton></Tooltip>
+              </Box>
+            </Box>
             <Paper sx={{ p: 2, mb: 3, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
                 <TextField label="Дата" type="date" value={date} onChange={(e) => setDate(e.target.value)} InputLabelProps={{ shrink: true }} size="small" />
                 <TextField select label="Статус" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} size="small" sx={{ minWidth: 150 }}>
@@ -408,11 +399,11 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
           </>
       )}
 
-      {tabValue === 1 && <AnalyticsDashboard />}
+      {tab === 'analytics' && <AnalyticsDashboard />}
 
       <UserStatsDialog open={!!selectedUserId} onClose={() => setSelectedUserId(null)} userId={selectedUserId} userName={selectedUserName} />
       <AdminClockDialog open={clockDialogOpen} onClose={() => setClockDialogOpen(false)} onConfirm={handleClockAction} mode={clockDialogMode} userName={selectedUserName} targetDate={date} />
-    </Container>
+    </TabbedPage>
   );
 };
 

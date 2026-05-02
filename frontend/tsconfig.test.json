@@ -6,7 +6,7 @@
     "verbatimModuleSyntax": false,
     "jsx": "react-jsx",
     "esModuleInterop": true,
-    "types": ["jest", "node", "vite/client"]
+    "types": ["vitest/globals", "node", "vite/client"]
   },
   "include": ["src"],
   "exclude": ["node_modules", "**/*.test.tsx", "**/*.test.ts"]

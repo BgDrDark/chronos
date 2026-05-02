@@ -5,7 +5,7 @@ import {
   Chip
 } from '@mui/material';
 import { useQuery, gql } from '@apollo/client';
-import { format } from 'date-fns';
+import dayjs from 'dayjs';
 import { type AuditLog } from '../types';
 
 const GET_AUDIT_LOGS = gql`
@@ -80,7 +80,7 @@ const AuditLogViewer: React.FC = () => {
                         {data?.auditLogs.map((log: AuditLog) => (
                             <TableRow key={log.id} hover>
                                 <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                                    {format(new Date(log.createdAt), 'dd.MM.yyyy HH:mm')}
+                                    {dayjs(log.createdAt).format('DD.MM.YYYY HH:mm')}
                                 </TableCell>
                                 <TableCell>
                                     {log.user ? `${log.user.firstName} ${log.user.lastName}` : 'System'}

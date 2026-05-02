@@ -28,38 +28,42 @@
 ```bash
 #!/bin/bash
 set -e
+
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="/backups/chronos"
+MAX_BACKUPS=5
 
-mkdir -p $BACKUP_DIR
-
-# Пази последните 3 backup-а
-ls -t $BACKUP_DIR/db_*.dump 2>/dev/null | tail -n +4 | xargs -r rm
-ls -t $BACKUP_DIR/backend_*.tar 2>/dev/null | tail -n +4 | xargs -r rm
-ls -t $BACKUP_DIR/frontend_*.tar 2>/dev/null | tail -n +4 | xargs -r rm
-
-# DB Backup (compressed)
-echo "Creating DB backup..."
-pg_dump -U postgres -Fc chronosdb -f $BACKUP_DIR/db_$TIMESTAMP.dump
-
-# Docker Images Backup
-echo "Creating image backups..."
-BACKEND_IMAGE=$(docker compose images -q backend 2>/dev/null || echo "chronos-backend")
-FRONTEND_IMAGE=$(docker compose images -q frontend 2>/dev/null || echo "chronos-frontend")
-
-if [ -n "$BACKEND_IMAGE" ]; then
-    docker save $BACKEND_IMAGE -o $BACKUP_DIR/backend_$TIMESTAMP.tar
+# Get PostgreSQL credentials from .env
+if [ -f ".env" ]; then
+    source .env
 fi
 
-if [ -n "$FRONTEND_IMAGE" ]; then
-    docker save $FRONTEND_IMAGE -o $BACKUP_DIR/frontend_$TIMESTAMP.tar
+POSTGRES_DB=${POSTGRES_DB:-chronosdb}
+
+# Clean old backups (keep only MAX_BACKUPS)
+ls -t $BACKUP_DIR/db_*.dump 2>/dev/null | tail -n +$((MAX_BACKUPS + 1)) | xargs -r rm -f
+
+# [1/3] Database Backup
+pg_dump -U "$POSTGRES_USER" -h "$DB_HOST" -Fc "$POSTGRES_DB" -f "$BACKUP_DIR/db_$TIMESTAMP.dump"
+
+# Verify backup
+if [ -f "$DB_BACKUP_FILE" ] && [ -s "$DB_BACKUP_FILE" ]; then
+    echo "✓ Backup verified"
 fi
 
-echo "Backup complete: $TIMESTAMP"
-echo "  DB: $BACKUP_DIR/db_$TIMESTAMP.dump"
-echo "  Backend: $BACKUP_DIR/backend_$TIMESTAMP.tar"
-echo "  Frontend: $BACKUP_DIR/frontend_$TIMESTAMP.tar"
+# [2/3] Docker Images Backup
+docker save $BACKEND_IMAGE -o "$BACKUP_DIR/backend_$TIMESTAMP.tar"
+docker save $FRONTEND_IMAGE -o "$BACKUP_DIR/frontend_$TIMESTAMP.tar"
+
+# [3/3] Configuration Backup
+tar czf "$BACKUP_DIR/config_$TIMESTAMP.tar.gz" .env docker-compose.yml
 ```
+
+**Нови функции:**
+- ✅ Backup verification (проверка че файлът е валиден)
+- ✅ Configuration backup (.env + docker-compose.yml)
+- ✅ Fallback към `docker exec` ако `pg_dump` не е в PATH
+- ✅ MAX_BACKUPS увеличен на 5
 
 ### 2. scripts/deploy-safe.sh
 
@@ -68,69 +72,47 @@ echo "  Frontend: $BACKUP_DIR/frontend_$TIMESTAMP.tar"
 set -e
 
 BACKUP_DIR="/backups/chronos"
-VERSION=$(grep VERSION .env | cut -d= -f2 || echo "unknown")
-HEALTH_TIMEOUT=60
+HEALTH_TIMEOUT=120
+BUILD_TIMEOUT=600
+LOCK_FILE="/tmp/chronos_deploy.lock"
+DEPLOY_LOG="$BACKUP_DIR/deploy.log"
 
-echo "=== Chronos Safe Deploy v$VERSION ==="
-echo "Started: $(date)"
-
-# 1. Health check (current version)
-echo "[1/6] Checking current health..."
-if ! curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
-    echo "ERROR: Current version is not healthy. Aborting deploy."
+# Lock file - предотвратява concurrent deploys
+if [ -f "$LOCK_FILE" ]; then
+    echo "ERROR: Another deployment is in progress"
     exit 1
 fi
-echo "✓ Current version is healthy"
+echo $$ > "$LOCK_FILE"
 
-# 2. Create backup
-echo "[2/6] Creating backup..."
-./scripts/backup.sh >/dev/null 2>&1
-echo "✓ Backup created"
+# Pre-deployment checks
+# 1. Docker daemon
+# 2. Disk space (min 1GB)
+# 3. Git status
+# 4. .env file existence
+# 5. docker-compose.yml existence
 
-# 3. Git pull
-echo "[3/6] Fetching latest code..."
-git fetch origin main
-git reset --hard origin/main
-echo "✓ Code updated"
-
-# 4. Build images
-echo "[4/6] Building images..."
-docker compose build --no-cache backend
-docker compose build --no-cache frontend
-echo "✓ Images built"
-
-# 5. Deploy backend + health check
-echo "[5/6] Deploying backend..."
-docker compose up -d backend
-
-echo "Waiting for backend health..."
-for i in $(seq 1 $HEALTH_TIMEOUT); do
-    if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
-        echo "✓ Backend healthy after ${i}s"
-        break
-    fi
-    if [ $i -eq $HEALTH_TIMEOUT ]; then
-        echo "ERROR: Backend health check timeout. Rolling back..."
-        ./scripts/rollback.sh $TIMESTAMP
-        exit 1
-    fi
-    sleep 1
-done
-
-# 6. Deploy frontend
-echo "[6/6] Deploying frontend..."
-docker compose up -d frontend
-
-# Final check
-sleep 5
-if curl -sf http://localhost:3000 >/dev/null 2>&1; then
-    echo "=== Deploy complete ==="
-    echo "Version: $VERSION"
-    echo "Timestamp: $(date)"
-else
-    echo "WARNING: Frontend may not be fully ready"
-fi
+# Deployment steps:
+# [1/9] Health check (current)
+# [2/9] Backup (DB + images + config)
+# [3/9] Git fetch + reset
+# [4/9] Build images (with cache, --force за no-cache)
+# [5/9] Alembic migrations
+# [6/9] Deploy backend + health check
+# [7/9] Deploy frontend
+# [8/9] Restart dependent services (gateway)
+# [9/9] Final health check
 ```
+
+**Нови функции:**
+- ✅ **Lock file** - предотвратява concurrent deploys
+- ✅ **Pre-deployment checks** - Docker, disk space, git, .env
+- ✅ **Alembic migrations** - `alembic upgrade head` преди deploy
+- ✅ **Deploy log** - всички действия се записват в `deploy.log`
+- ✅ **Gateway restart** - рестартира gateway след deploy
+- ✅ **Build timeout** - 600s лимит за build
+- ✅ **--force флаг** - `--no-cache` build
+- ✅ **--dry-run флаг** - показва какво ще направи без промени
+- ✅ **Force recreate** - `--force-recreate` за env var промени
 
 ### 3. scripts/rollback.sh
 
@@ -141,43 +123,25 @@ set -e
 TIMESTAMP=${1:-""}
 BACKUP_DIR="/backups/chronos"
 
+# Find latest backup if no timestamp
 if [ -z "$TIMESTAMP" ]; then
-    # Намери най-новия backup
-    TIMESTAMP=$(ls -t $BACKUP_DIR/db_*.dump 2>/dev/null | head -1 | xargs basename | sed 's/db_//;s/.dump//')
+    TIMESTAMP=$(ls -t $BACKUP_DIR/db_*.dump | head -1 | xargs basename | sed 's/db_//;s/.dump//')
 fi
 
-if [ -z "$TIMESTAMP" ]; then
-    echo "ERROR: No backup found"
-    exit 1
-fi
-
-echo "=== Rolling back to $TIMESTAMP ==="
-
-# Restore Docker images
-if [ -f "$BACKUP_DIR/backend_$TIMESTAMP.tar" ]; then
-    echo "Restoring backend..."
-    docker load -i $BACKUP_DIR/backend_$TIMESTAMP.tar
-fi
-
-if [ -f "$BACKUP_DIR/frontend_$TIMESTAMP.tar" ]; then
-    echo "Restoring frontend..."
-    docker load -i $BACKUP_DIR/frontend_$TIMESTAMP.tar
-fi
-
-# Restart containers
-echo "Restarting containers..."
-docker compose down
-docker compose up -d
-
-# Health check
-sleep 10
-if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
-    echo "=== Rollback complete ==="
-else
-    echo "ERROR: Rollback failed - health check failed"
-    exit 1
-fi
+# Verify all backup files exist
+# [1/5] Stop containers
+# [2/5] Restore Docker images
+# [3/5] Restore Database (pg_restore --clean --if-exists)
+# [4/5] Restore configuration (.env + docker-compose.yml)
+# [5/5] Start containers + health check
 ```
+
+**Нови функции:**
+- ✅ **DB restore** - `pg_restore --clean --if-exists` (вече не е коментиран)
+- ✅ **Config restore** - възстановява .env и docker-compose.yml
+- ✅ **Confirmation prompt** - изисква "yes" за потвърждение
+- ✅ **Backup verification** - проверява че всички файлове съществуват
+- ✅ **Deploy log** - записва rollback в `deploy.log`
 
 ## Конфигурация
 
@@ -188,9 +152,15 @@ fi
 VERSION=3.6.1.0
 GITHUB_REPO=https://github.com/BgDrDark/chronos
 
+# Database
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_password
+POSTGRES_DB=chronosdb
+POSTGRES_HOST=localhost
+
 # Backup
 BACKUP_DIR=/backups/chronos
-MAX_BACKUPS=3
+MAX_BACKUPS=5
 ```
 
 ### frontend/.env
@@ -217,59 +187,73 @@ VITE_GITHUB_REPO=BgDrDark/chronos
 │  └──────────────────────────────┘      │
 │                                        │
 │  Последен update: 30.04.2026 10:00     │
+│  Последен deploy: deploy.log           │
 └────────────────────────────────────────┘
-```
-
-### Check for Update логика
-
-```typescript
-const checkForUpdate = async () => {
-  const REPO = import.meta.env.VITE_GITHUB_REPO;
-  
-  // GitHub API - latest release
-  const response = await fetch(
-    `https://api.github.com/repos/${REPO}/releases/latest`,
-    {
-      headers: {
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    }
-  );
-  
-  const data = await response.json();
-  const latestVersion = data.tag_name?.replace('v', '') || 'unknown';
-  
-  const hasUpdate = latestVersion !== currentVersion;
-  
-  return { hasUpdate, latestVersion };
-};
 ```
 
 ## Времева таблица
 
-| Операц��я | ��реме |
-|-----------|-------|
+| Операция | Време |
+|----------|-------|
+| Pre-deployment checks | 5 sec |
 | Health check (current) | 5 sec |
 | DB Backup | 30-60 sec |
 | Images Backup | 1-2 min |
 | Git fetch | 10-30 sec |
-| Docker build | 2-5 min |
+| Docker build (cached) | 1-3 min |
+| Docker build (no-cache) | 3-8 min |
+| Alembic migrations | 5-30 sec |
 | Deploy backend | 15-30 sec |
 | Health check (new) | 15-60 sec |
 | Deploy frontend | 10-20 sec |
-| **Total** | **5-10 min** |
+| Gateway restart | 5 sec |
+| **Total (cached)** | **4-8 min** |
+| **Total (no-cache)** | **7-15 min** |
 | **Rollback** | **30-60 sec** |
 
 ## Защити
 
 | Защита | Описание |
 |--------|----------|
+| Lock file | Предотвратява concurrent deploys |
+| Pre-deployment checks | Docker, disk space, git, .env |
 | Health check преди deploy | Проверява че текущата версия работи |
 | DB Backup (pg_dump) | Преди всяка промяна |
 | Images Backup (docker save) | За rollback |
+| Config Backup (.env + compose) | За rollback на конфигурация |
+| Backup verification | Проверява че backup файловете са валидни |
+| Alembic migrations | Автоматично прилага миграции |
 | Auto-rollback при fail | Ако health check не мине |
-| Max 3 backups | Изтрива старите автоматично |
+| Max 5 backups | Изтрива старите автоматично |
 | Health check след deploy | Проверява новата версия |
+| Force recreate | Прилага промени в .env |
+| Build timeout | 600s лимит за build |
+
+## Флагове
+
+| Флаг | Описание |
+|------|----------|
+| `--force` | Build без cache (`--no-cache`) |
+| `--dry-run` | Показва какво ще направи без промени |
+
+### Примери
+
+```bash
+# Нормален deploy (с cache)
+./scripts/deploy-safe.sh
+
+# Deploy без cache
+./scripts/deploy-safe.sh --force
+
+# Dry run - проверка без промени
+./scripts/deploy-safe.sh --dry-run
+
+# Rollback към последния backup
+./scripts/rollback.sh
+
+# Rollback към конкретен backup
+./scripts/rollback.sh 20260502_143000
+```
 
 ## GitHub Интеграция
 
@@ -293,7 +277,7 @@ const checkForUpdate = async () => {
 
 ```
 deploy-safe.sh:
-  1. Health check timeout
+  1. Backend health check timeout
   2. ./scripts/rollback.sh $TIMESTAMP
   3. docker compose up -d
 ```
@@ -305,8 +289,15 @@ deploy-safe.sh:
 docker compose down
 
 # Върни старите images
-docker load -i /backups/chronos/backend_20260430_020000.tar
-docker load -i /backups/chronos/frontend_20260430_020000.tar
+docker load -i /backups/chronos/backend_20260502_143000.tar
+docker load -i /backups/chronos/frontend_20260502_143000.tar
+
+# Върни базата данни
+pg_restore -U postgres -d chronosdb --clean --if-exists /backups/chronos/db_20260502_143000.dump
+
+# Върни конфигурацията
+tar xzf /backups/chronos/config_20260502_143000.tar.gz -C /tmp/
+cp /tmp/.env .env
 
 # Стартирай
 docker compose up -d
@@ -327,12 +318,19 @@ chmod +x scripts/rollback.sh
 
 # Тествай backup
 ./scripts/backup.sh
+
+# Тествай dry run
+./scripts/deploy-safe.sh --dry-run
 ```
 
 ### 2. Ръчен Deploy
 
 ```bash
+# Нормален deploy
 ./scripts/deploy-safe.sh
+
+# С rebuild без cache
+./scripts/deploy-safe.sh --force
 ```
 
 ### 3. Ръчен Rollback
@@ -341,26 +339,57 @@ chmod +x scripts/rollback.sh
 # Листни наличните backups
 ls -la /backups/chronos/
 
+# Върни последния backup
+./scripts/rollback.sh
+
 # Върни конкретен backup
-./scripts/rollback.sh 20260430_020000
+./scripts/rollback.sh 20260502_143000
 ```
 
 ### 4. Check for Update (Frontend)
 
 ```
- Отиди в Settings
- Натисни "Провери"
- Виж дали има нова версия
+1. Отиди в Settings
+2. Натисни "Провери"
+3. Виж дали има нова версия
+```
+
+## Deploy Log
+
+Всички действия се записват в `/backups/chronos/deploy.log`:
+
+```
+[2026-05-02 14:30:00] BACKUP created: 20260502_143000
+[2026-05-02 14:30:15] GIT updated: abc123def
+[2026-05-02 14:32:00] BUILD complete: backend + frontend
+[2026-05-02 14:32:10] ALEMBIC migrations applied
+[2026-05-02 14:33:00] DEPLOY SUCCESS: version=3.6.1.0 timestamp=20260502_143000 backend=true frontend=true
+```
+
+### Преглед на логове
+
+```bash
+# Последните 10 deploy-а
+tail -20 /backups/chronos/deploy.log
+
+# Само успешни deploys
+grep "DEPLOY SUCCESS" /backups/chronos/deploy.log
+
+# Само failed deploys
+grep "DEPLOY FAILED\|ROLLBACK" /backups/chronos/deploy.log
 ```
 
 ## Troubleshooting
 
 | Проблем | Решение |
 |---------|--------|
-| Backup fail | Провери PostgreSQL credentials |
-| Build fail | Провери Docker |
-| Health check fail | Веми логове: `docker compose logs` |
-| Rollback fail | Ръчно: `docker load -i ...` |
+| Backup fail | Провери PostgreSQL credentials в .env |
+| Build fail | Провери Docker: `docker compose build` |
+| Health check fail | Виж логове: `docker compose logs backend` |
+| Rollback fail | Ръчно: `docker load -i ...` + `pg_restore` |
+| Lock file error | `rm -f /tmp/chronos_deploy.lock` |
+| Disk space error | Изчисти стари backups: `ls -t /backups/chronos/ \| tail -n +6 \| xargs rm` |
+| Alembic fail | Ръчно: `docker compose exec backend alembic upgrade head` |
 
 ---
 
@@ -369,3 +398,4 @@ ls -la /backups/chronos/
 | Версия | Дата | Описание |
 |--------|-----|----------|
 | 1.0 | 30.04.2026 | Първоначална версия |
+| 2.0 | 02.05.2026 | Alembic migrations, lock file, pre-checks, deploy log, config backup, DB restore, gateway restart |

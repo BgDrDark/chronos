@@ -1,0 +1,18 @@
+overwrite: true
+schema:
+  - http://localhost:14240/graphql
+generates:
+  src/generated/graphql.ts:
+    plugins:
+      - typescript
+      - typescript-operations
+    config:
+      enumsAsTypes: true
+      strict: true
+      skipTypename: true
+      useTypeImports: true
+  src/generated/graphql.schema.json:
+    plugins:
+      - introspection
+    config:
+      minify: true

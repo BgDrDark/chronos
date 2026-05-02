@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 /**
  * Tests for KioskTerminalPage
  */
@@ -7,21 +8,21 @@ import { BrowserRouter } from 'react-router-dom';
 import KioskTerminalPage from '../KioskTerminalPage';
 
 // Mocks
-jest.mock('react-router-dom', () => ({
-    ...jest.requireActual('react-router-dom'),
-    useNavigate: () => jest.fn(),
+vi.mock('react-router-dom', () => ({
+    ...vi.importActual('react-router-dom'),
+    useNavigate: () => vi.fn(),
 }));
 
-jest.mock('../../utils/api', () => ({
+vi.mock('../../utils/api', () => ({
     getApiUrl: (path: string) => `http://localhost:8000${path}`,
 }));
 
 // Mock fetch
-global.fetch = jest.fn();
+global.fetch = vi.fn();
 
 describe('KioskTerminalPage', () => {
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         localStorage.clear();
     });
 

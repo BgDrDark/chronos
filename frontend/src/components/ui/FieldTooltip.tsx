@@ -1,4 +1,4 @@
-import { Box, FormLabel, FormControl, FormHelperText, TextFieldProps } from '@mui/material';
+import { Box, FormLabel, FormControl, FormHelperText } from '@mui/material';
 import { InfoIcon } from './InfoIcon';
 
 interface FieldTooltipProps {

@@ -52,6 +52,7 @@ import { CREATE_INGREDIENT, UPDATE_INGREDIENT, UPDATE_BATCH, CREATE_SUPPLIER, UP
 import { ME_QUERY, INVENTORY_SESSIONS_QUERY, INVENTORY_SESSION_ITEMS_QUERY, INVENTORY_BY_BARCODE_QUERY, INGREDIENTS_QUERY } from '../graphql/queries';
 import { CONSUME_FROM_BATCH, AUTO_CONSUME_FEFO, GET_FEFO_SUGGESTION, GET_CONSUMPTION_LOGS } from '../graphql/warehouseMutations';
 import { getErrorMessage, type Ingredient, type Batch, type Supplier, type StorageZone, type InventorySession, type InventorySessionItem, type StockConsumptionLog, type FefoSuggestion } from '../types';
+import { formatDate } from '../utils/dateUtils';
 import { type SxProps, type Theme } from '@mui/material';
 import { InfoIcon } from '../components/ui/InfoIcon';
 
@@ -1240,7 +1241,7 @@ const WarehousePage: React.FC = () => {
                         <TableCell>{batch.batchNumber || '-'}</TableCell>
                         <TableCell align="right">{batch.quantity} {batch.ingredient?.unit}</TableCell>
                         <TableCell>
-                          {expiryDate ? expiryDate.toLocaleDateString('bg-BG') : '-'}
+                          {expiryDate ? formatDate(expiryDate) : '-'}
                           {isExpired && <Chip label="Изтекъл" color="error" size="small" sx={{ ml: 1 }} />}
                         </TableCell>
                         <TableCell>{batch.supplier?.name || '-'}</TableCell>
@@ -1471,7 +1472,7 @@ const WarehousePage: React.FC = () => {
                                   <TableCell>{b.batchNumber}</TableCell>
                                   <TableCell align="right">{Number(b.quantity).toFixed(3)}</TableCell>
                                   <TableCell>
-                                    {b.expiryDate ? new Date(b.expiryDate).toLocaleDateString('bg-BG') : '-'}
+                                    {b.expiryDate ? formatDate(b.expiryDate) : '-'}
                                   </TableCell>
                                   <TableCell>
                                     <Chip 
@@ -2075,7 +2076,7 @@ const WarehousePage: React.FC = () => {
                         <TableRow key={index}>
                           <TableCell>{ing?.name || `ID: ${item.ingredientId}`}</TableCell>
                           <TableCell align="right">{item.quantity} {ing?.unit || ''}</TableCell>
-                          <TableCell>{item.expiryDate ? new Date(item.expiryDate).toLocaleDateString('bg-BG') : '-'}</TableCell>
+                          <TableCell>{item.expiryDate ? formatDate(item.expiryDate) : '-'}</TableCell>
                           <TableCell>{item.batchNumber || '-'}</TableCell>
                           <TableCell align="right">
                             <IconButton size="small" color="error" onClick={() => handleRemoveItemFromBatch(index)}>

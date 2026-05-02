@@ -1,3 +1,4 @@
+import { formatDate } from '../utils/dateUtils';
 import React, { useState, useMemo } from 'react';
 import {
   Container, Typography, Box, Paper, Grid, Button, Table, TableBody, TableCell,
@@ -354,14 +355,14 @@ const ProductionControlPage: React.FC = () => {
                 <TableCell>
                   {order.productionDeadline ? (
                     <Chip 
-                      label={new Date(order.productionDeadline).toLocaleDateString('bg-BG')}
+                      label={formatDate(order.productionDeadline)}
                       color={new Date(order.productionDeadline) < new Date() ? 'error' : 'default'}
                       size="small"
                     />
                   ) : '-'}
                 </TableCell>
                 <TableCell>
-                  {new Date(order.dueDate).toLocaleDateString('bg-BG')}
+                  {formatDate(order.dueDate)}
                 </TableCell>
                 <TableCell>
                   <Chip 

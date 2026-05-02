@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 /**
  * Comprehensive tests for EmploymentContractDialog component.
  * Tests contract creation form validation, submission, and error handling.
@@ -29,8 +30,8 @@ const mockContract: LaborContract = {
   annexes: []
 };
 
-const mockOnSuccess = jest.fn();
-const mockOnClose = jest.fn();
+const mockOnSuccess = vi.fn();
+const mockOnClose = vi.fn();
 
 const renderDialog = (
   mocks: readonly import('@apollo/client/testing').MockedResponse<unknown, unknown>[] = [],
@@ -51,7 +52,7 @@ const renderDialog = (
 
 describe('EmploymentContractDialog', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('Rendering', () => {

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
+import dayjs from 'dayjs';
 import { getErrorMessage } from '../types';
 import {
-  Container, Typography, Box, TextField, Button,
+  Box, TextField, Button, Typography,
   Dialog, DialogTitle, DialogContent, DialogActions,
   MenuItem, Card, CardContent, IconButton, Alert, CircularProgress,
   useTheme, useMediaQuery, Grid, Stack, Tooltip, InputAdornment
 } from '@mui/material';
+import { TabbedPage } from '../components/TabbedPage';
 import { InfoIcon } from '../components/ui/InfoIcon';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { type Shift, type User, type WorkSchedule, type TimeLog, type ScheduleTemplate, type PublicHoliday, type ScheduleLog } from '../types';
@@ -27,8 +29,6 @@ import ShiftLegend from '../components/ShiftLegend';
 import ShiftEventContent from '../components/ShiftEventContent';
 import CurrentScheduleView from '../components/CurrentScheduleView';
 import ScheduleTemplatesManager from '../components/ScheduleTemplatesManager';
-import { format } from 'date-fns';
-import { bg } from 'date-fns/locale';
 
 // --- GraphQL ---
 const GET_SHIFTS_QUERY = gql`
@@ -544,7 +544,7 @@ const CalendarView: React.FC = () => {
 
     const handleShare = async () => {
         const url = window.location.href;
-        const title = `График за ${format(currentViewDate, 'MMMM yyyy', { locale: bg })}`;
+        const title = `График за ${dayjs(currentViewDate).format('MMMM YYYY')}`;
         
         if (navigator.share) {
             try {
@@ -1039,37 +1039,30 @@ const BulkAssign: React.FC = () => {
   );
 };
 
-const SchedulesPageTabMap: Record<string, number> = {
-  'calendar': 0,
-  'current': 1,
-  'shifts': 2,
-  'templates': 3,
-  'bulk': 4,
-};
-
 interface Props {
   tab?: string;
 }
 
 const SchedulesPage: React.FC<Props> = ({ tab }) => {
-  const initialTab = tab ? (SchedulesPageTabMap[tab] ?? 0) : 0;
-  const [tabValue, setTabValue] = useState(initialTab);
-
-  React.useEffect(() => {
-    const newTab = tab ? (SchedulesPageTabMap[tab] ?? 0) : 0;
-    setTabValue(newTab);
-  }, [tab]);
+  const tabs = [
+    { label: 'Календар', path: '/admin/schedules/calendar' },
+    { label: 'Текущ график', path: '/admin/schedules/current' },
+    { label: 'Управление на смени', path: '/admin/schedules/shifts' },
+    { label: 'Шаблони и Ротации', path: '/admin/schedules/templates' },
+    { label: 'Масово назначаване', path: '/admin/schedules/bulk' },
+  ];
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 4 }}>
-      <Typography variant="h4" gutterBottom fontWeight="bold">Работни графици</Typography>
-      {tabValue === 0 && <CalendarView />}
-      {tabValue === 1 && <CurrentScheduleView />}
-      {tabValue === 2 && <ShiftManager />}
-      {tabValue === 3 && <ScheduleTemplatesManager />}
-      {tabValue === 4 && <BulkAssign />}
-
-    </Container>
+    <TabbedPage tabs={tabs} defaultTabPath="/admin/schedules/calendar">
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" fontWeight="bold">Работни графици</Typography>
+      </Box>
+      {tab === 'calendar' && <CalendarView />}
+      {tab === 'current' && <CurrentScheduleView />}
+      {tab === 'shifts' && <ShiftManager />}
+      {tab === 'templates' && <ScheduleTemplatesManager />}
+      {tab === 'bulk' && <BulkAssign />}
+    </TabbedPage>
   );
 };
 

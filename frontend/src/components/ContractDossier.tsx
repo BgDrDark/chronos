@@ -9,6 +9,7 @@ import { useQuery } from '@apollo/client';
 import { gql } from '@apollo/client';
 import { type LaborContract, type LaborContractAnnex, type ContractStatus } from '../types';
 import { useCurrency, formatCurrencyValue } from '../currencyContext';
+import { formatDate } from '../utils/dateUtils';
 
 const GET_EMPLOYMENT_CONTRACT = gql`
   query GetEmploymentContract($userId: Int!) {
@@ -72,7 +73,7 @@ interface EmploymentContractQueryData {
   employmentContracts: LaborContract[];
 }
 
-const ContractDossier: React.FC<ContractDossierProps> = ({ userId, isReadOnly = false }) => {
+const ContractDossier: React.FC<ContractDossierProps> = ({ userId }) => {
   const { currency } = useCurrency();
   const { data, loading, error } = useQuery<EmploymentContractQueryData>(
     GET_EMPLOYMENT_CONTRACT,
@@ -184,7 +185,7 @@ const ContractDossier: React.FC<ContractDossierProps> = ({ userId, isReadOnly = 
                 Дата на подписване
               </Typography>
               <Typography variant="body1">
-                {new Date(contract.signedAt).toLocaleDateString('bg-BG')}
+                {formatDate(contract.signedAt)}
               </Typography>
             </Grid>
           )}
@@ -223,7 +224,7 @@ const ContractDossier: React.FC<ContractDossierProps> = ({ userId, isReadOnly = 
                   }}
                 >
                   <Typography variant="body2" color="text.secondary">
-                    {new Date(annex.effectiveDate).toLocaleDateString('bg-BG')}
+                    {formatDate(annex.effectiveDate)}
                   </Typography>
                   <Typography variant="body1" fontWeight="medium">
                     Анекс {annex.annexNumber || annex.id}

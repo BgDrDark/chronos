@@ -1,11 +1,12 @@
+import { vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter, useNavigate } from 'react-router-dom';
 import LoginPage from '../LoginPage';
 
 // Mock ApolloProvider and useApolloClient from @apollo/client
-const mockResetStore = jest.fn().mockResolvedValue(undefined);
-const mockUseApolloClient = jest.fn(() => ({
+const mockResetStore = vi.fn().mockResolvedValue(undefined);
+const mockUseApolloClient = vi.fn(() => ({
   resetStore: mockResetStore,
 }));
 
@@ -14,9 +15,9 @@ interface MockApolloProviderProps {
 }
 
 // We need to mock ApolloProvider separately because it's a component
-// and jest.mock can't mock components directly in the same way as functions/hooks
-jest.mock('@apollo/client', () => {
-  const actualApolloClient = jest.requireActual('@apollo/client');
+// and vi.mock can't mock components directly in the same way as functions/hooks
+vi.mock('@apollo/client', () => {
+  const actualApolloClient = vi.importActual('@apollo/client');
   return {
     ...actualApolloClient,
     ApolloProvider: ({ children }: MockApolloProviderProps) => children, // Simply render children
@@ -25,13 +26,13 @@ jest.mock('@apollo/client', () => {
 });
 
 // Mock useNavigate
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useNavigate: jest.fn(),
+vi.mock('react-router-dom', () => ({
+  ...vi.importActual('react-router-dom'),
+  useNavigate: vi.fn(),
 }));
 
 // Mock the fetch API
-const mockFetch = jest.fn();
+const mockFetch = vi.fn();
 (globalThis as unknown as { fetch: typeof mockFetch }).fetch = mockFetch;
 
 const renderLoginPage = () => {
@@ -44,7 +45,7 @@ const renderLoginPage = () => {
 
 describe('LoginPage', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test('renders login form elements', () => {
@@ -91,7 +92,7 @@ describe('LoginPage', () => {
       ok: true,
       json: () => Promise.resolve({ access_token: 'fake-token' }),
     });
-    const mockNavigate = jest.fn();
+    const mockNavigate = vi.fn();
     (useNavigate as jest.Mock).mockReturnValue(mockNavigate);
     mockUseApolloClient.mockReturnValue({
       resetStore: mockResetStore,

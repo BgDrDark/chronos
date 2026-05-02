@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Typography, Chip, Paper } from '@mui/material';
 import { getShiftIcon, ShiftTypeLabels, ShiftTypeColors } from '../utils/shiftUtils';
+import { formatDate } from '../utils/dateUtils';
 
 const legendItems = [
   'regular',
@@ -93,7 +94,7 @@ const ShiftLegend: React.FC<ShiftLegendProps> = ({ showAdminItems = false, holid
                         <Chip
                             key={h.date}
                             size="small"
-                            label={`${new Date(h.date).toLocaleDateString('bg-BG', { day: 'numeric', month: 'short' })}: ${h.localName || h.name}`}
+                            label={`${formatDate(h.date)}: ${h.localName || h.name}`}
                             icon={getShiftIcon('public_holiday', { style: { color: '#b71c1c' } })}
                             sx={{ 
                                 bgcolor: '#ffebee', 

@@ -7,7 +7,7 @@ services:
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DB:-workingtimedb}
+      - POSTGRES_DB=${POSTGRES_DB:-chronosdb}
       - POSTGRES_HOST_AUTH_METHOD=scram-sha-256
       - POSTGRES_INITDB_ARGS=--auth-local=scram-sha-256 --auth-host=scram-sha-256
       - TZ=Europe/Sofia
@@ -39,7 +39,7 @@ services:
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DB:-workingtimedb}
+      - POSTGRES_DB=${POSTGRES_DB:-chronosdb}
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}

@@ -10,16 +10,7 @@ import {
   Print as PrintIcon, 
   Share as ShareIcon 
 } from '@mui/icons-material';
-import { 
-  getDaysInMonth, 
-  format, 
-  addMonths, 
-  subMonths, 
-  startOfMonth, 
-  endOfMonth, 
-  isWeekend
-} from 'date-fns';
-import { bg } from 'date-fns/locale';
+import dayjs from 'dayjs';
 import { ShiftTypeColors } from '../utils/shiftUtils';
 import { type User, type Shift, type WorkSchedule, type PublicHoliday } from '../types';
 
@@ -84,8 +75,8 @@ const GET_ORTHODOX_HOLIDAYS_QUERY = gql`
 const CurrentScheduleView: React.FC = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
 
-  const startDate = startOfMonth(currentDate);
-  const endDate = endOfMonth(currentDate);
+  const startDate = dayjs(currentDate).startOf('month').toDate();
+  const endDate = dayjs(currentDate).endOf('month').toDate();
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
@@ -96,8 +87,8 @@ const CurrentScheduleView: React.FC = () => {
 
   const { data: schedData, loading: schedLoading } = useQuery(GET_SCHEDULES_QUERY, {
     variables: {
-      startDate: format(startDate, 'yyyy-MM-dd'),
-      endDate: format(endDate, 'yyyy-MM-dd')
+      startDate: dayjs(startDate).format('YYYY-MM-DD'),
+      endDate: dayjs(endDate).format('YYYY-MM-DD')
     },
     fetchPolicy: 'network-only'
   });
@@ -113,14 +104,14 @@ const CurrentScheduleView: React.FC = () => {
   });
 
   // Processing
-  const daysInMonth = getDaysInMonth(currentDate);
+  const daysInMonth = dayjs(currentDate).daysInMonth();
   const daysArray = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = new Date(year, month, i + 1);
+    const d = dayjs(currentDate).date(i + 1);
     return {
-      date: d,
+      date: d.toDate(),
       dayNum: i + 1,
-      isWeekend: isWeekend(d),
-      dayName: format(d, 'EEEEEE', { locale: bg }), // short day name (e.g. 'П')
+      isWeekend: d.day() === 0 || d.day() === 6,
+      dayName: d.format('dd'),
     };
   });
 
@@ -156,8 +147,8 @@ const CurrentScheduleView: React.FC = () => {
   }
 
   // Handlers
-  const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
-  const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+  const handlePrevMonth = () => setCurrentDate(dayjs(currentDate).subtract(1, 'month').toDate());
+  const handleNextMonth = () => setCurrentDate(dayjs(currentDate).add(1, 'month').toDate());
   
   const handlePrint = () => {
     window.print();
@@ -165,13 +156,13 @@ const CurrentScheduleView: React.FC = () => {
 
   const handleShare = async () => {
     const url = window.location.href;
-    const title = `График за ${format(currentDate, 'MMMM yyyy', { locale: bg })}`;
+    const title = `График за ${dayjs(currentDate).format('MMMM YYYY')}`;
     
     if (navigator.share) {
       try {
         await navigator.share({
           title: title,
-          text: `Разгледайте работния график за ${format(currentDate, 'MMMM yyyy', { locale: bg })}`,
+          text: `Разгледайте работния график за ${dayjs(currentDate).format('MMMM YYYY')}`,
           url: url
         });
       } catch (error) {
@@ -200,7 +191,7 @@ const CurrentScheduleView: React.FC = () => {
             <ArrowBack />
           </IconButton>
           <Typography variant="h5" sx={{ textTransform: 'capitalize', fontWeight: 'bold' }}>
-            {format(currentDate, 'MMMM yyyy', { locale: bg })}
+            {dayjs(currentDate).format('MMMM YYYY')}
           </Typography>
           <IconButton onClick={handleNextMonth}>
             <ArrowForward />
@@ -236,7 +227,7 @@ const CurrentScheduleView: React.FC = () => {
                 Служител
               </TableCell>
               {daysArray.map((day) => {
-                  const dateStr = format(day.date, 'yyyy-MM-dd');
+                  const dateStr = dayjs(day.date).format('YYYY-MM-DD');
                   const isHoliday = holidaysMap.has(dateStr);
                   return (
                     <TableCell 
@@ -281,7 +272,7 @@ const CurrentScheduleView: React.FC = () => {
                   </Typography>
                 </TableCell>
                 {daysArray.map((day) => {
-                  const dateStr = format(day.date, 'yyyy-MM-dd');
+                  const dateStr = dayjs(day.date).format('YYYY-MM-DD');
                   const shift = schedulesMap.get(`${user.id}-${dateStr}`);
                   const isHoliday = holidaysMap.has(dateStr);
                   

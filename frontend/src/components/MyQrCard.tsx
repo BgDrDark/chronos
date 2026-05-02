@@ -4,7 +4,7 @@ import {
 } from '@mui/material';
 import QrCodeIcon from '@mui/icons-material/QrCode';
 import { useMutation, useQuery, gql, DocumentNode } from '@apollo/client';
-import QRCode from "react-qr-code";
+import { QRCodeSVG } from 'qrcode.react';
 
 const REGENERATE_QR_MUTATION = gql`
   mutation RegenerateQr {
@@ -93,7 +93,7 @@ const MyQrCard: React.FC<MyQrCardProps> = ({ token, refetchQuery, variables }) =
                     aspectRatio: '1/1'
                 }}>
                     {token ? (
-                        <QRCode value={token} size={180} style={{ height: "auto", maxWidth: "100%", width: "100%" }} />
+                        <QRCodeSVG value={token} size={180} style={{ height: "auto", maxWidth: "100%", width: "100%" }} />
                     ) : (
                         <CircularProgress size={40} />
                     )}

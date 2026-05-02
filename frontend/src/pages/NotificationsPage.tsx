@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import {
-  Container,
   Typography,
   Box,
   Paper,
@@ -11,9 +10,8 @@ import {
   FormControlLabel,
   Alert,
   CircularProgress,
-  Tab,
-  Tabs,
 } from '@mui/material';
+import { TabbedPage } from '../components/TabbedPage';
 import {
   Send as SendIcon,
   Save as SaveIcon,
@@ -115,17 +113,11 @@ interface NotificationSetting {
   enabled: boolean;
 }
 
-const NotificationsPageTabMap: Record<string, number> = {
-  'events': 0,
-  'smtp': 1,
-};
-
 interface Props {
   tab?: string;
 }
 
 export default function NotificationsPage({ tab }: Props) {
-  const initialTab = tab ? (NotificationsPageTabMap[tab] ?? 0) : 0;
   const { data: meData } = useQuery(ME_QUERY);
   const companyId = meData?.me?.companyId;
   
@@ -140,7 +132,6 @@ export default function NotificationsPage({ tab }: Props) {
   const [updateSmtp, { loading: updatingSmtp }] = useMutation(UPDATE_SMTP_SETTINGS);
   const [testNotification, { loading: testing }] = useMutation(TEST_NOTIFICATION);
 
-  const [tabValue, setTabValue] = useState(initialTab);
   const [settings, setSettings] = useState<NotificationSetting[]>([]);
   const [smtpForm, setSmtpForm] = useState({
     smtpServer: '',
@@ -270,18 +261,15 @@ export default function NotificationsPage({ tab }: Props) {
     return <CircularProgress />;
   }
 
-  return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Paper sx={{ width: '100%', mb: 2 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={tabValue} onChange={(_: any, v: number) => setTabValue(v)}>
-            <Tab label="Събития и Уведомления" />
-            <Tab label="SMTP Настройки" />
-          </Tabs>
-        </Box>
+  const tabs = [
+    { label: 'Събития и Уведомления', path: '/admin/notifications/events' },
+    { label: 'SMTP Настройки', path: '/admin/notifications/smtp' },
+  ];
 
-        {tabValue === 0 && (
-          <Box sx={{ p: 3 }}>
+  return (
+    <TabbedPage tabs={tabs} defaultTabPath="/admin/notifications/events">
+      {tab === 'events' && (
+        <Box sx={{ p: 3 }}>
             {message && (
               <Alert severity={message.type} sx={{ mb: 2 }}>
                 {message.text}
@@ -461,8 +449,8 @@ export default function NotificationsPage({ tab }: Props) {
           </Box>
         )}
 
-        {tabValue === 1 && (
-          <Box sx={{ p: 3 }}>
+      {tab === 'smtp' && (
+        <Box sx={{ p: 3 }}>
             {message && (
               <Alert severity={message.type} sx={{ mb: 2 }}>
                 {message.text}
@@ -543,9 +531,8 @@ export default function NotificationsPage({ tab }: Props) {
                 </Button>
               </Grid>
             </Grid>
-          </Box>
-        )}
-      </Paper>
-    </Container>
+        </Box>
+      )}
+    </TabbedPage>
   );
 }

@@ -133,3 +133,4 @@ nginx/
 # Docker Hub
 docker-compose.hub.yml
 
+NAVIGATION_REFACTOR_PLAN.md

@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 /**
  * Comprehensive tests for EmploymentContractsList component.
  * Tests contract listing, filtering, signing, and linking functionality.
@@ -365,7 +366,7 @@ describe('EmploymentContractsList', () => {
 
   describe('Sign Contract', () => {
     test('opens confirmation dialog when signing', async () => {
-      window.confirm = jest.fn(() => true);
+      window.confirm = vi.fn(() => true);
 
       const mocks = [
         {
@@ -391,7 +392,7 @@ describe('EmploymentContractsList', () => {
     });
 
     test('calls sign mutation on confirm', async () => {
-      window.confirm = jest.fn(() => true);
+      window.confirm = vi.fn(() => true);
 
       const signMock = {
         request: { query: SIGN_EMPLOYMENT_CONTRACT, variables: { id: 1 } },
@@ -421,7 +422,7 @@ describe('EmploymentContractsList', () => {
     });
 
     test('does not sign if user cancels confirmation', async () => {
-      window.confirm = jest.fn(() => false);
+      window.confirm = vi.fn(() => false);
 
       const mocks = [
         {
@@ -443,7 +444,7 @@ describe('EmploymentContractsList', () => {
     });
 
     test('shows success message after signing', async () => {
-      window.confirm = jest.fn(() => true);
+      window.confirm = vi.fn(() => true);
 
       const mocks = [
         {
@@ -471,7 +472,7 @@ describe('EmploymentContractsList', () => {
     });
 
     test('shows error message on sign failure', async () => {
-      window.confirm = jest.fn(() => true);
+      window.confirm = vi.fn(() => true);
 
       const mocks = [
         {

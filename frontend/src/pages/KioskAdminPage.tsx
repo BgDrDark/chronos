@@ -3,13 +3,14 @@ import { getErrorMessage, Terminal, Gateway, AccessZone, User } from '../types';
 import { 
   Typography, Card, CardContent, Button, 
   Box, CircularProgress, Switch, FormControlLabel,
-  Tabs, Tab, Table, TableBody, TableCell, 
+  Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, Paper, Chip,
   IconButton, Dialog, DialogTitle, DialogContent, 
   DialogActions, TextField, Select, MenuItem, InputLabel,
   FormControl, Autocomplete, Checkbox, List, ListItem,
   ListItemText, ListItemButton, ListItemIcon, Stack
 } from '@mui/material';
+import { TabbedPage } from '../components/TabbedPage';
 import {
   Security as SecurityIcon,
   QrCodeScanner as QrCodeScannerIcon,
@@ -139,26 +140,17 @@ const KioskSecuritySettings: React.FC = () => {
 
 const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const navigate = useNavigate();
-    const tabMap: Record<string, number> = {
-        'kiosk': 0,
-        'terminals': 1,
-        'gateways': 2,
-        'zones': 3,
-        'doors': 4,
-        'codes': 5,
-        'logs': 6,
-        'users': 7
-    };
-    
-    const activeTab = tab ? tabMap[tab] || 0 : 0;
 
-    const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
-        const reverseMap = Object.entries(tabMap).find(([, v]) => v === newValue);
-        if (reverseMap) {
-            const pathSuffix = reverseMap[0] === 'kiosk' ? '' : `/${reverseMap[0]}`;
-            navigate(`/admin/kiosk${pathSuffix}`);
-        }
-    };
+    const tabs = [
+      { label: 'Конфигурация', path: '/admin/kiosk/config' },
+      { label: 'Терминали', path: '/admin/kiosk/terminals' },
+      { label: 'Gateways', path: '/admin/kiosk/gateways' },
+      { label: 'Зони', path: '/admin/kiosk/zones' },
+      { label: 'Врати', path: '/admin/kiosk/doors' },
+      { label: 'Кодове', path: '/admin/kiosk/codes' },
+      { label: 'Логове', path: '/admin/kiosk/logs' },
+      { label: 'Потребители', path: '/admin/kiosk/users' },
+    ];
 
     // Queries
     const { data: gatewaysData, loading: gatewaysLoading, refetch: refetchGateways } = useQuery(GATEWAYS_QUERY);
@@ -265,28 +257,11 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     };
 
     return (
-        <Box sx={{ p: 3 }}>
+        <TabbedPage tabs={tabs} defaultTabPath="/admin/kiosk/config">
             <Typography variant="h4" gutterBottom fontWeight="bold">Отдел КД (Контрол на Достъпа)</Typography>
-            
-            <Tabs 
-                value={activeTab} 
-                onChange={handleTabChange} 
-                variant="scrollable"
-                scrollButtons="auto"
-                sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
-            >
-                <Tab icon={<QrCodeScannerIcon />} label="Конфигурация" />
-                <Tab icon={<PeopleIcon />} label="Терминали" />
-                <Tab icon={<GatewayIcon />} label="Gateways" />
-                <Tab icon={<ZoneIcon />} label="Зони" />
-                <Tab icon={<DoorIcon />} label="Врати" />
-                <Tab icon={<CodeIcon />} label="Кодове" />
-                <Tab icon={<LogIcon />} label="Логове" />
-                <Tab icon={<PeopleIcon />} label="Потребители" />
-            </Tabs>
 
             {/* Kiosk Settings Tab */}
-            {activeTab === 0 && (
+            {tab === 'config' && (
                 <Box>
                     <KioskSecuritySettings />
                     <KioskCustomizationSettings />
@@ -294,7 +269,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Terminals Tab */}
-            {activeTab === 1 && (
+            {tab === 'terminals' && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -359,7 +334,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Gateways Tab */}
-            {activeTab === 2 && (
+            {tab === 'gateways' && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <EmergencyControl 
                         currentMode={gatewaysData?.gateways[0]?.systemMode || 'normal'} 
@@ -415,7 +390,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Zones Tab */}
-            {activeTab === 3 && (
+            {tab === 'zones' && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -460,7 +435,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Doors Tab */}
-            {activeTab === 4 && (
+            {tab === 'doors' && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -515,7 +490,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Codes Tab */}
-            {activeTab === 5 && (
+            {tab === 'codes' && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -556,7 +531,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Logs Tab */}
-            {activeTab === 6 && (
+            {tab === 'logs' && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -585,7 +560,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
             )}
 
             {/* Users Tab */}
-            {activeTab === 7 && (
+            {tab === 'users' && (
                 <Card>
                     <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
@@ -648,7 +623,7 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                 doors={doorsData?.accessDoors || []}
                 onSuccess={() => { setTerminalDialogOpen(false); refetchTerminals(); refetchDoors(); }}
             />
-        </Box>
+        </TabbedPage>
     );
 };
 

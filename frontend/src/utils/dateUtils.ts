@@ -1,27 +1,34 @@
-import { format, parseISO, isValid } from 'date-fns';
-import { bg } from 'date-fns/locale';
+import dayjs from 'dayjs';
+import 'dayjs/locale/bg';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 
-export const formatDate = (date: string | Date | null | undefined, formatStr: string = 'dd-MM-yyyy'): string => {
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.locale('bg');
+
+export const formatDate = (date: string | Date | null | undefined, formatStr: string = 'DD-MM-YYYY'): string => {
   if (!date) return '';
   
-  let d: Date;
+  let d: dayjs.Dayjs;
   
   if (typeof date === 'string') {
-    // Check if it looks like a date string before parsing
     if (!date.trim()) return '';
-    d = parseISO(date);
+    d = dayjs(date);
   } else {
-    d = date;
+    d = dayjs(date);
   }
 
-  if (!isValid(d)) {
-    return date.toString(); // Fallback to original string if invalid
+  if (!d.isValid()) {
+    return date.toString();
   }
 
   try {
-    return format(d, formatStr, { locale: bg });
+    return d.format(formatStr);
   } catch (e) {
     console.error("Date formatting error", e);
     return '';
   }
 };
+
+export const dayjsInstance = dayjs;

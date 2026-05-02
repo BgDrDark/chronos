@@ -19,6 +19,7 @@ import { CREATE_PRODUCTION_ORDER, UPDATE_PRODUCTION_ORDER_STATUS, CONFIRM_PRODUC
 import { ME_QUERY } from '../graphql/queries';
 import { QRCodeSVG } from 'qrcode.react';
 import { type RecipeWithPrice, type ProductionOrder, type Recipe, type ProductionTask, type RecipeIngredient, getErrorMessage } from '../types';
+import { formatDate } from '../utils/dateUtils';
 import { useCurrency, formatCurrencyValue } from '../currencyContext';
 
 interface LabelData {
@@ -479,7 +480,7 @@ const OrdersPage: React.FC = () => {
                 <TableCell>
                   {order.productionDeadline ? (
                     <Chip 
-                      label={`Произв: ${new Date(order.productionDeadline).toLocaleDateString('bg-BG', { day: '2-digit', month: '2-digit' })}`}
+                      label={`Произв: ${formatDate(order.productionDeadline)}`}
                       color={new Date(order.productionDeadline) < new Date() ? 'error' : 'default'}
                       size="small" 
                     />
@@ -960,7 +961,7 @@ const OrdersPage: React.FC = () => {
               <Grid size={{ xs: 12, sm: 6 }}>
                 <Typography variant="subtitle2" color="textSecondary">Годен до</Typography>
                 <Typography variant="h6" color="error">
-                  {new Date(recordData.productionRecordByOrder.expiryDate).toLocaleDateString('bg-BG')}
+                  {formatDate(recordData.productionRecordByOrder.expiryDate)}
                 </Typography>
               </Grid>
 
@@ -1011,7 +1012,7 @@ const OrdersPage: React.FC = () => {
                         <TableRow key={ing.id}>
                           <TableCell>{ing.ingredientName}</TableCell>
                           <TableCell>{ing.batchNumber}</TableCell>
-                          <TableCell>{ing.expiryDate ? new Date(ing.expiryDate).toLocaleDateString('bg-BG') : 'N/A'}</TableCell>
+                          <TableCell>{ing.expiryDate ? formatDate(ing.expiryDate) : 'N/A'}</TableCell>
                           <TableCell align="right">{ing.quantityUsed} {ing.unit}</TableCell>
                         </TableRow>
                       ))}

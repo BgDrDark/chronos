@@ -142,8 +142,8 @@ const PersonalDataSection: React.FC<{ user: any }> = ({ user }) => {
                             <Grid size={{ xs: 12, sm: 6 }}>
                                 <Typography variant="caption" color="text.secondary">Период</Typography>
                                 <Typography variant="body1">
-                                    {user.activeContract.startDate ? new Date(user.activeContract.startDate).toLocaleDateString('bg-BG') : '—'}
-                                    {user.activeContract.endDate && ` - ${new Date(user.activeContract.endDate).toLocaleDateString('bg-BG')}`}
+                                    {user.activeContract.startDate ? formatDate(user.activeContract.startDate) : '—'}
+                                    {user.activeContract.endDate && ` - ${formatDate(user.activeContract.endDate)}`}
                                 </Typography>
                             </Grid>
                             <Grid size={{ xs: 12, sm: 6 }}>

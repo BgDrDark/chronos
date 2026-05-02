@@ -8,6 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import { useCurrency } from '../currencyContext';
+import dayjs from 'dayjs';
 import { PayrollForecastItem } from '../types';
 
 const GET_FORECAST = gql`
@@ -60,7 +61,7 @@ const FinancialForecast: React.FC = () => {
                         sx={{ width: 120 }}
                     >
                         {Array.from({length: 12}, (_, i) => i + 1).map(m => (
-                            <MenuItem key={m} value={m}>{new Date(2000, m-1, 1).toLocaleDateString('bg-BG', { month: 'long' })}</MenuItem>
+                            <MenuItem key={m} value={m}>{dayjs().month(m-1).format('MMMM')}</MenuItem>
                         ))}
                     </TextField>
                 </Box>

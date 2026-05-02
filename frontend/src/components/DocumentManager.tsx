@@ -10,6 +10,7 @@ import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import { type UserDocument } from '../types';
+import { formatDate } from '../utils/dateUtils';
 
 interface Props {
     userId: number;
@@ -150,7 +151,7 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
                                         {doc.is_locked && <Chip label="Само за четене" size="small" variant="outlined" color="warning" sx={{ height: 20, fontSize: '0.6rem' }} />}
                                     </Box>
                                 } 
-                                secondary={`${new Date(doc.created_at).toLocaleDateString('bg-BG')} | ${doc.file_type}`} 
+                                secondary={`${formatDate(doc.created_at)} | ${doc.file_type}`} 
                             />
                             <ListItemSecondaryAction>
                                 {isAdmin && (

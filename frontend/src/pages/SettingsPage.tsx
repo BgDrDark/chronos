@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { getErrorMessage } from '../types';
 import { 
   Container, Typography, Card, CardContent, Grid, TextField, Button, 
-  Alert, Box, CircularProgress, Switch, FormControlLabel, Divider, InputAdornment
+  Alert, Box, CircularProgress, Switch, FormControlLabel, Divider, InputAdornment,
+  LinearProgress
 } from '@mui/material';
 import { InfoIcon } from '../components/ui/InfoIcon';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
@@ -767,15 +768,19 @@ const SystemSettings: React.FC = () => {
 const DeploymentSettings: React.FC = () => {
     const [deploying, setDeploying] = useState(false);
     const [checking, setChecking] = useState(false);
-    const [msg, setMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
+    const [msg, setMsg] = useState<{type: 'success'|'error'|'info', text: string} | null>(null);
     const [lastCheck, setLastCheck] = useState<string | null>(null);
-    const [updateAvailable, setUpdateAvailable] = useState<{available: boolean, version: string} | null>(null);
+    const [updateAvailable, setUpdateAvailable] = useState<{available: boolean, version: string, releaseNotes?: string} | null>(null);
     const [currentVersion, setCurrentVersion] = useState<string>('loading...');
+    const [deployLog, setDeployLog] = useState<string[]>([]);
+    const [showLog, setShowLog] = useState(false);
+    const [loadingLog, setLoadingLog] = useState(false);
+    const [deployProgress, setDeployProgress] = useState<string>('');
+    const [deployOutput, setDeployOutput] = useState<string>('');
     
     const API_URL = import.meta.env.VITE_API_URL || '';
     const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || 'BgDrDark/chronos';
 
-    // Get current version on mount - fallback to version from .env if API fails
     const FALLBACK_VERSION = '3.6.1.0';
     
     React.useEffect(() => {
@@ -785,18 +790,77 @@ const DeploymentSettings: React.FC = () => {
             .catch(() => setCurrentVersion(FALLBACK_VERSION));
     }, [API_URL]);
 
+    // Poll deploy status when deploying
+    React.useEffect(() => {
+        if (!deploying) return;
+        
+        const pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`${API_URL}/webhook/deploy-status`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setDeployProgress(data.progress || '');
+                    if (data.output) {
+                        setDeployOutput(data.output);
+                    }
+                    if (!data.is_deploying) {
+                        clearInterval(pollInterval);
+                        setDeploying(false);
+                        if (data.status === 'success') {
+                            setMsg({ type: 'success', text: `Успешно обновяване! ${data.progress}` });
+                            // Refresh current version
+                            fetch(`${API_URL}/webhook/health`)
+                                .then(r => r.json())
+                                .then(d => setCurrentVersion(d.version || FALLBACK_VERSION))
+                                .catch(() => {});
+                        } else if (data.status === 'rolled_back') {
+                            setMsg({ type: 'error', text: `Deploy failed - автоматичен rollback: ${data.progress}` });
+                        } else {
+                            setMsg({ type: 'error', text: `Deploy failed: ${data.progress}` });
+                        }
+                    }
+                }
+            } catch {
+                // Ignore polling errors
+            }
+        }, 2000);
+        
+        return () => clearInterval(pollInterval);
+    }, [deploying, API_URL]);
+
+    const handleFetchDeployLog = async () => {
+        setShowLog(!showLog);
+        if (!showLog && deployLog.length === 0) {
+            setLoadingLog(true);
+            try {
+                const token = localStorage.getItem('token');
+                const res = await fetch(`${API_URL}/webhook/deploy-log?lines=50`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setDeployLog(data.log || []);
+                }
+            } catch {
+                // Ignore
+            } finally {
+                setLoadingLog(false);
+            }
+        }
+    };
+
     const handleCheckUpdate = async () => {
         setChecking(true);
         setUpdateAvailable(null);
         setMsg(null);
         
         try {
-            // GitHub API - директенrequest (не CORS)
             let latestVersion = 'unknown';
+            let releaseNotes = '';
             
             try {
                 const response = await fetch(
-                    `https://api.github.com/repos/${GITHUB_REPO}/tags`,
+                    `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
                     {
                         headers: {
                             'Accept': 'application/vnd.github.v3+json'
@@ -805,46 +869,43 @@ const DeploymentSettings: React.FC = () => {
                 );
                 
                 if (response.ok) {
-                    const tags = await response.json();
-                    if (tags.length > 0) {
-                        latestVersion = tags[0].name.replace(/^v/, '');
+                    const release = await response.json();
+                    latestVersion = release.tag_name?.replace(/^v/, '') || 'unknown';
+                    releaseNotes = release.body || '';
+                } else {
+                    // Fallback to tags
+                    const tagsResponse = await fetch(
+                        `https://api.github.com/repos/${GITHUB_REPO}/tags`,
+                        { headers: { 'Accept': 'application/vnd.github.v3+json' } }
+                    );
+                    if (tagsResponse.ok) {
+                        const tags = await tagsResponse.json();
+                        if (tags.length > 0) {
+                            latestVersion = tags[0].name.replace(/^v/, '');
+                        }
                     }
                 }
-            } catch (githubErr) {
-                // Ако GitHub API не работи, покажи съобщение
+            } catch {
                 setMsg({ type: 'error', text: 'GitHub API недостъпен. Проверете ръчно на GitHub.' });
                 setChecking(false);
                 return;
-            }
-            
-            // Ако няма tags, опитай с последния commit
-            if (latestVersion === 'unknown') {
-                const commitsResponse = await fetch(
-                    `https://api.github.com/repos/${GITHUB_REPO}/commits`,
-                    {
-                        headers: {
-                            'Accept': 'application/vnd.github.v3+json'
-                        }
-                    }
-                );
-                
-                if (commitsResponse.ok) {
-                    const commit = await commitsResponse.json();
-                    latestVersion = commit.sha?.substring(0, 7) || 'unknown';
-                }
             }
             
             if (latestVersion === 'unknown') {
                 setMsg({ type: 'error', text: 'Не може да се определи версията' });
             } else {
                 const hasUpdate = latestVersion !== currentVersion;
-                setUpdateAvailable({ available: hasUpdate, version: latestVersion });
+                setUpdateAvailable({ 
+                    available: hasUpdate, 
+                    version: latestVersion,
+                    releaseNotes: hasUpdate ? releaseNotes : undefined
+                });
                 setLastCheck(new Date().toLocaleString('bg-BG'));
                 
                 if (hasUpdate) {
                     setMsg({ type: 'success', text: `Налична е нова версия: ${latestVersion}` });
                 } else {
-                    setMsg({ type: 'success', text: 'Използвате най-новата версия' });
+                    setMsg({ type: 'info', text: 'Използвате най-новата версия' });
                 }
             }
         } catch (err: any) {
@@ -855,42 +916,44 @@ const DeploymentSettings: React.FC = () => {
     };
 
     const handleDeploy = async () => {
-        if (!window.confirm('Сигурен ли си, че искаш да обновиш продукцията?')) return;
+        const targetVersion = updateAvailable?.available ? updateAvailable.version : null;
+        const confirmMsg = targetVersion 
+            ? `Сигурен ли си, че искаш да обновиш до версия ${targetVersion}?`
+            : 'Сигурен ли си, че искаш да обновиш приложението?';
+        
+        if (!window.confirm(confirmMsg)) return;
 
         setDeploying(true);
         setMsg(null);
+        setDeployProgress('Starting deployment...');
+        setDeployOutput('');
         
         try {
             const token = localStorage.getItem('token');
-            console.log('Deploy token:', token ? 'FOUND' : 'NOT FOUND');
-            console.log('API_URL:', API_URL);
-            
             if (!token) {
                 setMsg({ type: 'error', text: 'Не сте логнати' });
+                setDeploying(false);
                 return;
             }
             
-            const deployUrl = `${API_URL}/webhook/deploy`;
-            console.log('Deploy URL:', deployUrl);
-            
-            const res = await fetch(deployUrl, {
+            const res = await fetch(`${API_URL}/webhook/deploy`, {
                 method: 'POST',
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                body: JSON.stringify({ version: targetVersion || undefined })
             });
             
             const data = await res.json();
             
-            if (res.ok) {
-                setMsg({ type: 'success', text: `Успешно обновяване! Commit: ${data.commit || 'unknown'}` });
-            } else {
+            if (!res.ok) {
                 setMsg({ type: 'error', text: data.detail || 'Грешка при обновяване' });
+                setDeploying(false);
             }
+            // Status polling will handle success/failure display
         } catch (err: any) {
             setMsg({ type: 'error', text: err.message || 'Грешка при обновяване' });
-        } finally {
             setDeploying(false);
         }
     };
@@ -915,7 +978,7 @@ const DeploymentSettings: React.FC = () => {
                         variant="outlined" 
                         size="small"
                         onClick={handleCheckUpdate}
-                        disabled={checking}
+                        disabled={checking || deploying}
                         startIcon={checking ? <CircularProgress size={16} /> : undefined}
                     >
                         {checking ? 'Проверка...' : 'Провери'}
@@ -924,8 +987,41 @@ const DeploymentSettings: React.FC = () => {
 
                 {updateAvailable?.available && (
                     <Alert severity="info" sx={{ mb: 2 }}>
-                        Налична е нова версия: {updateAvailable.version}
+                        <Typography variant="body2" fontWeight="bold">
+                            Налична е нова версия: {updateAvailable.version}
+                        </Typography>
+                        {updateAvailable.releaseNotes && (
+                            <Box sx={{ mt: 1, maxHeight: 150, overflowY: 'auto' }}>
+                                <Typography variant="caption" color="text.secondary">
+                                    Release notes:
+                                </Typography>
+                                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.5 }}>
+                                    {updateAvailable.releaseNotes.substring(0, 500)}
+                                    {updateAvailable.releaseNotes.length > 500 ? '...' : ''}
+                                </Typography>
+                            </Box>
+                        )}
                     </Alert>
+                )}
+
+                {deploying && (
+                    <Box sx={{ mb: 2 }}>
+                        <LinearProgress sx={{ mb: 1 }} />
+                        <Typography variant="body2" color="text.secondary">
+                            {deployProgress || 'Deploy в процес...'}
+                        </Typography>
+                        {deployOutput && (
+                            <Box sx={{ 
+                                mt: 1, maxHeight: 200, overflowY: 'auto', 
+                                bgcolor: 'grey.900', color: 'grey.100', 
+                                p: 1, borderRadius: 1, fontFamily: 'monospace', fontSize: '0.7rem' 
+                            }}>
+                                {deployOutput.split('\n').slice(-10).map((line, i) => (
+                                    <Box key={i}>{line}</Box>
+                                ))}
+                            </Box>
+                        )}
+                    </Box>
                 )}
 
                 <Button 
@@ -934,14 +1030,64 @@ const DeploymentSettings: React.FC = () => {
                     onClick={handleDeploy}
                     disabled={deploying}
                     startIcon={deploying ? <CircularProgress size={20} color="inherit" /> : <SystemUpdateIcon />}
+                    sx={{ mb: 2 }}
                 >
-                    {deploying ? 'Обновяване...' : 'Обнови Продукцията'}
+                    {deploying ? 'Обновяване...' : 
+                     updateAvailable?.available ? `Обнови до ${updateAvailable.version}` : 
+                     'Обнови Приложението'}
                 </Button>
 
                 {lastCheck && (
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                        Последенa проверка: {lastCheck}
+                        Последна проверка: {lastCheck}
                     </Typography>
+                )}
+
+                <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                    <Button 
+                        variant="outlined" 
+                        size="small"
+                        onClick={handleFetchDeployLog}
+                        disabled={loadingLog}
+                        startIcon={loadingLog ? <CircularProgress size={16} /> : undefined}
+                    >
+                        {showLog ? 'Скрий логове' : 'Покажи логове'}
+                    </Button>
+                </Box>
+
+                {showLog && (
+                    <Box sx={{ mt: 2 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                            Последни 50 реда от deploy.log
+                        </Typography>
+                        <Box sx={{
+                            maxHeight: 300,
+                            overflowY: 'auto',
+                            bgcolor: 'grey.900',
+                            color: 'grey.100',
+                            p: 1.5,
+                            borderRadius: 1,
+                            fontFamily: 'monospace',
+                            fontSize: '0.75rem',
+                            lineHeight: 1.4,
+                        }}>
+                            {deployLog.length > 0 ? (
+                                deployLog.map((line, i) => (
+                                    <Box key={i} sx={{ 
+                                        color: line.includes('SUCCESS') ? '#4caf50' : 
+                                               line.includes('FAILED') || line.includes('ERROR') ? '#f44336' : 
+                                               line.includes('ROLLBACK') ? '#ff9800' : 'inherit' 
+                                    }}>
+                                        {line}
+                                    </Box>
+                                ))
+                            ) : (
+                                <Typography variant="caption" color="text.secondary">
+                                    Няма налични логове
+                                </Typography>
+                            )}
+                        </Box>
+                    </Box>
                 )}
             </CardContent>
         </Card>

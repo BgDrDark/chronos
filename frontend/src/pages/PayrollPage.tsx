@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import {
-  Container, Typography, Box, TextField, Button, MenuItem,
+  Typography, Box, TextField, Button, MenuItem,
   Alert, CircularProgress, Card, CardContent, Divider, Grid, Link, FormControlLabel, Checkbox,
   Switch, type SelectChangeEvent, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   InputLabel, Select, FormControl, InputAdornment
 } from '@mui/material';
+import { TabbedPage } from '../components/TabbedPage';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import PaidIcon from '@mui/icons-material/Paid';
 import ReceiptIcon from '@mui/icons-material/Receipt';
+import { formatDate } from '../utils/dateUtils';
 import AddIcon from '@mui/icons-material/Add';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import { useQuery, useMutation, gql, useLazyQuery } from '@apollo/client';
@@ -1970,56 +1972,48 @@ const HolidaySettings: React.FC = () => {
   );
 };
   
-  const PayrollPageTabMap: Record<string, number> = {
-    'reports': 3,
-    'payments': 1,
-    'declarations': 2,
-    'settings': 0,
-    'templates': 4,
-    'annexes': 5,
-    'contracts': 6,
-  };
-
   interface Props {
     tab?: string;
   }
 
   const PayrollPage: React.FC<Props> = ({ tab }) => {
-    const initialTab = tab ? (PayrollPageTabMap[tab] ?? 0) : 0;
-    const [tabValue, setTabValue] = useState(initialTab);
-    
-    React.useEffect(() => {
-      const newTab = tab ? (PayrollPageTabMap[tab] ?? 0) : 0;
-      setTabValue(newTab);
-    }, [tab]);
+    const tabs = [
+      { label: 'ТРЗ Настройки', path: '/admin/payroll/trz-settings' },
+      { label: 'Плащания', path: '/admin/payroll/payments' },
+      { label: 'Празници', path: '/admin/payroll/declarations' },
+      { label: 'Справки', path: '/admin/payroll/reports' },
+      { label: 'Шаблони', path: '/admin/payroll/templates' },
+      { label: 'Допълнителни споразумения', path: '/admin/payroll/annexes' },
+      { label: 'Трудови договори', path: '/admin/payroll/contracts' },
+    ];
 
-  return (
-    <Container maxWidth="lg" sx={{ mt: 4 }}>
-      <Typography variant="h4" gutterBottom fontWeight="bold">Отдел финанси</Typography>
-      
-      {tabValue === 0 && (
-          <Box sx={{ maxWidth: 900 }}>
-              <PayrollLegalSettings />
-              <Divider sx={{ my: 4 }} />
-              <GlobalPayrollSettings />
-              <MonthlyWorkDaysSettings />
-          </Box>
-      )}
-      {tabValue === 1 && (
-          <Box sx={{ maxWidth: 900 }}>
-              <PayrollSettings />
-              <Divider sx={{ my: 4 }} />
-              <AdvanceLoanManager />
-          </Box>
-      )}
-      {tabValue === 2 && <HolidaySettings />}
-      {tabValue === 3 && <PayrollReports />}
-      {tabValue === 4 && <TemplatesSettings />}
-      {tabValue === 5 && <AnnexesSettings />}
-      {tabValue === 6 && <EmploymentContractsList />}
-    </Container>
-  );
-};
+    return (
+      <TabbedPage tabs={tabs} defaultTabPath="/admin/payroll/trz-settings">
+        <Typography variant="h4" gutterBottom fontWeight="bold">Отдел финанси</Typography>
+        
+        {tab === 'settings' && (
+            <Box sx={{ maxWidth: 900 }}>
+                <PayrollLegalSettings />
+                <Divider sx={{ my: 4 }} />
+                <GlobalPayrollSettings />
+                <MonthlyWorkDaysSettings />
+            </Box>
+        )}
+        {tab === 'payments' && (
+            <Box sx={{ maxWidth: 900 }}>
+                <PayrollSettings />
+                <Divider sx={{ my: 4 }} />
+                <AdvanceLoanManager />
+            </Box>
+        )}
+        {tab === 'declarations' && <HolidaySettings />}
+        {tab === 'reports' && <PayrollReports />}
+        {tab === 'templates' && <TemplatesSettings />}
+        {tab === 'annexes' && <AnnexesSettings />}
+        {tab === 'contracts' && <EmploymentContractsList />}
+      </TabbedPage>
+    );
+  };
 
 // --- Component: Templates Settings ---
 const TemplatesSettings: React.FC = () => {
@@ -2788,7 +2782,7 @@ const AnnexesSettings: React.FC = () => {
                     )}
                     {annex.isSigned && (
                       <Typography variant="body2" color="success.main">
-                        Подписан: {annex.signedAt ? new Date(annex.signedAt).toLocaleDateString() : ''}
+                        Подписан: {annex.signedAt ? formatDate(annex.signedAt) : ''}
                       </Typography>
                     )}
                   </Box>

@@ -1,4 +1,4 @@
-import { TextField, TextFieldProps, InputAdornment } from '@mui/material';
+import { TextField, type TextFieldProps } from '@mui/material';
 import { useState, useCallback } from 'react';
 import { InfoIcon } from './InfoIcon';
 import { fieldsHelp } from './fieldsHelpText';

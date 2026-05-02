@@ -18,6 +18,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { formatDate } from '../utils/dateUtils';
+import { TabbedPage } from '../components/TabbedPage';
 
 // --- Helper for File Upload ---
 const uploadFile = async (requestId: number, file: File) => {
@@ -812,43 +813,35 @@ const AllLeavesTab: React.FC = () => {
   );
 };
 
-const LeavesPageTabMap: Record<string, number> = {
-  'my-requests': 0,
-  'approvals': 1,
-  'all': 2,
-};
-
 interface Props {
   tab?: string;
 }
 
 const LeavesPage: React.FC<Props> = ({ tab }) => {
-  const initialTab = tab ? (LeavesPageTabMap[tab] ?? 0) : 0;
-  const [tabValue, setTabValue] = useState(initialTab);
   const { data, loading, error } = useQuery(GET_MY_LEAVES, { fetchPolicy: 'cache-and-network' }); 
   
   const user = data?.me;
 
-  // Update tab when URL changes
-  React.useEffect(() => {
-    const newTab = tab ? (LeavesPageTabMap[tab] ?? 0) : 0;
-    setTabValue(newTab);
-  }, [tab]);
-  
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
   if (error) return <Alert severity="error" sx={{ mt: 2 }}>Грешка при зареждане на данни: {error.message}</Alert>;
   if (!user) return <Navigate to="/login" replace />;
 
   const isAdmin = user?.role?.name === 'admin' || user?.role?.name === 'super_admin';
 
+  const tabs = [
+    { label: 'Моите заявки', path: '/leaves/my-requests' },
+    ...(isAdmin ? [{ label: 'Одобрения', path: '/leaves/approvals' }] : []),
+    ...(isAdmin ? [{ label: 'Всички заявки', path: '/leaves/all' }] : []),
+  ];
+
+  const defaultTab = '/leaves/my-requests';
+
   return (
-    <Container maxWidth="lg" sx={{ mt: 4 }}>
-      <Typography variant="h4" gutterBottom fontWeight="bold">Управление на отпуски</Typography>
-      
-      {tabValue === 0 && user && <MyLeavesTab user={user} />}
-      {tabValue === 1 && isAdmin && <ApprovalsTab />}
-      {tabValue === 2 && isAdmin && <AllLeavesTab />}
-    </Container>
+    <TabbedPage tabs={tabs} defaultTabPath={defaultTab}>
+      {tab === 'my-requests' && user && <MyLeavesTab user={user} />}
+      {tab === 'approvals' && isAdmin && <ApprovalsTab />}
+      {tab === 'all' && isAdmin && <AllLeavesTab />}
+    </TabbedPage>
   );
 };
 

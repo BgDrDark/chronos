@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   AppBar, Box, CssBaseline, Divider, Drawer as MuiDrawer, IconButton,
-  List, ListItem, ListItemButton, ListItemIcon, ListItemText,
-  Toolbar, Typography, Alert, AlertTitle, Collapse, styled, type Theme, type CSSObject
+  Toolbar, Typography, Alert, AlertTitle, styled, type Theme, type CSSObject
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -23,7 +22,6 @@ import {
   Assignment as TaskIcon,
   Notifications as NotificationsIcon,
   Receipt as ReceiptIcon,
-  ExpandMore as ExpandMoreIcon,
   MeetingRoom as DoorIcon,
   LocalShipping as LogisticsIcon,
   DirectionsCar as FleetIcon,
@@ -38,6 +36,7 @@ import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useApolloClient } from '@apollo/client';
 import { ME_QUERY, MODULES_QUERY } from '../graphql/queries';
 import useSessionActivity from '../hooks/useSessionActivity';
+import { SidebarMenu, type MenuItem } from './SidebarMenu';
 
 const drawerWidth = 260;
 const collapsedDrawerWidth = 72;
@@ -107,21 +106,13 @@ interface Props {
   children: React.ReactNode;
 }
 
-interface MenuItem {
-  text: string;
-  icon?: React.ReactNode;
-  path?: string;
-  visible: boolean;
-  children?: MenuItem[];
-}
-
 const MainLayout: React.FC<Props> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem('sidebarCollapsed') === 'true';
   });
   const [smtpAlertOpen, setSmtpAlertOpen] = useState(true);
-  const [expandedMenus, setExpandedMenus] = useState<string[]>([]);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
   const location = useLocation();
   const client = useApolloClient();
@@ -129,6 +120,16 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   useEffect(() => {
     localStorage.setItem('sidebarCollapsed', isCollapsed.toString());
   }, [isCollapsed]);
+
+  useEffect(() => {
+    const newExpanded = new Set<string>();
+    menuItems.forEach(item => {
+      if (item.children && item.children.some(child => child.path === location.pathname)) {
+        newExpanded.add(item.text);
+      }
+    });
+    setExpandedSections(newExpanded);
+  }, [location.pathname]);
 
   // Session activity hook - auto refresh and idle timeout
   useSessionActivity({
@@ -155,7 +156,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   const handleCollapseToggle = () => {
     setIsCollapsed(!isCollapsed);
     if (!isCollapsed) {
-      setExpandedMenus([]);
+      setExpandedSections(new Set());
     }
   };
 
@@ -194,28 +195,6 @@ const MainLayout: React.FC<Props> = ({ children }) => {
       navigate('/login', { replace: true });
       await client.clearStore();
     }
-  };
-
-  const toggleMenu = (text: string) => {
-    if (isCollapsed) {
-      setIsCollapsed(false);
-      setExpandedMenus([text]);
-      return;
-    }
-    setExpandedMenus(prev =>
-      prev.includes(text)
-        ? prev.filter(t => t !== text)
-        : [...prev, text]
-    );
-  };
-
-  const isMenuExpanded = (text: string, children?: MenuItem[]) => {
-    if (isCollapsed) return false;
-    if (!children || children.length === 0) return false;
-    if (expandedMenus.includes(text)) return true;
-    const hasMatchingChild = children.some(child => child.path && location.pathname.startsWith(child.path));
-    if (hasMatchingChild) return true;
-    return false;
   };
 
   const isAdmin = user?.role && ['admin', 'super_admin'].includes(user.role.name);
@@ -332,7 +311,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
       icon: <QrCodeScannerIcon />, 
       visible: isAdmin && isEnabled('kiosk'),
       children: [
-        { text: 'Конфигурация', path: '/admin/kiosk', visible: true },
+        { text: 'Конфигурация', path: '/admin/kiosk/config', visible: true },
         { text: 'Терминали', path: '/admin/kiosk/terminals', visible: true },
         { text: 'Gateways', path: '/admin/kiosk/gateways', visible: true },
         { text: 'Зони за достъп', path: '/admin/kiosk/zones', visible: true },
@@ -355,6 +334,18 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Производствен терминал', icon: <KitchenIcon />, path: '/admin/production/kiosk', visible: isAdmin && isEnabled('confectionery') },
   ];
 
+  const handleToggleSection = (text: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(text)) {
+        next.delete(text);
+      } else {
+        next.add(text);
+      }
+      return next;
+    });
+  };
+
   const drawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.paper' }}>
       <Toolbar sx={{ display: 'flex', alignItems: 'center', justifyContent: isCollapsed ? 'center' : 'space-between', px: [1] }}>
@@ -368,123 +359,13 @@ const MainLayout: React.FC<Props> = ({ children }) => {
         </IconButton>
       </Toolbar>
       <Divider />
-      <List sx={{ flexGrow: 1, pt: 1, overflowY: 'auto', overflowX: 'hidden' }}>
-        {menuItems.filter(item => item.visible).map((item) => {
-          const hasChildren = item.children && item.children.length > 0;
-          const isExpanded = isMenuExpanded(item.text, item.children);
-          const isActive = item.path ? location.pathname === item.path : false;
-
-          return (
-            <Box key={item.text}>
-              <ListItem disablePadding sx={{ display: 'block' }}>
-                <ListItemButton
-                  component={item.path && !hasChildren ? RouterLink : 'div'}
-                  to={item.path && !hasChildren ? item.path : undefined}
-                  onClick={() => {
-                    if (hasChildren) {
-                      toggleMenu(item.text);
-                    }
-                    if (mobileOpen) setMobileOpen(false);
-                  }}
-                  selected={isActive}
-                  sx={{
-                    minHeight: 48,
-                    justifyContent: isCollapsed ? 'center' : 'initial',
-                    px: 2.5,
-                    mx: isCollapsed ? 0.5 : 1,
-                    my: 0.25,
-                    borderRadius: isCollapsed ? '50%' : 2,
-                    '&.Mui-selected': {
-                      backgroundColor: 'primary.main',
-                      color: 'primary.contrastText',
-                      '& .MuiListItemIcon-root': { color: 'primary.contrastText' },
-                      '&:hover': { backgroundColor: 'primary.dark' }
-                    },
-                  }}
-                >
-                  <ListItemIcon
-                    sx={{
-                      minWidth: 0,
-                      mr: isCollapsed ? 'auto' : 2,
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {item.icon}
-                  </ListItemIcon>
-                  {!isCollapsed && (
-                    <ListItemText 
-                      primary={item.text} 
-                      primaryTypographyProps={{ 
-                        variant: 'body2', 
-                        fontWeight: isActive ? 'bold' : 'medium',
-                        noWrap: true
-                      }} 
-                    />
-                  )}
-                  {hasChildren && !isCollapsed && (
-                    <ExpandMoreIcon 
-                      sx={{ 
-                        fontSize: '1.2rem',
-                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                        transition: 'transform 0.2s',
-                        ml: 1
-                      }} 
-                    />
-                  )}
-                </ListItemButton>
-              </ListItem>
-              
-              {hasChildren && item.children && !isCollapsed && (
-                <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                  <List disablePadding sx={{ mb: 1 }}>
-                    {item.children
-                      .filter(child => child.visible)
-                      .map((child) => {
-                        const isChildActive = child.path ? location.pathname === child.path : false;
-                        return (
-                          <ListItem key={child.text} disablePadding sx={{ display: 'block' }}>
-                            <ListItemButton
-                              component={child.path ? RouterLink : 'div'}
-                              to={child.path}
-                              selected={isChildActive}
-                              onClick={() => {
-                                if (mobileOpen) setMobileOpen(false);
-                              }}
-                              sx={{
-                                minHeight: 36,
-                                pl: 6,
-                                pr: 2,
-                                mx: 1,
-                                my: 0.25,
-                                borderRadius: 1.5,
-                                '&.Mui-selected': {
-                                  backgroundColor: 'action.selected',
-                                  color: 'primary.main',
-                                  fontWeight: 'bold',
-                                  '&:hover': { backgroundColor: 'action.hover' }
-                                },
-                              }}
-                            >
-                              <ListItemText 
-                                primary={child.text} 
-                                primaryTypographyProps={{ 
-                                  variant: 'body2', 
-                                  fontSize: '0.8rem',
-                                  fontWeight: isChildActive ? 'bold' : 'regular',
-                                  noWrap: true
-                                }} 
-                              />
-                            </ListItemButton>
-                          </ListItem>
-                        );
-                      })}
-                  </List>
-                </Collapse>
-              )}
-            </Box>
-          );
-        })}
-      </List>
+      <SidebarMenu
+        items={menuItems}
+        expandedSections={expandedSections}
+        onToggleSection={handleToggleSection}
+        isCollapsed={isCollapsed}
+        onNavigate={() => { if (mobileOpen) setMobileOpen(false); }}
+      />
       <Divider />
       <Box sx={{ p: 2, textAlign: 'center' }}>
         {!isCollapsed && (
