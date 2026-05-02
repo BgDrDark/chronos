@@ -11,6 +11,9 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'service-worker.ts',
       registerType: 'autoUpdate',
+      injectManifest: {
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
+      },
       devOptions: {
         enabled: true,
         type: 'module',
