@@ -65,6 +65,8 @@ services:
       # Deployment Settings
       - DEPLOY_API_KEY=${DEPLOY_API_KEY}
       - VERSION=${VERSION}
+      # Deploy script config
+      - PROJECT_DIR=/project
     ports:
       - "14240:14240"
     depends_on:
@@ -79,9 +81,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Mount entire project root for deploy (git, .env, docker-compose.yml, backups)
       - .:/project
-    environment:
-      # Tell deploy.py where the project root is mounted
-      - PROJECT_DIR=/project
     logging:
       driver: "json-file"
       options:
