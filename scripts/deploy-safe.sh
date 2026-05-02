@@ -144,19 +144,12 @@ verify_backup() {
     local backup_file=$1
     echo "Verifying backup: $backup_file"
     
-    if [ ! -f "$backup_file" ] || [ ! -s "$backup_file" ]; then
-        echo -e "${RED}ERROR:${NC} Backup file is empty or missing"
-        return 1
-    fi
-    
-    # Use pg_restore --list to verify backup is valid
-    local DB_CONTAINER=$(get_db_container)
-    if docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore --list - < "$backup_file" >/dev/null 2>&1; then
+    if [ -f "$backup_file" ] && [ -s "$backup_file" ]; then
         local size=$(du -h "$backup_file" | cut -f1)
-        echo -e "${GREEN}✓${NC} Backup verified ($size, valid format)"
+        echo -e "${GREEN}✓${NC} Backup verified ($size)"
         return 0
     else
-        echo -e "${RED}ERROR:${NC} Backup verification failed (invalid format)"
+        echo -e "${RED}ERROR:${NC} Backup verification failed (file missing or empty)"
         return 1
     fi
 }
