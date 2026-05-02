@@ -181,10 +181,17 @@ fi
 # 3. Git fetch + checkout
 echo ""
 echo "[3/9] Fetching latest code..."
+
+# Configure git credentials if GITHUB_REPO_TOKEN is set
+if [ -n "$GITHUB_REPO_TOKEN" ]; then
+    git config --global credential.helper '!f() { echo "username=x-access-token"; echo "password=$GITHUB_REPO_TOKEN"; }; f'
+    git config --global url."https://x-access-token:${GITHUB_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
+fi
+
 if [ -n "$DEPLOY_VERSION" ]; then
     # Deploy specific version (tag)
     echo "Fetching tags..."
-    if git fetch origin --tags 2>/dev/null; then
+    if git fetch origin --tags; then
         CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
         # Try tag with and without 'v' prefix
         if git rev-parse "$DEPLOY_VERSION" >/dev/null 2>&1; then
@@ -206,7 +213,7 @@ if [ -n "$DEPLOY_VERSION" ]; then
     fi
 else
     # Deploy latest main
-    if git fetch origin main 2>/dev/null; then
+    if git fetch origin main; then
         CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
         git reset --hard origin/main
         NEW_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
