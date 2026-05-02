@@ -335,7 +335,7 @@ echo "[4/7] Running Alembic migrations..."
 
 # Dry-run first
 echo "Running dry-run check..."
-if docker compose run --rm -w /app/backend backend alembic upgrade head --sql 2>/dev/null | grep -q "BEGIN\|CREATE\|ALTER\|INSERT"; then
+if docker compose run --rm --no-deps -w /app/backend backend alembic upgrade head --sql 2>/dev/null | grep -q "BEGIN\|CREATE\|ALTER\|INSERT"; then
     echo -e "${GREEN}✓${NC} Dry-run SQL generated (migrations are valid)"
     log_deploy "ALEMBIC dry-run OK"
 else
@@ -344,7 +344,7 @@ fi
 
 # Apply migrations
 echo "Applying migrations..."
-if docker compose run --rm -w /app/backend backend alembic upgrade head 2>/dev/null; then
+if docker compose run --rm --no-deps -w /app/backend backend alembic upgrade head 2>/dev/null; then
     echo -e "${GREEN}✓${NC} Alembic migrations applied"
     log_deploy "ALEMBIC migrations applied"
 else
@@ -371,7 +371,7 @@ if [ -n "$DEPLOY_VERSION" ]; then
     fi
 fi
 
-docker compose up -d backend
+docker compose up -d --no-deps backend
 
 echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
 BACKEND_HEALTHY=false
@@ -396,7 +396,7 @@ echo ""
 echo "[6/7] Deploying frontend..."
 docker compose stop frontend
 sleep 3
-docker compose up -d frontend
+docker compose up -d --no-deps frontend
 echo -e "${GREEN}✓${NC} Frontend deployed"
 
 # 7. Final health check + DB health
