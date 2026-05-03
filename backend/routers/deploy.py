@@ -306,53 +306,12 @@ async def deploy_update(
         except Exception as e:
             logger.error(f"Deploy auth error: {e}")
             raise HTTPException(401, "Invalid token")
-    elif auth_header.startswith("DeployKey "):
-        provided_key = auth_header[10:]
-        if provided_key != deploy_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid deploy API key"
-            )
-    else:
+
+    if not deploy_key:
+        logger.warning("Deploy attempt without API key configured")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid Authorization header. Use 'Bearer <jwt>' or 'DeployKey <api_key>'"
-        )
-    elif auth_header.startswith("DeployKey "):
-        provided_key = auth_header[10:]
-        if provided_key != deploy_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid deploy API key"
-            )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid Authorization header. Use 'Bearer <jwt>' or 'DeployKey <api_key>'"
-        )
-    elif auth_header.startswith("DeployKey "):
-        provided_key = auth_header[10:]
-        if provided_key != deploy_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid deploy API key"
-            )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid Authorization header. Use 'Bearer <jwt>' or 'DeployKey <api_key>'"
-        )
-    elif auth_header.startswith("DeployKey "):
-        provided_key = auth_header[10:]
-        if provided_key != deploy_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid deploy API key"
-            )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid Authorization header. Use 'Bearer <jwt>' or 'DeployKey <api_key>'"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Deploy API not configured on server"
         )
 
     with _deploy_lock:
@@ -361,14 +320,6 @@ async def deploy_update(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Deployment already in progress"
             )
-
-    deploy_key = settings.DEPLOY_API_KEY
-    if not deploy_key:
-        logger.warning("Deploy attempt without API key configured")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Deploy API not configured on server"
-        )
 
     app_dir = os.environ.get("PROJECT_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     script_path = os.path.join(app_dir, "scripts", "deploy-safe.sh")
