@@ -396,12 +396,14 @@ echo "[5/7] Deploying backend..."
 wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
 
 # Stop and remove old container before recreating to avoid name conflicts
+# NOTE: We run inside the container being replaced, so use direct docker commands
+# instead of docker compose which has issues removing the running container
 echo "Stopping old backend container..."
-docker compose stop backend 2>/dev/null || true
-docker compose rm -f backend 2>/dev/null || true
+docker stop chronos-backend 2>/dev/null || true
+docker rm chronos-backend 2>/dev/null || true
 sleep 2
 
-docker compose up -d --force-recreate --no-deps backend
+docker compose up -d --no-deps backend
 
 echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
 BACKEND_HEALTHY=false
