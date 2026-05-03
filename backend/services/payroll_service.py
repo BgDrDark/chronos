@@ -153,14 +153,15 @@ class PayrollService:
             existing.days_count = days_count
             self.db.add(existing)
         else:
-            new_record = MonthlyWorkDays(
+            existing = MonthlyWorkDays(
                 year=year,
                 month=month,
                 days_count=days_count
             )
-            self.db.add(new_record)
+            self.db.add(existing)
 
         await self.db.commit()
+        await self.db.refresh(existing)
         return existing
 
     async def _get_setting(self, key: str) -> Optional[str]:

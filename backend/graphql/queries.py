@@ -1174,14 +1174,9 @@ class Query:
         # Any authenticated user should be able to see work days to calculate their own salary expectations
         # But for editing, only admin (handled in mutation)
         
-        res = await time_repo.get_monthly_work_days(db, year, month)
+        res = await crud.get_monthly_work_days(db, year, month)
         if res:
-            return types.MonthlyWorkDays(
-                year=res["year"],
-                month=res["month"],
-                days_count=res["days_count"],
-                holidays_count=res.get("holidays_count", 0)
-            )
+            return types.MonthlyWorkDays.from_instance(res)
         return None
 
     @strawberry.field
