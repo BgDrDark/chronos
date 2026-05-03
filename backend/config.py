@@ -104,6 +104,7 @@ class Settings(BaseSettings):
 
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    COOKIE_SECURE: bool = True  # Set to False for HTTP development
     AUTH_KEY_ROTATION_DAYS: int = 30
     AUTH_KEY_RETENTION_DAYS: int = 90
     BACKEND_CORS_ORIGINS: Union[List[str], str] = []

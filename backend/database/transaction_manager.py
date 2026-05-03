@@ -77,17 +77,23 @@ async def atomic_transaction(
             # Begin new transaction only if one doesn't exist
             transaction = await session.begin()
             should_commit = True
-            logger.debug(f"Transaction started: {transaction}")
+            logger.info(f"Transaction started: {transaction}")
         else:
-            logger.debug("Using existing transaction")
+            logger.info("Using existing transaction")
         
         # Yield session for operations
         yield session
         
         # Commit only if we started the transaction
         if should_commit and transaction:
+            logger.info("Attempting to commit transaction...")
             await transaction.commit()
-            logger.debug(f"Transaction committed: {transaction}")
+            logger.info(f"Transaction committed: {transaction}")
+        elif in_transaction and not transaction:
+            # Transaction was started implicitly by a query, commit it
+            logger.info("Committing implicit transaction...")
+            await session.commit()
+            logger.info("Implicit transaction committed")
         
     except IntegrityError as e:
         # Handle integrity constraint violations
@@ -120,7 +126,7 @@ async def atomic_transaction(
         # Handle any other errors
         if should_commit and transaction:
             await transaction.rollback()
-        logger.error(f"Unexpected error in transaction: {e}")
+        logger.error(f"Unexpected error in transaction: {e}, should_commit={should_commit}")
         raise TransactionError(f"Transaction failed: {str(e)}") from e
         
     finally:

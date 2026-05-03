@@ -93,10 +93,7 @@ const LoginPage: React.FC = () => {
         return;
       }
       
-      // Save token to localStorage for use in non-GraphQL requests
-      if (responseData.access_token) {
-        localStorage.setItem('token', responseData.access_token);
-      }
+      // Token is stored in HttpOnly cookie by backend - no localStorage needed
       
       const { data: meData } = await client.query({ query: ME_QUERY, fetchPolicy: 'network-only' });
       if (meData?.me?.role?.name && ['admin', 'super_admin'].includes(meData.me.role.name)) {

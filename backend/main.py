@@ -209,9 +209,9 @@ app.add_middleware(
     cookie_name="csrf_token",
     cookie_path="/",
     cookie_domain=None,
-    cookie_secure=True,
+    cookie_secure=settings.COOKIE_SECURE,
     cookie_httponly=False,
-    cookie_samesite="none",
+    cookie_samesite="none" if settings.COOKIE_SECURE else "lax",
     exempt_urls=[
         re.compile(r"^/auth/"),
         re.compile(r"^/google/"),
