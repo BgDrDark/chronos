@@ -317,7 +317,7 @@ init_production() {
     
     # Initial deploy
     log_info "Running initial deployment (version: ${TARGET_VERSION})..."
-    ./scripts/deploy-safe.sh --version "${TARGET_VERSION}"
+    ./scripts/update.sh --version "${TARGET_VERSION}"
     
     # Setup Nginx Proxy
     setup_nginx_proxy
@@ -368,8 +368,8 @@ deploy_version() {
     echo -e "${BLUE}========================================${NC}"
     echo ""
     
-    # Deploy (deploy-safe.sh now auto-updates .env)
-    ./scripts/deploy-safe.sh --version "${version}"
+    # Deploy (update.sh now auto-updates .env)
+    ./scripts/update.sh --version "${version}"
     
     # Verify
     verify_installation

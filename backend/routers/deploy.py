@@ -320,7 +320,7 @@ async def deploy_update(
             )
 
     app_dir = os.environ.get("PROJECT_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    script_path = os.path.join(app_dir, "scripts", "deploy-safe.sh")
+    script_path = os.path.join(app_dir, "scripts", "update.sh")
 
     if not os.path.exists(script_path):
         raise HTTPException(
