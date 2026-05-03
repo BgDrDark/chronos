@@ -386,9 +386,13 @@ class Mutation:
             ["admin", "super_admin"]
         )
 
-        user_data = schemas.UserCreate(**userInput.model_dump())
+        import dataclasses
+        user_input_dict = dataclasses.asdict(userInput)
+        user_data = schemas.UserCreate(**user_input_dict)
 
         db_user = await user_repo.create_user(db=db, user_data=user_data, role_id=userInput.role_id)
+        await db.commit()
+        await db.refresh(db_user)
         return types.User.from_instance(db_user)
 
     @strawberry.mutation
@@ -7769,7 +7773,6 @@ class Mutation:
             end_date=input.end_date,
             base_salary=input.base_salary,
             work_hours_per_week=input.work_hours_per_week,
-            job_description=input.job_description,
             status="draft",
             clause_ids=final_clause_ids,
             # TRZ полета - от шаблон или от input

@@ -99,7 +99,17 @@ class UserRepository(BaseRepository):
         **kwargs
     ) -> User:
         """Създава нов потребител"""
-        user_dict = user_data.model_dump(exclude_unset=True)
+        from backend.auth.security import hash_password
+        contract_fields = {
+            "contract_type", "contract_number", "contract_start_date", "contract_end_date",
+            "base_salary", "work_hours_per_week", "probation_months", "salary_calculation_type",
+            "salary_installments_count", "monthly_advance_amount", "tax_resident",
+            "insurance_contributor", "has_income_tax", "payment_day", "experience_start_date",
+            "night_work_rate", "overtime_rate", "holiday_rate", "work_class", "dangerous_work"
+        }
+        user_dict = user_data.model_dump(exclude_unset=True, exclude={"password"} | contract_fields)
+        if user_data.password:
+            user_dict["hashed_password"] = hash_password(user_data.password)
         if role_id:
             user_dict["role_id"] = role_id
         user_dict.update(kwargs)
