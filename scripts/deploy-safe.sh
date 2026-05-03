@@ -395,9 +395,16 @@ echo "[5/7] Deploying backend..."
 # Wait for active queries before restart
 wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
 
-# Recreate backend container atomically (compose handles stop/start without killing this script)
-echo "Recreating backend container..."
-docker compose up -d --force-recreate --no-deps backend
+# Two-step deploy: rename old container, create new one, then remove old
+echo "Renaming old backend container..."
+docker rename chronos-backend chronos-backend-old 2>/dev/null || true
+echo "Creating new backend container..."
+docker compose up -d --no-deps backend
+echo "Waiting for new backend to be healthy..."
+sleep 3
+echo "Removing old backend container..."
+docker stop chronos-backend-old 2>/dev/null || true
+docker rm chronos-backend-old 2>/dev/null || true
 
 echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
 BACKEND_HEALTHY=false
