@@ -1,23 +1,25 @@
-# Environments
+# ==========================================
+# ENVIRONMENTS & SECRETS
+# ==========================================
 .env
-.env.backup
+.env.*
+!.env.example
 .venv/
 venv/
 env/
 
-# IDE
+# ==========================================
+# IDE & EDITOR
+# ==========================================
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.DS_Store
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Python
+# ==========================================
+# PYTHON
+# ==========================================
 __pycache__/
 *.pyc
 *.pyo
@@ -41,96 +43,130 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# DB
-postgres_data/
-postgres_DB*/
-redis-data/
-
-# Archives & Backups
-*.tar
-*.zip
-*.gz
-/backups/
-backups/
-
-# Docker
-docker-compose.override.yml
-*.dockerignore
-
-# Logs
-logs/
-backend/logs/
-chronos-gateway/logs/
-chronos_extracted/
-
-# NPM/Docker data
-npm/data/
-npm/letsencrypt/
-
-# Local topology
-lan_topology/
-plans/
-
-# Cache
+# ==========================================
+# FRONTEND
+# ==========================================
+frontend/node_modules/
+frontend/dist/
+frontend/.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 .cache/
 .npm/
 .eslintcache
 .stylelintcache
 
-# Temp
+# ==========================================
+# DATABASE
+# ==========================================
+postgres_data/
+postgres_DB*/
+redis-data/
+
+# ==========================================
+# BACKUPS & ARCHIVES
+# ==========================================
+*.tar
+*.tar.gz
+*.zip
+*.gz
+/backups/
+backups/
+
+# ==========================================
+# DOCKER
+# ==========================================
+docker-compose.override.yml
+*.dockerignore
+docker_images/
+
+# ==========================================
+# LOGS
+# ==========================================
+logs/
+backend/logs/
+chronos-gateway/logs/
+chronos_extracted/
+
+# ==========================================
+# NPM / PROXY DATA
+# ==========================================
+npm/data/
+npm/letsencrypt/
+
+# ==========================================
+# LOCAL CONFIG & TOPOLOGY
+# ==========================================
+lan_topology/
+plans/
+nginx/
+migrations/
+
+# ==========================================
+# TEMP & OS
+# ==========================================
 tmp/
 temp/
 *.tmp
-*.swp
-*.swo
-*~
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Test coverage
+# ==========================================
+# TEST COVERAGE
+# ==========================================
 .coverage
 htmlcov/
 .pytest_cache/
 
-# Certificates (local)
+# ==========================================
+# CERTIFICATES
+# ==========================================
 *.key
 *.cert
 *.pem
 letsencrypt/
 
-# Version files (generated)
+# ==========================================
+# VERSION FILES (generated)
+# ==========================================
 VERSION
 version.txt
 
-# Documentation (local)
+# ==========================================
+# LOCAL DOCUMENTATION & PLANS
+# ==========================================
 CODING_RULES.md
-REPOSITORY_PATTERN_PLAN.md
+FRONTEND_CODING_RULES.md
 FRONTEND_REFACTOR_PLAN.md
-
-# Docker Images (local backup)
-*.tar
-chronos_images*.tar
-docker_images/
-
-# Database
-postgres_DB*/
-postgres_data/
-
-# Documentation (docs folder - optional)
+NAVIGATION_REFACTOR_PLAN.md
+REPOSITORY_PATTERN_PLAN.md
+SAFE_UPDATE_PLAN.md
 docs/
 
-# OpenCode
-.opencode/
+# ==========================================
+# ONE-OFF DEBUG / UTILITY SCRIPTS
+# ==========================================
+build.sh
+check_accounting_module.py
+check_dbs.py
+debug_schema.py
+generate_vapid.py
+list_dbs.py
+list_modules.py
+list_tables.py
 
-# Migrations (local)
-migrations/
-
-# Nginx config (local)
-nginx/
-
-# Docker Hub
+# ==========================================
+# DOCKER HUB ALTERNATIVE COMPOSE
+# ==========================================
 docker-compose.hub.yml
 
-NAVIGATION_REFACTOR_PLAN.md
+# ==========================================
+# OPENCODE
+# ==========================================
+.opencode/
+
+# ==========================================
+# UPLOADS (user files)
+# ==========================================
+uploads/
