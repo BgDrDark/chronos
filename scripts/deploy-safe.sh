@@ -395,6 +395,12 @@ echo "[5/7] Deploying backend..."
 # Wait for active queries before restart
 wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
 
+# Stop and remove old container before recreating to avoid name conflicts
+echo "Stopping old backend container..."
+docker compose stop backend 2>/dev/null || true
+docker compose rm -f backend 2>/dev/null || true
+sleep 2
+
 docker compose up -d --force-recreate --no-deps backend
 
 echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
