@@ -75,37 +75,7 @@ class OptimizedQuery:
     ) -> types.PaginatedUsers:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name != "admin":
-            raise Exception("Operation not permitted for this user role")
-        
-        # Use optimized batch loading for users with their relationships
-        dataloaders = create_optimized_dataloaders(db)
-        
-        # Get user IDs first
-        db_users = await crud.get_users(db, skip=skip, limit=limit, search=search, sort_by=sort_by, sort_order=sort_order)
-        user_ids = [user.id for user in db_users]
-        
-        # Batch load users with all relationships
-        user_loader = dataloaders["user_by_id"]
-        users_with_relations = await user_loader.load_many(user_ids)
-        
-        total_count = await crud.count_users(db, search=search)
-        
-        return types.PaginatedUsers(
-            users=[types.User.from_instance(user) for user in users_with_relations if user],
-            total_count=total_count or 0
-        )
-
-    @strawberry.field
-    async def user(self, info: strawberry.Info, id: Optional[int] = None) -> Optional[types.User]:
-        db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None:
-            raise Exception("Not authenticated")
-            
-        target_id = id if id is not None else current_user.id
-        
-        if current_user.role.name != "admin" and current_user.id != target_id:
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise Exception("Operation not permitted")
         
         # Use optimized user loader
@@ -481,7 +451,7 @@ class OptimizedQuery:
     async def smtp_settings(self, info: strawberry.Info) -> Optional[types.SmtpSettings]:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name != "admin":
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
              raise Exception("Operation not permitted")
 
         server = await crud.get_global_setting(db, "smtp_server")

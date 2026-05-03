@@ -658,6 +658,7 @@ class Mutation:
 
         dept = await company_repo.create_department(db, name=input.name, company_id=input.company_id,
                                             manager_id=input.manager_id)
+        await db.commit()
         return types.Department.from_instance(dept)
 
     @strawberry.mutation
@@ -678,6 +679,7 @@ class Mutation:
             raise PermissionDeniedException.for_action("manage")
 
         pos = await company_repo.create_position(db, title, department_id)
+        await db.commit()
         return types.Position.from_instance(pos)
 
     @strawberry.mutation
@@ -1110,6 +1112,7 @@ class Mutation:
             raise PermissionDeniedException.for_action("manage")
 
         s = await time_repo.create_shift(db, name, start_time, end_time)
+        await db.commit()
         return types.Shift.from_instance(s)
 
     @strawberry.mutation
@@ -2032,6 +2035,7 @@ class Mutation:
             raise PermissionDeniedException.for_action("manage")
 
         res = await time_repo.create_or_update_schedule(db, user_id, shift_id, date)
+        await db.commit()
         return types.WorkSchedule.from_instance(res)
 
     @strawberry.mutation
