@@ -13,7 +13,7 @@ class ModuleService:
     async def is_enabled(cls, db: AsyncSession, module_code: str) -> bool:
         """Check if a module is enabled. Uses internal cache."""
         # Core modules are always enabled
-        core_modules = ["shifts", "accounting", "confectionery", "cost_centers"]
+        core_modules = ["shifts"]
         if module_code in core_modules:
             return True
         
@@ -44,7 +44,7 @@ class ModuleService:
         logger.info(f"toggle_module called: {module_code}, enabled: {enabled}")
         
         # Safety: NEVER allow disabling core modules
-        core_modules = ["shifts", "accounting", "confectionery", "cost_centers"]
+        core_modules = ["shifts"]
         if module_code in core_modules and not enabled:
             logger.warning(f"Attempted to disable core '{module_code}' module. Operation denied.")
             return True
@@ -55,7 +55,7 @@ class ModuleService:
         if module:
             logger.info(f"Found module: {module.code}, current is_enabled: {module.is_enabled}")
             # If it's a core module, force it to be enabled
-            core_modules = ["shifts", "accounting", "confectionery", "cost_centers"]
+            core_modules = ["shifts"]
             if module_code in core_modules:
                 module.is_enabled = True
             else:

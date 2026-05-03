@@ -124,7 +124,7 @@ async def test_core_modules_always_enabled(test_db: AsyncSession):
     """Core modules cannot be disabled"""
     from backend.services.module_service import ModuleService
     
-    for core_module in ["shifts", "accounting", "confectionery", "cost_centers"]:
+    for core_module in ["shifts"]:
         is_enabled = await ModuleService.is_enabled(test_db, core_module)
         assert is_enabled is True, f"{core_module} should always be enabled"
 

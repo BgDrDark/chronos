@@ -144,7 +144,7 @@ async def init_db():
                 # Ensure they are enabled if they are in the default enabled list
                 result = await session.execute(select(Module).where(Module.code == m_data['code']))
                 existing_mod = result.scalar_one()
-                if m_data['code'] in ['shifts', 'accounting', 'confectionery', 'notifications']:
+                if m_data['code'] in ['shifts']:
                     existing_mod.is_enabled = True
                     session.add(existing_mod)
 
