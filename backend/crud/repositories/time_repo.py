@@ -295,6 +295,12 @@ class TimeTrackingRepository(BaseRepository):
         is_manual: bool = True
     ) -> TimeLog:
         """Създава ръчен запис за време"""
+        # Strip timezone info for TIMESTAMP WITHOUT TIME ZONE columns
+        if start_time.tzinfo is not None:
+            start_time = start_time.replace(tzinfo=None)
+        if end_time.tzinfo is not None:
+            end_time = end_time.replace(tzinfo=None)
+        
         log = TimeLog(
             user_id=user_id,
             start_time=start_time,
@@ -324,8 +330,12 @@ class TimeTrackingRepository(BaseRepository):
             return None
         
         if start_time is not None:
+            if start_time.tzinfo is not None:
+                start_time = start_time.replace(tzinfo=None)
             log.start_time = start_time
         if end_time is not None:
+            if end_time.tzinfo is not None:
+                end_time = end_time.replace(tzinfo=None)
             log.end_time = end_time
         if is_manual is not None:
             log.is_manual = is_manual

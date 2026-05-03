@@ -31,6 +31,9 @@ services:
 
   backend:
     image: ghcr.io/bgdrdark/chronos-backend:${VERSION:-latest}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: ${BACKEND_NAME}
     restart: unless-stopped
     environment:
@@ -122,6 +125,9 @@ services:
 
   frontend:
     image: ghcr.io/bgdrdark/chronos-frontend:${VERSION:-latest}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: ${FRONTEND_NAME}
     restart: unless-stopped
     ports:

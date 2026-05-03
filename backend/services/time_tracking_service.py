@@ -153,6 +153,12 @@ class TimeTrackingService:
         end_time: datetime
     ) -> bool:
         """Check if time range overlaps with any existing timelog"""
+        # Strip timezone info for TIMESTAMP WITHOUT TIME ZONE columns
+        if start_time.tzinfo is not None:
+            start_time = start_time.replace(tzinfo=None)
+        if end_time.tzinfo is not None:
+            end_time = end_time.replace(tzinfo=None)
+        
         stmt = select(TimeLog).where(
             TimeLog.user_id == user_id,
             TimeLog.end_time.is_(None)
