@@ -1724,7 +1724,7 @@ class Mutation:
         if active_log:
             raise InvalidOperationException.cannot_complete("User already has an active time log")
         
-        log = await service.clock_in(user_id, custom_time=custom_time)
+        log = await service.clock_in(user_id, custom_time=custom_time, skip_geofence=True)
         
         return types.TimeLog.from_instance(log)
 
@@ -1750,7 +1750,7 @@ class Mutation:
         if not active_log:
             raise InvalidOperationException.cannot_complete("No active time log found")
         
-        log = await service.clock_out(user_id, custom_time=custom_time, notes=notes)
+        log = await service.clock_out(user_id, custom_time=custom_time, notes=notes, skip_geofence=True)
         
         await create_trz_records_on_clock_out(
             db=db,

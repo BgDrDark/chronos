@@ -223,7 +223,8 @@ class TimeTrackingService:
         user_id: int,
         latitude: Optional[float] = None,
         longitude: Optional[float] = None,
-        custom_time: Optional[datetime] = None
+        custom_time: Optional[datetime] = None,
+        skip_geofence: bool = False
     ) -> TimeLog:
         """Clock in - creates a new time log"""
         async with atomic_transaction(self.db) as tx:
@@ -243,7 +244,7 @@ class TimeTrackingService:
             if active_log:
                 raise ValueError("Вече имате активно отчитане на времето.")
 
-            if not custom_time:
+            if not custom_time and not skip_geofence:
                 is_valid, error_msg = await self.validate_geofence_entry(latitude, longitude)
                 if not is_valid:
                     raise ValueError(error_msg)
@@ -324,7 +325,8 @@ class TimeTrackingService:
         latitude: Optional[float] = None,
         longitude: Optional[float] = None,
         custom_time: Optional[datetime] = None,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        skip_geofence: bool = False
     ) -> TimeLog:
         """Clock out - ends the active time log"""
         async with atomic_transaction(self.db) as tx:
@@ -344,7 +346,7 @@ class TimeTrackingService:
             if not active_log:
                 raise ValueError("Не е намерено активно отчитане на времето за прекратяване.")
 
-            if not custom_time:
+            if not custom_time and not skip_geofence:
                 is_valid, error_msg = await self.validate_geofence_exit(latitude, longitude)
                 if not is_valid:
                     raise ValueError(error_msg)

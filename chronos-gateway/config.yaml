@@ -17,7 +17,7 @@ activity:
   heartbeat_interval: 30
   timeout: 120
 backend:
-  api_key: gw_91620282aecfc0baabc2e212a0f5f50aa4f29cb4c9df758d
+  api_key: gw_b453a67c30e7c52d8dbc8ef22b9af5a9b13efcb102a7787b
   fallback_url: https://chronos.oblak24.org
   ssl_verify_disabled: true
   url: https://dev.oblak24.org

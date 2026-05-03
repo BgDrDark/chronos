@@ -109,6 +109,7 @@ const DashboardPage: React.FC = () => {
   const [clockIn] = useMutation(CLOCK_IN_MUTATION);
   const [clockOut] = useMutation(CLOCK_OUT_MUTATION);
   const [timer, setTimer] = useState<string>('00:00:00');
+  const [isClocking, setIsClocking] = useState(false);
 
   useEffect(() => {
     if (!loading && (!data || !data.me)) {
@@ -161,24 +162,20 @@ const DashboardPage: React.FC = () => {
   })) || [];
 
   const handleClockToggle = async () => {
+    if (isClocking) return;
+    setIsClocking(true);
     try {
       if (data?.activeTimeLog) {
-        const result = await clockOut();
-        if (result.errors?.length) {
-          alert(result.errors[0].message || 'Грешка');
-          return;
-        }
+        await clockOut();
       } else {
-        const result = await clockIn();
-        if (result.errors?.length) {
-          alert(result.errors[0].message || 'Грешка');
-          return;
-        }
+        await clockIn();
       }
       await refetch();
     } catch (err: unknown) {
-      const error = err as { message?: string };
-      alert(error.message || 'Грешка');
+      const error = err as { message?: string; graphQLErrors?: Array<{ message?: string }> };
+      alert(error.graphQLErrors?.[0]?.message || error.message || 'Грешка');
+    } finally {
+      setIsClocking(false);
     }
   };
 
@@ -250,9 +247,10 @@ const DashboardPage: React.FC = () => {
                   color={isActive ? 'error' : 'success'}
                   startIcon={isActive ? <StopIcon /> : <PlayArrowIcon />}
                   onClick={handleClockToggle}
-                  sx={{ px: 4, py: 1, borderRadius: 10, fontWeight: 'bold', boxShadow: 2 }}
+                  disabled={isClocking}
+                  sx={{ px: 4, py: 1, borderRadius: 10, fontWeight: 'bold', boxShadow: 2, position: 'relative', zIndex: 1 }}
                 >
-                  {isActive ? 'Изход' : 'Вход'}
+                  {isClocking ? 'Обработка...' : (isActive ? 'Изход' : 'Вход')}
                 </Button>
               </Box>
 

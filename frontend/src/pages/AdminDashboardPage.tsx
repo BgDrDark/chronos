@@ -212,55 +212,8 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
     fetchPolicy: 'network-only',
   });
 
-  const [adminClockIn] = useMutation(ADMIN_CLOCK_IN, {
-    update(cache, { data }) {
-      if (!data?.adminClockIn) return;
-      const variables = { date, status: statusFilter === 'ALL' ? null : statusFilter };
-      const existingData = cache.readQuery<any>({ query: GET_USER_PRESENCES, variables });
-      if (!existingData?.userPresences) return;
-      
-      const newData = {
-        ...existingData,
-        userPresences: existingData.userPresences.map((p: any) => {
-          if (p.user.id === actionUserId) {
-            return {
-              ...p,
-              status: 'ON_DUTY',
-              isOnDuty: true,
-              actualArrival: data.adminClockIn.startTime,
-              actualDeparture: null
-            };
-          }
-          return p;
-        })
-      };
-      cache.writeQuery({ query: GET_USER_PRESENCES, variables, data: newData });
-    }
-  });
-  const [adminClockOut] = useMutation(ADMIN_CLOCK_OUT, {
-    update(cache, { data }) {
-      if (!data?.adminClockOut) return;
-      const variables = { date, status: statusFilter === 'ALL' ? null : statusFilter };
-      const existingData = cache.readQuery<any>({ query: GET_USER_PRESENCES, variables });
-      if (!existingData?.userPresences) return;
-      
-      const newData = {
-        ...existingData,
-        userPresences: existingData.userPresences.map((p: any) => {
-          if (p.user.id === actionUserId) {
-            return {
-              ...p,
-              status: 'OFF_DUTY',
-              isOnDuty: false,
-              actualDeparture: data.adminClockOut.endTime
-            };
-          }
-          return p;
-        })
-      };
-      cache.writeQuery({ query: GET_USER_PRESENCES, variables, data: newData });
-    }
-  });
+  const [adminClockIn] = useMutation(ADMIN_CLOCK_IN);
+  const [adminClockOut] = useMutation(ADMIN_CLOCK_OUT);
 
   const handleOpenClockDialog = (e: React.MouseEvent, userId: number, userName: string, mode: 'IN' | 'OUT') => {
       if (e) {
@@ -276,25 +229,17 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
           return;
       }
       try {
-          let result;
           if (clockDialogMode === 'IN') {
-              result = await adminClockIn({ variables: { userId: actionUserId, customTime } });
+              await adminClockIn({ variables: { userId: actionUserId, customTime } });
           } else {
-              result = await adminClockOut({ variables: { userId: actionUserId, customTime } });
+              await adminClockOut({ variables: { userId: actionUserId, customTime } });
           }
-          if (result.errors?.length) {
-              alert(result.errors[0].message || 'Грешка');
-              return;
-          }
-          await refetch();
           setClockDialogOpen(false);
+          await refetch();
       } catch (err: unknown) {
         const error = err as { message?: string; graphQLErrors?: Array<{ message?: string }> };
-        if (error.graphQLErrors?.length) {
-            alert(error.graphQLErrors[0].message || 'Грешка');
-        } else {
-            alert(error.message || 'Грешка');
-        }
+        const msg = error.graphQLErrors?.[0]?.message || error.message || 'Неуспешна операция';
+        alert(msg);
       }
   };
 
