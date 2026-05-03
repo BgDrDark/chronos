@@ -170,3 +170,4 @@ docker-compose.hub.yml
 # UPLOADS (user files)
 # ==========================================
 uploads/
+docker-compose-dev-commands.md
