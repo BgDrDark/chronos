@@ -896,19 +896,10 @@ const DeploymentSettings: React.FC = () => {
         setDeployOutput('');
         
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                setMsg({ type: 'error', text: 'Не сте логнати' });
-                setDeploying(false);
-                return;
-            }
-            
             const res = await fetch(`${API_URL}/webhook/deploy`, {
                 method: 'POST',
-                headers: { 
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ version: targetVersion || undefined })
             });
             

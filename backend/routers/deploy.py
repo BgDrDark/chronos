@@ -277,18 +277,28 @@ async def deploy_update(
     db: AsyncSession = Depends(get_db),
 ):
     auth_header = info.headers.get("Authorization", "")
-
     deploy_key = settings.DEPLOY_API_KEY
-    if not deploy_key:
-        logger.warning("Deploy attempt without API key configured")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Deploy API not configured on server"
-        )
 
-    # Support both Bearer JWT (super_admin) and DeployKey (CI/CD)
+    token = None
+    use_deploy_key = False
+
+    # 1. Check Bearer JWT
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
+    # 2. Check DeployKey
+    elif auth_header.startswith("DeployKey "):
+        if not deploy_key:
+            raise HTTPException(status_code=503, detail="Deploy API not configured")
+        if auth_header[10:] != deploy_key:
+            raise HTTPException(status_code=401, detail="Invalid deploy API key")
+        use_deploy_key = True
+    # 3. Fallback to cookie
+    else:
+        token = info.cookies.get("access_token")
+
+    if not use_deploy_key:
+        if not token:
+            raise HTTPException(status_code=401, detail="Not authenticated")
         try:
             await _verify_super_admin(db, token)
         except HTTPException:
@@ -296,18 +306,6 @@ async def deploy_update(
         except Exception as e:
             logger.error(f"Deploy auth error: {e}")
             raise HTTPException(401, "Invalid token")
-    elif auth_header.startswith("DeployKey "):
-        provided_key = auth_header[10:]
-        if provided_key != deploy_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid deploy API key"
-            )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid Authorization header. Use 'Bearer <jwt>' or 'DeployKey <api_key>'"
-        )
     elif auth_header.startswith("DeployKey "):
         provided_key = auth_header[10:]
         if provided_key != deploy_key:
