@@ -77,7 +77,7 @@ services:
       # Mount Docker socket for deploy commands (docker pull, docker compose)
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Mount project root for deploy script access to docker-compose.yml, .env, scripts
-      - .:/project
+      - /home/niki/PycharmProjects/WorkingTime:/project
     logging:
       driver: "json-file"
       options:
