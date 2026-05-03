@@ -179,7 +179,7 @@ class UserRepository(BaseRepository):
         session = result.scalar_one_or_none()
         if session:
             session.is_active = False
-            await db.flush()
+            await db.commit()
             return True
         return False
     

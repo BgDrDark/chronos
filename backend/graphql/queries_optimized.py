@@ -575,12 +575,9 @@ class OptimizedQuery:
         entry_enabled = await crud.get_global_setting(db, "geofencing_entry_enabled")
         exit_enabled = await crud.get_global_setting(db, "geofencing_exit_enabled")
         
-        if not lat or not lon:
-            return None
-            
         return types.OfficeLocation(
-            latitude=float(lat),
-            longitude=float(lon),
+            latitude=float(lat) if lat else 0.0,
+            longitude=float(lon) if lon else 0.0,
             radius=int(rad) if rad else 100,
             entry_enabled=(entry_enabled == "True"),
             exit_enabled=(exit_enabled == "True")

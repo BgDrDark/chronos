@@ -215,8 +215,7 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
   const [adminClockIn] = useMutation(ADMIN_CLOCK_IN, {
     update(cache, { data }) {
       if (!data?.adminClockIn) return;
-      const currentDate = format(new Date(), 'yyyy-MM-dd');
-      const variables = { date: currentDate, status: statusFilter === 'ALL' ? null : statusFilter };
+      const variables = { date, status: statusFilter === 'ALL' ? null : statusFilter };
       const existingData = cache.readQuery<any>({ query: GET_USER_PRESENCES, variables });
       if (!existingData?.userPresences) return;
       
@@ -241,8 +240,7 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
   const [adminClockOut] = useMutation(ADMIN_CLOCK_OUT, {
     update(cache, { data }) {
       if (!data?.adminClockOut) return;
-      const currentDate = format(new Date(), 'yyyy-MM-dd');
-      const variables = { date: currentDate, status: statusFilter === 'ALL' ? null : statusFilter };
+      const variables = { date, status: statusFilter === 'ALL' ? null : statusFilter };
       const existingData = cache.readQuery<any>({ query: GET_USER_PRESENCES, variables });
       if (!existingData?.userPresences) return;
       
@@ -278,11 +276,17 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
           return;
       }
       try {
+          let result;
           if (clockDialogMode === 'IN') {
-              await adminClockIn({ variables: { userId: actionUserId, customTime } });
+              result = await adminClockIn({ variables: { userId: actionUserId, customTime } });
           } else {
-              await adminClockOut({ variables: { userId: actionUserId, customTime } });
+              result = await adminClockOut({ variables: { userId: actionUserId, customTime } });
           }
+          if (result.errors?.length) {
+              alert(result.errors[0].message || 'Грешка');
+              return;
+          }
+          await refetch();
           setClockDialogOpen(false);
       } catch (err: unknown) {
         const error = err as { message?: string; graphQLErrors?: Array<{ message?: string }> };

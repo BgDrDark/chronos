@@ -183,6 +183,24 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# === UPDATE .env WITH NEW VERSION ===
+if [ -n "$DEPLOY_VERSION" ] && [ -f ".env" ]; then
+    # Normalize version (add 'v' prefix if missing)
+    case "$DEPLOY_VERSION" in
+        v*) TARGET_VERSION="$DEPLOY_VERSION" ;;
+        *)  TARGET_VERSION="v${DEPLOY_VERSION}" ;;
+    esac
+    
+    # Update VERSION in .env
+    sed -i "s/^VERSION=.*/VERSION=${TARGET_VERSION}/" .env
+    
+    # Re-source .env to get the new version
+    source .env
+    
+    echo -e "${GREEN}✓${NC} .env updated to ${TARGET_VERSION}"
+    log_deploy ".env updated to ${TARGET_VERSION}"
+fi
+
 # === HEADER ===
 echo -e "${BLUE}========================================"
 echo -e "=== Chronos Safe Deploy (CI/CD) ==="

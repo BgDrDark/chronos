@@ -444,9 +444,9 @@ const OfficeLocationSettings: React.FC = () => {
 
     React.useEffect(() => {
         if (data?.officeLocation) {
-            setLat(data.officeLocation.latitude);
-            setLon(data.officeLocation.longitude);
-            setRad(data.officeLocation.radius);
+            setLat(data.officeLocation.latitude !== 0 ? data.officeLocation.latitude.toString() : '');
+            setLon(data.officeLocation.longitude !== 0 ? data.officeLocation.longitude.toString() : '');
+            setRad(data.officeLocation.radius?.toString() || '100');
             setEntryEnabled(data.officeLocation.entryEnabled || false);
             setExitEnabled(data.officeLocation.exitEnabled || false);
         }
@@ -470,9 +470,9 @@ const OfficeLocationSettings: React.FC = () => {
         try {
             await updateLoc({ 
                 variables: { 
-                    latitude: Number(lat), 
-                    longitude: Number(lon), 
-                    radius: parseInt(rad),
+                    latitude: lat ? Number(lat) : 0, 
+                    longitude: lon ? Number(lon) : 0, 
+                    radius: parseInt(rad) || 100,
                     entryEnabled,
                     exitEnabled
                 } 
@@ -541,7 +541,7 @@ const OfficeLocationSettings: React.FC = () => {
                             <Button variant="outlined" startIcon={<LocationOnIcon />} onClick={handleGetCurrent}>
                                 Вземи текуща позиция
                             </Button>
-                            <Button variant="contained" onClick={handleSave} disabled={updating || !lat || !lon}>
+                            <Button variant="contained" onClick={handleSave} disabled={updating}>
                                 Запази
                             </Button>
                         </Box>

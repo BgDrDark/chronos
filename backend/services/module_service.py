@@ -43,11 +43,6 @@ class ModuleService:
         """Enable or disable a module."""
         logger.info(f"toggle_module called: {module_code}, enabled: {enabled}")
         
-        # Safety: NEVER allow disabling the core shifts module
-        if module_code == "shifts" and not enabled:
-            logger.warning("Attempted to disable core 'shifts' module. Operation denied.")
-            return True # Pretend it worked but keep it enabled
-        
         # Safety: NEVER allow disabling core modules
         core_modules = ["shifts", "accounting", "confectionery", "cost_centers"]
         if module_code in core_modules and not enabled:

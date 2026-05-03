@@ -163,9 +163,17 @@ const DashboardPage: React.FC = () => {
   const handleClockToggle = async () => {
     try {
       if (data?.activeTimeLog) {
-        await clockOut();
+        const result = await clockOut();
+        if (result.errors?.length) {
+          alert(result.errors[0].message || 'Грешка');
+          return;
+        }
       } else {
-        await clockIn();
+        const result = await clockIn();
+        if (result.errors?.length) {
+          alert(result.errors[0].message || 'Грешка');
+          return;
+        }
       }
       await refetch();
     } catch (err: unknown) {

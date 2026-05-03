@@ -250,6 +250,7 @@ class Mutation:
         await settings_repo.set_setting(db, "smtp_password", settings.smtp_password)
         await settings_repo.set_setting(db, "sender_email", settings.sender_email)
         await settings_repo.set_setting(db, "use_tls", str(settings.use_tls))
+        await db.commit()
 
         return types.SmtpSettings(
             smtp_server=settings.smtp_server,
@@ -360,6 +361,7 @@ class Mutation:
         await settings_repo.set_setting(db, "payroll_noi_compensation_percent", str(noi_compensation_percent))
         await settings_repo.set_setting(db, "payroll_employer_paid_sick_days", str(employer_paid_sick_days))
         await settings_repo.set_setting(db, "payroll_default_tax_resident", str(default_tax_resident))
+        await db.commit()
 
         return types.PayrollLegalSettings(
             max_insurance_base=max_insurance_base,
@@ -1189,6 +1191,7 @@ class Mutation:
             raise PermissionDeniedException.for_action("manage")
 
         setting = await settings_repo.set_setting(db, key, value)
+        await db.commit()
         return types.GlobalSetting.from_instance(setting)
 
     @strawberry.mutation
@@ -1238,6 +1241,7 @@ class Mutation:
             has_health_insurance=has_health_insurance
         )
         await settings_repo.set_setting(db, "qr_token_regen_minutes", str(qr_regen_interval_minutes))
+        await db.commit()
 
         # Re-fetch the updated config with the new QR setting
         config = await payroll_svc.get_global_config()
@@ -1365,6 +1369,7 @@ class Mutation:
         await settings_repo.set_setting(db, "office_radius", str(radius))
         await settings_repo.set_setting(db, "geofencing_entry_enabled", str(entry_enabled))
         await settings_repo.set_setting(db, "geofencing_exit_enabled", str(exit_enabled))
+        await db.commit()
 
         return types.OfficeLocation(
             latitude=latitude,

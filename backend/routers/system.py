@@ -52,8 +52,8 @@ async def get_modules(
     current_user: models.User = Depends(ensure_admin)
 ):
     """Списък с всички системни модули"""
-    if current_user.role.name != "super_admin":
-        raise HTTPException(status_code=403, detail="Само Super Admin може да управлява модули")
+    if current_user.role.name not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Само Admin/Super Admin може да управлява модули")
     
     return await ModuleService.get_all_modules(db)
 
@@ -65,8 +65,8 @@ async def update_module(
     current_user: models.User = Depends(get_current_user)
 ):
     """Включване/изключване на модул"""
-    if current_user.role.name != "super_admin":
-        raise HTTPException(status_code=403, detail="Само Super Admin може да управлява модули")
+    if current_user.role.name not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Само Admin/Super Admin може да управлява модули")
     
     success = await ModuleService.toggle_module(db, code, module_in.is_enabled)
     if not success:
