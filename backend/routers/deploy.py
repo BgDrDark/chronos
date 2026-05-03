@@ -279,33 +279,31 @@ async def deploy_update(
     auth_header = info.headers.get("Authorization", "")
     deploy_key = settings.DEPLOY_API_KEY
 
-    token = None
-    use_deploy_key = False
-
-    # 1. Check Bearer JWT
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-    # 2. Check DeployKey
-    elif auth_header.startswith("DeployKey "):
+    # 1. Check DeployKey first (CI/CD)
+    if auth_header.startswith("DeployKey "):
         if not deploy_key:
             raise HTTPException(status_code=503, detail="Deploy API not configured")
         if auth_header[10:] != deploy_key:
             raise HTTPException(status_code=401, detail="Invalid deploy API key")
-        use_deploy_key = True
-    # 3. Fallback to cookie
     else:
-        token = info.cookies.get("access_token")
+        # 2. Try Bearer JWT, fallback to cookie if it fails
+        token = None
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
 
-    if not use_deploy_key:
+        # Try cookie first (most reliable for browser sessions)
+        cookie_token = info.cookies.get("access_token")
+        if cookie_token:
+            token = cookie_token
+
         if not token:
             raise HTTPException(status_code=401, detail="Not authenticated")
+
         try:
             await _verify_super_admin(db, token)
-        except HTTPException:
-            raise
         except Exception as e:
             logger.error(f"Deploy auth error: {e}")
-            raise HTTPException(401, "Invalid token")
+            raise HTTPException(401, "Invalid or expired token. Please refresh the page.")
 
     if not deploy_key:
         logger.warning("Deploy attempt without API key configured")
