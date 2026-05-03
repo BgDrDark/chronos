@@ -813,7 +813,7 @@ class Query:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view records")
 
-        from sqlalchemy import select, and_
+        from sqlalchemy import select, and_, or_
         from sqlalchemy.orm import selectinload
         from backend.database.models import User, TimeLog, WorkSchedule, LeaveRequest, sofia_now
         
@@ -840,7 +840,10 @@ class Query:
         
         logs_result = await db.execute(
             select(TimeLog)
-            .where(and_(TimeLog.start_time >= start_dt, TimeLog.start_time <= end_dt))
+            .where(or_(
+                and_(TimeLog.start_time >= start_dt, TimeLog.start_time <= end_dt),
+                and_(TimeLog.start_time < start_dt, TimeLog.end_time.is_(None))
+            ))
             .order_by(TimeLog.start_time.asc())
         )
         user_logs = {}

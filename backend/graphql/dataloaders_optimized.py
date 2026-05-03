@@ -407,7 +407,12 @@ class UserPresenceDataLoader(OptimizedDataLoader):
         
         timelogs_result = await self.session.execute(
             select(TimeLog)
-            .where(and_(TimeLog.start_time >= start_dt, TimeLog.start_time <= end_dt))
+            .where(or_(
+                # Timelogs that start on the target date
+                and_(TimeLog.start_time >= start_dt, TimeLog.start_time <= end_dt),
+                # Active timelogs that started before but are still ongoing
+                and_(TimeLog.start_time < start_dt, TimeLog.end_time.is_(None))
+            ))
             .order_by(TimeLog.user_id, TimeLog.start_time)
         )
         timelogs = timelogs_result.scalars().all()
