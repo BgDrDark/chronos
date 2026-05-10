@@ -64,6 +64,7 @@ services:
       - PERMISSION_CACHE_TTL=${PERMISSION_CACHE_TTL:-300}
       # Deployment Settings
       - DEPLOY_API_KEY=${DEPLOY_API_KEY}
+      - DEPLOY_LISTENER_URL=${DEPLOY_LISTENER_URL:-http://host.docker.internal:14241}
       - VERSION=${VERSION}
       # Deploy script config
       - PROJECT_DIR=/project
@@ -81,6 +82,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Mount project root for deploy script access to docker-compose.yml, .env, scripts
       - /home/niki/PycharmProjects/WorkingTime:/project
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     logging:
       driver: "json-file"
       options:

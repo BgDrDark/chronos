@@ -19,3 +19,39 @@ export const getCsrfToken = (): string | null => {
     .find(row => row.startsWith('csrf_token='))
     ?.split('=')[1] || null;
 };
+
+export const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (response.status === 401) {
+    const csrfToken = getCsrfToken();
+    const refreshRes = await fetch(getApiUrl('auth/refresh'), {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrfToken || '' },
+      credentials: 'include',
+    });
+
+    if (refreshRes.ok) {
+      return fetch(url, {
+        ...options,
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+    }
+
+    window.location.href = '/login';
+    return response;
+  }
+
+  return response;
+};

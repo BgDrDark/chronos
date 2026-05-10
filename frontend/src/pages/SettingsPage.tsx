@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { getApiUrl } from '../utils/api';
+import { getApiUrl, fetchWithAuth } from '../utils/api';
 import { getErrorMessage } from '../types';
 import { 
   Container, Typography, Card, CardContent, Grid, TextField, Button, 
@@ -903,10 +903,8 @@ const DeploymentSettings: React.FC = () => {
         setDeployOutput('');
         
         try {
-            const res = await fetch(`${API_URL}/webhook/deploy`, {
+            const res = await fetchWithAuth(`${API_URL}/webhook/deploy`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
                 body: JSON.stringify({ version: targetVersion || undefined })
             });
             
