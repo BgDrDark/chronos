@@ -7,6 +7,9 @@
 #   ./setup-production.sh deploy vX.Y.Z.W      # Phase 2: Deploy new version
 #   ./setup-production.sh status               # Check current status
 #   ./setup-production.sh rollback TIMESTAMP   # Rollback to backup
+#
+# Environment:
+#   GITHUB_TOKEN - GitHub PAT for GHCR image pulls (required for deploy)
 # =============================================================================
 
 set -e
@@ -94,6 +97,8 @@ create_env_file() {
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=${DB_PASSWORD}
 POSTGRES_DB=chronosdb
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
 
 # Backend Secrets
 JWT_SECRET_KEY=${JWT_SECRET}
@@ -102,7 +107,9 @@ CSRF_SECRET_KEY=${CSRF_SECRET}
 
 # Deployment
 DEPLOY_API_KEY=${DEPLOY_API_KEY}
+DEPLOY_LISTENER_URL=http://host.docker.internal:14241
 GITHUB_REPO=${REPO_URL}
+GITHUB_REPO_TOKEN=${GITHUB_TOKEN:-}
 GITHUB_REPO_API=https://api.github.com/repos/BgDrDark/chronos/releases/latest
 
 # Docker Compose
@@ -115,6 +122,9 @@ VITE_API_URL=
 
 # CORS Origins
 BACKEND_CORS_ORIGINS=https://${PROD_DOMAIN}
+
+# Kiosk
+KIOSK_DEVICE_SECRET=$(openssl rand -hex 16)
 
 # Google Calendar Integration (configure manually after setup)
 GOOGLE_CLIENT_ID=
@@ -143,11 +153,23 @@ setup_nginx_proxy() {
     # Wait for NPM container to be ready
     sleep 10
     
+    # Find NPM container dynamically
+    local NPM_CONTAINER
+    NPM_CONTAINER=$(docker ps --filter "name=nginx-proxy-manager" --format "{{.Names}}" 2>/dev/null | head -1)
+    
+    if [ -z "$NPM_CONTAINER" ]; then
+        log_warn "Nginx Proxy Manager container not found, skipping proxy config"
+        log_info "Configure proxy manually via NPM web UI (http://<server-ip>:81)"
+        return 0
+    fi
+    
+    log_info "Using NPM container: $NPM_CONTAINER"
+    
     # Create custom proxy config directory
-    docker exec workingtime-nginx-proxy-manager-1 mkdir -p /data/nginx/custom 2>/dev/null || true
+    docker exec "$NPM_CONTAINER" mkdir -p /data/nginx/custom 2>/dev/null || true
     
     # Write custom proxy config with ALL backend routes
-    docker exec -i workingtime-nginx-proxy-manager-1 sh -c 'cat > /data/nginx/custom/server_proxy.conf' << 'PROXYEOF'
+    docker exec -i "$NPM_CONTAINER" sh -c 'cat > /data/nginx/custom/server_proxy.conf' << 'PROXYEOF'
 # === Chronos Backend Proxy Routes ===
 
 location /webhook {
@@ -238,8 +260,8 @@ location /documents {
 PROXYEOF
     
     # Test and reload NPM
-    if docker exec workingtime-nginx-proxy-manager-1 nginx -t 2>/dev/null; then
-        docker exec workingtime-nginx-proxy-manager-1 nginx -s reload
+    if docker exec "$NPM_CONTAINER" nginx -t 2>/dev/null; then
+        docker exec "$NPM_CONTAINER" nginx -s reload
         log_success "Nginx Proxy Manager configured and reloaded"
     else
         log_warn "Nginx Proxy Manager config test failed (may need manual setup)"
@@ -315,6 +337,31 @@ init_production() {
     # Create .env
     create_env_file
     
+    # Setup update listener BEFORE deploy (required by update.sh)
+    log_info "Setting up update listener..."
+    if [ -f "$INSTALL_DIR/scripts/setup-update-listener.sh" ]; then
+        bash "$INSTALL_DIR/scripts/setup-update-listener.sh" --no-firewall
+        log_success "Update listener configured"
+    else
+        log_warn "setup-update-listener.sh not found, deploy via UI will not work"
+    fi
+    
+    # Ensure docker-compose.yml has extra_hosts for listener connectivity
+    log_info "Checking docker-compose.yml configuration..."
+    if ! grep -q "host.docker.internal" "$INSTALL_DIR/docker-compose.yml" 2>/dev/null; then
+        log_info "Adding extra_hosts to docker-compose.yml..."
+        # Find the backend service's volume mount line and add extra_hosts after it
+        sed -i '/- PROJECT_DIR=\/project/a\    extra_hosts:\n      - "host.docker.internal:host-gateway"' \
+            "$INSTALL_DIR/docker-compose.yml"
+        log_success "extra_hosts added for listener connectivity"
+    fi
+    
+    # Ensure DEPLOY_LISTENER_URL is in .env
+    if ! grep -q "^DEPLOY_LISTENER_URL=" "$INSTALL_DIR/.env" 2>/dev/null; then
+        echo "DEPLOY_LISTENER_URL=http://host.docker.internal:14241" >> "$INSTALL_DIR/.env"
+        log_success "DEPLOY_LISTENER_URL added to .env"
+    fi
+    
     # Initial deploy
     log_info "Running initial deployment (version: ${TARGET_VERSION})..."
     ./scripts/update.sh --version "${TARGET_VERSION}"
@@ -335,12 +382,14 @@ init_production() {
     echo "     - Add proxy host: ${PROD_DOMAIN} -> frontend:3000"
     echo "     - Enable SSL (Let's Encrypt)"
     echo "     - Force SSL redirect"
-    echo "  2. Configure Google Calendar credentials:"
+    echo "  2. Set GitHub token for image pulls:"
+    echo "     echo 'GITHUB_REPO_TOKEN=ghp_xxxx' >> ${INSTALL_DIR}/.env"
+    echo "  3. Configure Google Calendar credentials:"
     echo "     nano ${INSTALL_DIR}/.env"
     echo "     # Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET"
     echo "     ./setup-production.sh deploy latest"
-    echo "  3. Create your admin user via the web interface"
-    echo "  4. Test: https://${PROD_DOMAIN}"
+    echo "  4. Create your admin user via the web interface"
+    echo "  5. Test: https://${PROD_DOMAIN}"
     echo ""
     echo "To deploy updates:"
     echo "  cd ${INSTALL_DIR}"
@@ -367,6 +416,19 @@ deploy_version() {
     echo -e "${BLUE}=== Deploying ${version} ===${NC}"
     echo -e "${BLUE}========================================${NC}"
     echo ""
+    
+    # Check if update listener is running
+    if curl -sf http://localhost:14241/health >/dev/null 2>&1; then
+        log_success "Update listener is running"
+    else
+        log_warn "Update listener not running, setting it up..."
+        if [ -f "$INSTALL_DIR/scripts/setup-update-listener.sh" ]; then
+            bash "$INSTALL_DIR/scripts/setup-update-listener.sh" --no-firewall
+        else
+            log_error "setup-update-listener.sh not found. Cannot deploy."
+            exit 1
+        fi
+    fi
     
     # Deploy (update.sh now auto-updates .env)
     ./scripts/update.sh --version "${version}"
@@ -422,7 +484,13 @@ check_status() {
     # Database
     echo ""
     echo "  Database:"
-    docker exec chronos-DB psql -U postgres -d chronosdb -c "SELECT count(*) as user_count FROM users;" 2>/dev/null | grep -v "^$" | sed 's/^/    /' || echo "    (not available)"
+    local DB_CONTAINER
+    DB_CONTAINER=$(docker ps --filter "name=chronos-DB" --filter "name=chronos-db" --format "{{.Names}}" 2>/dev/null | head -1)
+    if [ -n "$DB_CONTAINER" ]; then
+        docker exec "$DB_CONTAINER" psql -U postgres -d chronosdb -c "SELECT count(*) as user_count FROM users;" 2>/dev/null | grep -v "^$" | sed 's/^/    /' || echo "    (not available)"
+    else
+        echo "    (container not found)"
+    fi
     
     # Backups
     echo ""
@@ -489,9 +557,9 @@ case "${1}" in
         echo "  rollback TIMESTAMP    - Rollback to backup"
         echo ""
         echo "Examples:"
-        echo "  sudo $0 init v3.6.37.0        - Setup production with v3.6.37.0"
-        echo "  sudo $0 deploy v3.6.38.0      - Deploy v3.6.38.0"
+        echo "  sudo $0 init v3.6.60.0        - Setup production with v3.6.60.0"
+        echo "  sudo $0 deploy v3.6.60.0      - Deploy v3.6.60.0"
         echo "  sudo $0 status                - Check status"
-        echo "  sudo $0 rollback 20260503_012703  - Rollback to backup"
+        echo "  sudo $0 rollback 20260510_192059  - Rollback to backup"
         ;;
 esac
