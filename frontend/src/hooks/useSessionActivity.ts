@@ -106,6 +106,32 @@ export const useSessionActivity = ({
     return () => clearInterval(intervalId);
   }, [idleTimeoutMs, onIdleTimeout]);
 
+  // Proactive token refresh every 60 seconds to prevent access token expiry
+  useEffect(() => {
+    const refreshInterval = setInterval(async () => {
+      if (isRefreshingRef.current) return;
+      try {
+        const csrfToken = getCsrfToken();
+        const response = await fetch(getApiUrl('auth/refresh'), {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken || '',
+          },
+          credentials: 'include',
+        });
+        
+        if (!response.ok) {
+          // Refresh failed - user may be logged out
+          onIdleTimeout();
+        }
+      } catch {
+        // Silent fail - let the idle check handle it
+      }
+    }, 60 * 1000); // Every 60 seconds
+
+    return () => clearInterval(refreshInterval);
+  }, [onIdleTimeout]);
+
   return {
     isIdle,
     resetIdleTimer,

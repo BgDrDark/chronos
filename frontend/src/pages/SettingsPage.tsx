@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { getApiUrl } from '../utils/api';
 import { getErrorMessage } from '../types';
 import { 
@@ -1063,7 +1064,7 @@ const SettingsPage: React.FC = () => {
   
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
   if (error) return <Alert severity="error">{error.message}</Alert>;
-  if (!data || !data.me) return <Alert severity="warning">Няма данни за потребителя.</Alert>;
+  if (!data || !data.me) return <Navigate to="/login" replace />;
 
   const { me } = data;
   const isAdmin = ['admin', 'super_admin'].includes(me.role.name);

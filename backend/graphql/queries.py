@@ -23,11 +23,11 @@ class Query(BehavioralQuery):
         return "Hello World"
 
     @strawberry.field
-    async def me(self, info: strawberry.Info) -> Optional[types.User]:
+    async def me(self, info: strawberry.Info) -> types.User:
         current_user = info.context["current_user"]
-        if current_user:
-            return types.User.from_instance(current_user)
-        return None
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+        return types.User.from_instance(current_user)
 
     @strawberry.field(name="employmentContracts")
     async def employment_contracts(

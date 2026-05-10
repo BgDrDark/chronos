@@ -1,4 +1,4 @@
-import { ApolloClient, InMemoryCache, createHttpLink, from } from '@apollo/client';
+import { ApolloClient, InMemoryCache, createHttpLink, from, ApolloLink } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
 
@@ -94,6 +94,15 @@ const authLink = setContext((_, { headers }) => {
   }
 });
 
+const authCheckLink = new ApolloLink((operation, forward) => {
+  return forward(operation).map(response => {
+    if (operation.operationName === 'Me' && response.data?.me === null) {
+      window.location.href = '/login';
+    }
+    return response;
+  });
+});
+
 const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
   // Check for network errors (like token expiry)
   if (networkError) {
@@ -153,7 +162,7 @@ const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
 });
 
 const client = new ApolloClient({
-  link: from([errorLink, authLink, httpLink]),
+  link: from([authCheckLink, errorLink, authLink, httpLink]),
   cache: cache,
 });
 

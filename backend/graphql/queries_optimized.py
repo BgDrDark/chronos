@@ -32,18 +32,19 @@ class OptimizedQuery:
         return "Hello World - Optimized!"
 
     @strawberry.field
-    async def me(self, info: strawberry.Info) -> Optional[types.User]:
+    async def me(self, info: strawberry.Info) -> types.User:
         current_user = info.context["current_user"]
-        if current_user:
-            # Use the data loader for consistent loading
-            dataloaders = info.context.get("dataloaders")
-            if dataloaders:
-                user_loader = dataloaders["user_by_id"]
-                users = await user_loader.load_many([current_user.id])
-                return types.User.from_instance(users[0]) if users[0] else None
-            else:
-                return types.User.from_instance(current_user)
-        return None
+        if not current_user:
+            from backend.exceptions import AuthenticationException
+            raise AuthenticationException(detail="Трябва да се автентикирате")
+        # Use the data loader for consistent loading
+        dataloaders = info.context.get("dataloaders")
+        if dataloaders:
+            user_loader = dataloaders["user_by_id"]
+            users = await user_loader.load_many([current_user.id])
+            return types.User.from_instance(users[0]) if users[0] else None
+        else:
+            return types.User.from_instance(current_user)
 
     @strawberry.field
     async def active_time_log(self, info: strawberry.Info) -> Optional[types.TimeLog]:
