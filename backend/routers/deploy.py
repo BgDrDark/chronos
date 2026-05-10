@@ -281,7 +281,7 @@ async def deploy_update(
             response = await client.post(
                 f"{deploy_listener_url}/deploy",
                 json={"version": request.version},
-                headers={"DeployKey": deploy_key}
+                headers={"Authorization": f"DeployKey {deploy_key}"}
             )
             if response.status_code == 200:
                 result = response.json()
