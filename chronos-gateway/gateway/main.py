@@ -46,6 +46,7 @@ class GatewayService:
         self.start_time = datetime.now()
         self._running = False
         self._registered = False
+        self._registration_ready = False  # Set to True after successful registration
         
         self._ensure_hardware_uuid()
         self._load_printers_from_config()
@@ -56,6 +57,33 @@ class GatewayService:
             hw_uuid = get_hardware_uuid()
             config.hardware_uuid = hw_uuid
             logger.info(f"Generated hardware UUID: {hw_uuid}")
+    
+    async def validate_gateway_id(self) -> bool:
+        """Validate cached gateway ID with backend. Returns True if valid."""
+        if config.gateway_id == "auto" or not config.gateway_id:
+            return False
+        
+        if not config.api_key:
+            return False
+        
+        import aiohttp
+        
+        async def try_validate(base_url: str) -> bool:
+            url = f"{base_url}/gateways/{config.gateway_id}"
+            headers = {"X-Kiosk-Secret": config.api_key}
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                        if response.status == 200:
+                            return True
+                        elif response.status in (404, 410):
+                            logger.warning(f"Cached gateway ID {config.gateway_id} is invalid (HTTP {response.status})")
+                            return False
+            except Exception:
+                pass
+            return False
+        
+        return await try_validate(config.backend_url) or (config.fallback_url and await try_validate(config.fallback_url))
     
     async def register_with_backend(self):
         """Регистрира gateway-а в бекенда"""
@@ -123,12 +151,14 @@ class GatewayService:
         
         if await try_register(config.backend_url):
             self._registered = True
+            self._registration_ready = True
             return True
         
         if config.fallback_url:
             logger.info(f"Primary backend failed, trying fallback: {config.fallback_url}")
             if await try_register(config.fallback_url):
                 self._registered = True
+                self._registration_ready = True
                 return True
         
         return False
@@ -170,18 +200,27 @@ class GatewayService:
         """Стартира heartbeat мониторинг"""
         logger.info("Starting heartbeat monitor")
         
+        # Wait for registration to complete before sending heartbeats
+        while self._running and not self._registration_ready:
+            logger.debug("Heartbeat waiting for registration...")
+            await asyncio.sleep(5)
+        
         while self._running:
             try:
-                await self._send_heartbeat()
+                result = await self._send_heartbeat()
+                if result == "invalid_id":
+                    logger.warning("Gateway ID invalid, re-registering...")
+                    self._registration_ready = False
+                    await self.register_with_backend()
             except Exception as e:
                 logger.error(f"Heartbeat error: {e}")
             
             await asyncio.sleep(config.heartbeat_interval)
     
     async def _send_heartbeat(self):
-        """Изпраща heartbeat към бекенд"""
+        """Изпраща heartbeat към бекенд. Returns 'ok', 'invalid_id', or 'error'."""
         if config.gateway_id == "auto" or not self.cluster_manager.is_master():
-            return
+            return "error"
         
         import aiohttp
         
@@ -194,26 +233,35 @@ class GatewayService:
             "printer_count": printers_status["total"],
         }
         
-        async def try_heartbeat(base_url: str) -> bool:
+        async def try_heartbeat(base_url: str) -> str:
             url = f"{base_url}/gateways/{config.gateway_id}/heartbeat"
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.post(url, json=data) as response:
                         if response.status == 200:
-                            logger.debug("Heartbeat sent successfully")
-                            return True
+                            return "ok"
+                        elif response.status == 404:
+                            return "invalid_id"
                         else:
-                            logger.warning(f"Heartbeat failed: {response.status}")
+                            logger.debug(f"Heartbeat failed: {response.status}")
+                            return "error"
             except Exception as e:
                 logger.debug(f"Heartbeat skipped (backend unreachable): {e}")
-            return False
+            return "error"
         
-        if not await try_heartbeat(config.backend_url):
-            if config.fallback_url:
-                await try_heartbeat(config.fallback_url)
+        result = await try_heartbeat(config.backend_url)
+        if result == "error" and config.fallback_url:
+            result = await try_heartbeat(config.fallback_url)
+        
+        return result
 
     async def sync_config_from_backend(self):
         """Периодично изтегляне на конфигурация (зони, врати) от бакенда"""
+        # Wait for registration before syncing config
+        while self._running and not self._registration_ready:
+            logger.debug("Config sync waiting for registration...")
+            await asyncio.sleep(5)
+        
         if config.gateway_id == "auto" or not self.cluster_manager.is_master():
             return
 
@@ -346,6 +394,14 @@ class GatewayService:
         async def run_all():
             # Initial registration attempt (only if leader/master)
             if self.cluster_manager.is_master():
+                # First, validate cached gateway ID
+                if config.gateway_id != "auto" and config.gateway_id:
+                    logger.info(f"Validating cached gateway ID: {config.gateway_id}")
+                    if not await self.validate_gateway_id():
+                        logger.warning("Cached gateway ID invalid, clearing and re-registering")
+                        config.set("gateway.id", "auto")
+                        config.set("backend.api_key", "")
+                
                 await self.register_with_backend()
             
             from gateway.devices.relay_controller import relay_controller
