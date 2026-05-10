@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-deploy-listener.py - HTTP listener for Chronos deploy requests
+update-listener.py - HTTP listener for Chronos update requests
 
-Runs on the HOST machine. Receives deploy requests from the backend container
+Runs on the HOST machine. Receives update requests from the backend container
 and executes update.sh safely outside the container.
 
 Usage:
-    python3 deploy-listener.py [--port 14241] [--project-dir /path/to/chronos]
+    python3 update-listener.py [--port 14241] [--project-dir /path/to/chronos]
 """
 
 import argparse
@@ -23,7 +23,7 @@ from datetime import datetime
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [deploy-listener] %(levelname)s %(message)s',
+    format='%(asctime)s [update-listener] %(levelname)s %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
@@ -161,7 +161,7 @@ class DeployHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self._send_json({"status": "ok", "service": "deploy-listener"})
+            self._send_json({"status": "ok", "service": "update-listener"})
         elif self.path == "/deploy-status":
             with _deploy_lock:
                 self._send_json(dict(_deploy_status))
@@ -220,7 +220,7 @@ def main():
     DeployHandler.api_key = args.api_key
     DeployHandler.project_dir = args.project_dir
 
-    logger.info(f"Starting deploy-listener on port {args.port}")
+    logger.info(f"Starting update-listener on port {args.port}")
     logger.info(f"Project directory: {args.project_dir}")
     logger.info(f"API key: {'configured' if args.api_key else 'NOT SET (no auth)'}")
 
@@ -229,7 +229,7 @@ def main():
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        logger.info("Shutting down deploy-listener...")
+        logger.info("Shutting down update-listener...")
         server.shutdown()
 
 

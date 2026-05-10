@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# setup-deploy-listener.sh - Automated setup for Chronos Deploy Listener
+# setup-update-listener.sh - Automated setup for Chronos Update Listener
 #
 # Usage:
-#   sudo bash scripts/setup-deploy-listener.sh [--no-firewall] [--port 14241]
+#   sudo bash scripts/setup-update-listener.sh [--no-firewall] [--port 14241]
 #
 # This script:
 #   1. Auto-detects user, project dir, Python, API key
@@ -55,7 +55,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CURRENT_USER=$(whoami)
 PYTHON_BIN=$(which python3 2>/dev/null || echo "")
 ENV_FILE="$PROJECT_DIR/.env"
-SERVICE_NAME="chronos-deploy-listener"
+SERVICE_NAME="chronos-update-listener"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 LOG_FILE="/var/log/${SERVICE_NAME}.log"
 
@@ -150,7 +150,7 @@ Group=$CURRENT_USER
 WorkingDirectory=$PROJECT_DIR
 Environment=PYTHONUNBUFFERED=1
 Environment=PROJECT_DIR=$PROJECT_DIR
-ExecStart=$PYTHON_BIN $PROJECT_DIR/scripts/deploy-listener.py \\
+ExecStart=$PYTHON_BIN $PROJECT_DIR/scripts/update-listener.py \\
     --port $LISTENER_PORT \\
     --project-dir $PROJECT_DIR \\
     --api-key $DEPLOY_API_KEY
