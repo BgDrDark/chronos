@@ -77,7 +77,7 @@ const MyCardPage: React.FC = () => {
       }
 
       const response = await axios.get(`${API_URL}/auth/qr-token${coords}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        withCredentials: true,
       });
       setTokenRef.current(response.data.qr_token);
       setLoadingRef.current(false);

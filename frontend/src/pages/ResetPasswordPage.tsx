@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getApiUrl } from '../utils/api';
 import { 
   Typography, TextField, Button, Box, Alert, 
   CssBaseline, Container, CircularProgress 
@@ -27,7 +28,7 @@ const ResetPasswordPage: React.FC = () => {
         }
 
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:14240'}/auth/verify-reset-token?token=${token}`);
+            const response = await fetch(`${getApiUrl()}/auth/verify-reset-token?token=${token}`);
             if (response.ok) {
                 setIsTokenValid(true);
             } else {
@@ -62,7 +63,7 @@ const ResetPasswordPage: React.FC = () => {
     setError('');
 
     try {
-      const response = await fetch((import.meta.env.VITE_API_URL || 'http://localhost:14240') + '/auth/reset-password', {
+      const response = await fetch(getApiUrl('/auth/reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, new_password: password }),

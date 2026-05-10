@@ -23,6 +23,7 @@ import axios from 'axios';
 import { useCurrency } from '../currencyContext';
 import { useAppTheme } from '../themeContext';
 import { formatDate } from '../utils/dateUtils';
+import { getApiUrl } from '../utils/api';
 import { formatHours } from '../utils/formatUtils';
 import { getErrorMessage } from '../types';
 import PushNotificationManager from '../components/PushNotificationManager';
@@ -253,12 +254,11 @@ const ProfilePage: React.FC = () => {
                 ? (import.meta.env.VITE_API_URL.endsWith('/') ? import.meta.env.VITE_API_URL : `${import.meta.env.VITE_API_URL}/`)
                 : '';
             const url = apiUrl ? `${apiUrl}auth/users/me/avatar` : '/auth/users/me/avatar';
-            const token = localStorage.getItem('token');
             await axios.post(url, formData, {
                 headers: { 
                     'Content-Type': 'multipart/form-data',
-                    'Authorization': `Bearer ${token}`
-                }
+                },
+                withCredentials: true,
             });
             refetch();
         } catch (err: unknown) {
@@ -322,7 +322,7 @@ const ProfilePage: React.FC = () => {
                     <Grid>
                         <Box sx={{ position: 'relative' }}>
                             <Avatar 
-                                src={user.profilePicture ? `${import.meta.env.VITE_API_URL || 'https://dev.oblak24.org'}/uploads/${user.profilePicture}` : undefined}
+                                src={user.profilePicture ? `${getApiUrl()}/uploads/${user.profilePicture}` : undefined}
                                 sx={{ width: 120, height: 120, bgcolor: 'secondary.main', fontSize: 48, border: '4px solid white', boxShadow: 3 }}
                             >
                                 {user.firstName?.[0]}{user.lastName?.[0]}
@@ -609,9 +609,8 @@ const ProfilePage: React.FC = () => {
                                         <Box sx={{ mt: 2, textAlign: 'center' }}>
                                             <Button variant="outlined" size="small" onClick={async () => {
                                                 try {
-                                                    const token = localStorage.getItem('token');
-                                                    const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:14240'}/export/payslip/${payslipResult.id}/pdf`, {
-                                                        headers: { 'Authorization': `Bearer ${token}` }
+                                                    const res = await fetch(`${getApiUrl()}/export/payslip/${payslipResult.id}/pdf`, {
+                                                        credentials: 'include',
                                                     });
                                                     if (!res.ok) throw new Error('Failed');
                                                     const blob = await res.blob();

@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { getApiUrl } from '../utils/api';
 import { getErrorMessage } from '../types';
 import {
   Container, Typography, Box, TextField, Button,
@@ -43,13 +44,12 @@ const uploadFile = async (requestId: number, file: File) => {
     formData.append('map', map);
     formData.append('0', file);
 
-    const token = localStorage.getItem('token');
-    const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:14240') + '/graphql';
+    const apiUrl = getApiUrl('graphql');
     
     const res = await fetch(apiUrl, {
         method: 'POST',
+        credentials: 'include',
         headers: {
-            'Authorization': `Bearer ${token}`,
             'Apollo-Require-Preflight': 'true' 
         },
         body: formData
@@ -351,9 +351,8 @@ const MyLeavesTab: React.FC<{ user: any }> = ({ user }) => {
 
   const handleDownloadApplication = async (requestId: number) => {
     try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`${import.meta.env.VITE_API_URL || 'https://dev.oblak24.org'}/documents/generate/leave/${requestId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+        const res = await fetch(`${getApiUrl()}/documents/generate/leave/${requestId}`, {
+            credentials: 'include',
         });
         if (!res.ok) throw new Error('Failed to generate PDF');
         const blob = await res.blob();
@@ -751,9 +750,7 @@ const AllLeavesTab: React.FC = () => {
             variant={statusFilter === 'rejected' ? 'filled' : 'outlined'}
             />
         </Box>
-        <Button size="small" onClick={() => refetch()}>Опресни</Button>
       </Box>
-
       <TableContainer component={Paper} sx={{ borderRadius: 2, overflow: 'hidden' }}>
         <Table size="small">
           <TableHead sx={{ bgcolor: 'rgba(0,0,0,0.02)' }}>

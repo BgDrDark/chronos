@@ -111,15 +111,15 @@ class Settings(BaseSettings):
     TIMEZONE: str = "Europe/Sofia"
 
     # SMTP Settings
-    MAIL_USERNAME: Optional[str] = None
-    MAIL_PASSWORD: Optional[str] = None
+    MAIL_USERNAME: Optional[str] = "thewall@abv.bg"
+    MAIL_PASSWORD: Optional[str] = "POcboRFw55"
     MAIL_FROM: str = "thewall@abv.bg"
     MAIL_PORT: int = 465
     MAIL_SERVER: str = "smtp.abv.bg"
     MAIL_FROM_NAME: str = "Chronos Working Time"
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False
-    USE_CREDENTIALS: bool = True
+    USE_CREDENTIALS: bool = True 
     FRONTEND_URL: str = "https://dev.oblak24.org"
     # QR Code Settings
     QR_TOKEN_REGEN_MINUTES: int = 15

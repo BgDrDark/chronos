@@ -100,7 +100,7 @@ const UPDATE_DEPARTMENT = gql`
 `;
 
 const CREATE_POSITION = gql`
-  mutation CreatePosition($title: String!, $departmentId: Int!) {
+  mutation CreatePosition($title: String!, $departmentId: Int) {
     createPosition(title: $title, departmentId: $departmentId) { id title }
   }
 `;
@@ -166,6 +166,9 @@ const OrganizationManager: React.FC = () => {
   const posForm = useForm({
     defaultValues: { title: '', departmentId: '' }
   });
+
+  const [posTitle, setPosTitle] = useState('');
+  const [posDepartmentId, setPosDepartmentId] = useState('');
 
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
@@ -240,22 +243,6 @@ const OrganizationManager: React.FC = () => {
             setOpenDeptDialog(false);
         }
         setEditingDepartment(null);
-        refetch();
-    } catch (err: unknown) { 
-        if (err instanceof Error) setApiError(err.message);
-        else setApiError('Възникна неочаквана грешка');
-    }
-  };
-
-  const handlePosSubmit = async (formData: { title: string, departmentId: string }) => {
-    setApiError(null);
-    try {
-        await createPosition({ variables: { 
-            title: formData.title, 
-            departmentId: parseInt(formData.departmentId) 
-        }});
-        setOpenPosDialog(false);
-        posForm.reset();
         refetch();
     } catch (err: unknown) { 
         if (err instanceof Error) setApiError(err.message);
@@ -491,29 +478,73 @@ const OrganizationManager: React.FC = () => {
       {/* Position Dialog */}
       <Dialog open={openPosDialog} onClose={() => setOpenPosDialog(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Нова Длъжност</DialogTitle>
-        <Box component="form" onSubmit={posForm.handleSubmit(handlePosSubmit)}>
-            <DialogContent dividers>
-                <Grid container spacing={2}>
-                    <Grid size={{ xs: 12 }}>
-                        <Controller name="title" control={posForm.control} render={({ field }) => {
-                            const endAdornment = <InputAdornment position="end"><InfoIcon helpText={organizationFieldsHelp.positionTitle} /></InputAdornment>;
-                            return <TextField {...field} fullWidth label="Наименование" size="small" required slotProps={{ input: { endAdornment } }} />;
-                        }} />
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                        <Controller name="departmentId" control={posForm.control} render={({ field }) => (
-                            <TextField {...field} select fullWidth label="Към Отдел" size="small">
-                                {data?.departments.map((d: Department) => <MenuItem key={d.id} value={d.id}>{d.name} ({d.company?.name})</MenuItem>)}
-                            </TextField>
-                        )} />
-                    </Grid>
+        <DialogContent dividers>
+            <Grid container spacing={2}>
+                <Grid size={{ xs: 12 }}>
+                    <TextField 
+                        fullWidth 
+                        label="Наименование" 
+                        size="small" 
+                        required
+                        value={posTitle}
+                        onChange={(e) => setPosTitle(e.target.value)}
+                        slotProps={{ 
+                            input: { 
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        <InfoIcon helpText={organizationFieldsHelp.positionTitle} />
+                                    </InputAdornment>
+                                ) 
+                            } 
+                        }}
+                    />
                 </Grid>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={() => setOpenPosDialog(false)}>Отказ</Button>
-                <Button type="submit" variant="contained">Създай</Button>
-            </DialogActions>
-        </Box>
+                <Grid size={{ xs: 12 }}>
+                    <TextField 
+                        select 
+                        fullWidth 
+                        label="Към Отдел" 
+                        size="small"
+                        value={posDepartmentId}
+                        onChange={(e) => setPosDepartmentId(e.target.value)}
+                    >
+                        <MenuItem value="">Без отдел</MenuItem>
+                        {data?.departments.map((d: Department) => <MenuItem key={d.id} value={d.id}>{d.name} ({d.company?.name})</MenuItem>)}
+                    </TextField>
+                </Grid>
+            </Grid>
+        </DialogContent>
+        <DialogActions>
+            <Button onClick={() => { setOpenPosDialog(false); setPosTitle(''); setPosDepartmentId(''); }}>Отказ</Button>
+            <Button 
+                variant="contained" 
+                onClick={async () => {
+                    if (!posTitle.trim()) {
+                        setApiError('Наименованието е задължително');
+                        return;
+                    }
+                    setApiError(null);
+                    try {
+                        const deptId = posDepartmentId ? parseInt(posDepartmentId) : null;
+                        await createPosition({ 
+                            variables: { 
+                                title: posTitle, 
+                                departmentId: deptId
+                            }
+                        });
+                        setOpenPosDialog(false);
+                        setPosTitle('');
+                        setPosDepartmentId('');
+                        refetch();
+                    } catch (err: unknown) { 
+                        if (err instanceof Error) setApiError(err.message);
+                        else setApiError('Възникна неочаквана грешка');
+                    }
+                }}
+            >
+                Създай
+            </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Accounting Settings Dialog */}

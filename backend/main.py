@@ -71,7 +71,22 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(delayed_startup_jobs())
     
+    # Start behavioral analysis scheduler
+    try:
+        from backend.modules.behavioral_analysis.scheduler import start_scheduler
+        start_scheduler()
+        logger.info("Behavioral analysis scheduler initialized")
+    except Exception as e:
+        logger.error(f"Failed to start behavioral analysis scheduler: {e}")
+    
     yield
+    
+    # Shutdown behavioral analysis scheduler
+    try:
+        from backend.modules.behavioral_analysis.scheduler import stop_scheduler
+        stop_scheduler()
+    except Exception as e:
+        logger.error(f"Failed to stop behavioral analysis scheduler: {e}")
     
     # Shutdown
     scheduler.shutdown()

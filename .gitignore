@@ -142,6 +142,7 @@ FRONTEND_REFACTOR_PLAN.md
 NAVIGATION_REFACTOR_PLAN.md
 REPOSITORY_PATTERN_PLAN.md
 SAFE_UPDATE_PLAN.md
+BEHAVIORAL_ANALYSIS_PLAN.md
 docs/
 
 # ==========================================
@@ -171,3 +172,8 @@ docker-compose.hub.yml
 # ==========================================
 uploads/
 docker-compose-dev-commands.md
+
+# ==========================================
+# DEPLOYMENT PACKAGE (offline server bundle)
+# ==========================================
+to_save/

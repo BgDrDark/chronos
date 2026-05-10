@@ -1,4 +1,5 @@
 import { formatDate } from '../utils/dateUtils';
+import { getApiUrl } from '../utils/api';
 import React, { useState, useEffect } from 'react';
 import { Ingredient, getErrorMessage } from '../types';
 import { useCurrency, formatCurrencyValue } from '../currencyContext';
@@ -907,10 +908,9 @@ export default function AccountingPage({ tab }: Props) {
 
   const handlePrintInvoice = async (invoiceId: number) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://dev.oblak24.org';
       const csrfToken = document.cookie.split('; ').find(row => row.startsWith('csrf_token='))?.split('=')[1];
       
-      const response = await fetch(`${apiUrl}/export/invoice/${invoiceId}/pdf`, {
+      const response = await fetch(`${getApiUrl()}/export/invoice/${invoiceId}/pdf`, {
         headers: {
           'X-CSRFToken': csrfToken || '',
         },

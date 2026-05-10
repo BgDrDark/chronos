@@ -13,10 +13,11 @@ from backend.exceptions import (
 )
 from backend.graphql import types
 from backend.services.payroll_calculator import PayrollCalculator
+from backend.modules.behavioral_analysis.graphql.queries import BehavioralQuery
 
 authenticate_msg = "Трябва да се автентикирате"
 @strawberry.type
-class Query:
+class Query(BehavioralQuery):
     @strawberry.field
     async def hello(self) -> str:
         return "Hello World"
@@ -2834,3 +2835,15 @@ class Query:
         stmt = select(VehicleTrip).where(VehicleTrip.vehicle_id == vehicle_id).order_by(VehicleTrip.start_time.desc())
         res = await db.execute(stmt)
         return [types.VehicleTrip.from_instance(t) for t in res.scalars().all()]
+
+    @strawberry.field
+    async def my_notifications(self, info: strawberry.Info, unread_only: bool = False) -> List[types.Notification]:
+        db = info.context["db"]
+        current_user = info.context.get("current_user")
+        if not current_user:
+            return []
+        
+        from backend.services.notification_service import notification_service
+        service = notification_service(db)
+        notifications = await service.get_notifications(current_user.id, unread_only=unread_only)
+        return [types.Notification.from_instance(n) for n in notifications]

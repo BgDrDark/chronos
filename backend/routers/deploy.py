@@ -2,6 +2,7 @@ import os
 import subprocess
 import logging
 import threading
+import httpx
 from typing import Optional
 from datetime import datetime
 
@@ -223,6 +224,41 @@ def _run_deploy_script(app_dir: str, script_path: str, version: Optional[str]):
             _deploy_status["is_deploying"] = False
 
 
+def _poll_listener_status(listener_url: str, version: Optional[str]):
+    """Poll deploy listener for status updates and sync to local status"""
+    import time
+    max_polls = 300  # 5 minutes at 1s intervals
+    for _ in range(max_polls):
+        try:
+            with httpx.Client(timeout=5.0) as client:
+                response = client.get(f"{listener_url}/deploy-status")
+                if response.status_code == 200:
+                    data = response.json()
+                    _update_deploy_status(
+                        status=data.get("status", "running"),
+                        progress=data.get("progress", ""),
+                        output=data.get("output", ""),
+                        version=version
+                    )
+                    with _deploy_lock:
+                        _deploy_status["is_deploying"] = data.get("is_deploying", False)
+                    if not data.get("is_deploying", False):
+                        break
+        except Exception as e:
+            logger.debug(f"Poll error: {e}")
+        time.sleep(1)
+
+
+def _start_listener_polling(listener_url: str, version: Optional[str]):
+    """Start background thread to poll listener for status"""
+    thread = threading.Thread(
+        target=_poll_listener_status,
+        args=(listener_url, version),
+        daemon=True
+    )
+    thread.start()
+
+
 async def _verify_super_admin(db: AsyncSession, token: str):
     """Verify token and check super_admin role"""
     from backend.auth.jwt_utils import verify_and_decode_token
@@ -319,13 +355,45 @@ async def deploy_update(
                 detail="Deployment already in progress"
             )
 
+    # Try deploy listener first (host-based execution)
+    deploy_listener_url = os.environ.get("DEPLOY_LISTENER_URL")
+    if not deploy_listener_url:
+        # Default: try host gateway (Linux Docker) or host.docker.internal
+        deploy_listener_url = "http://172.17.0.1:14241"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{deploy_listener_url}/deploy",
+                json={"version": request.version},
+                headers={"DeployKey": deploy_key}
+            )
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"Deploy triggered via listener: {result}")
+                # Start polling listener for status
+                _start_listener_polling(deploy_listener_url, request.version)
+                return DeployResponse(
+                    status="started",
+                    commit="pending",
+                    branch=request.version or "main",
+                    message=f"Deployment started via host listener. Poll /webhook/deploy-status for progress.",
+                    timestamp=datetime.now().isoformat(),
+                    output=""
+                )
+            else:
+                logger.warning(f"Deploy listener returned {response.status_code}: {response.text}")
+    except Exception as e:
+        logger.info(f"Deploy listener not available ({e}), falling back to local execution")
+
+    # Fallback: local execution (for development)
     app_dir = os.environ.get("PROJECT_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     script_path = os.path.join(app_dir, "scripts", "update.sh")
 
     if not os.path.exists(script_path):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Deploy script not found"
+            detail="Deploy script not found and deploy listener unavailable"
         )
 
     with _deploy_lock:

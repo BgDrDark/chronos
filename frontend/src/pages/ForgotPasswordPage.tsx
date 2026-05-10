@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getApiUrl } from '../utils/api';
 import { 
   Typography, TextField, Button, Box, Alert, 
   CssBaseline, Container, Link
@@ -19,7 +20,7 @@ const ForgotPasswordPage: React.FC = () => {
     setError('');
 
     try {
-      const response = await fetch((import.meta.env.VITE_API_URL || 'http://localhost:14240') + '/auth/forgot-password', {
+      const response = await fetch(getApiUrl('/auth/forgot-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),

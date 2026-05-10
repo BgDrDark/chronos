@@ -7,6 +7,7 @@ import uuid
 from backend.database.database import get_db
 from backend.database.models import User, GoogleCalendarAccount, GoogleCalendarSyncSettings, sofia_now
 from backend.auth import jwt_utils
+from backend.auth.jwt_utils import get_current_user
 from backend.services.google_calendar_service import google_calendar_service
 from backend.config import settings
 
@@ -18,23 +19,24 @@ router = APIRouter(
     dependencies=[Depends(require_module_dep("integrations"))]
 )
 
+@router.post("/init")
+async def google_login_init(
+    request: Request,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Инициализира Google OAuth2 поток чрез POST с cookies"""
+    auth_url = await google_calendar_service.get_auth_url(current_user.id)
+    return {"auth_url": auth_url}
+
 @router.get("/login")
 async def google_login(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Инициализира Google OAuth2 поток"""
-    # За макс. сигурност бихме използвали Bearer токен от хедъра, 
-    # но понеже това е редирект от браузъра, ще разчитаме на текущата сесия 
-    # или ще изискваме потребителят да е логнат в браузъра (cookies).
-    
-    # Тъй като фронтендът ни ползва localStorage, ще трябва да подадем 
-    # токена като query param или да използваме временен state.
-    # За простота тук ще приемем, че потребителят се идентифицира чрез state.
-    
+    """Инициализира Google OAuth2 поток (legacy - с token в URL)"""
     token = request.query_params.get("token")
     if not token:
-        # В реална ситуация тук трябва да проверим бисквитката 'access_token'
         token = request.cookies.get("access_token")
         
     if not token:

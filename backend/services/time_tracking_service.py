@@ -3,6 +3,7 @@ from datetime import datetime, date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+import logging
 
 from backend.database.models import TimeLog, WorkSchedule, Shift, GlobalSetting
 from backend.database.models import sofia_now
@@ -10,6 +11,8 @@ from backend.utils.geo import calculate_distance
 from backend.config import settings
 from backend.database.transaction_manager import atomic_transaction, with_row_lock, TransactionError
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger(__name__)
 
 
 class TimeTrackingService:
@@ -404,6 +407,18 @@ class TimeTrackingService:
             tx.add(active_log)
             await tx.flush()
             await tx.refresh(active_log)
+
+            # Behavioral Analysis: Triggered Events
+            try:
+                from backend.modules.behavioral_analysis.triggered_events import TriggeredEventProcessor
+                from backend.services.module_service import ModuleService
+                
+                is_enabled = await ModuleService.is_enabled(tx, "behavioral_analysis")
+                if is_enabled:
+                    processor = TriggeredEventProcessor(tx)
+                    await processor.handle_clock_out(active_log)
+            except Exception as e:
+                logger.error(f"Behavioral analysis triggered event failed: {e}")
 
             return active_log
 

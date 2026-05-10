@@ -1307,6 +1307,11 @@ export interface RecipePriceUpdateInput {
   recipeId: number;
   markupPercentage?: number | null;
   premiumAmount?: number | null;
-  portions?: number | null;
-  reason?: string | null;
+}
+
+export interface Notification {
+  id: number;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
 }

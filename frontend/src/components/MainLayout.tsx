@@ -31,12 +31,14 @@ import {
   Work as WorkIcon,
   AttachMoney as MoneyIcon,
   Kitchen as KitchenIcon,
+  Psychology as PsychologyIcon,
 } from '@mui/icons-material';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useApolloClient } from '@apollo/client';
 import { ME_QUERY, MODULES_QUERY } from '../graphql/queries';
 import useSessionActivity from '../hooks/useSessionActivity';
 import { SidebarMenu, type MenuItem } from './SidebarMenu';
+import NotificationBell from './NotificationBell';
 
 const drawerWidth = 260;
 const collapsedDrawerWidth = 72;
@@ -218,6 +220,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   const menuItems = [
     { text: 'Табло', icon: <DashboardIcon />, path: '/', visible: !!user },
     { text: 'Профил', icon: <AccountCircleIcon />, path: '/profile', visible: !!user },
+    { text: 'Моят поведенчески профил', icon: <PsychologyIcon />, path: '/my-behavioral-profile', visible: !!user && isEnabled('behavioral_analysis') },
     { text: 'Моят график', icon: <CalendarIcon />, path: '/my-schedule', visible: !!user && isEnabled('shifts') },
     { 
       text: 'Отпуски', 
@@ -302,6 +305,19 @@ const MainLayout: React.FC<Props> = ({ children }) => {
       children: [
         { text: 'Събития и Уведомления', path: '/admin/notifications/events', visible: true },
         { text: 'SMTP Настройки', path: '/admin/notifications/smtp', visible: true },
+      ]
+    },
+    { 
+      text: 'Поведенчески анализ', 
+      icon: <PsychologyIcon />, 
+      visible: isAdmin && isEnabled('behavioral_analysis'),
+      children: [
+        { text: 'Обзор', path: '/admin/behavioral-analysis/dashboard', visible: true },
+        { text: 'Правила', path: '/admin/behavioral-analysis/rules', visible: true },
+        { text: 'Организационно здраве', path: '/admin/behavioral-analysis/health', visible: true },
+        { text: 'Bias Monitor', path: '/admin/behavioral-analysis/bias', visible: true },
+        { text: 'System Health', path: '/admin/behavioral-analysis/system', visible: true },
+        { text: 'Настройки', path: '/admin/behavioral-analysis/settings', visible: true },
       ]
     },
     { text: 'Настройки', icon: <SettingsIcon />, path: '/settings', visible: isAdmin },
@@ -430,6 +446,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
           </Typography>
           {user && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <NotificationBell />
               <Box sx={{ display: { xs: 'none', md: 'block' }, textAlign: 'right' }}>
                 <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{displayName}</Typography>
                 <Typography variant="caption" color="text.secondary">{user.role?.description || user.role?.name}</Typography>

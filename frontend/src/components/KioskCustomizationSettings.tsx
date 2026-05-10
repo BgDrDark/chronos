@@ -6,6 +6,7 @@ import {
 import WallpaperIcon from '@mui/icons-material/Wallpaper';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import axios from 'axios';
+import { getApiUrl } from '../utils/api';
 
 const KioskCustomizationSettings: React.FC = () => {
   const [uploading, setUploading] = useState(false);
@@ -21,12 +22,11 @@ const KioskCustomizationSettings: React.FC = () => {
     formData.append('file', file);
 
     try {
-      const token = localStorage.getItem('token');
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://dev.oblak24.org';
+      const apiUrl = getApiUrl();
       
       await axios.post(`${apiUrl}/system/kiosk-background`, formData, {
+        withCredentials: true,
         headers: { 
-            'Authorization': `Bearer ${token}`,
             'Content-Type': 'multipart/form-data'
         }
       });
@@ -37,7 +37,7 @@ const KioskCustomizationSettings: React.FC = () => {
       setMsg({ type: 'error', text: error.response?.data?.detail || error.message || 'Грешка' });
     } finally {
       setUploading(false);
-      event.target.value = ''; // Reset input
+      event.target.value = '';
     }
   };
 

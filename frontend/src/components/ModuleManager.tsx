@@ -65,7 +65,6 @@ const ModuleManager: React.FC = () => {
 
     setUpdating(code);
     try {
-      const token = localStorage.getItem('token');
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const newStatus = !currentStatus;
       
@@ -74,8 +73,8 @@ const ModuleManager: React.FC = () => {
       await axios.patch(`${apiUrl}/system/modules/${code}`, 
         { is_enabled: newStatus },
         { 
+          withCredentials: true,
           headers: { 
-            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
             'X-CSRFToken': csrfToken || ''
           } 

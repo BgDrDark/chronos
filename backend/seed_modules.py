@@ -44,6 +44,11 @@ async def seed_modules():
                 "code": "notifications",
                 "name": "Уведомления и Кореспонденция",
                 "description": "SMTP настройки, имейл справки и автоматични известия за наличности."
+            },
+            {
+                "code": "behavioral_analysis",
+                "name": "Поведенчески анализ",
+                "description": "4-слоен поведенчески анализ с динамични правила, XAI и bias detection."
             }
         ]
 

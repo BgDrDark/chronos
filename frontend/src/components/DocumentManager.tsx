@@ -26,10 +26,9 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
     const fetchDocs = useCallback(async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
             const apiUrl = import.meta.env.VITE_API_URL || '';
             const res = await fetch(`${apiUrl}/documents/list/${userId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                credentials: 'include',
             });
             if (!res.ok) throw new Error("Failed to load documents");
             const data = await res.json();
@@ -48,10 +47,9 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
 
     const handleDownload = async (docId: number, filename: string) => {
         try {
-            const token = localStorage.getItem('token');
             const apiUrl = import.meta.env.VITE_API_URL || '';
             const res = await fetch(`${apiUrl}/documents/download/${docId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                credentials: 'include',
             });
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
@@ -67,11 +65,10 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
     const handleDelete = async (docId: number) => {
         if (!window.confirm("Сигурни ли сте?")) return;
         try {
-            const token = localStorage.getItem('token');
             const apiUrl = import.meta.env.VITE_API_URL || '';
             await fetch(`${apiUrl}/documents/${docId}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+                credentials: 'include',
             });
             fetchDocs();
         } catch { alert("Delete failed"); }
@@ -79,11 +76,10 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
 
     const handleToggleLock = async (docId: number) => {
         try {
-            const token = localStorage.getItem('token');
             const apiUrl = import.meta.env.VITE_API_URL || '';
             await fetch(`${apiUrl}/documents/${docId}/toggle-lock`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
+                credentials: 'include',
             });
             fetchDocs();
         } catch { alert("Lock toggle failed"); }
@@ -98,11 +94,10 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
         formData.append('file', file);
         
         try {
-            const token = localStorage.getItem('token');
             const apiUrl = import.meta.env.VITE_API_URL || '';
             const res = await fetch(`${apiUrl}/documents/upload/${userId}?file_type=other`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
+                credentials: 'include',
                 body: formData
             });
             if (!res.ok) throw new Error("Upload failed");

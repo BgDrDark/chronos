@@ -1,4 +1,4 @@
-export const getApiUrl = (path: string = '') => {
+export const getApiUrl = (path: string = ''): string => {
   const envUrl = import.meta.env.VITE_API_URL || '';
   
   if (envUrl.startsWith('http')) {
@@ -11,4 +11,11 @@ export const getApiUrl = (path: string = '') => {
   }
   
   return `${envUrl}${path ? '/' + path : ''}`;
+};
+
+export const getCsrfToken = (): string | null => {
+  return document.cookie
+    .split('; ')
+    .find(row => row.startsWith('csrf_token='))
+    ?.split('=')[1] || null;
 };

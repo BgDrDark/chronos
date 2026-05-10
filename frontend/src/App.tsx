@@ -34,6 +34,14 @@ import FleetPage from './pages/FleetPage';
 import VehicleProfilePage from './pages/VehicleProfilePage';
 import FleetReportsPage from './pages/FleetReportsPage';
 import TRZSettingsPage from './pages/TRZSettingsPage';
+import BehavioralAnalysisPage from './modules/behavioral-analysis/components/BehavioralAnalysisPage';
+import RuleBuilderPage from './modules/behavioral-analysis/components/RuleBuilderPage';
+import BehavioralSettingsPage from './modules/behavioral-analysis/components/SettingsPage';
+import OrganizationalHealthPage from './modules/behavioral-analysis/components/OrganizationalHealthPage';
+import BiasMonitorPage from './modules/behavioral-analysis/components/BiasMonitorPage';
+import EmployeeProfilePage from './modules/behavioral-analysis/components/EmployeeProfilePage';
+import SystemHealthPage from './modules/behavioral-analysis/components/SystemHealthPage';
+import MyBehavioralProfilePage from './modules/behavioral-analysis/components/MyBehavioralProfilePage';
 import { useQuery } from '@apollo/client';
 import { ME_QUERY } from './graphql/queries';
 
@@ -358,6 +366,17 @@ function App() {
         
         {/* Трудови договори */}
         <Route path="/admin/payroll/contracts" element={<AdminRoute><PayrollPage tab="contracts" /></AdminRoute>} />
+        
+        {/* Поведенчески анализ */}
+        <Route path="/my-behavioral-profile" element={<MyBehavioralProfilePage />} />
+        <Route path="/admin/behavioral-analysis" element={<Navigate to="/admin/behavioral-analysis/dashboard" replace />} />
+        <Route path="/admin/behavioral-analysis/dashboard" element={<AdminRoute><BehavioralAnalysisPage /></AdminRoute>} />
+        <Route path="/admin/behavioral-analysis/rules" element={<AdminRoute><RuleBuilderPage /></AdminRoute>} />
+        <Route path="/admin/behavioral-analysis/settings" element={<AdminRoute><BehavioralSettingsPage /></AdminRoute>} />
+        <Route path="/admin/behavioral-analysis/health" element={<AdminRoute><OrganizationalHealthPage /></AdminRoute>} />
+        <Route path="/admin/behavioral-analysis/bias" element={<AdminRoute><BiasMonitorPage /></AdminRoute>} />
+        <Route path="/admin/behavioral-analysis/employee/:id" element={<AdminRoute><EmployeeProfilePage /></AdminRoute>} />
+        <Route path="/admin/behavioral-analysis/system" element={<AdminRoute><SystemHealthPage /></AdminRoute>} />
         </Routes>
       </MainLayout>
     </ErrorProvider>

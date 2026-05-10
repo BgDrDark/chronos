@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getApiUrl } from '../utils/api';
 import {
   Typography, Box, TextField, Button, MenuItem, Container,
   Alert, CircularProgress, Card, CardContent, Divider, Grid, Link, FormControlLabel, Checkbox,
@@ -77,8 +78,8 @@ const GET_PAYROLL_SUMMARY = gql`
 `;
 
 const UPDATE_PAYROLL_LEGAL_MUTATION = gql`
-  mutation UpdatePayrollLegal($maxInsuranceBase: Float!, $employeeInsuranceRate: Float!, $incomeTaxRate: Float!, $civilContractCostsRate: Float!, $noiCompensationPercent: Float!, $employerPaidSickDays: Int!, $defaultTaxResident: Boolean!) {
-    updatePayrollLegalSettings(maxInsuranceBase: $maxInsuranceBase, employeeInsuranceRate: $employeeInsuranceRate, incomeTaxRate: $incomeTaxRate, civilContractCostsRate: $civilContractCostsRate, noiCompensationPercent: $noiCompensationPercent, employerPaidSickDays: $employerPaidSickDays, defaultTaxResident: $defaultTaxResident) {
+  mutation UpdatePayrollLegal($maxInsuranceBase: Float!, $employeeInsuranceRate: Float!, $incomeTaxRate: Float!, $civilContractCostsRate: Float!, $noiCompensationPercent: Float!, $employerPaidSickDays: Int!, $defaultTaxResident: Boolean!, $trzComplianceStrictMode: Boolean!) {
+    updatePayrollLegalSettings(maxInsuranceBase: $maxInsuranceBase, employeeInsuranceRate: $employeeInsuranceRate, incomeTaxRate: $incomeTaxRate, civilContractCostsRate: $civilContractCostsRate, noiCompensationPercent: $noiCompensationPercent, employerPaidSickDays: $employerPaidSickDays, defaultTaxResident: $defaultTaxResident, trzComplianceStrictMode: $trzComplianceStrictMode) {
       maxInsuranceBase
       employeeInsuranceRate
       incomeTaxRate
@@ -146,8 +147,8 @@ const UPDATE_POSITION_PAYROLL_MUTATION = gql`
 `;
 
 const UPDATE_GLOBAL_CONFIG_MUTATION = gql`
-  mutation UpdateGlobalPayrollConfig($hourlyRate: Decimal!, $overtimeMultiplier: Decimal!, $standardHoursPerDay: Int!, $monthlySalary: Decimal!, $annualLeaveDays: Int!, $currency: String!, $taxPercent: Decimal!, $healthInsurancePercent: Decimal!, $hasTaxDeduction: Boolean!, $hasHealthInsurance: Boolean!) {
-    updateGlobalPayrollConfig(hourlyRate: $hourlyRate, overtimeMultiplier: $overtimeMultiplier, standard_hours_per_day: $standardHoursPerDay, monthlySalary: $monthlySalary, annualLeaveDays: $annualLeaveDays, currency: $currency, taxPercent: $taxPercent, healthInsurancePercent: $healthInsurancePercent, hasTaxDeduction: $hasTaxDeduction, hasHealthInsurance: $hasHealthInsurance) {
+  mutation UpdateGlobalPayrollConfig($hourlyRate: Decimal!, $overtimeMultiplier: Decimal!, $standardHoursPerDay: Int!, $monthlySalary: Decimal!, $annualLeaveDays: Int!, $currency: String!, $taxPercent: Decimal!, $healthInsurancePercent: Decimal!, $hasTaxDeduction: Boolean!, $hasHealthInsurance: Boolean!, $qrRegenIntervalMinutes: Int!) {
+    updateGlobalPayrollConfig(hourlyRate: $hourlyRate, overtimeMultiplier: $overtimeMultiplier, standardHoursPerDay: $standardHoursPerDay, monthlySalary: $monthlySalary, annualLeaveDays: $annualLeaveDays, currency: $currency, taxPercent: $taxPercent, healthInsurancePercent: $healthInsurancePercent, hasTaxDeduction: $hasTaxDeduction, hasHealthInsurance: $hasHealthInsurance, qrRegenIntervalMinutes: $qrRegenIntervalMinutes) {
       hourlyRate
     }
   }
@@ -687,7 +688,8 @@ const PayrollLegalSettings: React.FC = () => {
                     civilContractCostsRate: Number(formData.civilContractCostsRate),
                     noiCompensationPercent: Number(formData.noiCompensationPercent),
                     employerPaidSickDays: Number(formData.employerPaidSickDays),
-                    defaultTaxResident: formData.defaultTaxResident
+                    defaultTaxResident: formData.defaultTaxResident,
+                    trzComplianceStrictMode: false
                 }
             });
             setMessage({ type: 'success', text: 'Законовите настройки са обновени успешно!' });
@@ -783,9 +785,8 @@ const PayrollReports: React.FC = () => {
                 }
             });
             const payslipId = res.data.generatePayslip.id;
-            const token = localStorage.getItem('token');
-            const pdfRes = await fetch(`${import.meta.env.VITE_API_URL || 'https://dev.oblak24.org'}/export/payslip/${payslipId}/pdf`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const pdfRes = await fetch(`${getApiUrl()}/export/payslip/${payslipId}/pdf`, {
+                credentials: 'include',
             });
             if (!pdfRes.ok) throw new Error('Failed to download');
             const blob = await pdfRes.blob();
@@ -800,9 +801,8 @@ const PayrollReports: React.FC = () => {
     const exportToXLSX = async () => {
         if (!startDate || !endDate) return;
         try {
-            const token = localStorage.getItem('token');
-            const url = `${import.meta.env.VITE_API_URL || 'https://dev.oblak24.org'}/export/payroll/xlsx?start_date=${startDate}&end_date=${endDate}`;
-            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            const url = `${getApiUrl()}/export/payroll/xlsx?start_date=${startDate}&end_date=${endDate}`;
+            const res = await fetch(url, { credentials: 'include' });
             if (!res.ok) throw new Error('Грешка при генериране');
             const blob = await res.blob();
             const downloadUrl = window.URL.createObjectURL(blob);
@@ -1138,7 +1138,8 @@ const GlobalPayrollSettings: React.FC = () => {
                     taxPercent: String(formData.taxPercent ?? 10),
                     healthInsurancePercent: String(formData.healthInsurancePercent ?? 5),
                     hasTaxDeduction: formData.hasTaxDeduction ?? true,
-                    hasHealthInsurance: formData.hasHealthInsurance ?? true
+                    hasHealthInsurance: formData.hasHealthInsurance ?? true,
+                    qrRegenIntervalMinutes: 15
                 }
             });
             setMessage({ type: 'success', text: 'Глобалните настройки са обновени!' });

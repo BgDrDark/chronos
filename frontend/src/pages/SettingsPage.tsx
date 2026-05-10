@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getApiUrl } from '../utils/api';
 import { getErrorMessage } from '../types';
 import { 
   Container, Typography, Card, CardContent, Grid, TextField, Button, 
@@ -277,9 +278,18 @@ const GoogleCalendarSettings: React.FC = () => {
         } catch (err) { alert(getErrorMessage(err)); }
     };
 
-    const handleConnect = () => {
-        const token = localStorage.getItem('token');
-        window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:14240'}/auth/google/login?token=${token}`;
+    const handleConnect = async () => {
+        try {
+            const res = await fetch(`${getApiUrl()}/auth/google/init`, {
+                method: 'POST',
+                credentials: 'include',
+            });
+            if (!res.ok) throw new Error('Failed to initialize Google auth');
+            const data = await res.json();
+            window.location.href = data.auth_url;
+        } catch (err) {
+            alert(getErrorMessage(err));
+        }
     };
 
     const handleDisconnect = async () => {
@@ -561,9 +571,8 @@ const SystemSettings: React.FC = () => {
 
     const handleDownloadBackup = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL || 'https://dev.oblak24.org'}/system/backup`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const res = await fetch(`${getApiUrl()}/system/backup`, {
+                credentials: 'include',
             });
             if (!res.ok) throw new Error('Грешка при сваляне');
             
@@ -590,10 +599,9 @@ const SystemSettings: React.FC = () => {
         formData.append('file', file);
 
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL || 'https://dev.oblak24.org'}/system/restore`, {
+            const res = await fetch(`${getApiUrl()}/system/restore`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
+                credentials: 'include',
                 body: formData
             });
             
@@ -618,10 +626,9 @@ const SystemSettings: React.FC = () => {
 
         setArchiving(true);
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL || 'https://dev.oblak24.org'}/system/archive?cutoff_date=${cutoffDate}`, {
+            const res = await fetch(`${getApiUrl()}/system/archive?cutoff_date=${cutoffDate}`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
+                credentials: 'include',
             });
 
             if (!res.ok) throw new Error('Archive failed');
@@ -737,7 +744,7 @@ const DeploymentSettings: React.FC = () => {
     const [deployProgress, setDeployProgress] = useState<string>('');
     const [deployOutput, setDeployOutput] = useState<string>('');
     
-    const API_URL = import.meta.env.VITE_API_URL || 'https://dev.oblak24.org';
+    const API_URL = getApiUrl();
     const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || 'BgDrDark/chronos';
 
     const FALLBACK_VERSION = '3.6.1.0';
@@ -804,9 +811,8 @@ const DeploymentSettings: React.FC = () => {
         if (!showLog && deployLog.length === 0) {
             setLoadingLog(true);
             try {
-                const token = localStorage.getItem('token');
                 const res = await fetch(`${API_URL}/webhook/deploy-log?lines=50`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    credentials: 'include',
                 });
                 if (res.ok) {
                     const data = await res.json();

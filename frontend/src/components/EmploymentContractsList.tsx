@@ -146,13 +146,10 @@ const EmploymentContractsList: React.FC<EmploymentContractsListProps> = ({ compa
   
   const handlePrint = useCallback(async (contractId: number) => {
     const apiUrl = getApiUrl();
-    const token = localStorage.getItem('token');
     
     try {
       const response = await fetch(`${apiUrl}/export/contract/${contractId}/pdf`, {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-        }
+        credentials: 'include',
       });
       
       if (!response.ok) {
@@ -176,13 +173,10 @@ const EmploymentContractsList: React.FC<EmploymentContractsListProps> = ({ compa
 
   const handlePrintAnnex = useCallback(async (annexId: number) => {
     const apiUrl = getApiUrl();
-    const token = localStorage.getItem('token');
     
     try {
       const response = await fetch(`${apiUrl}/export/annex/${annexId}/pdf`, {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-        }
+        credentials: 'include',
       });
       
       if (!response.ok) {

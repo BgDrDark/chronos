@@ -135,6 +135,21 @@ MODULE_MAPPING = {
     "addInventoryItem": "inventory",
     "completeInventorySession": "inventory",
     "stockConsumptionLogs": "inventory",
+    
+    # Behavioral Analysis (NEW - optional)
+    "behavioralProfiles": "behavioral_analysis",
+    "behavioralAnomalies": "behavioral_analysis",
+    "behavioralRules": "behavioral_analysis",
+    "createBehavioralRule": "behavioral_analysis",
+    "updateBehavioralRule": "behavioral_analysis",
+    "deleteBehavioralRule": "behavioral_analysis",
+    "behavioralRecommendations": "behavioral_analysis",
+    "updateRecommendationStatus": "behavioral_analysis",
+    "behavioralSettings": "behavioral_analysis",
+    "updateBehavioralSettings": "behavioral_analysis",
+    "organizationalHealth": "behavioral_analysis",
+    "biasReports": "behavioral_analysis",
+    "computeBehavioralProfiles": "behavioral_analysis",
 }
 
 # Throttling Configuration: {field_name: seconds_between_calls}

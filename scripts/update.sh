@@ -395,18 +395,70 @@ echo "[5/7] Deploying backend..."
 # Wait for active queries before restart
 wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
 
-# Deploy via helper container (avoids killing this script)
-echo "Pulling new image..."
-docker pull ${REGISTRY}/chronos-backend:${TARGET_VERSION}
-echo "Starting deploy helper container..."
-docker run --rm -d --name deploy-helper \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /project:/project \
-  -w /project \
-  ${REGISTRY}/chronos-backend:${TARGET_VERSION} \
-  sh -c 'docker rename chronos-backend chronos-backend-old && docker compose up -d --no-deps backend && sleep 15 && docker compose up -d --force-recreate --no-deps frontend && sleep 5 && docker rm -f chronos-backend-old 2>/dev/null || true && echo Deploy complete'
-echo "Deploy helper started. New container will replace this one."
+# Stop old backend container
+echo "Stopping old backend container..."
+docker compose stop backend 2>/dev/null || true
 
+# Remove old backend container (safe - we're running on the host, not inside the container)
+echo "Removing old backend container..."
+docker compose rm -f backend 2>/dev/null || true
+
+# Start new backend with pulled image
+echo "Starting new backend container..."
+docker compose up -d --no-deps backend
+
+echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
+BACKEND_HEALTHY=false
+for i in $(seq 1 $HEALTH_TIMEOUT); do
+    if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} Backend healthy after ${i}s"
+        BACKEND_HEALTHY=true
+        break
+    fi
+    sleep 1
+done
+
+if [ "$BACKEND_HEALTHY" = false ]; then
+    echo -e "${RED}ERROR:${NC} Backend health check timeout. Rolling back..."
+    log_deploy "DEPLOY FAILED: backend health check timeout"
+    ./scripts/rollback.sh $TIMESTAMP
+    exit 1
+fi
+
+# 6. Deploy frontend
+echo ""
+echo "[6/7] Deploying frontend..."
+docker compose stop frontend 2>/dev/null || true
+docker compose rm -f frontend 2>/dev/null || true
+docker compose up -d --no-deps frontend
+echo -e "${GREEN}✓${NC} Frontend deployed"
+
+# 7. Final health check + DB health
+echo ""
+echo "[7/7] Final health check..."
+sleep 10
+
+BACKEND_OK=false
+FRONTEND_OK=false
+DB_OK=false
+
+if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC} Backend healthy"
+    BACKEND_OK=true
+else
+    echo -e "${RED}✗${NC} Backend not responding"
+fi
+
+if curl -sf http://localhost:3000 >/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC} Frontend responding"
+    FRONTEND_OK=true
+else
+    echo -e "${YELLOW}!${NC} Frontend may not be fully ready yet"
+fi
+
+if check_db_health; then
+    DB_OK=true
+fi
 
 # === FINAL ===
 echo ""

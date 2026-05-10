@@ -182,8 +182,10 @@ async def create_trz_records_on_clock_out(
     return created_records
 
 
+from backend.modules.behavioral_analysis.graphql.mutations import BehavioralMutation
+
 @strawberry.type
-class Mutation:
+class Mutation(BehavioralMutation):
     @strawberry.mutation
     async def attach_leave_document(
             self,
@@ -676,7 +678,9 @@ class Mutation:
         return types.Department.from_instance(dept)
 
     @strawberry.mutation
-    async def create_position(self, title: str, department_id: int, info: strawberry.Info) -> types.Position:
+    async def create_position(self, title: str, department_id: Optional[int] = None, info: Optional[strawberry.Info] = None) -> types.Position:
+        if not info:
+            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
@@ -7967,4 +7971,22 @@ class Mutation:
         
         base_url = getattr(settings, 'API_URL', 'https://dev.oblak24.org')
         return f"{base_url}/export/invoice/{invoice_id}/pdf"
+
+    @strawberry.mutation
+    async def mark_notification_read(
+        self,
+        info: strawberry.Info,
+        id: int
+    ) -> bool:
+        """Mark a notification as read"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+            
+        from backend.services.notification_service import notification_service
+        service = notification_service(db)
+        await service.mark_as_read(id, current_user.id)
+        return True
 

@@ -1,6 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Annotated, Tuple
 import uuid
+import json
+import base64
+import logging
 
 from authlib.jose import jwt, JoseError
 from fastapi.security import OAuth2PasswordBearer
@@ -20,17 +23,19 @@ async def create_tokens(db: AsyncSession, user_id: int, email: str, ip_address: 
     """
     Creates a pair of Access and Refresh tokens.
     Saves the Refresh token JTI to the database (Whitelist).
+    JWT timestamps are always UTC per RFC 7519.
+    DB datetimes are naive (TIMESTAMP WITHOUT TIME ZONE).
     """
     key = await crud.get_active_auth_key(db)
-    now = sofia_now()
+    now_utc = datetime.now(timezone.utc)
     
     # Access Token (Stateless, short-lived)
     access_jti = str(uuid.uuid4())
     access_payload = {
         "iss": "chronos-api",
         "sub": email,
-        "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)).timestamp()),
+        "iat": int(now_utc.timestamp()),
+        "exp": int((now_utc + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)).timestamp()),
         "jti": access_jti,
         "type": "access",
         "uid": user_id
@@ -40,32 +45,29 @@ async def create_tokens(db: AsyncSession, user_id: int, email: str, ip_address: 
     
     # Refresh Token (Stateful, long-lived)
     refresh_jti = str(uuid.uuid4())
-    refresh_exp_dt = now + timedelta(days=7)
+    refresh_exp_utc = now_utc + timedelta(days=7)
     refresh_payload = {
         "iss": "chronos-api",
         "sub": email,
-        "iat": int(now.timestamp()),
-        "exp": int(refresh_exp_dt.timestamp()),
+        "iat": int(now_utc.timestamp()),
+        "exp": int(refresh_exp_utc.timestamp()),
         "jti": refresh_jti,
         "type": "refresh",
         "uid": user_id
     }
     refresh_token = jwt.encode(header, refresh_payload, key.secret).decode('utf-8')
     
-    # Save session to DB
+    # Save session to DB - strip timezone info for TIMESTAMP WITHOUT TIME ZONE
     await crud.create_user_session(
         db, 
         user_id=user_id, 
         refresh_token_jti=refresh_jti, 
-        expires_at=refresh_exp_dt,
+        expires_at=refresh_exp_utc.replace(tzinfo=None),
         ip_address=ip_address,
         user_agent=user_agent
     )
     
     return access_token, refresh_token
-
-import json
-import base64
 
 # Simple in-memory cache for auth keys to reduce DB load and avoid session conflicts
 _AUTH_KEYS_CACHE = {}
@@ -83,6 +85,7 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> Optional[dict
         
         kid = header.get("kid")
         if not kid:
+            logging.error(f"Token missing 'kid' in header")
             return None
             
         # Try cache first
@@ -92,6 +95,7 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> Optional[dict
             # Retrieve the specific key from DB
             key_obj = await crud.get_auth_key_by_kid(db, kid)
             if not key_obj:
+                logging.error(f"Auth key not found for kid: {kid}")
                 return None
             # Store in cache
             _AUTH_KEYS_CACHE[kid] = key_obj
@@ -99,18 +103,17 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> Optional[dict
         # Decode and validate with strict options
         claims = jwt.decode(token, key_obj.secret)
         
-        # Standard validation using Sofia time
-        now_ts = int(sofia_now().timestamp())
-        claims.validate(now=now_ts, leeway=0)
+        # Standard validation with 10s leeway for clock skew
+        claims.validate(leeway=10)
         
         # Custom validation: ensure issuer
         if claims.get("iss") != "chronos-api":
+            logging.error(f"Token issuer mismatch: {claims.get('iss')}")
             return None
             
         return claims
     except Exception as e:
-        import logging
-        logging.error(f"Token verification failed: {str(e)}")
+        logging.error(f"Token verification failed: {type(e).__name__}: {str(e)}")
         return None
 
 async def get_current_user(

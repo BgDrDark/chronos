@@ -11,6 +11,21 @@ from alembic import context
 
 from backend.config import settings
 from backend.database.models import Base
+from backend.modules.behavioral_analysis.models import (  # noqa: F401
+    BehavioralProfile,
+    BehavioralAnomaly,
+    BehavioralRule,
+    BehavioralRecommendation,
+    RecommendationFeedback,
+    BehavioralRetentionSettings,
+    BehavioralStatusThresholds,
+    BehavioralComputationSettings,
+    BehavioralMetricWeights,
+    BehavioralPeerGroupCache,
+    BehavioralSystemHealth,
+    DepartmentHealthReport,
+    BiasReport,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -62,11 +77,13 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    # Use the URL from config if set, otherwise use settings
-    db_url = config.get_main_option("sqlalchemy.url") or str(settings.DATABASE_URL)
-    # Replace asyncpg driver with psycopg2 for sync operations
+    # Always use settings.DATABASE_URL to ensure correct Docker host
+    db_url = str(settings.DATABASE_URL)
+    # Replace asyncpg or plain postgresql driver with psycopg for sync operations
     if "asyncpg" in db_url:
-        db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+        db_url = db_url.replace("postgresql+asyncpg://", "postgresql+psycopg://")
+    elif db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://")
     connectable = create_engine(db_url)
 
     with connectable.connect() as connection:
