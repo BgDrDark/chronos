@@ -139,91 +139,6 @@ def _update_deploy_status(status: str, progress: str, output: str = "", version:
         _deploy_status["timestamp"] = datetime.now().isoformat()
 
 
-def _parse_progress_line(line: str) -> Optional[str]:
-    """Extract progress indicator from deploy script output"""
-    if "[0/7]" in line:
-        return "Acquiring DB lock..."
-    elif "[1/7]" in line:
-        return "Health check (current)"
-    elif "[2/7]" in line:
-        return "Creating backup..."
-    elif "[3/7]" in line:
-        return "Pulling images from GHCR..."
-    elif "[4/7]" in line:
-        return "Running Alembic migrations..."
-    elif "[5/7]" in line:
-        return "Deploying backend..."
-    elif "[6/7]" in line:
-        return "Deploying frontend..."
-    elif "[7/7]" in line:
-        return "Final health check..."
-    elif "Deploy Complete" in line:
-        return "Deployment complete"
-    elif "Rolling back" in line or "ROLLBACK" in line:
-        return "Rolling back..."
-    return None
-
-
-def _run_deploy_script(app_dir: str, script_path: str, version: Optional[str]):
-    """Run deploy script in background thread with real-time progress updates"""
-    full_output = []
-
-    try:
-        cmd = ["bash", script_path]
-        if version:
-            cmd.extend(["--version", version])
-
-        _update_deploy_status("running", "Starting deployment...", "", version)
-
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            cwd=app_dir,
-        )
-
-        for line in iter(process.stdout.readline, ""):
-            if line:
-                line = line.rstrip()
-                full_output.append(line)
-                logger.info(f"deploy: {line}")
-
-                progress = _parse_progress_line(line)
-                if progress:
-                    _update_deploy_status("running", progress, "\n".join(full_output[-50:]), version)
-
-        process.wait()
-        returncode = process.returncode
-        output_text = "\n".join(full_output)
-
-        if returncode == 0:
-            commit_result = subprocess.run(
-                ["git", "rev-parse", "--short", "HEAD"],
-                capture_output=True,
-                text=True,
-                cwd=app_dir
-            )
-            commit_hash = commit_result.stdout.strip() or "unknown"
-
-            _update_deploy_status("success", "Deployment complete", output_text, version)
-            logger.info(f"SAFE deployment complete: {commit_hash}")
-        else:
-            is_rollback = "Rollback" in output_text or "ROLLBACK" in output_text
-            final_status = "rolled_back" if is_rollback else "failed"
-            final_progress = "Deployment failed" + (" - rolled back" if is_rollback else "")
-
-            _update_deploy_status(final_status, final_progress, output_text, version)
-            logger.error(f"Deploy script failed with exit code {returncode}")
-
-    except Exception as e:
-        logger.error(f"Deployment error: {e}")
-        _update_deploy_status("failed", f"Error: {str(e)}", "\n".join(full_output), version)
-    finally:
-        with _deploy_lock:
-            _deploy_status["is_deploying"] = False
-
-
 def _poll_listener_status(listener_url: str, version: Optional[str]):
     """Poll deploy listener for status updates and sync to local status"""
     import time
@@ -355,7 +270,7 @@ async def deploy_update(
                 detail="Deployment already in progress"
             )
 
-    # Try deploy listener first (host-based execution)
+    # Deploy via host listener (required - no fallback to local execution)
     deploy_listener_url = os.environ.get("DEPLOY_LISTENER_URL")
     if not deploy_listener_url:
         # Default: try host gateway (Linux Docker) or host.docker.internal
@@ -382,42 +297,21 @@ async def deploy_update(
                     output=""
                 )
             else:
-                logger.warning(f"Deploy listener returned {response.status_code}: {response.text}")
+                logger.error(f"Deploy listener returned {response.status_code}: {response.text}")
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Deploy listener error: {response.text}"
+                )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.info(f"Deploy listener not available ({e}), falling back to local execution")
-
-    # Fallback: local execution (for development)
-    app_dir = os.environ.get("PROJECT_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    script_path = os.path.join(app_dir, "scripts", "update.sh")
-
-    if not os.path.exists(script_path):
+        logger.error(f"Deploy listener unavailable: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Deploy script not found and deploy listener unavailable"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Deploy listener unavailable at {deploy_listener_url}. "
+                   f"Error: {e}. "
+                   f"Please ensure chronos-update-listener is running on the host machine."
         )
-
-    with _deploy_lock:
-        _deploy_status["is_deploying"] = True
-        _deploy_status["status"] = "running"
-        _deploy_status["progress"] = "Starting deployment..."
-        _deploy_status["version"] = request.version
-        _deploy_status["output"] = ""
-
-    thread = threading.Thread(
-        target=_run_deploy_script,
-        args=(app_dir, script_path, request.version),
-        daemon=True
-    )
-    thread.start()
-
-    return DeployResponse(
-        status="started",
-        commit="pending",
-        branch=request.version or "main",
-        message=f"Deployment started{' to ' + request.version if request.version else ''}. Poll /webhook/deploy-status for progress.",
-        timestamp=datetime.now().isoformat(),
-        output=""
-    )
 
 
 @router.post("/rollback", response_model=DeployResponse)
