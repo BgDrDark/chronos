@@ -270,47 +270,47 @@ async def deploy_update(
                 detail="Deployment already in progress"
             )
 
-    # Deploy via host listener (required - no fallback to local execution)
-    deploy_listener_url = os.environ.get("DEPLOY_LISTENER_URL")
-    if not deploy_listener_url:
+    # Deploy via host manager (required - no fallback to local execution)
+    deploy_manager_url = os.environ.get("DEPLOY_MANAGER_URL") or os.environ.get("DEPLOY_LISTENER_URL")
+    if not deploy_manager_url:
         # Default: try host gateway (Linux Docker) or host.docker.internal
-        deploy_listener_url = "http://172.17.0.1:14241"
+        deploy_manager_url = "http://172.17.0.1:14241"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
-                f"{deploy_listener_url}/deploy",
+                f"{deploy_manager_url}/deploy",
                 json={"version": request.version},
                 headers={"Authorization": f"DeployKey {deploy_key}"}
             )
             if response.status_code == 200:
                 result = response.json()
-                logger.info(f"Deploy triggered via listener: {result}")
-                # Start polling listener for status
-                _start_listener_polling(deploy_listener_url, request.version)
+                logger.info(f"Deploy triggered via manager: {result}")
+                # Start polling manager for status
+                _start_listener_polling(deploy_manager_url, request.version)
                 return DeployResponse(
                     status="started",
                     commit="pending",
                     branch=request.version or "main",
-                    message=f"Deployment started via host listener. Poll /webhook/deploy-status for progress.",
+                    message=f"Deployment started via host manager. Poll /webhook/deploy-status for progress.",
                     timestamp=datetime.now().isoformat(),
                     output=""
                 )
             else:
-                logger.error(f"Deploy listener returned {response.status_code}: {response.text}")
+                logger.error(f"Deploy manager returned {response.status_code}: {response.text}")
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Deploy listener error: {response.text}"
+                    detail=f"Deploy manager error: {response.text}"
                 )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Deploy listener unavailable: {e}")
+        logger.error(f"Deploy manager unavailable: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Deploy listener unavailable at {deploy_listener_url}. "
+            detail=f"Deploy manager unavailable at {deploy_manager_url}. "
                    f"Error: {e}. "
-                   f"Please ensure chronos-update-listener is running on the host machine."
+                   f"Please ensure chronos-update-manager is running on the host machine."
         )
 
 

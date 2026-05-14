@@ -3,9 +3,37 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from backend.database.database import AsyncSessionLocal
 from backend.database import models
-from backend.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+async def get_fleet_notification_recipients(db, company_id):
+    """
+    Get users who should receive fleet notifications for a company.
+    Returns admin, super_admin, and fleet_manager roles.
+    Falls back to all active users if no specific roles found.
+    """
+    stmt = select(models.User).where(
+        models.User.company_id == company_id,
+        models.User.is_active == True,
+        models.User.role_id.in_(
+            select(models.Role.id).where(
+                models.Role.name.in_(['admin', 'super_admin', 'fleet_manager'])
+            )
+        )
+    )
+    result = await db.execute(stmt)
+    users = list(result.scalars().all())
+
+    if not users:
+        stmt = select(models.User).where(
+            models.User.company_id == company_id,
+            models.User.is_active == True
+        )
+        result = await db.execute(stmt)
+        users = list(result.scalars().all())
+
+    return users
 
 
 async def check_fleet_notifications():
@@ -33,20 +61,21 @@ async def check_fleet_notifications():
             for insurance in insurances:
                 days_left = (insurance.end_date - today).days
                 vehicle = insurance.vehicle
-                
                 message = f"Застраховката на {vehicle.registration_number} изтича след {days_left} дни"
                 logger.info(message)
                 
-                notification = models.Notification(
-                    user_id=1,
-                    title="Изтичаща застраховка",
-                    message=message,
-                    notification_type="fleet_insurance",
-                    reference_id=insurance.id,
-                    company_id=vehicle.company_id
-                )
-                db.add(notification)
-                notifications_created += 1
+                recipients = await get_fleet_notification_recipients(db, vehicle.company_id)
+                for recipient in recipients:
+                    notification = models.Notification(
+                        user_id=recipient.id,
+                        title="Изтичаща застраховка",
+                        message=message,
+                        notification_type="fleet_insurance",
+                        reference_id=insurance.id,
+                        company_id=vehicle.company_id
+                    )
+                    db.add(notification)
+                    notifications_created += 1
             
             stmt_inspection = select(models.VehicleInspection).where(
                 models.VehicleInspection.valid_until <= thirty_days,
@@ -58,20 +87,21 @@ async def check_fleet_notifications():
             for inspection in inspections:
                 days_left = (inspection.valid_until - today).days
                 vehicle = inspection.vehicle
-                
                 message = f"ГТП на {vehicle.registration_number} изтича след {days_left} дни"
                 logger.info(message)
                 
-                notification = models.Notification(
-                    user_id=1,
-                    title="Изтичащо ГТП",
-                    message=message,
-                    notification_type="fleet_inspection",
-                    reference_id=inspection.id,
-                    company_id=vehicle.company_id
-                )
-                db.add(notification)
-                notifications_created += 1
+                recipients = await get_fleet_notification_recipients(db, vehicle.company_id)
+                for recipient in recipients:
+                    notification = models.Notification(
+                        user_id=recipient.id,
+                        title="Изтичащо ГТП",
+                        message=message,
+                        notification_type="fleet_inspection",
+                        reference_id=inspection.id,
+                        company_id=vehicle.company_id
+                    )
+                    db.add(notification)
+                    notifications_created += 1
             
             stmt_vignette = select(models.VehicleVignette).where(
                 models.VehicleVignette.valid_until <= seven_days,
@@ -83,20 +113,21 @@ async def check_fleet_notifications():
             for vignette in vignettes:
                 days_left = (vignette.valid_until - today).days
                 vehicle = vignette.vehicle
-                
                 message = f"Винетката на {vehicle.registration_number} изтича след {days_left} дни"
                 logger.info(message)
                 
-                notification = models.Notification(
-                    user_id=1,
-                    title="Изтичаща винетка",
-                    message=message,
-                    notification_type="fleet_vignette",
-                    reference_id=vignette.id,
-                    company_id=vehicle.company_id
-                )
-                db.add(notification)
-                notifications_created += 1
+                recipients = await get_fleet_notification_recipients(db, vehicle.company_id)
+                for recipient in recipients:
+                    notification = models.Notification(
+                        user_id=recipient.id,
+                        title="Изтичаща винетка",
+                        message=message,
+                        notification_type="fleet_vignette",
+                        reference_id=vignette.id,
+                        company_id=vehicle.company_id
+                    )
+                    db.add(notification)
+                    notifications_created += 1
             
             stmt_schedule = select(models.VehicleSchedule).where(
                 models.VehicleSchedule.next_service_date <= seven_days,
@@ -108,20 +139,21 @@ async def check_fleet_notifications():
             for schedule in schedules:
                 days_left = (schedule.next_service_date - today).days
                 vehicle = schedule.vehicle
-                
                 message = f"Поддръжка на {vehicle.registration_number} ( {schedule.schedule_type} ) след {days_left} дни"
                 logger.info(message)
                 
-                notification = models.Notification(
-                    user_id=1,
-                    title="Предстояща поддръжка",
-                    message=message,
-                    notification_type="fleet_schedule",
-                    reference_id=schedule.id,
-                    company_id=vehicle.company_id
-                )
-                db.add(notification)
-                notifications_created += 1
+                recipients = await get_fleet_notification_recipients(db, vehicle.company_id)
+                for recipient in recipients:
+                    notification = models.Notification(
+                        user_id=recipient.id,
+                        title="Предстояща поддръжка",
+                        message=message,
+                        notification_type="fleet_schedule",
+                        reference_id=schedule.id,
+                        company_id=vehicle.company_id
+                    )
+                    db.add(notification)
+                    notifications_created += 1
             
             await db.commit()
             logger.info(f"Fleet notifications check completed. Created {notifications_created} notifications.")

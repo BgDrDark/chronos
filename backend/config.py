@@ -120,19 +120,26 @@ class Settings(BaseSettings):
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False
     USE_CREDENTIALS: bool = True 
-    FRONTEND_URL: str = "https://dev.oblak24.org"
+    FRONTEND_URL: str = "http://localhost:5173"
+    API_URL: str = "http://localhost:8000"
     # QR Code Settings
     QR_TOKEN_REGEN_MINUTES: int = 15
     
     # Google Calendar Integration
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_REDIRECT_URI: str = "https://dev.oblak24.org/auth/google/callback"
+    GOOGLE_REDIRECT_URI: Optional[str] = None
     GOOGLE_CALENDAR_WEBHOOK_SECRET: Optional[str] = None
     GOOGLE_SYNC_ENABLED: bool = True
     GOOGLE_SYNC_BATCH_SIZE: int = 50
     GOOGLE_SYNC_RETRY_ATTEMPTS: int = 3
     GOOGLE_SYNC_TIMEOUT_SECONDS: int = 30
+
+    @model_validator(mode='after')
+    def set_derived_urls(self) -> 'Settings':
+        if not self.GOOGLE_REDIRECT_URI:
+            self.GOOGLE_REDIRECT_URI = f"{self.FRONTEND_URL}/auth/google/callback"
+        return self
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod

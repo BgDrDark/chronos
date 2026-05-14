@@ -1,11 +1,11 @@
 from datetime import timedelta
 from typing import Annotated, Optional
 from pathlib import Path
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi_mail import FastMail, ConnectionConfig, MessageSchema, MessageType
 from itsdangerous import URLSafeTimedSerializer
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,23 +22,10 @@ from backend.auth.limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+logger = logging.getLogger(__name__)
 
 # Serializer for password reset tokens
 pwd_reset_serializer = URLSafeTimedSerializer(settings.JWT_SECRET_KEY)
-
-# Mail configuration
-mail_conf = ConnectionConfig(
-    MAIL_USERNAME=settings.MAIL_USERNAME or "",
-    MAIL_PASSWORD=settings.MAIL_PASSWORD or "",
-    MAIL_FROM=settings.MAIL_FROM,
-    MAIL_PORT=settings.MAIL_PORT,
-    MAIL_SERVER=settings.MAIL_SERVER,
-    MAIL_FROM_NAME=settings.MAIL_FROM_NAME,
-    MAIL_STARTTLS=settings.MAIL_STARTTLS,
-    MAIL_SSL_TLS=settings.MAIL_SSL_TLS,
-    USE_CREDENTIALS=settings.USE_CREDENTIALS,
-    VALIDATE_CERTS=True
-)
 
 @router.post("/register", response_model=schemas.User)
 async def register_user(user: schemas.UserCreate, db: Annotated[AsyncSession, Depends(get_db)]):
@@ -219,21 +206,26 @@ async def forgot_password(
         return {"message": "If an account with this email exists, a password reset link has been sent."}
     
     token = pwd_reset_serializer.dumps(user.email, salt="password-reset-salt")
-    # In production, this should point to the frontend reset page
     reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
     
-    if settings.MAIL_USERNAME and settings.MAIL_PASSWORD:
-        message = MessageSchema(
+    from backend.services.email_service import send_email, is_smtp_configured
+    
+    if await is_smtp_configured(db):
+        body = (
+            f"Здравейте, {user.first_name or 'потребител'},<br><br>"
+            f"За да смените паролата си, натиснете следния линк:<br>"
+            f'<a href="{reset_link}">{reset_link}</a><br><br>'
+            f"Линкът е валиден за 30 минути."
+        )
+        await send_email(
+            db=db,
             subject="Chronos - Смяна на парола",
             recipients=[user.email],
-            body=f"Здравейте, {user.first_name or 'потребител'},\n\nЗа да смените паролата си, натиснете следния линк:\n{reset_link}\n\nЛинкът е валиден за 30 минути.",
-            subtype=MessageType.plain
+            body=body,
+            html=body,
         )
-        fm = FastMail(mail_conf)
-        await fm.send_message(message)
     else:
-        # Fallback for development: print to console
-        print(f"\n\n--- PASSWORD RESET DEBUG ---\nUser: {user.email}\nLink: {reset_link}\n----------------------------\n\n")
+        logger.info(f"\n\n--- PASSWORD RESET DEBUG ---\nUser: {user.email}\nLink: {reset_link}\n----------------------------\n\n")
         
     return {"message": "If an account with this email exists, a password reset link has been sent."}
 

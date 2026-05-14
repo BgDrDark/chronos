@@ -322,17 +322,46 @@ class Mutation(BehavioralMutation):
     @strawberry.mutation
     async def test_notification(
             self,
-            event_type: str,
-            info: strawberry.Info
+            info: strawberry.Info,
+            event_type: str
     ) -> bool:
+        """Send a test notification email to the current user"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        # TODO: Implement actual email sending
-        # For now, just return success
-        return True
+        from backend.services.email_service import send_email, is_smtp_configured
+        
+        if not await is_smtp_configured(db):
+            raise ValidationException.field("smtp", "SMTP is not configured. Please configure SMTP settings first.")
+        
+        if not current_user.email:
+            raise ValidationException.field("email", "Current user has no email address configured.")
+        
+        body = (
+            f"<h2>Тестово уведомление</h2>"
+            f"<p>Това е тест за event type: <strong>{event_type}</strong></p>"
+            f"<p>Ако получавате този имейл, SMTP настройките работят правилно.</p>"
+            f"<p>Изпратено до: {current_user.email}</p>"
+        )
+        
+        try:
+            await send_email(
+                db=db,
+                subject=f"Chronos - Тестово уведомление ({event_type})",
+                recipients=[current_user.email],
+                body=body,
+                html=body,
+            )
+            logger.info(f"Test notification sent to {current_user.email} for event_type: {event_type}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send test notification: {e}")
+            raise ValidationException.field("email", f"Failed to send test email: {e}")
 
     @strawberry.mutation
     async def update_payroll_legal_settings(
@@ -597,13 +626,10 @@ class Mutation(BehavioralMutation):
             db,
             name=input.name,
             eik=input.eik,
+            bulstat=input.bulstat,
             vat_number=input.vat_number,
             address=input.address,
-            city=input.city,
-            country=input.country,
-            phone=input.phone,
-            website=input.web_site,
-            logo_url=input.logo_url
+            mol_name=input.mol_name,
         )
         return types.Company.from_instance(company)
 
@@ -7918,7 +7944,7 @@ class Mutation(BehavioralMutation):
         if not contract:
             raise NotFoundException.record("Договор")
         
-        base_url = getattr(settings, 'API_URL', 'https://dev.oblak24.org')
+        base_url = settings.API_URL
         return f"{base_url}/export/contract/{contract_id}/pdf"
 
     @strawberry.mutation
@@ -7942,7 +7968,7 @@ class Mutation(BehavioralMutation):
         if not annex:
             raise NotFoundException.record("Споразумение")
         
-        base_url = getattr(settings, 'API_URL', 'https://dev.oblak24.org')
+        base_url = settings.API_URL
         return f"{base_url}/export/annex/{annex_id}/pdf"
 
     @strawberry.mutation
@@ -7969,7 +7995,7 @@ class Mutation(BehavioralMutation):
         if invoice.company_id != current_user.company_id:
             raise PermissionDeniedException.for_resource("фактура", "access")
         
-        base_url = getattr(settings, 'API_URL', 'https://dev.oblak24.org')
+        base_url = settings.API_URL
         return f"{base_url}/export/invoice/{invoice_id}/pdf"
 
     @strawberry.mutation
@@ -7989,4 +8015,56 @@ class Mutation(BehavioralMutation):
         service = notification_service(db)
         await service.mark_as_read(id, current_user.id)
         return True
+
+    @strawberry.mutation(name="subscribeToPush")
+    async def subscribe_to_push(
+        self,
+        info: strawberry.Info,
+        subscription_json: str,
+        preferences_json: str
+    ) -> bool:
+        """Subscribe user to push notifications with preferences"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+        
+        from backend.database.models import PushSubscription
+        
+        try:
+            sub_data = json.loads(subscription_json)
+            prefs = json.loads(preferences_json)
+        except json.JSONDecodeError as e:
+            raise ValidationException.field("subscription_json", f"Invalid JSON: {e}")
+        
+        endpoint = sub_data.get("endpoint")
+        keys = sub_data.get("keys", {})
+        p256dh = keys.get("p256dh")
+        auth_key = keys.get("auth")
+        
+        if not endpoint or not p256dh or not auth_key:
+            raise ValidationException.required_field("endpoint, keys.p256dh, keys.auth")
+        
+        try:
+            service = notification_service(db)
+            subscription = await service.subscribe(
+                user_id=current_user.id,
+                endpoint=endpoint,
+                p256dh=p256dh,
+                auth=auth_key,
+            )
+            
+            subscription.preferences = prefs
+            await db.commit()
+            
+            logger.info(f"User {current_user.id} subscribed to push notifications")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to subscribe to push notifications: {e}")
+            await db.rollback()
+            raise ValidationException.field("subscription", f"Failed to save subscription: {e}")
 

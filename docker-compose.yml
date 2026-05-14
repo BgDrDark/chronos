@@ -47,6 +47,9 @@ services:
       - CSRF_SECRET_KEY=${CSRF_SECRET_KEY}
       # Allow dynamic CORS configuration via env file if needed
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      # Environment URLs
+      - FRONTEND_URL=${FRONTEND_URL}
+      - API_URL=${API_URL}
       # Enhanced configuration
       - DEBUG=${DEBUG:-false}
       - TIMEZONE=${TIMEZONE:-Europe/Sofia}

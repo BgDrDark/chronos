@@ -212,7 +212,7 @@ class NotificationService:
                 sent = await self.send(user_id, title, body, icon, url)
                 total += sent
             except Exception as e:
-                print(f"Push to user {user_id} failed: {e}")
+                logger.error(f"Push to user {user_id} failed: {e}")
         return total
 
     async def broadcast(
@@ -222,18 +222,29 @@ class NotificationService:
         icon: str = "/pwa-192x192.png",
         url: str = "/"
     ) -> int:
-        """Send push to all subscribed users."""
-        from backend.database.models import User, PushSubscription
-        from sqlalchemy import func
-
-        stmt = select(func.count(PushSubscription.id))
+        """Send push to all subscribed users. Returns total sent."""
+        stmt = select(PushSubscription)
         result = await self.db.execute(stmt)
-        total_subs = result.scalar() or 0
+        all_subs = result.scalars().all()
 
-        if total_subs == 0:
+        if not all_subs:
             return 0
 
-        return total_subs
+        sent = 0
+        for sub in all_subs:
+            try:
+                count = await self.send(
+                    user_id=sub.user_id,
+                    title=title,
+                    body=body,
+                    icon=icon,
+                    url=url,
+                )
+                sent += count
+            except Exception as e:
+                logger.error(f"Broadcast push failed for user {sub.user_id}: {e}")
+
+        return sent
 
     async def get_subscriptions(
         self,

@@ -245,11 +245,8 @@ app.add_middleware(
 
 # Configure CORS - from config with fallback defaults
 DEFAULT_ORIGINS = [
-    "https://dev.oblak24.org",
     "https://chronos.oblak24.org",
     "https://auth.chronos.oblak24.org",
-    "https://auth.dev.oblak24.org",
-    "https://*.oblak24.org",
     "https://api.github.com",
     "http://localhost:5173",
     "http://localhost:14240",
@@ -260,6 +257,9 @@ DEFAULT_ORIGINS = [
 cors_origins = settings.BACKEND_CORS_ORIGINS if settings.BACKEND_CORS_ORIGINS else DEFAULT_ORIGINS
 if isinstance(cors_origins, str):
     cors_origins = [cors_origins]
+# Add configured frontend URL if not already present
+if settings.FRONTEND_URL not in cors_origins:
+    cors_origins.append(settings.FRONTEND_URL)
 
 app.add_middleware(
     CORSMiddleware,
