@@ -20,7 +20,7 @@ RequestExecutionLevel admin
 ; ===================
 ; VERSION INFO
 ; ===================
-!define VERSION "1.0.0"
+!define VERSION "3.6.63.0"
 !define COMPANY "Chronos"
 !define PRODUCT_NAME "Chronos Gateway"
 !define EXE_NAME "ChronosGateway.exe"
