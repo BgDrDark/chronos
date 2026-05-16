@@ -49,6 +49,7 @@ jobs:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway
           tags: |
             type=raw,value=${{ steps.version.outputs.VERSION }}
             type=raw,value=latest
@@ -85,6 +86,20 @@ jobs:
             VITE_API_URL=
             VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID || '' }}
             VITE_ENABLE_RBC=true
+
+      - name: Build and push gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: ./chronos-gateway
+          file: ./chronos-gateway/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:${{ steps.version.outputs.VERSION }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.version.outputs.VERSION }}
 
       - name: Create GitHub Release
         if: github.event_name == 'push'
