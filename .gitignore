@@ -188,6 +188,15 @@ uploads/
 docker-compose-dev-commands.md
 
 # ==========================================
+# SEED FILES (local data only)
+# ==========================================
+*seed*.py
+*seed*.py.bak
+scripts/seed_*
+backend/seed*
+backend/scripts/seed_*
+
+# ==========================================
 # DEPLOYMENT PACKAGE (offline server bundle)
 # ==========================================
 to_save/
