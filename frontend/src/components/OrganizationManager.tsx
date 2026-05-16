@@ -272,7 +272,7 @@ const OrganizationManager: React.FC = () => {
                     <BusinessIcon color="primary" />
                     <Typography variant="h6">Фирми</Typography>
                 </Box>
-                <IconButton color="primary" onClick={() => { setEditingCompany(null); setOpenCompanyDialog(true); }}>
+                <IconButton color="primary" aria-label="Добави фирма" onClick={() => { setEditingCompany(null); setOpenCompanyDialog(true); }}>
                   <AddIcon />
                 </IconButton>
               </Box>
@@ -281,7 +281,7 @@ const OrganizationManager: React.FC = () => {
                 {data?.companies.map((c: Company) => (
                   <ListItem key={c.id} sx={{ bgcolor: 'background.paper', mb: 1, borderRadius: 1, border: '1px solid #eee' }}
                     secondaryAction={
-                        <IconButton edge="end" onClick={() => { setEditingCompany(c); setOpenEditCompanyDialog(true); }}>
+                        <IconButton edge="end" aria-label="Редактирай фирма" onClick={() => { setEditingCompany(c); setOpenEditCompanyDialog(true); }}>
                           <EditIcon />
                         </IconButton>
                       }
@@ -303,7 +303,7 @@ const OrganizationManager: React.FC = () => {
                     <GroupsIcon color="secondary" />
                     <Typography variant="h6">Отдели</Typography>
                 </Box>
-                <IconButton color="secondary" onClick={() => { setEditingDepartment(null); setOpenDeptDialog(true); }}>
+                <IconButton color="secondary" aria-label="Добави отдел" onClick={() => { setEditingDepartment(null); setOpenDeptDialog(true); }}>
                   <AddIcon />
                 </IconButton>
               </Box>
@@ -312,7 +312,7 @@ const OrganizationManager: React.FC = () => {
                 {data?.departments.map((d: Department) => (
                   <ListItem key={d.id} sx={{ bgcolor: 'background.paper', mb: 1, borderRadius: 1, border: '1px solid #eee' }}
                     secondaryAction={
-                        <IconButton edge="end" onClick={() => { setEditingDepartment(d); setOpenEditDeptDialog(true); }}>
+                        <IconButton edge="end" aria-label="Редактирай отдел" onClick={() => { setEditingDepartment(d); setOpenEditDeptDialog(true); }}>
                           <EditIcon />
                         </IconButton>
                       }
@@ -334,7 +334,7 @@ const OrganizationManager: React.FC = () => {
                     <BadgeIcon color="success" />
                     <Typography variant="h6">Длъжности</Typography>
                 </Box>
-                <IconButton color="success" onClick={() => setOpenPosDialog(true)}>
+                <IconButton color="success" aria-label="Добави длъжност" onClick={() => setOpenPosDialog(true)}>
                   <AddIcon />
                 </IconButton>
               </Box>

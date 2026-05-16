@@ -96,14 +96,8 @@ const PushNotificationManager: React.FC = () => {
             let registration: ServiceWorkerRegistration | undefined;
             
             try {
-                // Try to get existing registration first
-                const regs = await navigator.serviceWorker.getRegistrations();
-                registration = regs.find(r => r.active || r.waiting || r.installing);
-                
-                if (!registration) {
-                    console.log("No registration found, trying manual registration...");
-                    registration = await navigator.serviceWorker.register('/service-worker.js', { type: 'module' });
-                }
+                // Use existing registration - SW is already registered by main.tsx
+                const registration = await navigator.serviceWorker.ready;
             } catch (swErr) {
                 console.warn("Manual SW registration failed, waiting for ready...", swErr);
                 registration = await Promise.race([

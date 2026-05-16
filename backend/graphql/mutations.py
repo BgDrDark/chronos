@@ -613,7 +613,9 @@ class Mutation(BehavioralMutation):
             ["admin", "super_admin"]
         )
         
-        return await user_repo.delete_user(db, id)
+        result = await user_repo.delete_user(db, id)
+        await db.commit()
+        return result
 
     @strawberry.mutation
     async def create_company(self, input: CompanyCreateInput, info: strawberry.Info) -> types.Company:
@@ -631,6 +633,8 @@ class Mutation(BehavioralMutation):
             address=input.address,
             mol_name=input.mol_name,
         )
+        await db.commit()
+        await db.refresh(company)
         return types.Company.from_instance(company)
 
     @strawberry.mutation
@@ -657,6 +661,8 @@ class Mutation(BehavioralMutation):
             default_cash_account_id=input.default_cash_account_id,
             default_bank_account_id=input.default_bank_account_id,
         )
+        await db.commit()
+        await db.refresh(company)
         return types.Company.from_instance(company)
 
     @strawberry.mutation
@@ -679,6 +685,8 @@ class Mutation(BehavioralMutation):
             default_cash_account_id=input.default_cash_account_id,
             default_bank_account_id=input.default_bank_account_id,
         )
+        await db.commit()
+        await db.refresh(company)
         return types.Company.from_instance(company)
 
     @strawberry.mutation
@@ -691,6 +699,7 @@ class Mutation(BehavioralMutation):
         dept = await company_repo.create_department(db, name=input.name, company_id=input.company_id,
                                             manager_id=input.manager_id)
         await db.commit()
+        await db.refresh(dept)
         return types.Department.from_instance(dept)
 
     @strawberry.mutation
@@ -701,6 +710,8 @@ class Mutation(BehavioralMutation):
             raise PermissionDeniedException.for_action("manage")
 
         dept = await company_repo.update_department(db, department_id=input.id, name=input.name, manager_id=input.manager_id)
+        await db.commit()
+        await db.refresh(dept)
         return types.Department.from_instance(dept)
 
     @strawberry.mutation
@@ -714,6 +725,7 @@ class Mutation(BehavioralMutation):
 
         pos = await company_repo.create_position(db, title, department_id)
         await db.commit()
+        await db.refresh(pos)
         return types.Position.from_instance(pos)
 
     @strawberry.mutation
@@ -724,6 +736,8 @@ class Mutation(BehavioralMutation):
             raise PermissionDeniedException.for_action("manage")
 
         pos = await company_repo.update_position(db, position_id=id, title=title, department_id=department_id)
+        await db.commit()
+        await db.refresh(pos)
         return types.Position.from_instance(pos)
 
     @strawberry.mutation
@@ -732,7 +746,9 @@ class Mutation(BehavioralMutation):
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
-        return await company_repo.delete_position(db, id)
+        result = await company_repo.delete_position(db, id)
+        await db.commit()
+        return result
 
     @strawberry.mutation
     async def create_vehicle(self, input: VehicleCreateInput, info: strawberry.Info) -> types.Vehicle:
@@ -760,6 +776,8 @@ class Mutation(BehavioralMutation):
             notes=input.notes,
             company_id=company_id,
         )
+        await db.commit()
+        await db.refresh(vehicle)
         return types.Vehicle.from_instance(vehicle)
 
     @strawberry.mutation
@@ -787,6 +805,8 @@ class Mutation(BehavioralMutation):
         )
         if not vehicle:
             raise NotFoundException.vehicle()
+        await db.commit()
+        await db.refresh(vehicle)
         return types.Vehicle.from_instance(vehicle)
 
     @strawberry.mutation
@@ -799,6 +819,7 @@ class Mutation(BehavioralMutation):
         success = await vehicle_repo.delete_vehicle(db, vehicle_id=id)
         if not success:
             raise NotFoundException.vehicle()
+        await db.commit()
         return True
 
     @strawberry.mutation
@@ -815,6 +836,8 @@ class Mutation(BehavioralMutation):
             mileage=input.mileage,
             notes=input.notes,
         )
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleMileage.from_instance(record)
 
     @strawberry.mutation
@@ -834,6 +857,8 @@ class Mutation(BehavioralMutation):
             fuel_type=input.fuel_type,
             notes=input.notes,
         )
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleFuel.from_instance(record)
 
     @strawberry.mutation
@@ -851,6 +876,8 @@ class Mutation(BehavioralMutation):
             cost=input.cost,
             notes=input.notes,
         )
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleRepair.from_instance(record)
 
     @strawberry.mutation
@@ -870,6 +897,8 @@ class Mutation(BehavioralMutation):
             premium=input.premium,
             notes=input.notes,
         )
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleInsurance.from_instance(record)
 
     @strawberry.mutation
@@ -889,6 +918,8 @@ class Mutation(BehavioralMutation):
             cost=input.cost,
             notes=input.notes,
         )
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleInspection.from_instance(record)
 
     @strawberry.mutation
@@ -907,6 +938,8 @@ class Mutation(BehavioralMutation):
             is_primary=input.is_primary,
             notes=input.notes,
         )
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleDriver.from_instance(record)
 
     @strawberry.mutation
@@ -927,6 +960,8 @@ class Mutation(BehavioralMutation):
             distance=input.distance,
             notes=input.notes,
         )
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleTrip.from_instance(record)
 
     @strawberry.mutation
@@ -938,6 +973,7 @@ class Mutation(BehavioralMutation):
         success = await vehicle_repo.delete_vehicle_mileage(db, id)
         if not success:
             raise NotFoundException.record("Запис")
+        await db.commit()
         return True
 
     @strawberry.mutation
@@ -949,6 +985,7 @@ class Mutation(BehavioralMutation):
         success = await vehicle_repo.delete_vehicle_fuel(db, id)
         if not success:
             raise NotFoundException.record("Запис")
+        await db.commit()
         return True
 
     @strawberry.mutation
@@ -960,6 +997,7 @@ class Mutation(BehavioralMutation):
         success = await vehicle_repo.delete_vehicle_repair(db, id)
         if not success:
             raise NotFoundException.record("Запис")
+        await db.commit()
         return True
 
     @strawberry.mutation
@@ -971,6 +1009,7 @@ class Mutation(BehavioralMutation):
         success = await vehicle_repo.delete_vehicle_insurance(db, id)
         if not success:
             raise NotFoundException.record("Запис")
+        await db.commit()
         return True
 
     @strawberry.mutation
@@ -982,6 +1021,7 @@ class Mutation(BehavioralMutation):
         success = await vehicle_repo.delete_vehicle_inspection(db, id)
         if not success:
             raise NotFoundException.record("Запис")
+        await db.commit()
         return True
 
     @strawberry.mutation
@@ -993,6 +1033,7 @@ class Mutation(BehavioralMutation):
         success = await vehicle_repo.delete_vehicle_driver(db, id)
         if not success:
             raise NotFoundException.record("Запис")
+        await db.commit()
         return True
 
     @strawberry.mutation
@@ -1004,6 +1045,7 @@ class Mutation(BehavioralMutation):
         success = await vehicle_repo.delete_vehicle_trip(db, id)
         if not success:
             raise NotFoundException.record("Запис")
+        await db.commit()
         return True
 
     @strawberry.mutation
@@ -1020,6 +1062,8 @@ class Mutation(BehavioralMutation):
         )
         if not record:
             raise NotFoundException.record("Запис")
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleMileage.from_instance(record)
 
     @strawberry.mutation
@@ -1039,6 +1083,8 @@ class Mutation(BehavioralMutation):
         )
         if not record:
             raise NotFoundException.record("Запис")
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleFuel.from_instance(record)
 
     @strawberry.mutation
@@ -1057,6 +1103,8 @@ class Mutation(BehavioralMutation):
         )
         if not record:
             raise NotFoundException.record("Запис")
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleRepair.from_instance(record)
 
     @strawberry.mutation
@@ -1077,6 +1125,8 @@ class Mutation(BehavioralMutation):
         )
         if not record:
             raise NotFoundException.record("Запис")
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleInsurance.from_instance(record)
 
     @strawberry.mutation
@@ -1096,6 +1146,8 @@ class Mutation(BehavioralMutation):
         )
         if not record:
             raise NotFoundException.record("Запис")
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleInspection.from_instance(record)
 
     @strawberry.mutation
@@ -1115,6 +1167,8 @@ class Mutation(BehavioralMutation):
         )
         if not record:
             raise NotFoundException.record("Запис")
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleDriver.from_instance(record)
 
     @strawberry.mutation
@@ -1135,6 +1189,8 @@ class Mutation(BehavioralMutation):
         )
         if not record:
             raise NotFoundException.record("Запис")
+        await db.commit()
+        await db.refresh(record)
         return types.VehicleTrip.from_instance(record)
 
     @strawberry.mutation
@@ -1147,6 +1203,7 @@ class Mutation(BehavioralMutation):
 
         s = await time_repo.create_shift(db, name, start_time, end_time)
         await db.commit()
+        await db.refresh(s)
         return types.Shift.from_instance(s)
 
     @strawberry.mutation
@@ -1167,6 +1224,8 @@ class Mutation(BehavioralMutation):
             db, shift_id=id, name=name, start_time=start_time, end_time=end_time,
             tolerance_minutes=tolerance_minutes, break_duration_minutes=break_duration_minutes, pay_multiplier=pay_multiplier, shift_type=shift_type
         )
+        await db.commit()
+        await db.refresh(s)
         return types.Shift.from_instance(s)
 
     @strawberry.mutation
@@ -1175,7 +1234,9 @@ class Mutation(BehavioralMutation):
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
-        return await time_repo.delete_shift(db, id)
+        result = await time_repo.delete_shift(db, id)
+        await db.commit()
+        return result
 
     @strawberry.mutation
     async def create_role(self, input: RoleCreateInput, info: strawberry.Info) -> types.Role:
@@ -1185,6 +1246,8 @@ class Mutation(BehavioralMutation):
             raise PermissionDeniedException.for_action("manage")
 
         role = await time_repo.create_role(db, schemas.RoleCreate(name=input.name, description=input.description))
+        await db.commit()
+        await db.refresh(role)
         return types.Role.from_instance(role)
 
     @strawberry.mutation
@@ -1198,6 +1261,8 @@ class Mutation(BehavioralMutation):
             raise PermissionDeniedException.for_action("manage")
 
         role = await time_repo.update_role(db, role_id=id, name=name, description=description)
+        await db.commit()
+        await db.refresh(role)
         return types.Role.from_instance(role)
 
     @strawberry.mutation
@@ -1206,7 +1271,9 @@ class Mutation(BehavioralMutation):
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
-        return await time_repo.delete_role(db, id)
+        result = await time_repo.delete_role(db, id)
+        await db.commit()
+        return result
 
     @strawberry.mutation
     async def assign_role_to_user(self, user_id: int, company_id: int, role_id: int, info: strawberry.Info) -> bool:
@@ -1218,6 +1285,7 @@ class Mutation(BehavioralMutation):
         from backend.auth.rbac_service import PermissionService
         perm_service = PermissionService(db)
         await perm_service.assign_role_to_user(user_id, company_id, role_id, current_user.id)
+        await db.commit()
         return True
 
     @strawberry.mutation
@@ -1342,6 +1410,8 @@ class Mutation(BehavioralMutation):
                 admin_comment=input.admin_comment,
                 admin_user_id=current_user.id
             )
+        await db.commit()
+        await db.refresh(req)
         return types.LeaveRequest.from_instance(req)
 
     @strawberry.mutation(name="approveLeave")
@@ -1359,6 +1429,8 @@ class Mutation(BehavioralMutation):
                 admin_user_id=current_user.id,
                 employer_top_up=employer_top_up
             )
+        await db.commit()
+        await db.refresh(req)
         return types.LeaveRequest.from_instance(req)
 
     @strawberry.mutation(name="rejectLeave")
@@ -1375,6 +1447,8 @@ class Mutation(BehavioralMutation):
                 admin_comment=admin_comment,
                 admin_user_id=current_user.id
             )
+        await db.commit()
+        await db.refresh(req)
         return types.LeaveRequest.from_instance(req)
 
     @strawberry.mutation
@@ -1384,7 +1458,9 @@ class Mutation(BehavioralMutation):
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
         is_admin = current_user.role.name in ["admin", "super_admin"]
-        return await time_repo.delete_leave_request(db, id, current_user.id, is_admin)
+        result = await time_repo.delete_leave_request(db, id, current_user.id, is_admin)
+        await db.commit()
+        return result
 
     @strawberry.mutation
     async def update_office_location(
@@ -1654,6 +1730,8 @@ class Mutation(BehavioralMutation):
         log = await time_repo.create_manual_time_log(
             db, user_id, start_time, end_time, break_duration_minutes or 0, notes, is_manual=is_manual
         )
+        await db.commit()
+        await db.refresh(log)
         return types.TimeLog.from_instance(log)
 
     @strawberry.mutation
@@ -1673,6 +1751,8 @@ class Mutation(BehavioralMutation):
         log = await time_repo.update_time_log(
             db, log_id=id, start_time=start_time, end_time=end_time, is_manual=is_manual, break_duration_minutes=break_duration_minutes, notes=notes
         )
+        await db.commit()
+        await db.refresh(log)
         return types.TimeLog.from_instance(log)
 
     @strawberry.mutation
@@ -1683,7 +1763,9 @@ class Mutation(BehavioralMutation):
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
-        return await time_repo.delete_time_log(db, log_id=id)
+        result = await time_repo.delete_time_log(db, log_id=id)
+        await db.commit()
+        return result
 
     @strawberry.mutation
     async def clock_in(
@@ -1727,18 +1809,17 @@ class Mutation(BehavioralMutation):
         if not active_log:
             raise InvalidOperationException.cannot_complete("No active time log found")
 
-        log = await service.clock_out(current_user.id, latitude, longitude, notes=notes)
+        async with atomic_transaction(db):
+            log = await service.clock_out(current_user.id, latitude, longitude, notes=notes)
 
-        await create_trz_records_on_clock_out(
-            db=db,
-            user_id=current_user.id,
-            clock_in=active_log.start_time,
-            clock_out=log.end_time
-        )
+            await create_trz_records_on_clock_out(
+                db=db,
+                user_id=current_user.id,
+                clock_in=active_log.start_time,
+                clock_out=log.end_time
+            )
 
-        async with atomic_with_savepoint(db, "clock_out_complete"):
-            pass
-
+        await db.refresh(log)
         return types.TimeLog.from_instance(log)
 
     @strawberry.mutation(name="adminClockIn")
@@ -1761,8 +1842,10 @@ class Mutation(BehavioralMutation):
         if active_log:
             raise InvalidOperationException.cannot_complete("User already has an active time log")
         
-        log = await service.clock_in(user_id, custom_time=custom_time, skip_geofence=True)
+        async with atomic_transaction(db):
+            log = await service.clock_in(user_id, custom_time=custom_time, skip_geofence=True)
         
+        await db.refresh(log)
         return types.TimeLog.from_instance(log)
 
     @strawberry.mutation(name="adminClockOut")
@@ -1787,15 +1870,17 @@ class Mutation(BehavioralMutation):
         if not active_log:
             raise InvalidOperationException.cannot_complete("No active time log found")
         
-        log = await service.clock_out(user_id, custom_time=custom_time, notes=notes, skip_geofence=True)
+        async with atomic_transaction(db):
+            log = await service.clock_out(user_id, custom_time=custom_time, notes=notes, skip_geofence=True)
+            
+            await create_trz_records_on_clock_out(
+                db=db,
+                user_id=user_id,
+                clock_in=active_log.start_time,
+                clock_out=log.end_time,
+            )
         
-        await create_trz_records_on_clock_out(
-            db=db,
-            user_id=user_id,
-            clock_in=active_log.start_time,
-            clock_out=log.end_time,
-        )
-        
+        await db.refresh(log)
         return types.TimeLog.from_instance(log)
 
     @strawberry.mutation
@@ -1817,6 +1902,8 @@ class Mutation(BehavioralMutation):
                 "shift_id": getattr(item, 'shift_id', None)
             })
         template = await time_repo.create_schedule_template(db, name, current_user.company_id, description, items_dicts)
+        await db.commit()
+        await db.refresh(template)
         return types.ScheduleTemplate.from_instance(template)
 
     @strawberry.mutation
@@ -1830,6 +1917,7 @@ class Mutation(BehavioralMutation):
         result = await time_repo.delete_schedule_template(db, id, company_id=current_user.company_id)
         if not result:
             raise NotFoundException.resource("ScheduleTemplate", id)
+        await db.commit()
         return True
 
     @strawberry.mutation
@@ -2058,7 +2146,9 @@ class Mutation(BehavioralMutation):
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        return await time_repo.delete_schedule(db, id)
+        result = await time_repo.delete_schedule(db, id)
+        await db.commit()
+        return result
 
     @strawberry.mutation
     async def set_work_schedule(self, user_id: int, shift_id: int, date: datetime.date,
@@ -2070,6 +2160,7 @@ class Mutation(BehavioralMutation):
 
         res = await time_repo.create_or_update_schedule(db, user_id, shift_id, date)
         await db.commit()
+        await db.refresh(res)
         return types.WorkSchedule.from_instance(res)
 
     @strawberry.mutation
@@ -2080,7 +2171,9 @@ class Mutation(BehavioralMutation):
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        return await time_repo.create_bulk_schedules(db, user_ids, shift_id, start_date, end_date, days_of_week)
+        result = await time_repo.create_bulk_schedules(db, user_ids, shift_id, start_date, end_date, days_of_week)
+        await db.commit()
+        return result
 
     @strawberry.mutation
     async def respond_to_swap(self, swap_id: int, accept: bool, info: strawberry.Info) -> types.ShiftSwapRequest:
@@ -2092,6 +2185,8 @@ class Mutation(BehavioralMutation):
         new_status = "accepted" if accept else "rejected"
         service = shift_swap_service(db)
         res = await service.update_status(swap_id, new_status)
+        await db.commit()
+        await db.refresh(res)
         return types.ShiftSwapRequest.from_instance(res)
 
     @strawberry.mutation
@@ -2105,6 +2200,8 @@ class Mutation(BehavioralMutation):
         service = shift_swap_service(db)
         async with atomic_with_savepoint(db, "swap_approved"):
             res = await service.update_status(swap_id, new_status, admin_user_id=current_user.id)
+        await db.commit()
+        await db.refresh(res)
         return types.ShiftSwapRequest.from_instance(res)
 
     @strawberry.mutation
@@ -2118,6 +2215,8 @@ class Mutation(BehavioralMutation):
         service = shift_swap_service(db)
         async with atomic_with_savepoint(db, "swap_created"):
             res = await service.create_request(current_user.id, requestor_schedule_id, target_user_id, target_schedule_id)
+        await db.commit()
+        await db.refresh(res)
         return types.ShiftSwapRequest.from_instance(res)
 
     # --- Confectionery Module Mutations ---
@@ -3517,13 +3616,12 @@ class Mutation(BehavioralMutation):
             invoice_data: inputs.InvoiceInput,
             info: strawberry.Info
     ) -> types.Invoice:
-        """Create a new invoice with items"""
+        """Create a new invoice with items - atomic operation"""
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
 
-        from backend.database.transaction_manager import atomic_transaction
         from backend.database import models
         from decimal import Decimal
 
@@ -3620,43 +3718,42 @@ class Mutation(BehavioralMutation):
                         batch.price_no_vat = float(item.unit_price)
                         batch.price_with_vat = float(item.unit_price_with_vat or item.unit_price * Decimal("1.2"))
 
-            return types.Invoice.from_instance(invoice, tx)
-
-        # Log the operation
-        log_entry = models.OperationLog(
-            operation="create",
-            entity_type="invoice",
-            entity_id=invoice.id,
-            user_id=current_user.id,
-            changes={"number": invoice.number, "type": invoice.type, "total": str(total), "status": invoice_data.status}
-        )
-        db.add(log_entry)
-
-        # Auto-create cash journal entry if paid in cash
-        if invoice_data.payment_method == "cash" and invoice_data.status == "paid":
-            cash_entry = models.CashJournalEntry(
-                date=invoice_data.payment_date or invoice_data.date,
-                operation_type="expense" if invoice_data.type == "incoming" else "income",
-                amount=total,
-                description=f"Фактура {invoice.number}",
-                reference_type="invoice",
-                reference_id=invoice.id,
-                company_id=invoice.company_id,
-                created_by=current_user.id
+            # Log the operation (inside transaction for atomicity)
+            log_entry = models.OperationLog(
+                operation="create",
+                entity_type="invoice",
+                entity_id=invoice.id,
+                user_id=current_user.id,
+                changes={"number": invoice.number, "type": invoice.type, "total": str(total), "status": invoice_data.status}
             )
-            db.add(cash_entry)
+            tx.add(log_entry)
 
-        # Auto-create accounting entries
-        company = await db.get(models.Company, invoice.company_id)
-        if company and invoice_data.status in ["paid", "sent"]:
-            from backend.services.accounting_service import AccountingService
-            accounting_service = AccountingService(db)
-            entries = await accounting_service.create_invoice_entries(invoice, company, current_user)
-            if entries:
-                for entry in entries:
-                    db.add(entry)
+            # Auto-create cash journal entry if paid in cash (inside transaction)
+            if invoice_data.payment_method == "cash" and invoice_data.status == "paid":
+                cash_entry = models.CashJournalEntry(
+                    date=invoice_data.payment_date or invoice_data.date,
+                    operation_type="expense" if invoice_data.type == "incoming" else "income",
+                    amount=total,
+                    description=f"Фактура {invoice.number}",
+                    reference_type="invoice",
+                    reference_id=invoice.id,
+                    company_id=invoice.company_id,
+                    created_by=current_user.id
+                )
+                tx.add(cash_entry)
 
-        await db.commit()
+            # Auto-create accounting entries (inside transaction)
+            company = await tx.get(models.Company, invoice.company_id)
+            if company and invoice_data.status in ["paid", "sent"]:
+                from backend.services.accounting_service import AccountingService
+                accounting_service = AccountingService(tx)
+                entries = await accounting_service.create_invoice_entries(invoice, company, current_user)
+                if entries:
+                    for entry in entries:
+                        tx.add(entry)
+
+        # Transaction committed here - all or nothing
+        await db.refresh(invoice)
         return types.Invoice.from_instance(invoice)
 
     @strawberry.mutation
@@ -3666,7 +3763,7 @@ class Mutation(BehavioralMutation):
             invoice_data: inputs.InvoiceInput,
             info: strawberry.Info
     ) -> types.Invoice:
-        """Update an existing invoice"""
+        """Update an existing invoice - atomic operation"""
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
@@ -3710,6 +3807,10 @@ class Mutation(BehavioralMutation):
                     f"Не може да промените статуса от '{current_status}' на '{new_status}'. Позволени: {allowed_text}"
                 )
 
+        async with atomic_transaction(db) as tx:
+            # Re-fetch invoice inside transaction for consistency
+            invoice = await tx.get(models.Invoice, id)
+            
             # Special protection: accountant, head_accountant, and super_admin can cancel paid invoices
             if current_status == 'paid' and new_status == 'cancelled':
                 if current_user.role.name not in ["super_admin", "head_accountant", "accountant"]:
@@ -3731,129 +3832,129 @@ class Mutation(BehavioralMutation):
                         "role": current_user.role.name
                     }
                 )
-                db.add(log_entry)
+                tx.add(log_entry)
 
-        # Update basic fields
-        invoice.type = invoice_data.type
-        invoice.document_type = invoice_data.document_type
-        invoice.griff = invoice_data.griff
-        invoice.description = invoice_data.description
-        invoice.date = invoice_data.date
-        invoice.supplier_id = invoice_data.supplier_id
-        invoice.batch_id = invoice_data.batch_id
-        invoice.client_name = invoice_data.client_name
-        invoice.client_eik = invoice_data.client_eik
-        invoice.client_address = invoice_data.client_address
-        invoice.discount_percent = invoice_data.discount_percent
-        invoice.vat_rate = invoice_data.vat_rate
-        invoice.payment_method = invoice_data.payment_method
-        invoice.delivery_method = invoice_data.delivery_method
-        invoice.due_date = invoice_data.due_date
-        invoice.payment_date = invoice_data.payment_date
-        invoice.status = invoice_data.status
-        invoice.notes = invoice_data.notes
+            # Update basic fields
+            invoice.type = invoice_data.type
+            invoice.document_type = invoice_data.document_type
+            invoice.griff = invoice_data.griff
+            invoice.description = invoice_data.description
+            invoice.date = invoice_data.date
+            invoice.supplier_id = invoice_data.supplier_id
+            invoice.batch_id = invoice_data.batch_id
+            invoice.client_name = invoice_data.client_name
+            invoice.client_eik = invoice_data.client_eik
+            invoice.client_address = invoice_data.client_address
+            invoice.discount_percent = invoice_data.discount_percent
+            invoice.vat_rate = invoice_data.vat_rate
+            invoice.payment_method = invoice_data.payment_method
+            invoice.delivery_method = invoice_data.delivery_method
+            invoice.due_date = invoice_data.due_date
+            invoice.payment_date = invoice_data.payment_date
+            invoice.status = invoice_data.status
+            invoice.notes = invoice_data.notes
 
-        # Calculate totals
-        subtotal = Decimal("0")
-        for item in invoice_data.items:
-            item_total = item.quantity * item.unit_price
-            item_discount = item_total * (item.discount_percent / 100)
-            item_total = item_total - item_discount
-            subtotal += item_total
+            # Calculate totals
+            subtotal = Decimal("0")
+            for item in invoice_data.items:
+                item_total = item.quantity * item.unit_price
+                item_discount = item_total * (item.discount_percent / 100)
+                item_total = item_total - item_discount
+                subtotal += item_total
 
-        discount_amount = subtotal * (invoice_data.discount_percent / 100)
-        subtotal_after_discount = subtotal - discount_amount
-        vat_amount = subtotal_after_discount * (invoice_data.vat_rate / 100)
-        total = subtotal_after_discount + vat_amount
+            discount_amount = subtotal * (invoice_data.discount_percent / 100)
+            subtotal_after_discount = subtotal - discount_amount
+            vat_amount = subtotal_after_discount * (invoice_data.vat_rate / 100)
+            total = subtotal_after_discount + vat_amount
 
-        invoice.subtotal = subtotal
-        invoice.discount_amount = discount_amount
-        invoice.vat_amount = vat_amount
-        invoice.total = total
+            invoice.subtotal = subtotal
+            invoice.discount_amount = discount_amount
+            invoice.vat_amount = vat_amount
+            invoice.total = total
 
-        # Update items: delete old and create new (simpler approach)
-        from sqlalchemy import delete
-        await db.execute(delete(models.InvoiceItem).where(models.InvoiceItem.invoice_id == id))
+            # Update items: delete old and create new (simpler approach)
+            from sqlalchemy import delete
+            await tx.execute(delete(models.InvoiceItem).where(models.InvoiceItem.invoice_id == id))
 
-        for item in invoice_data.items:
-            item_total = item.quantity * item.unit_price
-            item_discount = item_total * (item.discount_percent / 100)
-            item_total = item_total - item_discount
+            for item in invoice_data.items:
+                item_total = item.quantity * item.unit_price
+                item_discount = item_total * (item.discount_percent / 100)
+                item_total = item_total - item_discount
 
-            invoice_item = models.InvoiceItem(
-                invoice_id=invoice.id,
-                ingredient_id=item.ingredient_id,
-                batch_id=item.batch_id,
-                name=item.name,
-                quantity=item.quantity,
-                unit=item.unit,
-                unit_price=item.unit_price,
-                unit_price_with_vat=item.unit_price_with_vat,
-                discount_percent=item.discount_percent,
-                total=item_total,
-                expiration_date=datetime.datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
-                batch_number=item.batch_number
-            )
-            db.add(invoice_item)
-
-        # Log the operation
-        log_entry = models.OperationLog(
-            operation="update",
-            entity_type="invoice",
-            entity_id=invoice.id,
-            user_id=current_user.id,
-            changes={"number": invoice.number, "total": str(total), "status": invoice_data.status}
-        )
-        db.add(log_entry)
-
-        # Handle cash journal entry
-        if invoice_data.payment_method == "cash" and invoice_data.status == "paid":
-            existing_entry = await db.execute(
-                select(models.CashJournalEntry).where(
-                    models.CashJournalEntry.reference_type == "invoice",
-                    models.CashJournalEntry.reference_id == invoice.id
+                invoice_item = models.InvoiceItem(
+                    invoice_id=invoice.id,
+                    ingredient_id=item.ingredient_id,
+                    batch_id=item.batch_id,
+                    name=item.name,
+                    quantity=item.quantity,
+                    unit=item.unit,
+                    unit_price=item.unit_price,
+                    unit_price_with_vat=item.unit_price_with_vat,
+                    discount_percent=item.discount_percent,
+                    total=item_total,
+                    expiration_date=datetime.datetime.strptime(item.expiration_date, '%Y-%m-%d').date() if item.expiration_date else None,
+                    batch_number=item.batch_number
                 )
+                tx.add(invoice_item)
+
+            # Log the operation
+            log_entry = models.OperationLog(
+                operation="update",
+                entity_type="invoice",
+                entity_id=invoice.id,
+                user_id=current_user.id,
+                changes={"number": invoice.number, "total": str(total), "status": invoice_data.status}
             )
-            existing = existing_entry.scalars().first()
+            tx.add(log_entry)
 
-            if not existing:
-                cash_entry = models.CashJournalEntry(
-                    date=invoice_data.payment_date or invoice_data.date,
-                    operation_type="expense" if invoice_data.type == "incoming" else "income",
-                    amount=total,
-                    description=f"Фактура {invoice.number}",
-                    reference_type="invoice",
-                    reference_id=invoice.id,
-                    company_id=invoice.company_id,
-                    created_by=current_user.id
+            # Handle cash journal entry
+            if invoice_data.payment_method == "cash" and invoice_data.status == "paid":
+                existing_entry = await tx.execute(
+                    select(models.CashJournalEntry).where(
+                        models.CashJournalEntry.reference_type == "invoice",
+                        models.CashJournalEntry.reference_id == invoice.id
+                    )
                 )
-                db.add(cash_entry)
-            else:
-                # Update existing cash entry
-                existing.amount = total
-                existing.date = invoice_data.payment_date or invoice_data.date
-                db.add(existing)
+                existing = existing_entry.scalars().first()
 
-        # Auto-create accounting entries when status changes to paid/sent
-        company = await db.get(models.Company, invoice.company_id)
-        if company and invoice_data.status in ["paid", "sent"]:
-            # Check if entries already exist
-            existing_accounting = await db.execute(
-                select(models.AccountingEntry).where(
-                    models.AccountingEntry.invoice_id == invoice.id
+                if not existing:
+                    cash_entry = models.CashJournalEntry(
+                        date=invoice_data.payment_date or invoice_data.date,
+                        operation_type="expense" if invoice_data.type == "incoming" else "income",
+                        amount=total,
+                        description=f"Фактура {invoice.number}",
+                        reference_type="invoice",
+                        reference_id=invoice.id,
+                        company_id=invoice.company_id,
+                        created_by=current_user.id
+                    )
+                    tx.add(cash_entry)
+                else:
+                    # Update existing cash entry
+                    existing.amount = total
+                    existing.date = invoice_data.payment_date or invoice_data.date
+                    tx.add(existing)
+
+            # Auto-create accounting entries when status changes to paid/sent
+            company = await tx.get(models.Company, invoice.company_id)
+            if company and invoice_data.status in ["paid", "sent"]:
+                # Check if entries already exist
+                existing_accounting = await tx.execute(
+                    select(models.AccountingEntry).where(
+                        models.AccountingEntry.invoice_id == invoice.id
+                    )
                 )
-            )
-            existing_acct_entries = existing_accounting.scalars().all()
-            
-            if not existing_acct_entries:
-                from backend.services.accounting_service import AccountingService
-                accounting_service = AccountingService(db)
-                entries = await accounting_service.create_invoice_entries(invoice, company, current_user)
-                if entries:
-                    for entry in entries:
-                        db.add(entry)
+                existing_acct_entries = existing_accounting.scalars().all()
+                
+                if not existing_acct_entries:
+                    from backend.services.accounting_service import AccountingService
+                    accounting_service = AccountingService(tx)
+                    entries = await accounting_service.create_invoice_entries(invoice, company, current_user)
+                    if entries:
+                        for entry in entries:
+                            tx.add(entry)
 
-        await db.commit()
+        # Transaction committed here - all or nothing
         await db.refresh(invoice)
         return types.Invoice.from_instance(invoice)
 

@@ -6,6 +6,11 @@
 
 set -e
 
+# Resolve script directory and change to project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_DIR"
+
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="./backups/chronos"
 MAX_BACKUPS=5
@@ -68,12 +73,12 @@ docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$DB_CONTAINER" pg_dump -U "$POST
     docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$DB_CONTAINER" pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" 2>&1 | tail -5
     exit 1
 }
-echo -e "${GREEN}✓${NC} Database backup: db_$TIMESTAMP.dump"
+echo -e "${GREEN}[OK]${NC} Database backup: db_$TIMESTAMP.dump"
 
 # Verify backup - check file exists and is non-empty
 if [ -f "$DB_BACKUP_FILE" ] && [ -s "$DB_BACKUP_FILE" ]; then
     BACKUP_SIZE=$(du -h "$DB_BACKUP_FILE" | cut -f1)
-    echo -e "${GREEN}✓${NC} Backup file created: $BACKUP_SIZE"
+    echo -e "${GREEN}[OK]${NC} Backup file created: $BACKUP_SIZE"
 else
     echo -e "${RED}✗${NC} Backup file is empty or missing"
     exit 1
@@ -82,7 +87,7 @@ fi
 # Verify backup is restore-able by checking PostgreSQL custom format header
 echo "Verifying backup can be restored..."
 if head -c 5 "$DB_BACKUP_FILE" | grep -q "PGDMP"; then
-    echo -e "${GREEN}✓${NC} Backup verified (valid PostgreSQL custom format)"
+    echo -e "${GREEN}[OK]${NC} Backup verified (valid PostgreSQL custom format)"
 else
     echo -e "${RED}✗${NC} Backup verification failed (invalid format)"
     exit 1
@@ -103,7 +108,7 @@ if [ -n "$BACKEND_IMAGE" ]; then
     }
     if [ -f "$BACKUP_DIR/backend_$TIMESTAMP.tar" ]; then
         BACKEND_SIZE=$(du -h "$BACKUP_DIR/backend_$TIMESTAMP.tar" | cut -f1)
-        echo -e "${GREEN}✓${NC} Backend image: backend_$TIMESTAMP.tar ($BACKEND_SIZE)"
+        echo -e "${GREEN}[OK]${NC} Backend image: backend_$TIMESTAMP.tar ($BACKEND_SIZE)"
     fi
 else
     echo -e "${YELLOW}!${NC} Backend image not found, skipping"
@@ -116,7 +121,7 @@ if [ -n "$FRONTEND_IMAGE" ]; then
     }
     if [ -f "$BACKUP_DIR/frontend_$TIMESTAMP.tar" ]; then
         FRONTEND_SIZE=$(du -h "$BACKUP_DIR/frontend_$TIMESTAMP.tar" | cut -f1)
-        echo -e "${GREEN}✓${NC} Frontend image: frontend_$TIMESTAMP.tar ($FRONTEND_SIZE)"
+        echo -e "${GREEN}[OK]${NC} Frontend image: frontend_$TIMESTAMP.tar ($FRONTEND_SIZE)"
     fi
 else
     echo -e "${YELLOW}!${NC} Frontend image not found, skipping"
@@ -128,7 +133,7 @@ echo "[3/3] Backing up configuration..."
 
 if [ -f ".env" ]; then
     tar czf "$BACKUP_DIR/config_$TIMESTAMP.tar.gz" .env docker-compose.yml 2>/dev/null
-    echo -e "${GREEN}✓${NC} Configuration backed up"
+    echo -e "${GREEN}[OK]${NC} Configuration backed up"
 else
     echo -e "${YELLOW}!${NC} No .env file found"
 fi

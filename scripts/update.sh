@@ -14,6 +14,11 @@
 
 set -e
 
+# Resolve script directory and change to project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_DIR"
+
 # === CONFIG ===
 BACKUP_DIR="./backups/chronos"
 HEALTH_TIMEOUT=120
@@ -69,7 +74,7 @@ acquire_db_lock() {
     echo "Acquiring database deploy lock..."
     local result=$(db_exec "SELECT pg_try_advisory_lock($DB_LOCK_ID);" 2>/dev/null)
     if echo "$result" | grep -q "t"; then
-        echo -e "${GREEN}✓${NC} Database deploy lock acquired"
+        echo -e "${GREEN}[OK]${NC} Database deploy lock acquired"
         log_deploy "DB LOCK acquired"
         return 0
     else
@@ -97,7 +102,7 @@ wait_for_active_queries() {
         
         local active=$(db_exec "SELECT count(*) FROM pg_stat_activity WHERE datname = '$POSTGRES_DB' AND state = 'active' AND pid != pg_backend_pid();" 2>/dev/null | grep -o '[0-9]*' | head -1)
         if [ "$active" = "0" ] || [ -z "$active" ]; then
-            echo -e "${GREEN}✓${NC} No active queries"
+            echo -e "${GREEN}[OK]${NC} No active queries"
             return 0
         fi
         echo "  $active active queries remaining..."
@@ -118,7 +123,7 @@ check_db_health() {
     " 2>/dev/null)
     
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓${NC} Database healthy"
+        echo -e "${GREEN}[OK]${NC} Database healthy"
         echo "  $result"
         return 0
     else
@@ -133,7 +138,7 @@ verify_backup() {
     
     if [ -f "$backup_file" ] && [ -s "$backup_file" ]; then
         local size=$(du -h "$backup_file" | cut -f1)
-        echo -e "${GREEN}✓${NC} Backup verified ($size)"
+        echo -e "${GREEN}[OK]${NC} Backup verified ($size)"
         return 0
     else
         echo -e "${RED}ERROR:${NC} Backup verification failed (file missing or empty)"
@@ -197,7 +202,7 @@ if [ -n "$DEPLOY_VERSION" ] && [ -f ".env" ]; then
     # Re-source .env to get the new version
     source .env
     
-    echo -e "${GREEN}✓${NC} .env updated to ${TARGET_VERSION}"
+    echo -e "${GREEN}[OK]${NC} .env updated to ${TARGET_VERSION}"
     log_deploy ".env updated to ${TARGET_VERSION}"
 fi
 
@@ -225,7 +230,7 @@ if ! docker info >/dev/null 2>&1; then
     echo -e "${RED}ERROR:${NC} Docker daemon is not running"
     exit 1
 fi
-echo -e "${GREEN}✓${NC} Docker daemon is running"
+echo -e "${GREEN}[OK]${NC} Docker daemon is running"
 
 # 2. Disk space (min 500MB free for image pull)
 DISK_FREE=$(df -m / | awk 'NR==2 {print $4}')
@@ -233,28 +238,28 @@ if [ "$DISK_FREE" -lt 512 ]; then
     echo -e "${RED}ERROR:${NC} Insufficient disk space (${DISK_FREE}MB available, need 512MB+)"
     exit 1
 fi
-echo -e "${GREEN}✓${NC} Disk space OK (${DISK_FREE}MB free)"
+echo -e "${GREEN}[OK]${NC} Disk space OK (${DISK_FREE}MB free)"
 
 # 3. .env file
 if [ ! -f ".env" ]; then
     echo -e "${RED}ERROR:${NC} .env file not found"
     exit 1
 fi
-echo -e "${GREEN}✓${NC} .env file exists"
+echo -e "${GREEN}[OK]${NC} .env file exists"
 
 # 4. docker-compose.yml
 if [ ! -f "docker-compose.yml" ]; then
     echo -e "${RED}ERROR:${NC} docker-compose.yml not found"
     exit 1
 fi
-echo -e "${GREEN}✓${NC} docker-compose.yml exists"
+echo -e "${GREEN}[OK]${NC} docker-compose.yml exists"
 
 # 5. Database connectivity
 if ! db_exec "SELECT 1;" >/dev/null 2>&1; then
     echo -e "${RED}ERROR:${NC} Cannot connect to database"
     exit 1
 fi
-echo -e "${GREEN}✓${NC} Database connection OK"
+echo -e "${GREEN}[OK]${NC} Database connection OK"
 
 echo ""
 
@@ -281,7 +286,7 @@ fi
 # 1. Health check (current version)
 echo "[1/7] Checking current health..."
 if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} Current version is healthy"
+    echo -e "${GREEN}[OK]${NC} Current version is healthy"
 else
     echo -e "${YELLOW}!${NC} Current version not responding (may be first deploy)"
 fi
@@ -296,7 +301,7 @@ if ./scripts/backup.sh 2>&1; then
     LATEST_BACKUP=$(ls -t $BACKUP_DIR/db_*.dump 2>/dev/null | head -1)
     if [ -n "$LATEST_BACKUP" ]; then
         if verify_backup "$LATEST_BACKUP"; then
-            echo -e "${GREEN}✓${NC} Backup created and verified ($TIMESTAMP)"
+            echo -e "${GREEN}[OK]${NC} Backup created and verified ($TIMESTAMP)"
             log_deploy "BACKUP created and verified: $TIMESTAMP"
         else
             echo -e "${RED}ERROR:${NC} Backup verification failed. Aborting deploy."
@@ -304,7 +309,7 @@ if ./scripts/backup.sh 2>&1; then
             exit 1
         fi
     else
-        echo -e "${GREEN}✓${NC} Backup created ($TIMESTAMP)"
+        echo -e "${GREEN}[OK]${NC} Backup created ($TIMESTAMP)"
         log_deploy "BACKUP created: $TIMESTAMP"
     fi
 else
@@ -332,7 +337,7 @@ if ! timeout $PULL_TIMEOUT docker pull ${REGISTRY}/chronos-backend:${TARGET_VERS
     log_deploy "DEPLOY ABORTED: backend pull failed"
     exit 1
 fi
-echo -e "${GREEN}✓${NC} Backend image pulled"
+echo -e "${GREEN}[OK]${NC} Backend image pulled"
 
 # Pull frontend
 echo "Pulling frontend image: ${REGISTRY}/chronos-frontend:${TARGET_VERSION}..."
@@ -341,10 +346,10 @@ if ! timeout $PULL_TIMEOUT docker pull ${REGISTRY}/chronos-frontend:${TARGET_VER
     log_deploy "DEPLOY ABORTED: frontend pull failed"
     exit 1
 fi
-echo -e "${GREEN}✓${NC} Frontend image pulled"
+echo -e "${GREEN}[OK]${NC} Frontend image pulled"
 
 PULL_ELAPSED=$(( $(date +%s) - PULL_START ))
-echo -e "${GREEN}✓${NC} All images pulled (${PULL_ELAPSED}s)"
+echo -e "${GREEN}[OK]${NC} All images pulled (${PULL_ELAPSED}s)"
 log_deploy "PULL complete: ${PULL_ELAPSED}s"
 
 # Update .env with target version BEFORE running alembic
@@ -372,7 +377,7 @@ ALEMBIC_RUN="docker run --rm --network ${DB_NETWORK} -w /app/backend -e POSTGRES
 # Dry-run first
 echo "Running dry-run check..."
 if ${ALEMBIC_RUN} --sql 2>/dev/null | grep -q "BEGIN\|CREATE\|ALTER\|INSERT"; then
-    echo -e "${GREEN}✓${NC} Dry-run SQL generated (migrations are valid)"
+    echo -e "${GREEN}[OK]${NC} Dry-run SQL generated (migrations are valid)"
     log_deploy "ALEMBIC dry-run OK"
 else
     echo -e "${YELLOW}!${NC} No migrations needed or dry-run skipped"
@@ -381,7 +386,7 @@ fi
 # Apply migrations
 echo "Applying migrations..."
 if ${ALEMBIC_RUN} 2>/dev/null; then
-    echo -e "${GREEN}✓${NC} Alembic migrations applied"
+    echo -e "${GREEN}[OK]${NC} Alembic migrations applied"
     log_deploy "ALEMBIC migrations applied"
 else
     echo -e "${YELLOW}!${NC} Alembic migration failed (may be first run or no changes)"
@@ -395,15 +400,11 @@ echo "[5/7] Deploying backend..."
 # Wait for active queries before restart
 wait_for_active_queries || echo -e "${YELLOW}!${NC} Proceeding despite active queries"
 
-# Stop old backend container
-echo "Stopping old backend container..."
-docker compose stop backend 2>/dev/null || true
+# Force remove existing container by name to avoid conflicts
+echo "Removing existing backend container..."
+docker rm -f chronos-backend 2>/dev/null || true
 
-# Remove old backend container (safe - we're running on the host, not inside the container)
-echo "Removing old backend container..."
-docker compose rm -f backend 2>/dev/null || true
-
-# Start new backend with pulled image
+# Create fresh backend container with new image
 echo "Starting new backend container..."
 docker compose up -d --no-deps backend
 
@@ -411,7 +412,7 @@ echo "Waiting for backend health (timeout: ${HEALTH_TIMEOUT}s)..."
 BACKEND_HEALTHY=false
 for i in $(seq 1 $HEALTH_TIMEOUT); do
     if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
-        echo -e "${GREEN}✓${NC} Backend healthy after ${i}s"
+        echo -e "${GREEN}[OK]${NC} Backend healthy after ${i}s"
         BACKEND_HEALTHY=true
         break
     fi
@@ -428,10 +429,11 @@ fi
 # 6. Deploy frontend
 echo ""
 echo "[6/7] Deploying frontend..."
-docker compose stop frontend 2>/dev/null || true
-docker compose rm -f frontend 2>/dev/null || true
+echo "Removing existing frontend container..."
+docker rm -f chronos-frontend 2>/dev/null || true
+echo "Starting new frontend container..."
 docker compose up -d --no-deps frontend
-echo -e "${GREEN}✓${NC} Frontend deployed"
+echo -e "${GREEN}[OK]${NC} Frontend deployed"
 
 # 7. Final health check + DB health
 echo ""
@@ -443,14 +445,14 @@ FRONTEND_OK=false
 DB_OK=false
 
 if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} Backend healthy"
+    echo -e "${GREEN}[OK]${NC} Backend healthy"
     BACKEND_OK=true
 else
     echo -e "${RED}✗${NC} Backend not responding"
 fi
 
 if curl -sf http://localhost:3000 >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} Frontend responding"
+    echo -e "${GREEN}[OK]${NC} Frontend responding"
     FRONTEND_OK=true
 else
     echo -e "${YELLOW}!${NC} Frontend may not be fully ready yet"

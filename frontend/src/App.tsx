@@ -2,6 +2,8 @@ import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
 import { ErrorProvider } from './context/ErrorContext';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { NetworkStatusBanner } from './components/NetworkStatusBanner';
 import MainLayout from './components/MainLayout';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
@@ -28,6 +30,7 @@ import OrdersPage from './pages/OrdersPage';
 import ProductionControlPage from './pages/ProductionControlPage';
 import ProductionKioskPage from './pages/ProductionKioskPage';
 import AccountingPage from './pages/AccountingPage';
+import DocumentViewerPage from './pages/DocumentViewerPage';
 import NotificationsPage from './pages/NotificationsPage';
 import LogisticsPage from './pages/LogisticsPage';
 import FleetPage from './pages/FleetPage';
@@ -44,6 +47,7 @@ import SystemHealthPage from './modules/behavioral-analysis/components/SystemHea
 import MyBehavioralProfilePage from './modules/behavioral-analysis/components/MyBehavioralProfilePage';
 import { useQuery } from '@apollo/client';
 import { ME_QUERY } from './graphql/queries';
+import { usePeriodicSync } from './hooks/usePeriodicSync';
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { loading, data } = useQuery(ME_QUERY);
@@ -64,6 +68,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 function App() {
+  usePeriodicSync();
   const location = useLocation();
   const isKioskMode = location.pathname === '/kiosk';
   const isCardMode = location.pathname === '/my-card';
@@ -97,9 +102,12 @@ function App() {
   }
 
   return (
-    <ErrorProvider>
-      <MainLayout>
-        <Routes>
+    <>
+      <NetworkStatusBanner />
+      <PWAInstallBanner />
+      <ErrorProvider>
+        <MainLayout>
+          <Routes>
           <Route path="/" element={<DashboardPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/:id" element={<ProfilePage />} />
@@ -376,10 +384,12 @@ function App() {
         <Route path="/admin/behavioral-analysis/health" element={<AdminRoute><OrganizationalHealthPage /></AdminRoute>} />
         <Route path="/admin/behavioral-analysis/bias" element={<AdminRoute><BiasMonitorPage /></AdminRoute>} />
         <Route path="/admin/behavioral-analysis/employee/:id" element={<AdminRoute><EmployeeProfilePage /></AdminRoute>} />
-        <Route path="/admin/behavioral-analysis/system" element={<AdminRoute><SystemHealthPage /></AdminRoute>} />
+          <Route path="/admin/behavioral-analysis/system" element={<AdminRoute><SystemHealthPage /></AdminRoute>} />
+          <Route path="/documents/view" element={<DocumentViewerPage />} />
         </Routes>
       </MainLayout>
     </ErrorProvider>
+    </>
   );
 }
 

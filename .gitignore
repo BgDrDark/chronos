@@ -7,6 +7,12 @@
 .venv/
 venv/
 env/
+е2е/
+e2e/
+e2e-tests/
+e2e-tests-*
+e2e-*
+
 
 # ==========================================
 # IDE & EDITOR
@@ -56,6 +62,13 @@ yarn-error.log*
 .npm/
 .eslintcache
 .stylelintcache
+frontend/e2e/
+frontend/e2e-tests/
+frontend/e2e-tests-*
+frontend/e2e-*
+frontend/.env
+frontend/.env.*
+frontend/venv/
 
 # ==========================================
 # DATABASE

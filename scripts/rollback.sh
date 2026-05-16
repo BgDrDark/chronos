@@ -6,6 +6,11 @@
 
 set -e
 
+# Resolve script directory and change to project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_DIR"
+
 TIMESTAMP=${1:-""}
 BACKUP_DIR="./backups/chronos"
 LOCK_FILE="/tmp/chronos_deploy.lock"
@@ -66,11 +71,11 @@ if [ ! -f "$BACKUP_DIR/db_$TIMESTAMP.dump" ]; then
     echo -e "${RED}ERROR:${NC} Database backup not found: db_$TIMESTAMP.dump"
     exit 1
 fi
-echo -e "${GREEN}✓${NC} Database backup found"
+echo -e "${GREEN}[OK]${NC} Database backup found"
 BACKUP_FILES_FOUND=true
 
 if [ -f "$BACKUP_DIR/backend_$TIMESTAMP.tar" ]; then
-    echo -e "${GREEN}✓${NC} Backend image backup found"
+    echo -e "${GREEN}[OK]${NC} Backend image backup found"
     BACKEND_TAR_EXISTS=true
 else
     echo -e "${YELLOW}!${NC} Backend image backup not found"
@@ -78,7 +83,7 @@ else
 fi
 
 if [ -f "$BACKUP_DIR/frontend_$TIMESTAMP.tar" ]; then
-    echo -e "${GREEN}✓${NC} Frontend image backup found"
+    echo -e "${GREEN}[OK]${NC} Frontend image backup found"
     FRONTEND_TAR_EXISTS=true
 else
     echo -e "${YELLOW}!${NC} Frontend image backup not found"
@@ -86,7 +91,7 @@ else
 fi
 
 if [ -f "$BACKUP_DIR/config_$TIMESTAMP.tar.gz" ]; then
-    echo -e "${GREEN}✓${NC} Configuration backup found"
+    echo -e "${GREEN}[OK]${NC} Configuration backup found"
     CONFIG_EXISTS=true
 else
     echo -e "${YELLOW}!${NC} Configuration backup not found"
@@ -110,7 +115,7 @@ echo ""
 # === 1. Stop containers ===
 echo "[1/5] Stopping containers..."
 docker compose down
-echo -e "${GREEN}✓${NC} Containers stopped"
+echo -e "${GREEN}[OK]${NC} Containers stopped"
 
 # === 2. Restore Docker images ===
 echo ""
@@ -119,13 +124,13 @@ echo "[2/5] Restoring Docker images..."
 if [ "$BACKEND_TAR_EXISTS" = true ]; then
     echo "Restoring backend image..."
     docker load -i "$BACKUP_DIR/backend_$TIMESTAMP.tar"
-    echo -e "${GREEN}✓${NC} Backend image restored"
+    echo -e "${GREEN}[OK]${NC} Backend image restored"
 fi
 
 if [ "$FRONTEND_TAR_EXISTS" = true ]; then
     echo "Restoring frontend image..."
     docker load -i "$BACKUP_DIR/frontend_$TIMESTAMP.tar"
-    echo -e "${GREEN}✓${NC} Frontend image restored"
+    echo -e "${GREEN}[OK]${NC} Frontend image restored"
 fi
 
 # === 3. Restore Database ===
@@ -142,7 +147,7 @@ if [ -z "$DB_CONTAINER" ]; then
 fi
 
 if head -c 5 "$BACKUP_DIR/db_$TIMESTAMP.dump" | grep -q "PGDMP"; then
-    echo -e "${GREEN}✓${NC} Backup verified (valid format)"
+    echo -e "${GREEN}[OK]${NC} Backup verified (valid format)"
 else
     echo -e "${RED}✗${NC} Backup verification failed"
     exit 1
@@ -153,7 +158,7 @@ docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore -U 
     echo -e "${YELLOW}!${NC} pg_restore with --clean failed, trying without..."
     docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i "$DB_CONTAINER" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$BACKUP_DIR/db_$TIMESTAMP.dump" 2>/dev/null || true
 }
-echo -e "${GREEN}✓${NC} Database restored"
+echo -e "${GREEN}[OK]${NC} Database restored"
 
 # === 4. Restore configuration (optional) ===
 echo ""
@@ -163,11 +168,11 @@ if [ "$CONFIG_EXISTS" = true ]; then
     tar xzf "$BACKUP_DIR/config_$TIMESTAMP.tar.gz" -C /tmp/ 2>/dev/null
     if [ -f "/tmp/.env" ]; then
         cp /tmp/.env .env
-        echo -e "${GREEN}✓${NC} .env restored"
+        echo -e "${GREEN}[OK]${NC} .env restored"
     fi
     if [ -f "/tmp/docker-compose.yml" ]; then
         cp /tmp/docker-compose.yml docker-compose.yml
-        echo -e "${GREEN}✓${NC} docker-compose.yml restored"
+        echo -e "${GREEN}[OK]${NC} docker-compose.yml restored"
     fi
     rm -f /tmp/.env /tmp/docker-compose.yml
 else
@@ -178,7 +183,7 @@ fi
 echo ""
 echo "[5/6] Running Alembic downgrade..."
 if docker compose exec -T backend alembic downgrade -1 2>/dev/null; then
-    echo -e "${GREEN}✓${NC} Alembic downgrade applied"
+    echo -e "${GREEN}[OK]${NC} Alembic downgrade applied"
 else
     echo -e "${YELLOW}!${NC} Alembic downgrade failed (may not be needed)"
 fi
@@ -194,14 +199,14 @@ sleep 15
 
 echo "Checking health..."
 if curl -sf http://localhost:14240/webhook/health >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} Backend healthy"
+    echo -e "${GREEN}[OK]${NC} Backend healthy"
 else
     echo -e "${RED}✗${NC} Backend not responding"
 fi
 
 echo "Checking database health..."
 if docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$DB_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT 1;" >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} Database healthy"
+    echo -e "${GREEN}[OK]${NC} Database healthy"
 else
     echo -e "${RED}✗${NC} Database not responding"
 fi
