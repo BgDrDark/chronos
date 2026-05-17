@@ -7,7 +7,9 @@ Handles email, push, and in-app notifications with interval throttling.
 
 import logging
 from typing import Optional, Dict, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -100,7 +102,7 @@ class NotificationDispatcher:
             except Exception as e:
                 logger.error(f"In-app notification failed for {event_type} to user {uid}: {e}")
 
-        setting.last_sent_at = datetime.utcnow()
+        setting.last_sent_at = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         await self.db.commit()
 
         logger.info(
@@ -124,7 +126,7 @@ class NotificationDispatcher:
     async def _check_interval(self, setting: NotificationSetting) -> bool:
         """Check if enough time has passed since last notification."""
         if setting.last_sent_at:
-            now = datetime.utcnow()
+            now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
             elapsed = now - setting.last_sent_at
             if elapsed < timedelta(minutes=setting.interval_minutes):
                 return False

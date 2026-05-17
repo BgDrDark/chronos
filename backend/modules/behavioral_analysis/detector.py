@@ -1,5 +1,7 @@
 import logging
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,7 +83,7 @@ class BehavioralDetector:
         profile.scrap_rate = scrap
         profile.status = status
         profile.contribution_factors = contribution_factors
-        profile.computed_at = datetime.now(timezone.utc)
+        profile.computed_at = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         profile.version += 1
 
         return profile
@@ -252,7 +254,7 @@ class BehavioralDetector:
             health = BehavioralSystemHealth(company_id=company_id)
             self.db.add(health)
 
-        health.last_computation_at = datetime.now(timezone.utc)
+        health.last_computation_at = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         health.last_computation_status = "success" if failed == 0 else "partial"
         health.employees_processed = processed
         health.employees_failed = failed

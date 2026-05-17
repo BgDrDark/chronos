@@ -1,6 +1,8 @@
 from fastapi import status
 from typing import Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 
 
 class CHRONOSException(Exception):
@@ -30,7 +32,7 @@ class CHRONOSException(Exception):
         self.error_code = error_code or self.__class__.error_code
         self.original_error = original_error
         self.context = context or {}
-        self.timestamp = datetime.utcnow().isoformat()
+        self.timestamp = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None).isoformat()
         super().__init__(self.detail)
     
     def to_dict(self) -> dict:

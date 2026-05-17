@@ -1,5 +1,7 @@
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -31,7 +33,7 @@ class FeedbackLoop:
         if not rec:
             raise ValueError(f"Recommendation {recommendation_id} not found")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         feedback = RecommendationFeedback(
             recommendation_id=recommendation_id,
             manager_id=manager_id,

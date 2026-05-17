@@ -619,7 +619,9 @@ class Query(BehavioralQuery):
     @strawberry.field
     async def shifts(self, info: strawberry.Info) -> List[types.Shift]:
         db = info.context["db"]
-        db_shifts = await time_repo.get_all_shifts(db)
+        current_user = info.context.get("current_user")
+        company_id = current_user.company_id if current_user and not current_user.is_super_admin else None
+        db_shifts = await time_repo.get_all_shifts(db, company_id=company_id)
         return [types.Shift.from_instance(s) for s in db_shifts]
 
     @strawberry.field
@@ -2847,3 +2849,58 @@ class Query(BehavioralQuery):
         service = notification_service(db)
         notifications = await service.get_notifications(current_user.id, unread_only=unread_only)
         return [types.Notification.from_instance(n) for n in notifications]
+
+    @strawberry.field
+    async def maintenance_status(self, info: strawberry.Info) -> types.MaintenanceStatus:
+        from backend.database.models import MaintenanceSettings, User
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        from backend.config import settings
+
+        db = info.context["db"]
+        result = await db.execute(
+            select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1)
+        )
+        setting = result.scalar_one_or_none()
+
+        if not setting:
+            return types.MaintenanceStatus(
+                enabled=False,
+                scheduled_at=None,
+                reason="",
+                minutes_until=None,
+            )
+
+        minutes_until = None
+        if setting.scheduled_at and not setting.enabled:
+            now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+            diff = setting.scheduled_at - now
+            minutes_until = max(0, int(diff.total_seconds() / 60))
+
+        updated_by_user = None
+        if setting.updated_by:
+            user_result = await db.execute(select(User).where(User.id == setting.updated_by))
+            user = user_result.scalar_one_or_none()
+            if user:
+                updated_by_user = types.User.from_instance(user)
+
+        return types.MaintenanceStatus.from_instance(
+            setting,
+            minutes_until=minutes_until,
+            updated_by_user=updated_by_user,
+        )
+
+    @strawberry.field
+    async def update_schedule(self, info: strawberry.Info) -> Optional[types.UpdateScheduleType]:
+        from backend.database.models import UpdateSchedule
+
+        db = info.context["db"]
+        result = await db.execute(
+            select(UpdateSchedule).order_by(UpdateSchedule.id.desc()).limit(1)
+        )
+        schedule = result.scalar_one_or_none()
+
+        if not schedule:
+            return None
+
+        return types.UpdateScheduleType.from_instance(schedule)

@@ -1,5 +1,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func
@@ -40,7 +42,7 @@ class BehavioralCleanup:
         }
 
         if settings.auto_cleanup_enabled:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
             cutoff_profiles = now - timedelta(days=settings.raw_profile_days)
             cutoff_recommendations = now - timedelta(days=settings.recommendation_months * 30)
             cutoff_feedback = now - timedelta(days=settings.feedback_months * 30)
@@ -136,7 +138,7 @@ class BehavioralCleanup:
         return result.rowcount or 0
 
     async def _delete_expired_reports(self, company_id: int) -> int:
-        six_months_ago = datetime.now(timezone.utc) - timedelta(days=180)
+        six_months_ago = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None) - timedelta(days=180)
         deleted = 0
 
         dept_stmt = delete(DepartmentHealthReport).where(

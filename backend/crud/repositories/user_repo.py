@@ -4,7 +4,9 @@ from sqlalchemy import select, func, and_, update
 from sqlalchemy.orm import selectinload
 from backend.database.models import User, UserSession, AuthKey, Role
 from backend.schemas import UserCreate, UserUpdate
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 from .base import BaseRepository
 
 
@@ -115,7 +117,7 @@ class UserRepository(BaseRepository):
         user_dict.update(kwargs)
         
         if "created_at" not in user_dict:
-            user_dict["created_at"] = datetime.utcnow()
+            user_dict["created_at"] = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         
         user = User(**user_dict)
         db.add(user)

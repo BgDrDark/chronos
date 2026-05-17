@@ -3,7 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 import asyncio
 
 from backend.database.database import get_db
@@ -187,7 +189,7 @@ async def start_session(
         terminal_id=session.terminal_id,
         employee_id=session.employee_id,
         workstation_id=session.workstation_id,
-        started_at=datetime.utcnow()
+        started_at=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
     )
     
     db.add(new_session)
@@ -218,7 +220,7 @@ async def end_session(
     if not current_session:
         raise HTTPException(status_code=404, detail="Няма активна сесия")
     
-    current_session.ended_at = datetime.utcnow()
+    current_session.ended_at = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
     await db.commit()
     
     return {"status": "ended"}
@@ -271,7 +273,7 @@ async def start_task(
         session_id=session.id,
         production_order_id=task_start.order_id,
         production_task_id=task_start.task_id,
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
         status="in_progress"
     )
     
@@ -300,7 +302,7 @@ async def complete_task(
     if not task_log:
         raise HTTPException(status_code=404, detail="Задача не е намерен")
     
-    task_log.completed_at = datetime.utcnow()
+    task_log.completed_at = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
     task_log.quantity_produced = task_complete.quantity_produced
     task_log.scrap_quantity = task_complete.scrap_quantity
     task_log.status = "completed"

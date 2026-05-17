@@ -1,8 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Annotated, Tuple, Dict, Any, List
 import uuid
 import json
 import base64
+import logging
 
 from authlib.jose import jwt, JoseError
 from fastapi.security import OAuth2PasswordBearer
@@ -19,6 +20,8 @@ from backend.auth.rbac_service import PermissionService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
+ALLOWED_ALGORITHMS = {"HS256", "HS384", "HS512", "RS256", "ES256"}
+
 # Simple in-memory cache for auth keys to reduce DB load and avoid session conflicts
 _AUTH_KEYS_CACHE = {}
 
@@ -34,7 +37,7 @@ async def create_tokens_with_permissions(
     Saves the Refresh token JTI to the database (Whitelist).
     """
     key = await crud.get_active_auth_key(db)
-    now = sofia_now()
+    now = datetime.now(timezone.utc)
     
     # Get user permissions and roles
     permission_service = PermissionService(db)
@@ -96,10 +99,10 @@ async def create_tokens_with_permissions(
 async def verify_and_decode_token(db: AsyncSession, token: str) -> Optional[dict]:
     """
     Decodes a token using the key identified by 'kid' in the header.
-    Validates algorithm and standard claims.
+    Validates algorithm and standard claims with algorithm pinning.
     """
     try:
-        # Manually extract kid from header
+        # Manually extract kid and alg from header
         header_segment = token.split('.')[0]
         header_data = base64.urlsafe_b64decode(header_segment + "==").decode('utf-8')
         header = json.loads(header_data)
@@ -107,7 +110,16 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> Optional[dict
         kid = header.get("kid")
         if not kid:
             return None
-            
+        
+        token_alg = header.get("alg")
+        if not token_alg:
+            return None
+        
+        # Algorithm pinning - reject any algorithm not explicitly allowed
+        if token_alg not in ALLOWED_ALGORITHMS:
+            logging.error(f"Algorithm not allowed: {token_alg}")
+            return None
+        
         # Try cache first
         key_obj = _AUTH_KEYS_CACHE.get(kid)
         
@@ -118,12 +130,17 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> Optional[dict
                 return None
             # Store in cache
             _AUTH_KEYS_CACHE[kid] = key_obj
-            
+        
+        # Verify algorithm matches the key's algorithm
+        if token_alg != key_obj.algorithm:
+            logging.error(f"Algorithm mismatch: expected {key_obj.algorithm}, got {token_alg}")
+            return None
+        
         # Decode and validate with strict options
         claims = jwt.decode(token, key_obj.secret)
         
-        # Standard validation using Sofia time
-        now_ts = int(sofia_now().timestamp())
+        # Standard validation using UTC time
+        now_ts = int(datetime.now(timezone.utc).timestamp())
         claims.validate(now=now_ts, leeway=0)
         
         # Custom validation: ensure issuer
@@ -132,7 +149,6 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> Optional[dict
             
         return claims
     except Exception as e:
-        import logging
         logging.error(f"Token verification failed: {str(e)}")
         return None
 

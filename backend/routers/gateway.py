@@ -4,7 +4,9 @@ from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 import secrets
 import logging
 
@@ -360,7 +362,7 @@ async def update_gw(gateway_id: int, upd: GatewayUpdate, db: AsyncSession = Depe
 async def heartbeat(gateway_id: int, hb: GatewayHeartbeatRequest, db: AsyncSession = Depends(get_db)):
     gw = await db.get(Gateway, gateway_id)
     if not gw: raise HTTPException(status_code=404, detail="Не е намерен")
-    gw.last_heartbeat = datetime.utcnow()
+    gw.last_heartbeat = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
     db.add(GatewayHeartbeat(gateway_id=gateway_id, status=hb.status, cpu_usage=hb.cpu_usage, memory_usage=hb.memory_usage, terminal_count=hb.terminal_count, printer_count=hb.printer_count))
     await db.commit()
     return {"status": "ok"}

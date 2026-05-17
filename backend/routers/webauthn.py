@@ -8,6 +8,8 @@ import os
 import base64
 from typing import List, Optional
 
+from backend.auth.limiter import limiter
+
 from webauthn import (
     generate_registration_options,
     verify_registration_response,
@@ -79,6 +81,7 @@ def get_expected_origin(request: Request = None) -> str:
 RP_NAME = "Chronos WorkTime"
 
 @router.post("/register/options")
+@limiter.limit("5/minute")
 async def get_registration_options(
     request: Request,
     current_user: User = Depends(jwt_utils.get_current_user),
@@ -131,6 +134,7 @@ async def get_registration_options(
     return json.loads(options_to_json(options))
 
 @router.post("/register/verify")
+@limiter.limit("3/minute")
 async def verify_registration(
     request: Request,
     response_data: dict,
@@ -182,6 +186,7 @@ async def verify_registration(
     return {"status": "success", "message": "Biometrics registered successfully"}
 
 @router.post("/login/options")
+@limiter.limit("5/minute")
 async def get_login_options(
     request: Request,
     body: dict = None,
@@ -230,6 +235,7 @@ async def get_login_options(
     return json.loads(options_to_json(options))
 
 @router.post("/login/verify")
+@limiter.limit("5/minute")
 async def verify_login(
     request: Request,
     response_data: dict,

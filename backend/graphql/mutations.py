@@ -1194,14 +1194,30 @@ class Mutation(BehavioralMutation):
         return types.VehicleTrip.from_instance(record)
 
     @strawberry.mutation
-    async def create_shift(self, name: str, start_time: datetime.time, end_time: datetime.time,
-                           info: strawberry.Info) -> types.Shift:
+    async def create_shift(
+            self,
+            name: str,
+            start_time: datetime.time,
+            end_time: datetime.time,
+            info: strawberry.Info,
+            tolerance_minutes: Optional[int] = 15,
+            break_duration_minutes: Optional[int] = 0,
+            pay_multiplier: Optional[Decimal] = None,
+            shift_type: Optional[str] = None,
+    ) -> types.Shift:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
 
-        s = await time_repo.create_shift(db, name, start_time, end_time)
+        s = await time_repo.create_shift(
+            db, name, start_time, end_time,
+            tolerance_minutes=tolerance_minutes,
+            break_duration_minutes=break_duration_minutes,
+            pay_multiplier=pay_multiplier if pay_multiplier is not None else 1.0,
+            shift_type=shift_type if shift_type is not None else "regular",
+            company_id=current_user.company_id,
+        )
         await db.commit()
         await db.refresh(s)
         return types.Shift.from_instance(s)
@@ -1461,6 +1477,24 @@ class Mutation(BehavioralMutation):
         result = await time_repo.delete_leave_request(db, id, current_user.id, is_admin)
         await db.commit()
         return result
+
+    @strawberry.mutation(name="cancelLeaveRequest")
+    async def cancel_leave_request(self, request_id: int, info: strawberry.Info) -> types.LeaveRequest:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None:
+            raise AuthenticationException(detail=authenticate_msg)
+        req = await time_repo.get_leave_request_by_id(db, request_id)
+        if not req:
+            raise NotFoundException.leave_request(request_id=request_id)
+        if req.user_id != current_user.id and current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("cancel")
+        if req.status not in ["pending", "approved"]:
+            raise ValidationException.field("status", "Може да отмените само чакащи или одобрени отпуски")
+        req.status = "cancelled"
+        await db.commit()
+        await db.refresh(req)
+        return types.LeaveRequest.from_instance(req)
 
     @strawberry.mutation
     async def update_office_location(
@@ -1898,8 +1932,8 @@ class Mutation(BehavioralMutation):
         items_dicts = []
         for item in items:
             items_dicts.append({
-                "day_index": item.day_of_week,
-                "shift_id": getattr(item, 'shift_id', None)
+                "day_index": item.day_index,
+                "shift_id": item.shift_id,
             })
         template = await time_repo.create_schedule_template(db, name, current_user.company_id, description, items_dicts)
         await db.commit()
@@ -4253,9 +4287,11 @@ class Mutation(BehavioralMutation):
             raise PermissionDeniedException.for_action("manage")
 
         # Проверка за законовия срок за съхранение (10 години)
-        from datetime import datetime
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        from backend.config import settings
         MIN_RETENTION_YEARS = 10
-        age_in_days = (datetime.utcnow() - entry.created_at).days
+        age_in_days = (datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None) - entry.created_at).days
         if age_in_days < MIN_RETENTION_YEARS * 365:
             raise ValidationException(
                 detail=f"Записът не може да бъде изтрит. Законовият срок за съхранение е {MIN_RETENTION_YEARS} години."
@@ -5166,9 +5202,11 @@ class Mutation(BehavioralMutation):
             raise PermissionDeniedException.for_action("manage")
 
         # Проверка за законовия срок за съхранение (10 години)
-        from datetime import datetime
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        from backend.config import settings
         MIN_RETENTION_YEARS = 10
-        age_in_days = (datetime.utcnow() - receipt.created_at).days
+        age_in_days = (datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None) - receipt.created_at).days
         if age_in_days < MIN_RETENTION_YEARS * 365:
             raise ValidationException(
                 detail=f"Касовата бележка не може да бъде изтрита. Законовият срок за съхранение е {MIN_RETENTION_YEARS} години."
@@ -5426,9 +5464,11 @@ class Mutation(BehavioralMutation):
             raise PermissionDeniedException.for_action("manage")
 
         # Проверка за законовия срок за съхранение (10 години)
-        from datetime import datetime
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        from backend.config import settings
         MIN_RETENTION_YEARS = 10
-        age_in_days = (datetime.utcnow() - transaction.created_at).days
+        age_in_days = (datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None) - transaction.created_at).days
         if age_in_days < MIN_RETENTION_YEARS * 365:
             raise ValidationException(
                 detail=f"Банковата транзакция не може да бъде изтрита. Законовият срок за съхранение е {MIN_RETENTION_YEARS} години."
@@ -8168,4 +8208,138 @@ class Mutation(BehavioralMutation):
             logger.error(f"Failed to subscribe to push notifications: {e}")
             await db.rollback()
             raise ValidationException.field("subscription", f"Failed to save subscription: {e}")
+
+    @strawberry.mutation
+    async def schedule_maintenance(self, info: strawberry.Info, input: inputs.MaintenanceInput) -> bool:
+        from backend.database.models import MaintenanceSettings
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        from backend.config import settings
+
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage maintenance mode")
+
+        now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+        scheduled_at = None
+        if input.delay_minutes > 0:
+            scheduled_at = now + timedelta(minutes=input.delay_minutes)
+
+        result = await db.execute(select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1))
+        setting = result.scalar_one_or_none()
+
+        if setting:
+            setting.enabled = input.enabled
+            setting.scheduled_at = scheduled_at
+            setting.reason = input.reason
+            setting.updated_by = current_user.id
+            setting.updated_at = now
+        else:
+            setting = MaintenanceSettings(
+                enabled=input.enabled,
+                scheduled_at=scheduled_at,
+                reason=input.reason,
+                updated_by=current_user.id,
+                updated_at=now,
+            )
+            db.add(setting)
+
+        await db.commit()
+        return True
+
+    @strawberry.mutation
+    async def cancel_maintenance(self, info: strawberry.Info) -> bool:
+        from backend.database.models import MaintenanceSettings
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from backend.config import settings
+
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage maintenance mode")
+
+        now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+        result = await db.execute(select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1))
+        setting = result.scalar_one_or_none()
+
+        if setting:
+            setting.enabled = False
+            setting.scheduled_at = None
+            setting.updated_by = current_user.id
+            setting.updated_at = now
+            await db.commit()
+
+        return True
+
+    @strawberry.mutation
+    async def set_update_schedule(self, info: strawberry.Info, input: inputs.UpdateScheduleInput) -> types.UpdateScheduleType:
+        from backend.database.models import UpdateSchedule
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from backend.config import settings
+
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name != "super_admin":
+            raise PermissionDeniedException.for_action("manage update schedule")
+
+        now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+
+        result = await db.execute(select(UpdateSchedule).order_by(UpdateSchedule.id.desc()).limit(1))
+        schedule = result.scalar_one_or_none()
+
+        if schedule:
+            schedule.enabled = input.enabled
+            schedule.schedule_type = input.schedule_type
+            schedule.scheduled_at = input.scheduled_at
+            schedule.day_of_week = input.day_of_week
+            schedule.hour = input.hour
+            schedule.minute = input.minute
+            schedule.notify_email = input.notify_email
+            schedule.updated_at = now
+        else:
+            schedule = UpdateSchedule(
+                enabled=input.enabled,
+                schedule_type=input.schedule_type,
+                scheduled_at=input.scheduled_at,
+                day_of_week=input.day_of_week,
+                hour=input.hour,
+                minute=input.minute,
+                notify_email=input.notify_email,
+            )
+            db.add(schedule)
+
+        await db.commit()
+        await db.refresh(schedule)
+        return types.UpdateScheduleType.from_instance(schedule)
+
+    @strawberry.mutation
+    async def run_update_now(self, info: strawberry.Info) -> str:
+        from backend.database.models import UpdateSchedule
+        from backend.services.update_service import update_service
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from backend.config import settings
+
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name != "super_admin":
+            raise PermissionDeniedException.for_action("run update")
+
+        service = update_service(db)
+        result = await service.execute_update()
+
+        schedule_result = await db.execute(select(UpdateSchedule).order_by(UpdateSchedule.id.desc()).limit(1))
+        schedule = schedule_result.scalar_one_or_none()
+
+        now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+        if schedule:
+            schedule.last_run_at = now
+            schedule.last_run_status = result.get("status", "failed")
+            schedule.last_run_output = result.get("output", "")
+            await db.commit()
+
+        return result.get("output", "Update completed")
 

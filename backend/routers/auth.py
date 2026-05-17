@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 pwd_reset_serializer = URLSafeTimedSerializer(settings.JWT_SECRET_KEY)
 
 @router.post("/register", response_model=schemas.User)
-async def register_user(user: schemas.UserCreate, db: Annotated[AsyncSession, Depends(get_db)]):
+@limiter.limit("3/hour")
+async def register_user(request: Request, user: schemas.UserCreate, db: Annotated[AsyncSession, Depends(get_db)]):
     db_user = await crud.get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -86,6 +87,21 @@ async def login_for_access_token(
             detail="User account is inactive",
         )
     
+    # Check maintenance mode - block non-admin users
+    from backend.database.models import MaintenanceSettings, Role
+    from sqlalchemy import select as sa_select
+    maint_result = await db.execute(sa_select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1))
+    maint_setting = maint_result.scalar_one_or_none()
+    if maint_setting and maint_setting.enabled:
+        role_result = await db.execute(sa_select(Role).where(Role.id == user.role_id))
+        role = role_result.scalar_one_or_none()
+        if not role or role.name not in ["admin", "super_admin"]:
+            reason = maint_setting.reason or "Системата е в режим поддръжка"
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"🔧 {reason}",
+            )
+    
     # Get metadata using helper for real IP
     ip_address = security.get_client_ip(request)
     user_agent = request.headers.get("user-agent")
@@ -107,29 +123,30 @@ async def login_for_access_token(
 
     response = JSONResponse(content=response_content)
     
-    # Set Access Token Cookie - HttpOnly, Secure, None
+    # Set Access Token Cookie - HttpOnly, Secure, Strict
     response.set_cookie(
         key="access_token", 
         value=access_token, 
         httponly=True, 
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, 
-        samesite="none" if settings.COOKIE_SECURE else "lax",
+        samesite="strict",
         secure=settings.COOKIE_SECURE,
         path="/",
     )
-    # Set Refresh Token Cookie - HttpOnly, Secure, None
+    # Set Refresh Token Cookie - HttpOnly, Secure, Strict
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
         max_age=7 * 24 * 3600, # 7 days
-        samesite="none" if settings.COOKIE_SECURE else "lax",
+        samesite="strict",
         secure=settings.COOKIE_SECURE,
         path="/",
     )
     return response
 
 @router.post("/refresh", response_model=schemas.Token)
+@limiter.limit("10/minute")
 async def refresh_token(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)]
@@ -169,8 +186,8 @@ async def refresh_token(
         "token_type": "bearer"
     })
     
-    response.set_cookie(key="access_token", value=new_access, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, samesite="none" if settings.COOKIE_SECURE else "lax", secure=settings.COOKIE_SECURE, path="/")
-    response.set_cookie(key="refresh_token", value=new_refresh, httponly=True, max_age=7 * 24 * 3600, samesite="none" if settings.COOKIE_SECURE else "lax", secure=settings.COOKIE_SECURE, path="/")
+    response.set_cookie(key="access_token", value=new_access, httponly=True, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, samesite="strict", secure=settings.COOKIE_SECURE, path="/")
+    response.set_cookie(key="refresh_token", value=new_refresh, httponly=True, max_age=7 * 24 * 3600, samesite="strict", secure=settings.COOKIE_SECURE, path="/")
     
     return response
 
@@ -188,9 +205,9 @@ async def logout(
             await crud.invalidate_user_session(db, payload.get("jti"))
 
     # Delete all auth cookies
-    response.delete_cookie(key="access_token", httponly=True, samesite="none" if settings.COOKIE_SECURE else "lax", secure=settings.COOKIE_SECURE, path="/")
-    response.delete_cookie(key="refresh_token", httponly=True, samesite="none" if settings.COOKIE_SECURE else "lax", secure=settings.COOKIE_SECURE, path="/")
-    response.delete_cookie(key="csrf_token", httponly=True, samesite="none" if settings.COOKIE_SECURE else "lax", secure=settings.COOKIE_SECURE, path="/")
+    response.delete_cookie(key="access_token", httponly=True, samesite="strict", secure=settings.COOKIE_SECURE, path="/")
+    response.delete_cookie(key="refresh_token", httponly=True, samesite="strict", secure=settings.COOKIE_SECURE, path="/")
+    response.delete_cookie(key="csrf_token", httponly=True, samesite="strict", secure=settings.COOKIE_SECURE, path="/")
     
     return {"message": "Successfully logged out"}
 
@@ -300,6 +317,7 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     return 12742 * asin(sqrt(a)) * 1000
 
 @router.get("/qr-token")
+@limiter.limit("5/minute")
 async def get_my_qr_token(
     request: Request,
     current_user: Annotated[User, Depends(jwt_utils.get_current_user)],

@@ -7,12 +7,14 @@ from typing import Optional
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request, status, Depends
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 
 from backend.config import settings
 from backend.database.database import get_db
+from backend.auth.limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -222,12 +224,13 @@ async def get_deploy_status():
 
 
 @router.post("/deploy", response_model=DeployResponse)
+@limiter.limit("1/hour")
 async def deploy_update(
-    request: DeployRequest,
-    info: Request,
+    request: Request,
+    deploy_req: DeployRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    auth_header = info.headers.get("Authorization", "")
+    auth_header = request.headers.get("Authorization", "")
     deploy_key = settings.DEPLOY_API_KEY
 
     # 1. Check DeployKey first (CI/CD)
@@ -315,12 +318,13 @@ async def deploy_update(
 
 
 @router.post("/rollback", response_model=DeployResponse)
+@limiter.limit("1/hour")
 async def deploy_rollback(
-    info: Request,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     timestamp: Optional[str] = None,
 ):
-    auth_header = info.headers.get("Authorization", "")
+    auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Authorization header")
 
@@ -450,8 +454,9 @@ async def db_health_check(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/maintenance-mode")
+@limiter.limit("5/hour")
 async def set_maintenance(
-    info: Request,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Toggle maintenance mode using pg_advisory_lock"""
@@ -491,7 +496,7 @@ async def set_maintenance(
     except Exception as e:
         raise HTTPException(401, "Invalid token")
 
-    body = await info.json()
+    body = await request.json()
     req = MaintenanceRequest(**body)
 
     await _set_maintenance_mode(db, req.enabled, req.reason)

@@ -20,6 +20,8 @@ import AuditLogViewer from '../components/AuditLogViewer';
 import PushNotificationManager from '../components/PushNotificationManager';
 import ApiKeyManager from '../components/ApiKeyManager';
 import WebhookManager from '../components/WebhookManager';
+import MaintenanceModeSettings from '../components/MaintenanceModeSettings';
+import ScheduledUpdateSettings from '../components/ScheduledUpdateSettings';
 import ModuleManager from '../components/ModuleManager';
 import PasswordComplexitySettings from '../components/PasswordComplexitySettings';
 import { type SxProps, type Theme } from '@mui/material';
@@ -1080,6 +1082,9 @@ const SettingsPage: React.FC = () => {
 
       {isAdmin && (
         <>
+            <MaintenanceModeSettings />
+            {isSuperAdmin && <ScheduledUpdateSettings />}
+            
             <OfficeLocationSettings />
             
             <GoogleCalendarSettings />

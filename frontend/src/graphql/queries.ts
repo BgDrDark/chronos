@@ -284,3 +284,77 @@ export const GATEWAY_STATS_QUERY = gql`
     }
   }
 `;
+
+export const MAINTENANCE_STATUS_QUERY = gql`
+  query GetMaintenanceStatus {
+    maintenanceStatus {
+      enabled
+      scheduledAt
+      reason
+      minutesUntil
+      updatedBy {
+        id
+        firstName
+        lastName
+      }
+    }
+  }
+`;
+
+export const SCHEDULE_MAINTENANCE_MUTATION = gql`
+  mutation ScheduleMaintenance($input: MaintenanceInput!) {
+    scheduleMaintenance(input: $input)
+  }
+`;
+
+export const CANCEL_MAINTENANCE_MUTATION = gql`
+  mutation CancelMaintenance {
+    cancelMaintenance
+  }
+`;
+
+export const UPDATE_SCHEDULE_QUERY = gql`
+  query UpdateSchedule {
+    updateSchedule {
+      id
+      enabled
+      scheduleType
+      scheduledAt
+      dayOfWeek
+      hour
+      minute
+      notifyEmail
+      lastRunAt
+      lastRunStatus
+      lastRunOutput
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const SET_UPDATE_SCHEDULE_MUTATION = gql`
+  mutation SetUpdateSchedule($input: UpdateScheduleInput!) {
+    setUpdateSchedule(input: $input) {
+      id
+      enabled
+      scheduleType
+      scheduledAt
+      dayOfWeek
+      hour
+      minute
+      notifyEmail
+      lastRunAt
+      lastRunStatus
+      lastRunOutput
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const RUN_UPDATE_NOW_MUTATION = gql`
+  mutation RunUpdateNow {
+    runUpdateNow
+  }
+`;

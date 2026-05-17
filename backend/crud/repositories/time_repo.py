@@ -117,7 +117,8 @@ class TimeTrackingRepository(BaseRepository):
         tolerance_minutes: int = 15,
         break_duration_minutes: int = 0,
         pay_multiplier: float = 1.0,
-        shift_type: str = "regular"
+        shift_type: str = "regular",
+        company_id: Optional[int] = None,
     ) -> Shift:
         """Създава нова смяна"""
         shift = Shift(
@@ -127,7 +128,8 @@ class TimeTrackingRepository(BaseRepository):
             tolerance_minutes=tolerance_minutes,
             break_duration_minutes=break_duration_minutes,
             pay_multiplier=pay_multiplier,
-            shift_type=shift_type
+            shift_type=shift_type,
+            company_id=company_id,
         )
         db.add(shift)
         await db.flush()

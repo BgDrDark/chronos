@@ -4548,3 +4548,57 @@ class WorkExperience:
             created_at=instance.created_at,
             updated_at=instance.updated_at,
         )
+
+
+@strawberry.type
+class MaintenanceStatus:
+    enabled: bool
+    scheduled_at: Optional[datetime.datetime]
+    reason: str
+    minutes_until: Optional[int]
+    updated_by: Optional["User"] = None
+
+    @classmethod
+    def from_instance(cls, instance, minutes_until: Optional[int] = None, updated_by_user=None) -> "MaintenanceStatus":
+        return cls(
+            enabled=instance.enabled,
+            scheduled_at=instance.scheduled_at,
+            reason=instance.reason,
+            minutes_until=minutes_until,
+            updated_by=updated_by_user,
+        )
+
+
+@strawberry.type
+class UpdateScheduleType:
+    id: int
+    enabled: bool
+    schedule_type: str
+    scheduled_at: Optional[datetime.datetime]
+    day_of_week: Optional[int]
+    hour: int
+    minute: int
+    notify_email: str
+    last_run_at: Optional[datetime.datetime]
+    last_run_status: Optional[str]
+    last_run_output: Optional[str]
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    @classmethod
+    def from_instance(cls, instance) -> "UpdateScheduleType":
+        return cls(
+            id=instance.id,
+            enabled=instance.enabled,
+            schedule_type=instance.schedule_type,
+            scheduled_at=instance.scheduled_at,
+            day_of_week=instance.day_of_week,
+            hour=instance.hour,
+            minute=instance.minute,
+            notify_email=instance.notify_email,
+            last_run_at=instance.last_run_at,
+            last_run_status=instance.last_run_status,
+            last_run_output=instance.last_run_output,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+        )

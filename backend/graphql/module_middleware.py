@@ -154,11 +154,167 @@ MODULE_MAPPING = {
 
 # Throttling Configuration: {field_name: seconds_between_calls}
 THROTTLE_CONFIG = {
+    # Payroll (heavy operations)
     "generatePayslip": 10,
     "generateMyPayslip": 10,
     "calculatePayroll": 5,
     "payrollSummary": 10,
+    "addBonus": 5,
+    "removeBonus": 5,
+    "updateUserPayroll": 5,
+    "updateMyPayroll": 5,
+    "updateGlobalPayrollConfig": 10,
+
+    # Integrations
     "syncGoogleCalendar": 60,
+
+    # User & Company Management
+    "createUser": 10,
+    "updateUser": 5,
+    "deleteUser": 10,
+    "createCompany": 10,
+    "updateCompany": 10,
+    "createDepartment": 5,
+    "updateDepartment": 5,
+    "deleteDepartment": 10,
+    "createPosition": 5,
+    "updatePosition": 5,
+    "deletePosition": 10,
+
+    # Shifts & Schedules
+    "createShift": 5,
+    "updateShift": 5,
+    "deleteShift": 10,
+    "setWorkSchedule": 3,
+    "bulkSetSchedule": 10,
+    "deleteWorkSchedule": 5,
+    "createScheduleTemplate": 10,
+    "applyScheduleTemplate": 15,
+    "deleteScheduleTemplate": 10,
+
+    # Leave Management
+    "requestLeave": 10,
+    "approveLeave": 5,
+    "rejectLeave": 5,
+    "cancelLeaveRequest": 10,
+    "deleteLeaveRequest": 10,
+    "updateLeaveRequestStatus": 5,
+
+    # Time Tracking
+    "clockIn": 30,
+    "clockOut": 30,
+    "adminClockIn": 10,
+    "adminClockOut": 10,
+    "createManualTimeLog": 10,
+    "deleteTimeLog": 10,
+    "updateTimeLog": 10,
+
+    # Production
+    "createProductionOrder": 5,
+    "updateProductionOrder": 5,
+    "deleteProductionOrder": 10,
+    "createProductionTask": 5,
+    "updateProductionTask": 5,
+    "deleteProductionTask": 10,
+    "createBatch": 5,
+    "updateBatch": 5,
+    "deleteBatch": 10,
+    "createRecipe": 10,
+    "updateRecipe": 5,
+    "deleteRecipe": 10,
+    "confirmProductionOrder": 10,
+    "startProductionTask": 5,
+    "completeProductionTask": 5,
+    "createInventorySession": 10,
+    "completeInventorySession": 10,
+
+    # Accounting
+    "createInvoice": 5,
+    "updateInvoice": 5,
+    "deleteInvoice": 10,
+    "createTransaction": 5,
+    "updateTransaction": 5,
+    "deleteTransaction": 10,
+    "createReceipt": 5,
+    "updateReceipt": 5,
+    "deleteReceipt": 10,
+
+    # Fleet
+    "createVehicle": 10,
+    "updateVehicle": 5,
+    "deleteVehicle": 10,
+    "createVehicleTrip": 5,
+    "updateVehicleTrip": 5,
+    "deleteVehicleTrip": 10,
+    "approveVehicleTrip": 10,
+
+    # Warehouse
+    "createSupplier": 10,
+    "updateSupplier": 5,
+    "deleteSupplier": 10,
+    "createInventorySession": 10,
+
+    # Access Control
+    "createAccessZone": 10,
+    "updateAccessZone": 5,
+    "deleteAccessZone": 10,
+    "createAccessDoor": 10,
+    "updateAccessDoor": 5,
+    "deleteAccessDoor": 10,
+    "createAccessCode": 10,
+    "updateAccessCode": 5,
+    "deleteAccessCode": 10,
+
+    # Settings
+    "setGlobalSetting": 5,
+    "updateSmtpSettings": 10,
+    "updatePasswordSettings": 10,
+    "updateSecurityConfig": 10,
+    "updateOfficeLocation": 10,
+    "updateKioskSettings": 10,
+    "updatePayrollLegalSettings": 10,
+    "updateVapidPublicKey": 10,
+
+    # HR
+    "createEmploymentContract": 10,
+    "updateEmploymentContract": 5,
+    "deleteEmploymentContract": 10,
+    "createContractAnnex": 10,
+    "updateContractAnnex": 5,
+    "deleteContractAnnex": 10,
+
+    # Roles & Permissions
+    "createRole": 10,
+    "updateRole": 5,
+    "deleteRole": 10,
+
+    # Shift Swap
+    "createShiftSwapRequest": 10,
+    "acceptShiftSwapRequest": 5,
+    "rejectShiftSwapRequest": 5,
+    "cancelShiftSwapRequest": 10,
+
+    # Documents
+    "uploadDocument": 5,
+    "deleteDocument": 10,
+
+    # Notifications
+    "markNotificationRead": 3,
+    "markAllNotificationsRead": 10,
+
+    # Gateway & Terminal
+    "registerGateway": 30,
+    "updateGateway": 10,
+    "deleteGateway": 30,
+    "registerTerminal": 10,
+    "updateTerminal": 5,
+    "deleteTerminal": 10,
+    "registerPrinter": 10,
+    "updatePrinter": 5,
+    "deletePrinter": 10,
+    "testPrinter": 10,
+    "syncAccessLogs": 5,
+    "syncTerminalConfig": 10,
 }
 
 class ModuleGuardMiddleware(SchemaExtension):

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   AppBar, Box, CssBaseline, Divider, Drawer as MuiDrawer, IconButton,
-  Toolbar, Typography, Alert, AlertTitle, styled, type Theme, type CSSObject
+  Toolbar, Typography, Alert, AlertTitle, styled, type Theme, type CSSObject,
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, CircularProgress, Paper
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -35,7 +36,7 @@ import {
 } from '@mui/icons-material';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useApolloClient } from '@apollo/client';
-import { ME_QUERY, MODULES_QUERY } from '../graphql/queries';
+import { ME_QUERY, MODULES_QUERY, MAINTENANCE_STATUS_QUERY } from '../graphql/queries';
 import useSessionActivity from '../hooks/useSessionActivity';
 import { SidebarMenu, type MenuItem } from './SidebarMenu';
 import NotificationBell from './NotificationBell';
@@ -149,7 +150,18 @@ const MainLayout: React.FC<Props> = ({ children }) => {
 
   const { data } = useQuery(ME_QUERY);
   const { data: modulesData } = useQuery(MODULES_QUERY);
+  const { data: maintData } = useQuery(MAINTENANCE_STATUS_QUERY, {
+    pollInterval: 30000,
+    fetchPolicy: 'network-only',
+  });
   const user = data?.me;
+  const isAdmin = user?.role && ['admin', 'super_admin'].includes(user.role.name);
+  
+  const maintStatus = maintData?.maintenanceStatus;
+  const isMaintenanceActive = maintStatus?.enabled;
+  const isMaintenanceScheduled = maintStatus?.scheduledAt && !maintStatus?.enabled;
+  const maintenanceMinutesUntil = maintStatus?.minutesUntil;
+  const maintenanceReason = maintStatus?.reason || '';
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -199,7 +211,6 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     }
   };
 
-  const isAdmin = user?.role && ['admin', 'super_admin'].includes(user.role.name);
   const modules = modulesData?.modules || [];
 
   interface Module {
@@ -515,6 +526,59 @@ const MainLayout: React.FC<Props> = ({ children }) => {
                 Системата няма въведени данни за имейл сървър. Потребителите няма да получават уведомления и писма за забравена парола. 
                 Моля, конфигурирайте ги в <RouterLink to="/admin/notifications/smtp" style={{ color: 'inherit', fontWeight: 'bold' }}>Уведомления</RouterLink>.
             </Alert>
+        )}
+
+        {isMaintenanceScheduled && maintenanceMinutesUntil !== null && maintenanceMinutesUntil > 0 && (
+            <Alert 
+                severity="warning"
+                sx={{ mb: 3, borderRadius: 2, border: '1px solid #ff9800', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}
+            >
+                <AlertTitle sx={{ fontWeight: 'bold' }}>⚠️ Насрочена поддръжка</AlertTitle>
+                Системата ще премине в режим поддръжка след <strong>{maintenanceMinutesUntil} мин.</strong>
+                {maintenanceReason && <><br />Причина: {maintenanceReason}</>}
+            </Alert>
+        )}
+
+        {isMaintenanceActive && !isAdmin && (
+            <Box
+                sx={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    bgcolor: 'rgba(0, 0, 0, 0.85)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 9999,
+                }}
+            >
+                <Paper
+                    elevation={6}
+                    sx={{
+                        p: 4,
+                        maxWidth: 500,
+                        textAlign: 'center',
+                        borderRadius: 3,
+                    }}
+                >
+                    <Typography variant="h4" sx={{ mb: 2, fontWeight: 'bold', color: 'error.main' }}>
+                        🔧 Режим поддръжка
+                    </Typography>
+                    <Typography variant="body1" sx={{ mb: 2 }}>
+                        Системата е в режим поддръжка.
+                    </Typography>
+                    {maintenanceReason && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                            Причина: {maintenanceReason}
+                        </Typography>
+                    )}
+                    <Typography variant="body2" color="text.secondary">
+                        Моля, опитайте по-късно.
+                    </Typography>
+                </Paper>
+            </Box>
         )}
 
         <Box sx={{ maxWidth: '1600px', margin: '0 auto' }}>

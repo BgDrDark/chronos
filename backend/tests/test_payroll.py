@@ -1,5 +1,7 @@
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database.models import TimeLog
@@ -52,7 +54,7 @@ async def test_generate_payslip(client: TestClient, test_db: AsyncSession, creat
     }}, headers={"Authorization": f"Bearer {admin_token}"})
     
     # 2. Insert TimeLogs directly into DB
-    today = datetime.utcnow().date()
+    today = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None).date()
     start_of_month = datetime(today.year, today.month, 1)
     
     # Day 1: 8 hours (Regular)

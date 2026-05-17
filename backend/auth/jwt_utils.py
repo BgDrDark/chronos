@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 from typing import Optional, Annotated, Tuple
 import uuid
 import json
@@ -72,22 +74,34 @@ async def create_tokens(db: AsyncSession, user_id: int, email: str, ip_address: 
 # Simple in-memory cache for auth keys to reduce DB load and avoid session conflicts
 _AUTH_KEYS_CACHE = {}
 
+ALLOWED_ALGORITHMS = {"HS256", "HS384", "HS512", "RS256", "ES256"}
+
 async def verify_and_decode_token(db: AsyncSession, token: str) -> Optional[dict]:
     """
     Decodes a token using the key identified by 'kid' in the header.
-    Validates algorithm and standard claims.
+    Validates algorithm and standard claims with algorithm pinning.
     """
     try:
-        # Manually extract kid from header
+        # Manually extract kid and alg from header
         header_segment = token.split('.')[0]
         header_data = base64.urlsafe_b64decode(header_segment + "==").decode('utf-8')
         header = json.loads(header_data)
         
         kid = header.get("kid")
         if not kid:
-            logging.error(f"Token missing 'kid' in header")
+            logging.error("Token missing 'kid' in header")
             return None
-            
+        
+        token_alg = header.get("alg")
+        if not token_alg:
+            logging.error("Token missing 'alg' in header")
+            return None
+        
+        # Algorithm pinning - reject any algorithm not explicitly allowed
+        if token_alg not in ALLOWED_ALGORITHMS:
+            logging.error(f"Algorithm not allowed: {token_alg}")
+            return None
+        
         # Try cache first
         key_obj = _AUTH_KEYS_CACHE.get(kid)
         
@@ -99,7 +113,12 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> Optional[dict
                 return None
             # Store in cache
             _AUTH_KEYS_CACHE[kid] = key_obj
-            
+        
+        # Verify algorithm matches the key's algorithm
+        if token_alg != key_obj.algorithm:
+            logging.error(f"Algorithm mismatch: expected {key_obj.algorithm}, got {token_alg}")
+            return None
+        
         # Decode and validate with strict options
         claims = jwt.decode(token, key_obj.secret)
         
@@ -127,9 +146,6 @@ async def get_current_user(
     
     token = None
     
-    # --- 0. Check query parameter first (for PDF export) ---
-    query_token = request.query_params.get("token")
-    
     # --- 1. Try API Key Header (X-API-Key) ---
     api_key = request.headers.get("X-API-Key")
     if api_key:
@@ -140,16 +156,15 @@ async def get_current_user(
                 return schemas.User.model_validate(user)
         raise credentials_exception
 
-    # --- 2. Try JWT from query param, cookies or Bearer ---
-    if query_token:
-        token = query_token
-    else:
-        token = request.cookies.get("access_token")
-        if not token:
-            authorization = request.headers.get("Authorization")
-            if authorization and authorization.startswith("Bearer "):
-                token = authorization.split(" ")[1]
-            
+    # --- 2. Try JWT from cookies or Bearer ---
+    # Query parameter tokens are a security risk - removed.
+    # Use Authorization header or cookies instead.
+    token = request.cookies.get("access_token")
+    if not token:
+        authorization = request.headers.get("Authorization")
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization.split(" ")[1]
+        
     if not token:
         raise credentials_exception
         
@@ -173,6 +188,21 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive",
         )
+    
+    # Check maintenance mode - block non-admin users
+    from backend.database.models import MaintenanceSettings, Role
+    from sqlalchemy import select as sa_select
+    maint_result = await db.execute(sa_select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1))
+    maint_setting = maint_result.scalar_one_or_none()
+    if maint_setting and maint_setting.enabled:
+        role_result = await db.execute(sa_select(Role).where(Role.id == user.role_id))
+        role = role_result.scalar_one_or_none()
+        if not role or role.name not in ["admin", "super_admin"]:
+            reason = maint_setting.reason or "Системата е в режим поддръжка"
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"MAINTENANCE_MODE: {reason}",
+            )
         
     return schemas.User.model_validate(user)
 

@@ -2,7 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 from unittest.mock import MagicMock, patch, AsyncMock
 
 from backend.database.models import Company, AccessZone, AccessDoor, AccessCode, Gateway, AccessLog
@@ -287,7 +289,7 @@ async def test_sync_logs_endpoint(client: TestClient, test_db: AsyncSession, cre
     # Log Data
     log_data = [
         {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None).isoformat(),
             "user_id": "user_123",
             "action": "enter",
             "result": "granted",
@@ -295,7 +297,7 @@ async def test_sync_logs_endpoint(client: TestClient, test_db: AsyncSession, cre
             "method": "qr_scan"
         },
         {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None).isoformat(),
             "user_id": "user_456",
             "action": "exit",
             "result": "granted",

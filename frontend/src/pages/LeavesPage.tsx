@@ -766,7 +766,13 @@ const AllLeavesTab: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {data?.allLeaveRequests.map((req: any) => (
+            {data?.allLeaveRequests
+              .filter((req: any) => {
+                if (!statusFilter) return true;
+                if (statusFilter === 'rejected') return req.status === 'rejected' || req.status === 'cancelled';
+                return req.status === statusFilter;
+              })
+              .map((req: any) => (
               <TableRow key={req.id} hover>
                 <TableCell>{req.user.firstName} {req.user.lastName}</TableCell>
                 <TableCell>
@@ -776,9 +782,9 @@ const AllLeavesTab: React.FC = () => {
                 <TableCell>{formatDate(req.startDate)} — {formatDate(req.endDate)}</TableCell>
                 <TableCell>
                   <Chip 
-                    label={req.status === 'pending' ? 'Чакащ' : req.status === 'approved' ? 'Одобрен' : 'Отхвърлен'} 
+                    label={req.status === 'pending' ? 'Чакащ' : req.status === 'approved' ? 'Одобрен' : req.status === 'cancelled' ? 'Прекратен' : 'Отхвърлен'} 
                     size="small"
-                    color={req.status === 'approved' ? 'success' : req.status === 'rejected' ? 'error' : 'warning'}
+                    color={req.status === 'approved' ? 'success' : req.status === 'rejected' ? 'error' : req.status === 'cancelled' ? 'default' : 'warning'}
                   />
                 </TableCell>
                 <TableCell>

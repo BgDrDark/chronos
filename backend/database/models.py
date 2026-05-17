@@ -169,6 +169,7 @@ class Company(Base):
 
     users = relationship("User", back_populates="company_rel")
     departments = relationship("Department", back_populates="company")
+    shifts = relationship("Shift", back_populates="company")
 
 
 class Department(Base):
@@ -565,6 +566,7 @@ class Shift(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String, unique=True, index=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     start_time: Mapped[datetime.time] = mapped_column(Time, nullable=False)
     end_time: Mapped[datetime.time] = mapped_column(Time, nullable=False)
     tolerance_minutes: Mapped[int] = mapped_column(Integer, default=15)
@@ -572,6 +574,7 @@ class Shift(Base):
     pay_multiplier: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=1.0)
     shift_type: Mapped[str] = mapped_column(String, default=ShiftType.REGULAR.value)
 
+    company = relationship("Company", back_populates="shifts")
     schedules = relationship("WorkSchedule", back_populates="shift")
 
 
@@ -3014,6 +3017,39 @@ class VehicleCostCenter(Base):
     department = relationship("Department")
     company = relationship("Company", backref="vehicle_cost_centers")
     expenses = relationship("VehicleExpense", back_populates="cost_center")
+
+
+class MaintenanceSettings(Base):
+    """Настройки за режим поддръжка"""
+    __tablename__ = "maintenance_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    scheduled_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    updated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
+
+    updated_by_user = relationship("User", foreign_keys=[updated_by])
+
+
+class UpdateSchedule(Base):
+    """Насрочени автоматични актуализации"""
+    __tablename__ = "update_schedule"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    schedule_type: Mapped[str] = mapped_column(String(20), default="once", nullable=False)  # "once" or "weekly"
+    scheduled_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)  # for one-time
+    day_of_week: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 0-6 (Mon-Sun), for weekly
+    hour: Mapped[int] = mapped_column(Integer, default=3)  # 0-23
+    minute: Mapped[int] = mapped_column(Integer, default=0)  # 0-59
+    notify_email: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    last_run_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
+    last_run_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # "success", "failed", "skipped"
+    last_run_output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
 
 
 # Add back_populates relationships after all models are defined

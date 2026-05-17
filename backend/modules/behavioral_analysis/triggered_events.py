@@ -1,5 +1,7 @@
 import logging
 from datetime import datetime, date, timedelta, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -27,7 +29,7 @@ class TriggeredEventProcessor:
         anomalies = []
         user_id = time_log.user_id
         duration = time_log.hours_worked or 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
 
         # 1. Check for excessive duration (> 12 hours)
         if duration > 12:
@@ -134,7 +136,7 @@ class TriggeredEventProcessor:
                 expected_value=5.0,
                 deviation=consecutive_days - 5.0,
                 description=f"Consecutive work days: {consecutive_days} (Threshold: 10)",
-                detected_at=datetime.now(timezone.utc)
+                detected_at=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
             )
             self.db.add(anomaly)
             anomalies.append(anomaly)

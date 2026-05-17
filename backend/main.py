@@ -21,6 +21,8 @@ from backend.jobs.rotation_job import check_and_rotate_keys
 from backend.jobs.contract_job import check_expired_contracts
 from backend.jobs.inventory_check_job import check_inventory_levels
 from backend.jobs.fleet_notifications_job import check_fleet_notifications
+from backend.jobs.maintenance_job import check_scheduled_maintenance
+from backend.jobs.update_scheduler_job import check_scheduled_update
 from fastapi.responses import JSONResponse
 from fastapi import status
 import logging
@@ -56,6 +58,13 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(check_inventory_levels, 'cron', hour=2, minute=0)
     # Run daily at 6:00 AM for fleet notifications
     scheduler.add_job(check_fleet_notifications, 'cron', hour=6, minute=0)
+    # Silence APScheduler executor INFO logs (they spam "Running job..." every interval)
+    logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
+
+    # Run every 1 minute to check for scheduled maintenance activation
+    scheduler.add_job(check_scheduled_maintenance, 'interval', minutes=1)
+    # Run every 5 minutes to check for scheduled auto-update activation
+    scheduler.add_job(check_scheduled_update, 'interval', minutes=5)
     scheduler.start()
     
     # Run check with delay on startup to ensure DB is initialized
@@ -203,11 +212,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Added domains for Google OAuth and local development
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com; "
+            "script-src 'self' https://accounts.google.com https://apis.google.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: blob: https://lh3.googleusercontent.com https://ssl.gstatic.com; "
             "font-src 'self' data: https://fonts.gstatic.com; "
-            "connect-src 'self' https://chronos.oblak24.org http://localhost:14240 http://192.168.1.92:14240 https://accounts.google.com https://oauth2.googleapis.com https://play.google.com; "
+            "connect-src 'self' https://chronos.oblak24.org https://dev.oblak24.org http://localhost:14240 http://192.168.1.92:14240 https://accounts.google.com https://oauth2.googleapis.com https://play.google.com; "
             "frame-src https://accounts.google.com; "
             "frame-ancestors 'none'; "
             "object-src 'none';"
@@ -226,13 +235,12 @@ app.add_middleware(
     cookie_domain=None,
     cookie_secure=settings.COOKIE_SECURE,
     cookie_httponly=False,
-    cookie_samesite="none" if settings.COOKIE_SECURE else "lax",
+    cookie_samesite="strict",
     exempt_urls=[
         re.compile(r"^/auth/"),
         re.compile(r"^/google/"),
         re.compile(r"^/docs"),
         re.compile(r"^/redoc"),
-        re.compile(r"^/graphql"),
         re.compile(r"^/gateways/"),
         re.compile(r"^/webhook/"),
         re.compile(r"^/kiosk/scan"),
@@ -244,22 +252,35 @@ app.add_middleware(
 
 
 # Configure CORS - from config with fallback defaults
-DEFAULT_ORIGINS = [
-    "https://chronos.oblak24.org",
-    "https://auth.chronos.oblak24.org",
-    "https://api.github.com",
-    "http://localhost:5173",
-    "http://localhost:14240",
-    "http://192.168.1.92:5173",
-    "http://192.168.1.92:4173",
-    "http://192.168.1.92:14240",
-]
-cors_origins = settings.BACKEND_CORS_ORIGINS if settings.BACKEND_CORS_ORIGINS else DEFAULT_ORIGINS
-if isinstance(cors_origins, str):
-    cors_origins = [cors_origins]
-# Add configured frontend URL if not already present
-if settings.FRONTEND_URL not in cors_origins:
-    cors_origins.append(settings.FRONTEND_URL)
+# Enforce HTTPS in production (allow localhost for dev)
+def get_cors_origins():
+    raw = settings.BACKEND_CORS_ORIGINS
+    if isinstance(raw, str):
+        origins = [o.strip() for o in raw.split(",") if o.strip()]
+    elif isinstance(raw, list):
+        origins = [str(o).strip() for o in raw if o]
+    else:
+        origins = []
+    if not origins:
+        origins = [
+            "https://chronos.oblak24.org",
+            "https://auth.chronos.oblak24.org",
+            "https://api.github.com",
+            "http://localhost:5173",
+            "http://localhost:14240",
+            "http://192.168.1.92:5173",
+            "http://192.168.1.92:4173",
+            "http://192.168.1.92:14240",
+        ]
+    for origin in origins:
+        if origin.startswith("http://") and "localhost" not in origin and "127.0.0.1" not in origin and "192.168." not in origin:
+            logger.warning(f"Removing insecure HTTP origin: {origin}")
+    origins = [o for o in origins if not (o.startswith("http://") and "localhost" not in o and "127.0.0.1" not in o and "192.168." not in o)]
+    if settings.FRONTEND_URL not in origins:
+        origins.append(settings.FRONTEND_URL)
+    return origins
+
+cors_origins = get_cors_origins()
 
 app.add_middleware(
     CORSMiddleware,
@@ -291,8 +312,6 @@ app.include_router(google.router)
 app.include_router(deploy.router)
 from fastapi.staticfiles import StaticFiles
 import os
-
-# ... same imports ...
 
 app.include_router(documents.router)
 

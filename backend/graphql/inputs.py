@@ -333,10 +333,8 @@ class PasswordSettingsInput:
 
 @strawberry.input
 class ScheduleTemplateItemInput:
-    day_of_week: int
-    start_time: str
-    end_time: str
-    break_minutes: int = 0
+    day_index: int
+    shift_id: Optional[int] = None  # None = day off
 
 
 @strawberry.input
@@ -874,3 +872,21 @@ class AnnexTemplateSectionUpdateInput:
     content: Optional[str] = None
     order_index: Optional[int] = None
     is_required: Optional[bool] = None
+
+
+@strawberry.input
+class MaintenanceInput:
+    enabled: bool
+    delay_minutes: int = 0
+    reason: str = ""
+
+
+@strawberry.input
+class UpdateScheduleInput:
+    enabled: bool = False
+    schedule_type: str = "once"  # "once" or "weekly"
+    scheduled_at: Optional[datetime.datetime] = None
+    day_of_week: Optional[int] = None  # 0-6 (Mon-Sun)
+    hour: int = 3
+    minute: int = 0
+    notify_email: str = ""

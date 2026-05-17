@@ -6,6 +6,8 @@ Tests: Detector, RuleEngine, ContextAnalyzer, FeedbackLoop,
 import pytest
 import pytest_asyncio
 from datetime import date, datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+from backend.config import settings
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
@@ -58,7 +60,7 @@ def create_mock_profile(**kwargs):
         'scrap_rate': 2.0, 'peer_group_percentile': 70.0,
         'trend_direction': 'stable', 'status': 'stable',
         'confidence_score': 1.0, 'contribution_factors': None,
-        'rule_engine_version': 'v1.0.0', 'computed_at': datetime.now(timezone.utc),
+        'rule_engine_version': 'v1.0.0', 'computed_at': datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
         'version': 1, 'anomalies': []
     }
     defaults.update(kwargs)
@@ -76,7 +78,7 @@ def create_mock_thresholds(**kwargs):
         'stress_warning': 0.5, 'stress_critical': 0.7,
         'engagement_warning': 60.0, 'engagement_critical': 40.0,
         'probation_multiplier': 1.5,
-        'updated_at': datetime.now(timezone.utc)
+        'updated_at': datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
     }
     defaults.update(kwargs)
     t = MagicMock(spec=BehavioralStatusThresholds)
@@ -99,7 +101,7 @@ def create_mock_rule(**kwargs):
         'effectiveness_score': 0.0, 'false_positive_rate': 0.0,
         'trigger_count': 0, 'accepted_count': 0, 'effective_count': 0,
         'false_positive_count': 0, 'created_by': 1,
-        'created_at': datetime.now(timezone.utc), 'updated_at': datetime.now(timezone.utc)
+        'created_at': datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None), 'updated_at': datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
     }
     defaults.update(kwargs)
     rule = MagicMock(spec=BehavioralRule)
@@ -691,7 +693,7 @@ class TestTriggeredEvents:
             user_id=1,
             hours_worked=13.0,
             break_duration=1.0,
-            end_time=datetime.now(timezone.utc)
+            end_time=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         )
 
         anomalies = await processor.handle_clock_out(mock_log)
@@ -717,7 +719,7 @@ class TestTriggeredEvents:
             user_id=1,
             hours_worked=7.0,
             break_duration=10/60,
-            end_time=datetime.now(timezone.utc)
+            end_time=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         )
 
         anomalies = await processor.handle_clock_out(mock_log)
@@ -742,7 +744,7 @@ class TestTriggeredEvents:
             user_id=1,
             hours_worked=9.0,
             break_duration=1.0,
-            end_time=datetime.now(timezone.utc).replace(hour=23, minute=30)
+            end_time=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None).replace(hour=23, minute=30)
         )
 
         anomalies = await processor.handle_clock_out(mock_log)

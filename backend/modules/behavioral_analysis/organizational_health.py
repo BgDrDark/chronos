@@ -1,5 +1,7 @@
 import logging
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
+from backend.config import settings
 from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -80,7 +82,7 @@ class OrganizationalHealth:
                 period_end=period_end,
                 findings=[],
                 overall_bias_detected=False,
-                generated_at=datetime.now(timezone.utc)
+                generated_at=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
             )
 
         for i in range(len(departments)):
@@ -108,7 +110,7 @@ class OrganizationalHealth:
             period_end=period_end,
             findings=findings,
             overall_bias_detected=len(findings) > 0,
-            generated_at=datetime.now(timezone.utc)
+            generated_at=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         )
         self.db.add(report)
         await self.db.commit()
