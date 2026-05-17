@@ -620,7 +620,7 @@ class Query(BehavioralQuery):
     async def shifts(self, info: strawberry.Info) -> List[types.Shift]:
         db = info.context["db"]
         current_user = info.context.get("current_user")
-        company_id = current_user.company_id if current_user and not current_user.is_super_admin else None
+        company_id = current_user.company_id if current_user and current_user.role and current_user.role.name != "super_admin" else None
         db_shifts = await time_repo.get_all_shifts(db, company_id=company_id)
         return [types.Shift.from_instance(s) for s in db_shifts]
 
@@ -1328,6 +1328,22 @@ class Query(BehavioralQuery):
             end_date=end_date,
         )
         return [types.TemplatePreviewItem(**item) for item in preview]
+
+    @strawberry.field
+    async def schedule_stats(
+            self,
+            month: int,
+            year: int,
+            info: strawberry.Info,
+    ) -> List[types.ScheduleStat]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("view schedule stats")
+
+        company_id = current_user.company_id if current_user.role.name != "super_admin" else None
+        stats = await time_repo.get_schedule_stats(db, month=month, year=year, company_id=company_id)
+        return [types.ScheduleStat(**s) for s in stats]
 
     @strawberry.field
     async def vapid_public_key(self, info: strawberry.Info) -> Optional[str]:

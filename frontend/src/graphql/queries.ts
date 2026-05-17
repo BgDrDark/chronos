@@ -358,3 +358,136 @@ export const RUN_UPDATE_NOW_MUTATION = gql`
     runUpdateNow
   }
 `;
+
+export const GET_SHIFTS_FOR_GRID = gql`
+  query GetShiftsForGrid {
+    shifts { id name startTime endTime shiftType }
+  }
+`;
+
+export const GET_SCHEDULES_FOR_GRID = gql`
+  query GetSchedulesForGrid($startDate: Date!, $endDate: Date!) {
+    workSchedules(startDate: $startDate, endDate: $endDate) {
+      id date user { id } shift { id name shiftType startTime endTime }
+    }
+  }
+`;
+
+export const GET_SCHEDULE_STATS = gql`
+  query GetScheduleStats($month: Int!, $year: Int!) {
+    scheduleStats(month: $month, year: $year) {
+      userId userName assignedDays workDaysNorm isComplete
+    }
+  }
+`;
+
+export const GET_TEMPLATES_FOR_PREVIEW = gql`
+  query GetTemplatesForPreview {
+    scheduleTemplates { id name }
+  }
+`;
+
+export const GET_TEMPLATE_PREVIEW = gql`
+  query TemplatePreview($templateId: Int!, $startDate: Date!, $endDate: Date!) {
+    templatePreview(templateId: $templateId, startDate: $startDate, endDate: $endDate) {
+      date shiftId shiftName dayIndex
+    }
+  }
+`;
+
+export const SET_WORK_SCHEDULE = gql`
+  mutation SetWorkSchedule($userId: Int!, $shiftId: Int!, $date: Date!) {
+    setWorkSchedule(userId: $userId, shiftId: $shiftId, date: $date) { id date }
+  }
+`;
+
+export const COPY_SCHEDULES_FROM_MONTH = gql`
+  mutation CopySchedulesFromMonth($userId: Int!, $sourceMonth: Int!, $sourceYear: Int!, $targetMonth: Int!, $targetYear: Int!) {
+    copySchedulesFromMonth(userId: $userId, sourceMonth: $sourceMonth, sourceYear: $sourceYear, targetMonth: $targetMonth, targetYear: $targetYear)
+  }
+`;
+
+export const APPLY_SCHEDULE_TEMPLATE = gql`
+  mutation ApplyScheduleTemplate($templateId: Int!, $userId: Int!, $startDate: Date!, $endDate: Date!) {
+    applyScheduleTemplate(templateId: $templateId, userId: $userId, startDate: $startDate, endDate: $endDate)
+  }
+`;
+
+export const GET_USERS_QUERY = gql`
+  query GetUsers($limit: Int) {
+    users(limit: $limit) {
+      users { id email firstName lastName }
+      totalCount
+    }
+  }
+`;
+
+export const GET_PUBLIC_HOLIDAYS_QUERY = gql`
+  query GetPublicHolidays($year: Int) {
+    publicHolidays(year: $year) { id date name localName }
+  }
+`;
+
+export const GET_ORTHODOX_HOLIDAYS_QUERY = gql`
+  query GetOrthodoxHolidays($year: Int) {
+    orthodoxHolidays(year: $year) { id date name localName }
+  }
+`;
+
+export const GET_SHIFTS_QUERY = gql`
+  query GetShifts {
+    shifts { id name startTime endTime toleranceMinutes breakDurationMinutes payMultiplier shiftType }
+  }
+`;
+
+export const GET_SCHEDULES_QUERY = gql`
+  query GetSchedules($startDate: Date!, $endDate: Date!) {
+    workSchedules(startDate: $startDate, endDate: $endDate) {
+      id date user { id email firstName lastName } shift { id name startTime endTime shiftType }
+    }
+  }
+`;
+
+export const GET_TIME_LOGS_QUERY = gql`
+  query GetTimeLogs($startDate: DateTime!, $endDate: DateTime!) {
+    timeLogs(startDate: $startDate, endDate: $endDate) {
+      id startTime endTime isManual user { id email firstName lastName }
+    }
+  }
+`;
+
+export const CREATE_SHIFT_MUTATION = gql`
+  mutation CreateShift($name: String!, $startTime: String!, $endTime: String!, $tolerance: Int, $breakDuration: Int, $payMultiplier: Decimal) {
+    createShift(name: $name, startTime: $startTime, endTime: $endTime, toleranceMinutes: $tolerance, breakDurationMinutes: $breakDuration, payMultiplier: $payMultiplier) { id name }
+  }
+`;
+
+export const DELETE_SHIFT_MUTATION = gql`
+  mutation DeleteShift($id: Int!) { deleteShift(id: $id) }
+`;
+
+export const SET_SCHEDULE_MUTATION = gql`
+  mutation SetSchedule($userId: Int!, $shiftId: Int!, $date: Date!) {
+    setWorkSchedule(userId: $userId, shiftId: $shiftId, date: $date) { id date }
+  }
+`;
+
+export const DELETE_SCHEDULE_MUTATION = gql`
+  mutation DeleteSchedule($id: Int!) { deleteWorkSchedule(id: $id) }
+`;
+
+export const DELETE_TIME_LOG_MUTATION = gql`
+  mutation DeleteTimeLog($id: Int!) { deleteTimeLog(id: $id) }
+`;
+
+export const BULK_SET_SCHEDULE_MUTATION = gql`
+  mutation BulkSetSchedule($userIds: [Int!]!, $shiftId: Int!, $startDate: Date!, $endDate: Date!, $daysOfWeek: [Int!]!) {
+    bulkSetSchedule(userIds: $userIds, shiftId: $shiftId, startDate: $startDate, endDate: $endDate, daysOfWeek: $daysOfWeek)
+  }
+`;
+
+export const GET_MONTHLY_WORK_DAYS = gql`
+  query GetMonthlyWorkDays($year: Int!, $month: Int!) {
+    monthlyWorkDays(year: $year, month: $month) { id daysCount }
+  }
+`;

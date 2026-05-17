@@ -204,7 +204,15 @@ function App() {
         />
         
         {/* Графици - с redirect */}
-        <Route path="/admin/schedules" element={<Navigate to="/admin/schedules/calendar" replace />} />
+        <Route path="/admin/schedules" element={<Navigate to="/admin/schedules/grid" replace />} />
+        <Route
+          path="/admin/schedules/grid"
+          element={
+            <AdminRoute>
+              <SchedulesPage tab="grid" />
+            </AdminRoute>
+          }
+        />
         <Route
           path="/admin/schedules/calendar"
           element={
@@ -214,34 +222,10 @@ function App() {
           }
         />
         <Route
-          path="/admin/schedules/current"
+          path="/admin/schedules/settings"
           element={
             <AdminRoute>
-              <SchedulesPage tab="current" />
-            </AdminRoute>
-          }
-        />
-        <Route
-          path="/admin/schedules/shifts"
-          element={
-            <AdminRoute>
-              <SchedulesPage tab="shifts" />
-            </AdminRoute>
-          }
-        />
-        <Route
-          path="/admin/schedules/templates"
-          element={
-            <AdminRoute>
-              <SchedulesPage tab="templates" />
-            </AdminRoute>
-          }
-        />
-        <Route
-          path="/admin/schedules/bulk"
-          element={
-            <AdminRoute>
-              <SchedulesPage tab="bulk" />
+              <SchedulesPage tab="settings" />
             </AdminRoute>
           }
         />

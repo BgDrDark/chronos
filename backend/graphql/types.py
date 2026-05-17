@@ -1136,6 +1136,14 @@ class TemplatePreviewItem:
     day_index: int
 
 @strawberry.type
+class ScheduleStat:
+    user_id: int
+    user_name: str
+    assigned_days: int
+    work_days_norm: int
+    is_complete: bool
+
+@strawberry.type
 class LeaveRequest:
     id: int
     user_id: int

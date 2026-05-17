@@ -634,6 +634,16 @@ class TimeTrackingRepository(BaseRepository):
             await db.flush()
             return True
         return False
+
+    async def delete_schedule_by_user_date(self, db: AsyncSession, user_id: int, date: date) -> bool:
+        """Изтрива график по потребител и дата (за 'почивен ден')"""
+        stmt = sql_delete(WorkSchedule).where(
+            WorkSchedule.user_id == user_id,
+            WorkSchedule.date == date
+        )
+        result = await db.execute(stmt)
+        await db.flush()
+        return result.rowcount > 0
     
     async def create_bulk_schedules(
         self,
@@ -954,6 +964,134 @@ class TimeTrackingRepository(BaseRepository):
             current_date += timedelta(days=1)
 
         return preview
+
+    async def get_schedule_stats(
+        self,
+        db: AsyncSession,
+        month: int,
+        year: int,
+        company_id: Optional[int] = None,
+    ) -> List[dict]:
+        """Връща статистика за графици за месец"""
+        from backend.database.models import User, MonthlyWorkDays
+        from datetime import timedelta
+        from sqlalchemy import func
+
+        # Get work days norm
+        norm_result = await db.execute(
+            select(MonthlyWorkDays).where(
+                MonthlyWorkDays.year == year,
+                MonthlyWorkDays.month == month,
+            )
+        )
+        norm = norm_result.scalar_one_or_none()
+        work_days_norm = norm.days_count if norm else 20
+
+        # Get all users
+        user_stmt = select(User)
+        if company_id:
+            user_stmt = user_stmt.where(User.company_id == company_id)
+        user_result = await db.execute(user_stmt)
+        users = user_result.scalars().all()
+
+        # Get start and end of month
+        start_date = date(year, month, 1)
+        if month == 12:
+            end_date = date(year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end_date = date(year, month + 1, 1) - timedelta(days=1)
+
+        # Get schedules for the month
+        sched_result = await db.execute(
+            select(WorkSchedule).where(
+                WorkSchedule.date >= start_date,
+                WorkSchedule.date <= end_date,
+            )
+        )
+        schedules = sched_result.scalars().all()
+
+        # Count schedules per user
+        user_schedule_count = {}
+        for sched in schedules:
+            user_schedule_count[sched.user_id] = user_schedule_count.get(sched.user_id, 0) + 1
+
+        stats = []
+        for user in users:
+            assigned_days = user_schedule_count.get(user.id, 0)
+            stats.append({
+                "user_id": user.id,
+                "user_name": f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email,
+                "assigned_days": assigned_days,
+                "work_days_norm": work_days_norm,
+                "is_complete": assigned_days >= work_days_norm,
+            })
+
+        return stats
+
+    async def copy_schedules_from_month(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        source_month: int,
+        source_year: int,
+        target_month: int,
+        target_year: int,
+    ) -> int:
+        """Копира графици от един месец в друг"""
+        from datetime import timedelta
+
+        # Source month range
+        if source_month == 12:
+            source_end = date(source_year + 1, 1, 1) - timedelta(days=1)
+        else:
+            source_end = date(source_year, source_month + 1, 1) - timedelta(days=1)
+        source_start = date(source_year, source_month, 1)
+
+        # Target month range
+        if target_month == 12:
+            target_end = date(target_year + 1, 1, 1) - timedelta(days=1)
+        else:
+            target_end = date(target_year, target_month + 1, 1) - timedelta(days=1)
+        target_start = date(target_year, target_month, 1)
+
+        # Get source schedules
+        source_result = await db.execute(
+            select(WorkSchedule).where(
+                WorkSchedule.user_id == user_id,
+                WorkSchedule.date >= source_start,
+                WorkSchedule.date <= source_end,
+            )
+        )
+        source_schedules = source_result.scalars().all()
+
+        # Calculate day offset
+        offset_days = (target_start - source_start).days
+
+        # Create target schedules
+        count = 0
+        for src in source_schedules:
+            target_date = src.date + timedelta(days=offset_days)
+            if target_date <= target_end:
+                stmt = select(WorkSchedule).where(
+                    WorkSchedule.user_id == user_id,
+                    WorkSchedule.date == target_date,
+                )
+                result = await db.execute(stmt)
+                existing = result.scalar_one_or_none()
+
+                if existing:
+                    existing.shift_id = src.shift_id
+                else:
+                    new_sched = WorkSchedule(
+                        user_id=user_id,
+                        date=target_date,
+                        shift_id=src.shift_id,
+                    )
+                    db.add(new_sched)
+                count += 1
+
+        await db.flush()
+        return count
 
 
 time_repo = TimeTrackingRepository()

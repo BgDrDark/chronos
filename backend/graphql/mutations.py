@@ -2249,11 +2249,16 @@ class Mutation(BehavioralMutation):
 
     @strawberry.mutation
     async def set_work_schedule(self, user_id: int, shift_id: int, date: datetime.date,
-                                info: strawberry.Info) -> types.WorkSchedule:
+                                info: strawberry.Info) -> Optional[types.WorkSchedule]:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("manage")
+
+        if not shift_id:
+            await time_repo.delete_schedule_by_user_date(db, user_id, date)
+            await db.commit()
+            return None
 
         res = await time_repo.create_or_update_schedule(db, user_id, shift_id, date)
         await db.commit()
@@ -2271,6 +2276,32 @@ class Mutation(BehavioralMutation):
         result = await time_repo.create_bulk_schedules(db, user_ids, shift_id, start_date, end_date, days_of_week)
         await db.commit()
         return result
+
+    @strawberry.mutation
+    async def copy_schedules_from_month(
+            self,
+            user_id: int,
+            source_month: int,
+            source_year: int,
+            target_month: int,
+            target_year: int,
+            info: strawberry.Info,
+    ) -> int:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage schedules")
+
+        count = await time_repo.copy_schedules_from_month(
+            db,
+            user_id=user_id,
+            source_month=source_month,
+            source_year=source_year,
+            target_month=target_month,
+            target_year=target_year,
+        )
+        await db.commit()
+        return count
 
     @strawberry.mutation
     async def respond_to_swap(self, swap_id: int, accept: bool, info: strawberry.Info) -> types.ShiftSwapRequest:

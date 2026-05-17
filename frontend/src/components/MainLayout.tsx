@@ -257,11 +257,9 @@ const MainLayout: React.FC<Props> = ({ children }) => {
       icon: <CalendarIcon />, 
       visible: isAdmin && isEnabled('shifts'),
       children: [
+        { text: 'График', path: '/admin/schedules/grid', visible: true },
         { text: 'Календар', path: '/admin/schedules/calendar', visible: true },
-        { text: 'Текущ график', path: '/admin/schedules/current', visible: true },
-        { text: 'Управление на смени', path: '/admin/schedules/shifts', visible: true },
-        { text: 'Шаблони и Ротации', path: '/admin/schedules/templates', visible: true },
-        { text: 'Масово назначаване', path: '/admin/schedules/bulk', visible: true },
+        { text: 'Настройки', path: '/admin/schedules/settings', visible: true },
       ]
     },
     { 
