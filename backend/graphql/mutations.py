@@ -21,7 +21,6 @@ from backend.services.leave_service import leave_service
 from backend.services.time_tracking_service import time_tracking_service
 from backend.services.notification_service import notification_service
 from backend.services.auth_service import auth_service, regenerate_user_qr_token, force_password_change_for_all_users
-from backend.services.schedule_template_service import schedule_template_service
 from backend.services.payroll_service import payroll_service
 from backend.services.settings_service import settings_service
 from backend.auth.permission_helper import check_permission, require_role, require_permission_or_role
@@ -1204,6 +1203,7 @@ class Mutation(BehavioralMutation):
             break_duration_minutes: Optional[int] = 0,
             pay_multiplier: Optional[Decimal] = None,
             shift_type: Optional[str] = None,
+            overnight: Optional[bool] = False,
     ) -> types.Shift:
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -1217,6 +1217,7 @@ class Mutation(BehavioralMutation):
             pay_multiplier=pay_multiplier if pay_multiplier is not None else 1.0,
             shift_type=shift_type if shift_type is not None else "regular",
             company_id=current_user.company_id,
+            overnight=overnight,
         )
         await db.commit()
         await db.refresh(s)
@@ -1227,6 +1228,7 @@ class Mutation(BehavioralMutation):
             self, id: int, name: str, start_time: datetime.time, end_time: datetime.time,
             tolerance_minutes: Optional[int] = None, break_duration_minutes: Optional[int] = None,
             pay_multiplier: Optional[Decimal] = None, shift_type: Optional[str] = None,
+            overnight: Optional[bool] = None,
             info: Optional[strawberry.Info] = None
     ) -> types.Shift:
         if not info:
@@ -1238,7 +1240,8 @@ class Mutation(BehavioralMutation):
 
         s = await time_repo.update_shift(
             db, shift_id=id, name=name, start_time=start_time, end_time=end_time,
-            tolerance_minutes=tolerance_minutes, break_duration_minutes=break_duration_minutes, pay_multiplier=pay_multiplier, shift_type=shift_type
+            tolerance_minutes=tolerance_minutes, break_duration_minutes=break_duration_minutes,
+            pay_multiplier=pay_multiplier, shift_type=shift_type, overnight=overnight
         )
         await db.commit()
         await db.refresh(s)
@@ -1955,6 +1958,43 @@ class Mutation(BehavioralMutation):
         return True
 
     @strawberry.mutation
+    async def update_schedule_template(
+            self,
+            id: int,
+            name: Optional[str] = None,
+            description: Optional[str] = None,
+            items: Optional[List[inputs.ScheduleTemplateItemInput]] = None,
+            info: Optional[strawberry.Info] = None,
+    ) -> types.ScheduleTemplate:
+        if not info:
+            raise InvalidOperationException.info_required()
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage")
+
+        await verify_module_enabled("shifts", db)
+
+        template_items = None
+        if items is not None:
+            template_items = [
+                {"day_index": item.day_index, "shift_id": item.shift_id}
+                for item in items
+            ]
+
+        template = await time_repo.update_schedule_template(
+            db,
+            template_id=id,
+            company_id=current_user.company_id,
+            name=name,
+            description=description,
+            items=template_items,
+        )
+        await db.commit()
+        await db.refresh(template)
+        return types.ScheduleTemplate.from_instance(template)
+
+    @strawberry.mutation
     async def apply_schedule_template(
             self,
             template_id: int,
@@ -2183,6 +2223,29 @@ class Mutation(BehavioralMutation):
         result = await time_repo.delete_schedule(db, id)
         await db.commit()
         return result
+
+    @strawberry.mutation
+    async def bulk_delete_schedules(
+            self,
+            user_ids: List[int],
+            start_date: datetime.date,
+            end_date: datetime.date,
+            info: strawberry.Info,
+    ) -> int:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage")
+
+        count = await time_repo.bulk_delete_schedules(
+            db,
+            user_ids=user_ids,
+            start_date=start_date,
+            end_date=end_date,
+            actor_id=current_user.id,
+        )
+        await db.commit()
+        return count
 
     @strawberry.mutation
     async def set_work_schedule(self, user_id: int, shift_id: int, date: datetime.date,

@@ -1081,6 +1081,7 @@ class Shift:
     name: str
     start_time: datetime.time
     end_time: datetime.time
+    overnight: bool
     tolerance_minutes: int
     break_duration_minutes: int
     pay_multiplier: Decimal
@@ -1093,6 +1094,7 @@ class Shift:
             name=instance.name,
             start_time=instance.start_time,
             end_time=instance.end_time,
+            overnight=instance.overnight if instance.overnight is not None else False,
             tolerance_minutes=instance.tolerance_minutes if instance.tolerance_minutes is not None else 0,
             break_duration_minutes=instance.break_duration_minutes if instance.break_duration_minutes is not None else 0,
             pay_multiplier=instance.pay_multiplier if instance.pay_multiplier is not None else Decimal("1.0"),
@@ -1112,8 +1114,9 @@ class WorkSchedule:
 
     @strawberry.field
     async def shift(self, info: strawberry.Info) -> Optional["Shift"]:
-        db = info.context["db"]
-        db_shift = await time_repo.get_shift_by_id(db, self.shift_id)
+        if not self.shift_id:
+            return None
+        db_shift = await info.context["dataloaders"]["shift_by_id"].load(self.shift_id)
         return Shift.from_instance(db_shift) if db_shift else None
 
     @classmethod
@@ -1124,6 +1127,13 @@ class WorkSchedule:
             user_id=instance.user_id,
             shift_id=instance.shift_id
         )
+
+@strawberry.type
+class TemplatePreviewItem:
+    date: datetime.date
+    shift_id: Optional[int]
+    shift_name: str
+    day_index: int
 
 @strawberry.type
 class LeaveRequest:

@@ -21,7 +21,8 @@ from sqlalchemy import (
     Float,
     Text,
     LargeBinary,
-    Table
+    Table,
+    UniqueConstraint
 )
 from sqlalchemy.orm import relationship, declarative_base, Mapped, mapped_column
 
@@ -569,6 +570,7 @@ class Shift(Base):
     company_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
     start_time: Mapped[datetime.time] = mapped_column(Time, nullable=False)
     end_time: Mapped[datetime.time] = mapped_column(Time, nullable=False)
+    overnight: Mapped[bool] = mapped_column(Boolean, default=False)
     tolerance_minutes: Mapped[int] = mapped_column(Integer, default=15)
     break_duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
     pay_multiplier: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=1.0)
@@ -580,6 +582,9 @@ class Shift(Base):
 
 class WorkSchedule(Base):
     __tablename__ = "work_schedules"
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uq_user_date_schedule"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
@@ -588,6 +593,21 @@ class WorkSchedule(Base):
 
     user = relationship("User", back_populates="schedules")
     shift = relationship("Shift", back_populates="schedules")
+
+
+class ScheduleAuditLog(Base):
+    """Audit log за промени в графици"""
+    __tablename__ = "schedule_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)  # 'create', 'update', 'delete', 'bulk_create', 'bulk_delete'
+    schedule_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    old_value: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    new_value: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+
+    user = relationship("User")
 
 
 class GlobalSetting(Base):

@@ -1309,6 +1309,27 @@ class Query(BehavioralQuery):
         return types.ScheduleTemplate.from_instance(res) if res else None
 
     @strawberry.field
+    async def template_preview(
+            self,
+            template_id: int,
+            start_date: datetime.date,
+            end_date: datetime.date,
+            info: strawberry.Info,
+    ) -> List[types.TemplatePreviewItem]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("view schedule template")
+
+        preview = await time_repo.get_template_preview(
+            db,
+            template_id=template_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return [types.TemplatePreviewItem(**item) for item in preview]
+
+    @strawberry.field
     async def vapid_public_key(self, info: strawberry.Info) -> Optional[str]:
         db = info.context["db"]
         if not info.context["current_user"]:

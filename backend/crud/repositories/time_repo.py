@@ -119,8 +119,14 @@ class TimeTrackingRepository(BaseRepository):
         pay_multiplier: float = 1.0,
         shift_type: str = "regular",
         company_id: Optional[int] = None,
+        overnight: bool = False,
     ) -> Shift:
         """Създава нова смяна"""
+        if not overnight and end_time <= start_time:
+            raise ValueError("end_time must be after start_time (or set overnight=True)")
+        if overnight and end_time >= start_time:
+            raise ValueError("overnight shifts require end_time < start_time")
+
         shift = Shift(
             name=name,
             start_time=start_time,
@@ -130,6 +136,7 @@ class TimeTrackingRepository(BaseRepository):
             pay_multiplier=pay_multiplier,
             shift_type=shift_type,
             company_id=company_id,
+            overnight=overnight,
         )
         db.add(shift)
         await db.flush()
@@ -146,7 +153,8 @@ class TimeTrackingRepository(BaseRepository):
         tolerance_minutes: int = None,
         break_duration_minutes: int = None,
         pay_multiplier: float = None,
-        shift_type: str = None
+        shift_type: str = None,
+        overnight: bool = None,
     ) -> Optional[Shift]:
         """Обновява смяна"""
         shift = await self.get_shift_by_id(db, shift_id)
@@ -165,6 +173,10 @@ class TimeTrackingRepository(BaseRepository):
             shift.break_duration_minutes = break_duration_minutes
         if pay_multiplier is not None:
             shift.pay_multiplier = pay_multiplier
+        if shift_type is not None:
+            shift.shift_type = shift_type
+        if overnight is not None:
+            shift.overnight = overnight
         if shift_type is not None:
             shift.shift_type = shift_type
         
@@ -505,28 +517,114 @@ class TimeTrackingRepository(BaseRepository):
         db: AsyncSession,
         user_id: int,
         shift_id: int,
-        schedule_date: date
+        schedule_date: date,
+        actor_id: Optional[int] = None,
     ) -> WorkSchedule:
-        """Създава или обновява график"""
+        """Създава или обновява график (UPSERT)"""
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        # Check existing for audit log
         result = await db.execute(
             select(WorkSchedule).where(
                 WorkSchedule.user_id == user_id,
                 WorkSchedule.date == schedule_date
             )
         )
-        schedule = result.scalar_one_or_none()
-        
-        if schedule:
-            schedule.shift_id = shift_id
-            await db.flush()
-            await db.refresh(schedule)
-        else:
-            schedule = WorkSchedule(user_id=user_id, shift_id=shift_id, date=schedule_date)
-            db.add(schedule)
-            await db.flush()
-            await db.refresh(schedule)
-        
+        existing = result.scalar_one_or_none()
+        old_value = {"shift_id": existing.shift_id} if existing else None
+
+        # UPSERT using ON CONFLICT
+        stmt = pg_insert(WorkSchedule).values(
+            user_id=user_id,
+            date=schedule_date,
+            shift_id=shift_id,
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_user_date_schedule",
+            set_={"shift_id": stmt.excluded.shift_id},
+        )
+        stmt = stmt.returning(WorkSchedule)
+        result = await db.execute(stmt)
+        schedule = result.scalar_one()
+        await db.flush()
+
+        # Audit log
+        if actor_id:
+            await self._log_schedule_action(
+                db,
+                user_id=actor_id,
+                action="update" if existing else "create",
+                schedule_id=schedule.id,
+                old_value=old_value,
+                new_value={"shift_id": shift_id, "date": str(schedule_date)},
+            )
+
         return schedule
+
+    async def bulk_delete_schedules(
+        self,
+        db: AsyncSession,
+        user_ids: List[int],
+        start_date: date,
+        end_date: date,
+        actor_id: Optional[int] = None,
+    ) -> int:
+        """Масово изтриване на графици"""
+        from sqlalchemy import delete
+
+        # Get schedules for audit log
+        result = await db.execute(
+            select(WorkSchedule).where(
+                WorkSchedule.user_id.in_(user_ids),
+                WorkSchedule.date >= start_date,
+                WorkSchedule.date <= end_date,
+            )
+        )
+        schedules = result.scalars().all()
+
+        stmt = delete(WorkSchedule).where(
+            WorkSchedule.user_id.in_(user_ids),
+            WorkSchedule.date >= start_date,
+            WorkSchedule.date <= end_date,
+        )
+        res = await db.execute(stmt)
+        await db.flush()
+
+        # Audit log
+        if actor_id:
+            for sched in schedules:
+                await self._log_schedule_action(
+                    db,
+                    user_id=actor_id,
+                    action="bulk_delete",
+                    schedule_id=sched.id,
+                    old_value={"shift_id": sched.shift_id, "date": str(sched.date), "user_id": sched.user_id},
+                    new_value=None,
+                )
+
+        return res.rowcount
+
+    async def _log_schedule_action(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        action: str,
+        schedule_id: Optional[int] = None,
+        old_value: Optional[dict] = None,
+        new_value: Optional[dict] = None,
+    ):
+        """Записва audit log за промяна в график"""
+        from backend.database.models import ScheduleAuditLog
+
+        log = ScheduleAuditLog(
+            user_id=user_id,
+            action=action,
+            schedule_id=schedule_id,
+            old_value=old_value,
+            new_value=new_value,
+        )
+        db.add(log)
+        await db.flush()
     
     async def delete_schedule(self, db: AsyncSession, schedule_id: int) -> bool:
         """Изтрива график"""
@@ -717,11 +815,6 @@ class TimeTrackingRepository(BaseRepository):
         result = await db.execute(select(Shift).where(Shift.id == shift_id))
         return result.scalars().first()
     
-    async def get_all_shifts(self, db: AsyncSession) -> List[Shift]:
-        """Връща всички смени"""
-        result = await db.execute(select(Shift))
-        return list(result.scalars().all())
-    
     async def apply_schedule_template(
         self,
         db: AsyncSession,
@@ -774,6 +867,93 @@ class TimeTrackingRepository(BaseRepository):
         
         await db.flush()
         return True
+
+    async def update_schedule_template(
+        self,
+        db: AsyncSession,
+        template_id: int,
+        company_id: int,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        items: Optional[List[dict]] = None,
+    ) -> ScheduleTemplate:
+        """Обновява шаблон за график"""
+        from sqlalchemy import delete
+
+        stmt = select(ScheduleTemplate).options(
+            selectinload(ScheduleTemplate.items)
+        ).where(
+            ScheduleTemplate.id == template_id,
+            ScheduleTemplate.company_id == company_id,
+        )
+        result = await db.execute(stmt)
+        template = result.scalar_one_or_none()
+        if not template:
+            raise ValueError("Template not found")
+
+        if name is not None:
+            template.name = name
+        if description is not None:
+            template.description = description
+
+        if items is not None:
+            # Delete old items
+            delete_stmt = delete(ScheduleTemplateItem).where(
+                ScheduleTemplateItem.template_id == template_id
+            )
+            await db.execute(delete_stmt)
+
+            # Create new items
+            for item_data in items:
+                item = ScheduleTemplateItem(
+                    template_id=template_id,
+                    day_index=item_data["day_index"],
+                    shift_id=item_data.get("shift_id"),
+                )
+                db.add(item)
+
+        await db.flush()
+        await db.refresh(template, ["items"])
+        return template
+
+    async def get_template_preview(
+        self,
+        db: AsyncSession,
+        template_id: int,
+        start_date: date,
+        end_date: date,
+    ) -> List[dict]:
+        """Връща preview на шаблон за график"""
+        stmt = select(ScheduleTemplate).options(
+            selectinload(ScheduleTemplate.items).selectinload(ScheduleTemplateItem.shift)
+        ).where(ScheduleTemplate.id == template_id)
+        result = await db.execute(stmt)
+        template = result.scalar_one_or_none()
+        if not template:
+            return []
+
+        items = sorted(template.items, key=lambda x: x.day_index)
+        if not items:
+            return []
+
+        from datetime import timedelta
+
+        preview = []
+        days_processed = 0
+        current_date = start_date
+
+        while current_date <= end_date:
+            item = items[days_processed % len(items)]
+            preview.append({
+                "date": current_date,
+                "shift_id": item.shift_id,
+                "shift_name": item.shift.name if item.shift else "Почивен ден",
+                "day_index": days_processed % len(items),
+            })
+            days_processed += 1
+            current_date += timedelta(days=1)
+
+        return preview
 
 
 time_repo = TimeTrackingRepository()
