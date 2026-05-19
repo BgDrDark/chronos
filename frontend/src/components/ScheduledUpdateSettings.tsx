@@ -3,7 +3,7 @@ import { useQuery, useMutation } from '@apollo/client';
 import {
   Card, CardContent, Typography, TextField, Button, Box,
   Alert, AlertTitle, CircularProgress, Chip, Switch,
-  FormControlLabel, InputAdornment, Select, MenuItem, FormControl, InputLabel
+  FormControlLabel, InputAdornment, Select, MenuItem, FormControl, InputLabel, LinearProgress
 } from '@mui/material';
 import UpdateIcon from '@mui/icons-material/Update';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -13,6 +13,7 @@ import {
   UPDATE_SCHEDULE_QUERY,
   SET_UPDATE_SCHEDULE_MUTATION,
   RUN_UPDATE_NOW_MUTATION,
+  DEPLOY_STATUS_QUERY,
 } from '../graphql/queries';
 
 const DAYS_OF_WEEK = [
@@ -43,10 +44,22 @@ const ScheduledUpdateSettings: React.FC = () => {
   const [notifyEmail, setNotifyEmail] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [deployPolling, setDeployPolling] = useState(false);
+
+  const { data: deployData } = useQuery(DEPLOY_STATUS_QUERY, {
+    pollInterval: deployPolling ? 2000 : 0,
+    skip: !deployPolling,
+    fetchPolicy: 'network-only',
+  });
 
   const schedule = data?.updateSchedule;
   const lastRunStatus = schedule?.lastRunStatus;
   const lastRunAt = schedule?.lastRunAt;
+
+  const deployStatus = deployData?.deployStatus;
+  const isDeploying = deployStatus?.isDeploying;
+  const deployProgress = deployStatus?.progress;
+  const deployOutput = deployStatus?.output;
 
   useEffect(() => {
     if (schedule) {
@@ -63,6 +76,13 @@ const ScheduledUpdateSettings: React.FC = () => {
       setNotifyEmail(schedule.notifyEmail || '');
     }
   }, [schedule]);
+
+  useEffect(() => {
+    if (!isDeploying && deployPolling) {
+      setDeployPolling(false);
+      refetch();
+    }
+  }, [isDeploying, deployPolling, refetch]);
 
   const handleSave = async () => {
     setError(null);
@@ -99,8 +119,8 @@ const ScheduledUpdateSettings: React.FC = () => {
     setSuccessMsg(null);
     try {
       const result = await runUpdateNow();
-      setSuccessMsg(result.data?.runUpdateNow || 'Update завършен');
-      refetch();
+      setSuccessMsg(result.data?.runUpdateNow || 'Update стартиран');
+      setDeployPolling(true);
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -123,13 +143,28 @@ const ScheduledUpdateSettings: React.FC = () => {
           </Alert>
         )}
 
-        {successMsg && (
+        {successMsg && !isDeploying && (
           <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg(null)}>
             {successMsg}
           </Alert>
         )}
 
-        {lastRunStatus && (
+        {isDeploying && (
+          <Alert severity="info" sx={{ mb: 2 }} icon={<CircularProgress size={20} />}>
+            <AlertTitle>Актуализацията се изпълнява...</AlertTitle>
+            {deployProgress && <Typography variant="body2">{deployProgress}</Typography>}
+            <LinearProgress sx={{ mt: 1 }} />
+          </Alert>
+        )}
+
+        {deployOutput && !isDeploying && (
+          <Alert severity={deployStatus?.status === 'success' ? 'success' : 'warning'} sx={{ mb: 2 }}>
+            <AlertTitle>Резултат: {deployStatus?.status}</AlertTitle>
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto' }}>{deployOutput}</Typography>
+          </Alert>
+        )}
+
+        {lastRunStatus && !isDeploying && (
           <Box sx={{ mb: 2 }}>
             <Chip
               label={`Последен статус: ${lastRunStatus}${lastRunAt ? ` (${new Date(lastRunAt).toLocaleString('bg-BG')})` : ''}`}
@@ -253,10 +288,10 @@ const ScheduledUpdateSettings: React.FC = () => {
             variant="outlined"
             color="success"
             onClick={handleRunNow}
-            disabled={running}
+            disabled={running || isDeploying}
             startIcon={running ? <CircularProgress size={20} /> : <PlayArrowIcon />}
           >
-            {running ? 'Изпълнява се...' : 'Изпълни сега'}
+            {running ? 'Изпълнява се...' : isDeploying ? 'В процес...' : 'Изпълни сега'}
           </Button>
         </Box>
       </CardContent>

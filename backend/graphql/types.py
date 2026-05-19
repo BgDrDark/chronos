@@ -1144,6 +1144,14 @@ class ScheduleStat:
     is_complete: bool
 
 @strawberry.type
+class DeployStatus:
+    is_deploying: bool
+    status: str
+    progress: str
+    version: Optional[str] = None
+    output: Optional[str] = None
+
+@strawberry.type
 class LeaveRequest:
     id: int
     user_id: int

@@ -2941,3 +2941,15 @@ class Query(BehavioralQuery):
             return None
 
         return types.UpdateScheduleType.from_instance(schedule)
+
+    @strawberry.field
+    async def deploy_status(self, info: strawberry.Info) -> types.DeployStatus:
+        from backend.routers.deploy import _deploy_status
+
+        return types.DeployStatus(
+            is_deploying=_deploy_status["is_deploying"],
+            status=_deploy_status.get("status", "idle"),
+            progress=_deploy_status.get("progress", ""),
+            version=_deploy_status.get("version"),
+            output=_deploy_status.get("output"),
+        )

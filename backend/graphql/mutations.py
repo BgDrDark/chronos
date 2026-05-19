@@ -4,6 +4,7 @@ warnings.filterwarnings("ignore", message=".*strawberry.scalar.*")
 warnings.filterwarnings("ignore", message=".*Extension.*")
 warnings.filterwarnings("ignore", message=".*Pydantic.*")
 
+import logging
 import strawberry
 from strawberry.file_uploads import Upload
 from typing import Optional, List
@@ -35,6 +36,8 @@ from backend.exceptions import (
     InvalidOperationException,
 )
 from backend.utils.error_handling import handle_db_error
+
+logger = logging.getLogger(__name__)
 from backend.graphql.inputs import (
     UserCreateInput, RoleCreateInput, UpdateUserInput,
     LeaveRequestInput, UpdateLeaveRequestStatusInput,
@@ -756,8 +759,14 @@ class Mutation(BehavioralMutation):
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
 
-        # Get company_id from current user if not provided
         company_id = input.company_id or current_user.company_id
+
+        vehicle_type_obj = None
+        if input.vehicle_type:
+            from sqlalchemy import select
+            from backend.database.models import VehicleType
+            vt_result = await db.execute(select(VehicleType).where(VehicleType.code == input.vehicle_type))
+            vehicle_type_obj = vt_result.scalar_one_or_none()
 
         vehicle = await vehicle_repo.create_vehicle(
             db,
@@ -766,12 +775,12 @@ class Mutation(BehavioralMutation):
             make=input.make,
             model=input.model,
             year=input.year,
-            vehicle_type=input.vehicle_type,
+            vehicle_type=vehicle_type_obj,
             fuel_type=input.fuel_type,
             status=input.status,
             color=input.color,
             initial_mileage=input.initial_mileage,
-            is_company_vehicle=input.is_company_vehicle,
+            is_company=input.is_company_vehicle,
             notes=input.notes,
             company_id=company_id,
         )
@@ -786,22 +795,28 @@ class Mutation(BehavioralMutation):
         if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
             raise PermissionDeniedException.for_action("manage")
 
-        vehicle = await vehicle_repo.update_vehicle(
-            db,
-            vehicle_id=id,
-            registration_number=input.registration_number,
-            vin=input.vin,
-            make=input.make,
-            model=input.model,
-            year=input.year,
-            vehicle_type=input.vehicle_type,
-            fuel_type=input.fuel_type,
-            status=input.status,
-            color=input.color,
-            initial_mileage=input.initial_mileage,
-            is_company_vehicle=input.is_company_vehicle,
-            notes=input.notes,
-        )
+        update_data = {
+            "registration_number": input.registration_number,
+            "vin": input.vin,
+            "make": input.make,
+            "model": input.model,
+            "year": input.year,
+            "fuel_type": input.fuel_type,
+            "status": input.status,
+            "color": input.color,
+            "initial_mileage": input.initial_mileage,
+            "is_company": input.is_company_vehicle,
+            "notes": input.notes,
+        }
+
+        if input.vehicle_type:
+            from sqlalchemy import select
+            from backend.database.models import VehicleType
+            vt_result = await db.execute(select(VehicleType).where(VehicleType.code == input.vehicle_type))
+            vt_obj = vt_result.scalar_one_or_none()
+            update_data["vehicle_type"] = vt_obj
+
+        vehicle = await vehicle_repo.update_vehicle(db, vehicle_id=id, **update_data)
         if not vehicle:
             raise NotFoundException.vehicle()
         await db.commit()
@@ -951,12 +966,13 @@ class Mutation(BehavioralMutation):
         record = await vehicle_repo.create_vehicle_trip(
             db,
             vehicle_id=input.vehicle_id,
-            user_id=input.user_id,
-            start_time=input.start_time,
-            end_time=input.end_time,
-            start_location=input.start_location,
-            end_location=input.end_location,
-            distance=input.distance,
+            driver_id=input.user_id,
+            start_time=input.start_date,
+            end_time=input.end_date,
+            start_address=input.start_location,
+            end_address=input.end_location,
+            distance_km=input.distance,
+            purpose=input.trip_type,
             notes=input.notes,
         )
         await db.commit()
@@ -1178,12 +1194,12 @@ class Mutation(BehavioralMutation):
             raise PermissionDeniedException.for_action("manage")
         record = await vehicle_repo.update_vehicle_trip(
             db, id,
-            start_date=input.start_date,
-            end_date=input.end_date,
-            start_location=input.start_location,
-            end_location=input.end_location,
-            distance=input.distance,
-            trip_type=input.trip_type,
+            start_time=input.start_date,
+            end_time=input.end_date,
+            start_address=input.start_location,
+            end_address=input.end_location,
+            distance_km=input.distance,
+            purpose=input.trip_type,
             notes=input.notes,
         )
         if not record:
@@ -8416,6 +8432,8 @@ class Mutation(BehavioralMutation):
         from datetime import datetime
         from zoneinfo import ZoneInfo
         from backend.config import settings
+        import httpx
+        import os
 
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -8423,17 +8441,46 @@ class Mutation(BehavioralMutation):
             raise PermissionDeniedException.for_action("run update")
 
         service = update_service(db)
-        result = await service.execute_update()
 
+        # 1. Quick check for new version
+        update_info = await service.check_for_updates()
+        if not update_info.get("has_update"):
+            return f"No update available. Current: {update_info.get('current_version')}"
+
+        latest_version = update_info["latest_version"]
+        deploy_key = settings.DEPLOY_API_KEY
+
+        if not deploy_key:
+            return "Deploy API key not configured. Cannot trigger update."
+
+        # 2. Trigger deploy via listener (fire-and-forget, don't wait)
+        deploy_url = os.environ.get("DEPLOY_MANAGER_URL") or os.environ.get("DEPLOY_LISTENER_URL") or "http://host.docker.internal:14241"
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{deploy_url}/deploy",
+                    json={"version": latest_version},
+                    headers={"Authorization": f"DeployKey {deploy_key}"}
+                )
+                if response.status_code != 200:
+                    logger.error(f"Deploy trigger failed: {response.status_code} - {response.text}")
+                    return f"Deploy trigger failed: HTTP {response.status_code}"
+        except Exception as e:
+            logger.error(f"Deploy listener unavailable at {deploy_url}: {e}")
+            return f"Deploy listener unavailable at {deploy_url}. Ensure chronos-update-listener is running."
+
+        # 3. Record the trigger
+        from sqlalchemy import select
         schedule_result = await db.execute(select(UpdateSchedule).order_by(UpdateSchedule.id.desc()).limit(1))
         schedule = schedule_result.scalar_one_or_none()
 
         now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         if schedule:
             schedule.last_run_at = now
-            schedule.last_run_status = result.get("status", "failed")
-            schedule.last_run_output = result.get("output", "")
+            schedule.last_run_status = "started"
+            schedule.last_run_output = f"Update to {latest_version} triggered at {now.isoformat()}"
             await db.commit()
 
-        return result.get("output", "Update completed")
+        return f"Update to {latest_version} started. Check deploy status for progress."
 

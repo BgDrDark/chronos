@@ -359,6 +359,18 @@ export const RUN_UPDATE_NOW_MUTATION = gql`
   }
 `;
 
+export const DEPLOY_STATUS_QUERY = gql`
+  query DeployStatus {
+    deployStatus {
+      isDeploying
+      status
+      progress
+      version
+      output
+    }
+  }
+`;
+
 export const GET_SHIFTS_FOR_GRID = gql`
   query GetShiftsForGrid {
     shifts { id name startTime endTime shiftType }
