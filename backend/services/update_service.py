@@ -13,7 +13,7 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-GITHUB_API_URL = "https://api.github.com/repos/bgdrdark/chronos-erp/releases/latest"
+GITHUB_API_URL = "https://api.github.com/repos/bgdrdark/chronos/releases/latest"
 
 
 class UpdateService:
