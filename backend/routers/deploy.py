@@ -240,15 +240,13 @@ async def deploy_update(
         if auth_header[10:] != deploy_key:
             raise HTTPException(status_code=401, detail="Invalid deploy API key")
     else:
-        # 2. Try Bearer JWT, fallback to cookie if it fails
+        # 2. Try Bearer JWT, fallback to HttpOnly cookie
         token = None
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
 
-        # Try cookie first (most reliable for browser sessions)
-        cookie_token = info.cookies.get("access_token")
-        if cookie_token:
-            token = cookie_token
+        if not token:
+            token = request.cookies.get("access_token")
 
         if not token:
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -325,10 +323,13 @@ async def deploy_rollback(
     timestamp: Optional[str] = None,
 ):
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-
-    token = auth_header[7:]
+    token = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
         await _verify_super_admin(db, token)
@@ -387,15 +388,18 @@ async def deploy_rollback(
 
 @router.get("/deploy-log")
 async def get_deploy_log(
-    info: Request,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     lines: int = 50,
 ):
-    auth_header = info.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-
-    token = auth_header[7:]
+    auth_header = request.headers.get("Authorization", "")
+    token = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
         from backend.auth.jwt_utils import verify_and_decode_token
@@ -468,11 +472,14 @@ async def set_maintenance(
         enabled: bool
         reason: str = ""
 
-    auth_header = info.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-
-    token = auth_header[7:]
+    auth_header = request.headers.get("Authorization", "")
+    token = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
         payload = await verify_and_decode_token(db, token)
