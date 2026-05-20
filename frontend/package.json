@@ -1,7 +1,7 @@
 {
   "name": "chronos-frontend",
   "private": true,
-  "version": "3.6.68.0",
+  "version": "3.6.69.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

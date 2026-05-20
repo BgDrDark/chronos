@@ -325,9 +325,10 @@ class Mutation(BehavioralMutation):
     async def test_notification(
             self,
             info: strawberry.Info,
-            event_type: str
+            event_type: str,
+            recipient_email: Optional[str] = None,
     ) -> bool:
-        """Send a test notification email to the current user"""
+        """Send a test notification email"""
         import logging
         logger = logging.getLogger(__name__)
         
@@ -341,25 +342,26 @@ class Mutation(BehavioralMutation):
         if not await is_smtp_configured(db):
             raise ValidationException.field("smtp", "SMTP is not configured. Please configure SMTP settings first.")
         
-        if not current_user.email:
-            raise ValidationException.field("email", "Current user has no email address configured.")
+        target_email = recipient_email or current_user.email
+        if not target_email:
+            raise ValidationException.field("email", "No recipient email provided and current user has no email address.")
         
         body = (
             f"<h2>Тестово уведомление</h2>"
             f"<p>Това е тест за event type: <strong>{event_type}</strong></p>"
             f"<p>Ако получавате този имейл, SMTP настройките работят правилно.</p>"
-            f"<p>Изпратено до: {current_user.email}</p>"
+            f"<p>Изпратено до: {target_email}</p>"
         )
         
         try:
             await send_email(
                 db=db,
                 subject=f"Chronos - Тестово уведомление ({event_type})",
-                recipients=[current_user.email],
+                recipients=[target_email],
                 body=body,
                 html=body,
             )
-            logger.info(f"Test notification sent to {current_user.email} for event_type: {event_type}")
+            logger.info(f"Test notification sent to {target_email} for event_type: {event_type}")
             return True
         except Exception as e:
             logger.error(f"Failed to send test notification: {e}")

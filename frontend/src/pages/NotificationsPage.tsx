@@ -16,6 +16,7 @@ import {
   Save as SaveIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
+  Mail as MailIcon,
 } from '@mui/icons-material';
 import {
   useQuery,
@@ -71,8 +72,8 @@ const UPDATE_SMTP_SETTINGS = gql`
 `;
 
 const TEST_NOTIFICATION = gql`
-  mutation TestNotification($eventType: String!) {
-    testNotification(eventType: $eventType)
+  mutation TestNotification($eventType: String!, $recipientEmail: String) {
+    testNotification(eventType: $eventType, recipientEmail: $recipientEmail)
   }
 `;
 
@@ -141,6 +142,7 @@ export default function NotificationsPage({ tab }: Props) {
     useTls: true,
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [testEmail, setTestEmail] = useState<string>('');
 
   useEffect(() => {
     if (settingsData?.notificationSettings) {
@@ -248,7 +250,7 @@ export default function NotificationsPage({ tab }: Props) {
 
   const handleTestEmail = async (eventType: string) => {
     try {
-      await testNotification({ variables: { eventType } });
+      await testNotification({ variables: { eventType, recipientEmail: testEmail || null } });
       setMessage({ type: 'success', text: 'Тестовият имейл е изпратен!' });
       setTimeout(() => setMessage(null), 3000);
     } catch {
@@ -513,6 +515,28 @@ export default function NotificationsPage({ tab }: Props) {
                   }
                   label="TLS"
                 />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 8 }}>
+                <TextField
+                  fullWidth
+                  label="Тестов получател"
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  placeholder="test@example.com"
+                  helperText="Оставете празно за изпращане до текущия потребител"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  startIcon={testing ? <CircularProgress size={20} /> : <MailIcon />}
+                  onClick={() => handleTestEmail('smtp_test')}
+                  disabled={testing}
+                  sx={{ height: 56 }}
+                >
+                  {testing ? 'Изпраща се...' : 'Тест'}
+                </Button>
               </Grid>
               <Grid size={{ xs: 12 }}>
                 <Button
