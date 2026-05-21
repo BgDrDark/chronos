@@ -1390,16 +1390,16 @@ class Mutation(BehavioralMutation):
         qr_setting = await settings_repo.get_setting(db, "qr_token_regen_minutes")
         return types.GlobalPayrollConfig(
             id="global",
-            hourly_rate=Decimal(str(config.hourly_rate)),
-            monthly_salary=Decimal(str(config.monthly_salary)),
-            overtime_multiplier=Decimal(str(config.overtime_multiplier)),
-            standard_hours_per_day=config.standard_hours_per_day,
-            currency=config.currency,
-            annual_leave_days=config.annual_leave_days,
-            tax_percent=Decimal(str(config.tax_percent)),
-            health_insurance_percent=Decimal(str(config.health_insurance_percent)),
-            has_tax_deduction=config.has_tax_deduction,
-            has_health_insurance=config.has_health_insurance,
+            hourly_rate=Decimal(str(config["hourly_rate"])),
+            monthly_salary=Decimal(str(config["monthly_salary"])),
+            overtime_multiplier=Decimal(str(config["overtime_multiplier"])),
+            standard_hours_per_day=config["standard_hours_per_day"],
+            currency=config["currency"],
+            annual_leave_days=config["annual_leave_days"],
+            tax_percent=Decimal(str(config["tax_percent"])),
+            health_insurance_percent=Decimal(str(config["health_insurance_percent"])),
+            has_tax_deduction=config["has_tax_deduction"],
+            has_health_insurance=config["has_health_insurance"],
             qr_regen_interval_minutes=int(qr_setting) if qr_setting else 60
         )
 
