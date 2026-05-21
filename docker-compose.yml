@@ -67,6 +67,7 @@ services:
       - PERMISSION_CACHE_TTL=${PERMISSION_CACHE_TTL:-300}
       # Deployment Settings
       - DEPLOY_API_KEY=${DEPLOY_API_KEY}
+      - UPDATE_KEY_FILE=${UPDATE_KEY_FILE:-/project/scripts/update.key}
       - DEPLOY_LISTENER_URL=${DEPLOY_LISTENER_URL:-http://host.docker.internal:14241}
       - VERSION=${VERSION}
       # Deploy script config

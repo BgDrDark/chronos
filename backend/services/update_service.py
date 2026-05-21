@@ -79,8 +79,8 @@ class UpdateService:
             output_lines.append(f"[AUTO-UPDATE] New version found: {latest_version}")
 
             # 2. Trigger deploy чрез deploy manager
-            deploy_key = settings.DEPLOY_API_KEY
-            deploy_manager_url = os.environ.get("DEPLOY_MANAGER_URL") or os.environ.get("DEPLOY_LISTENER_URL") or "http://172.17.0.1:14241"
+            deploy_key = settings.get_deploy_key()
+            deploy_manager_url = os.environ.get("DEPLOY_MANAGER_URL") or os.environ.get("DEPLOY_LISTENER_URL") or "http://host.docker.internal:14241"
 
             output_lines.append(f"[AUTO-UPDATE] Triggering deploy via {deploy_manager_url}")
 
@@ -88,7 +88,7 @@ class UpdateService:
                 response = await client.post(
                     f"{deploy_manager_url}/deploy",
                     json={"version": latest_version},
-                    headers={"Authorization": f"DeployKey {deploy_key}"}
+                    headers={"Authorization": f"UpdateKey {deploy_key}"}
                 )
 
                 if response.status_code != 200:

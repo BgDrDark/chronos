@@ -8450,7 +8450,7 @@ class Mutation(BehavioralMutation):
             return f"No update available. Current: {update_info.get('current_version')}"
 
         latest_version = update_info["latest_version"]
-        deploy_key = settings.DEPLOY_API_KEY
+        deploy_key = settings.get_deploy_key()
 
         if not deploy_key:
             return "Deploy API key not configured. Cannot trigger update."
@@ -8463,7 +8463,7 @@ class Mutation(BehavioralMutation):
                 response = await client.post(
                     f"{deploy_url}/deploy",
                     json={"version": latest_version},
-                    headers={"Authorization": f"DeployKey {deploy_key}"}
+                    headers={"Authorization": f"UpdateKey {deploy_key}"}
                 )
                 if response.status_code != 200:
                     logger.error(f"Deploy trigger failed: {response.status_code} - {response.text}")

@@ -102,6 +102,28 @@ class Settings(BaseSettings):
             self.CSRF_SECRET_KEY = _ensure_env_key("CSRF_SECRET_KEY")
         return self
 
+    def get_deploy_key(self) -> str:
+        """Get deploy/update API key with file fallback and auto-rotation support."""
+        # 1. Env var (highest priority)
+        key = os.environ.get("DEPLOY_API_KEY")
+        if key:
+            return key.strip()
+        
+        # 2. Shared file (production - path from env var)
+        key_file = os.environ.get("UPDATE_KEY_FILE", "/project/scripts/update.key")
+        if os.path.exists(key_file):
+            with open(key_file, "r") as f:
+                return f.read().strip()
+        
+        # 3. Fallback: generate temporary key
+        new_key = secrets.token_hex(32)
+        import logging
+        logging.getLogger(__name__).warning(
+            f"DEPLOY_API_KEY not configured and no update.key found at {key_file}. "
+            f"Generated temporary key: {new_key[:8]}..."
+        )
+        return new_key
+
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     COOKIE_SECURE: bool = True  # Set to False for HTTP development

@@ -224,20 +224,20 @@ async def get_deploy_status():
 
 
 @router.post("/deploy", response_model=DeployResponse)
-@limiter.limit("1/hour")
+@limiter.limit("1/5minute")
 async def deploy_update(
     request: Request,
     deploy_req: DeployRequest,
     db: AsyncSession = Depends(get_db),
 ):
     auth_header = request.headers.get("Authorization", "")
-    deploy_key = settings.DEPLOY_API_KEY
+    deploy_key = settings.get_deploy_key()
 
-    # 1. Check DeployKey first (CI/CD)
-    if auth_header.startswith("DeployKey "):
+    # 1. Check UpdateKey first (CI/CD)
+    if auth_header.startswith("UpdateKey "):
         if not deploy_key:
             raise HTTPException(status_code=503, detail="Deploy API not configured")
-        if auth_header[10:] != deploy_key:
+        if auth_header[9:] != deploy_key:
             raise HTTPException(status_code=401, detail="Invalid deploy API key")
     else:
         # 2. Try Bearer JWT, fallback to HttpOnly cookie
@@ -275,24 +275,24 @@ async def deploy_update(
     deploy_manager_url = os.environ.get("DEPLOY_MANAGER_URL") or os.environ.get("DEPLOY_LISTENER_URL")
     if not deploy_manager_url:
         # Default: try host gateway (Linux Docker) or host.docker.internal
-        deploy_manager_url = "http://172.17.0.1:14241"
+        deploy_manager_url = "http://host.docker.internal:14241"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 f"{deploy_manager_url}/deploy",
-                json={"version": request.version},
-                headers={"Authorization": f"DeployKey {deploy_key}"}
+                json={"version": deploy_req.version},
+                headers={"Authorization": f"UpdateKey {deploy_key}"}
             )
             if response.status_code == 200:
                 result = response.json()
                 logger.info(f"Deploy triggered via manager: {result}")
                 # Start polling manager for status
-                _start_listener_polling(deploy_manager_url, request.version)
+                _start_listener_polling(deploy_manager_url, deploy_req.version)
                 return DeployResponse(
                     status="started",
                     commit="pending",
-                    branch=request.version or "main",
+                    branch=deploy_req.version or "main",
                     message=f"Deployment started via host manager. Poll /webhook/deploy-status for progress.",
                     timestamp=datetime.now().isoformat(),
                     output=""

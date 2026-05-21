@@ -157,6 +157,10 @@ REPOSITORY_PATTERN_PLAN.md
 SAFE_UPDATE_PLAN.md
 BEHAVIORAL_ANALYSIS_PLAN.md
 NOTIFICATION_SYSTEM_PLAN.md
+DYNAMIC_UPDATE_KEY_PLAN.md
+NOTIFICATIONS_REFACTOR_PLAN.md
+scripts/update.key
+to_save/scripts/update.key
 docs/
 
 # ==========================================

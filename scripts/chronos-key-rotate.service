@@ -1,0 +1,6 @@
+[Unit]
+Description=Chronos Update Key Rotation
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /project/scripts/rotate-update-key.sh
