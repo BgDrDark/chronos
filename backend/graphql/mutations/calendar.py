@@ -1,37 +1,53 @@
-import datetime
 import logging
 
 import strawberry
 
-from backend.auth.module_guard import verify_module_enabled
-from backend.exceptions import AuthenticationException
+from backend.exceptions import PermissionDeniedException
 from backend.services.holiday_service import fetch_and_store_holidays
 from backend.services.orthodox_holiday_service import fetch_and_store_orthodox_holidays
 
 logger = logging.getLogger(__name__)
-authenticate_msg = "Трябва да се автентикирате"
 
 
 @strawberry.type
 class CalendarMutation:
     @strawberry.mutation
-    async def fetch_holidays(self, info: strawberry.Info, year: int | None = None) -> str:
-        db = info.context.db
-        user = info.context.user
-        if not user:
-            raise AuthenticationException(authenticate_msg)
-        await verify_module_enabled(db, "payroll", user.company_id)
-        target_year = year or datetime.date.today().year
-        result = await fetch_and_store_holidays(db, target_year)
-        return f"Добавени {result} нови празника за {target_year} година."
+    async def sync_holidays(self, year: int, info: strawberry.Info) -> int:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage")
+
+        return await fetch_and_store_holidays(db, year)
 
     @strawberry.mutation
-    async def fetch_orthodox_holidays(self, info: strawberry.Info, year: int | None = None) -> str:
-        db = info.context.db
-        user = info.context.user
-        if not user:
-            raise AuthenticationException(authenticate_msg)
-        await verify_module_enabled(db, "payroll", user.company_id)
-        target_year = year or datetime.date.today().year
-        result = await fetch_and_store_orthodox_holidays(db, target_year)
-        return f"Добавени {result} нови православни празника за {target_year} година."
+    async def sync_orthodox_holidays(self, year: int, info: strawberry.Info) -> int:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("manage")
+
+        try:
+            return await fetch_and_store_orthodox_holidays(db, year)
+        except Exception as e:
+            await db.rollback()
+            if "duplicate key" in str(e).lower():
+                from datetime import date
+
+                from sqlalchemy import select
+
+                from backend.database.models import OrthodoxHoliday
+                try:
+                    start_date = date(year, 1, 1)
+                    end_date = date(year, 12, 31)
+                    result = await db.execute(
+                        select(OrthodoxHoliday.date).where(
+                            OrthodoxHoliday.date >= start_date
+                        ).where(OrthodoxHoliday.date <= end_date)
+                    )
+                    existing = result.scalars().all()
+                    return len(existing)
+                except Exception:
+                    pass
+            from backend.exceptions import DatabaseException
+            raise DatabaseException(detail=f"Failed to sync holidays: {str(e)}") from None

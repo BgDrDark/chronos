@@ -47,70 +47,49 @@ class User:
     async def company(self, info: strawberry.Info) -> Company | None:
         if not self.company_id:
             return None
-        from backend.database.models import Company as DbCompany
-        db = info.context["db"]
-        res = await db.get(DbCompany, self.company_id)
-        return Company.from_pydantic(res) if res else None
+        result = await info.context["dataloaders"]["company_by_id"].load(self.company_id)
+        return Company.from_pydantic(result) if result else None
 
     @strawberry.field
     async def department(self, info: strawberry.Info) -> Department | None:
         if not self.department_id:
             return None
-        from backend.database.models import Department as DbDepartment
-        db = info.context["db"]
-        res = await db.get(DbDepartment, self.department_id)
-        return Department.from_pydantic(res) if res else None
+        result = await info.context["dataloaders"]["department_by_id"].load(self.department_id)
+        return Department.from_pydantic(result) if result else None
 
     @strawberry.field
     async def position(self, info: strawberry.Info) -> Position | None:
         if not self.position_id:
             return None
-        from backend.database.models import Position as DbPosition
-        db = info.context["db"]
-        res = await db.get(DbPosition, self.position_id)
-        return Position.from_pydantic(res) if res else None
+        result = await info.context["dataloaders"]["position_by_id"].load(self.position_id)
+        return Position.from_pydantic(result) if result else None
 
     @strawberry.field
     async def company_name(self, info: strawberry.Info) -> str | None:
         if not self.company_id:
             return None
-        from backend.database.models import Company as DbCompany
-        db = info.context["db"]
-        res = await db.get(DbCompany, self.company_id)
-        return res.name if res else None
+        result = await info.context["dataloaders"]["company_by_id"].load(self.company_id)
+        return result.name if result else None
 
     @strawberry.field
     async def department_name(self, info: strawberry.Info) -> str | None:
         if not self.department_id:
             return None
-        from backend.database.models import Department as DbDepartment
-        db = info.context["db"]
-        res = await db.get(DbDepartment, self.department_id)
-        return res.name if res else None
+        result = await info.context["dataloaders"]["department_by_id"].load(self.department_id)
+        return result.name if result else None
 
     @strawberry.field
     async def job_title(self, info: strawberry.Info) -> str | None:
         if not self.position_id:
             return None
-        from backend.database.models import Position as DbPosition
-        db = info.context["db"]
-        res = await db.get(DbPosition, self.position_id)
-        return res.title if res else None
+        result = await info.context["dataloaders"]["position_by_id"].load(self.position_id)
+        return result.title if result else None
 
     @strawberry.field
     async def employment_contract(self, info: strawberry.Info) -> Annotated["EmploymentContract", strawberry.lazy("backend.graphql.types.contract")] | None:
         from backend.graphql.types.contract import EmploymentContract
-        db = info.context["db"]
-        from sqlalchemy import select
-
-        from backend.database.models import EmploymentContract as DbEmploymentContract
-        stmt = select(DbEmploymentContract).where(
-            DbEmploymentContract.user_id == self.id,
-            DbEmploymentContract.is_active,
-        )
-        result = await db.execute(stmt)
-        contract = result.scalar_one_or_none()
-        return EmploymentContract.from_pydantic(contract) if contract else None
+        result = await info.context["dataloaders"]["contract_by_user_id"].load(self.id)
+        return EmploymentContract.from_pydantic(result) if result else None
 
     @strawberry.field
     async def is_smtp_configured(self, info: strawberry.Info) -> bool:

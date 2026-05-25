@@ -26,7 +26,7 @@ class TestCompanySchema:
             id=1,
             name="Test Company",
             eik="123456789",
-            bulstat="BG123456789",
+            bulstat="123456789",
             address="123 Test St",
             mol_name="Ivan Ivanov",
         )
@@ -41,7 +41,7 @@ class TestCompanySchema:
             id=1,
             name="Test Company",
             eik="123456789",
-            bulstat="BG123456789",
+            bulstat="123456789",
             vat_number="BG123456789",
             address="123 Test St",
             mol_name="Ivan Ivanov",
@@ -52,7 +52,7 @@ class TestCompanySchema:
         assert gql_company.id == 1
         assert gql_company.name == "Test Company"
         assert gql_company.eik == "123456789"
-        assert gql_company.bulstat == "BG123456789"
+        assert gql_company.bulstat == "123456789"
         assert gql_company.vat_number == "BG123456789"
         assert gql_company.address == "123 Test St"
         assert gql_company.mol_name == "Ivan Ivanov"

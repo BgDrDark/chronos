@@ -5,23 +5,9 @@ from decimal import Decimal
 import strawberry
 from sqlalchemy import select
 
-from backend import crud
-from backend.auth.module_guard import verify_module_enabled
-from backend.crud.repositories import payroll_repo, settings_repo
-from backend.database.transaction_manager import (
-    atomic_with_savepoint,
-)
-from backend.exceptions import (
-    AuthenticationException,
-    InvalidOperationException,
-    NotFoundException,
-    PermissionDeniedException,
-    ValidationException,
-)
-from backend.graphql import types
-from backend.graphql.inputs import BonusCreateInput
-from backend.services.notification_service import notification_service
-from backend.services.payroll_service import payroll_service
+from backend.database import models
+from backend.exceptions import AuthenticationException
+from backend.graphql import inputs, types
 
 logger = logging.getLogger(__name__)
 authenticate_msg = "Трябва да се автентикирате"
@@ -29,426 +15,511 @@ authenticate_msg = "Трябва да се автентикирате"
 
 @strawberry.type
 class PayrollMutation:
-
     @strawberry.mutation
-    async def update_payroll_legal_settings(
-            self,
-            max_insurance_base: float,
-            employee_insurance_rate: float,
-            income_tax_rate: float,
-            civil_contract_costs_rate: float,
-            noi_compensation_percent: float,
-            employer_paid_sick_days: int,
-            default_tax_resident: bool,
-            trz_compliance_strict_mode: bool,
-            info: strawberry.Info,
-    ) -> types.PayrollLegalSettings:
-        db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
-        # Само super_admin може да променя строгия режим на съответствие
-        if trz_compliance_strict_mode is not None and current_user.role.name == "super_admin":
-            await settings_repo.set_setting(db, "trz_compliance_strict_mode", str(trz_compliance_strict_mode).lower())
-
-        await settings_repo.set_setting(db, "payroll_max_insurance_base", str(max_insurance_base))
-        await settings_repo.set_setting(db, "payroll_employee_insurance_rate", str(employee_insurance_rate))
-        await settings_repo.set_setting(db, "payroll_income_tax_rate", str(income_tax_rate))
-        await settings_repo.set_setting(db, "payroll_civil_contract_costs_rate", str(civil_contract_costs_rate))
-        await settings_repo.set_setting(db, "payroll_noi_compensation_percent", str(noi_compensation_percent))
-        await settings_repo.set_setting(db, "payroll_employer_paid_sick_days", str(employer_paid_sick_days))
-        await settings_repo.set_setting(db, "payroll_default_tax_resident", str(default_tax_resident))
-        await db.commit()
-
-        return types.PayrollLegalSettings(
-            max_insurance_base=max_insurance_base,
-            employee_insurance_rate=employee_insurance_rate,
-            income_tax_rate=income_tax_rate,
-            civil_contract_costs_rate=civil_contract_costs_rate,
-            noi_compensation_percent=noi_compensation_percent,
-            employer_paid_sick_days=employer_paid_sick_days,
-            default_tax_resident=default_tax_resident,
-            trz_compliance_strict_mode=trz_compliance_strict_mode,
-        )
-
-    @strawberry.mutation
-    async def update_global_payroll_config(
-            self,
-            hourly_rate: Decimal,
-            monthly_salary: Decimal,
-            overtime_multiplier: Decimal,
-            standard_hours_per_day: int,
-            currency: str,
-            annual_leave_days: int,
-            tax_percent: Decimal,
-            health_insurance_percent: Decimal,
-            has_tax_deduction: bool,
-            has_health_insurance: bool,
-            qr_regen_interval_minutes: int,
-            info: strawberry.Info,
-    ) -> types.GlobalPayrollConfig:
-        db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
-        config_data = {
-            "hourly_rate": hourly_rate,
-            "monthly_salary": monthly_salary,
-            "overtime_multiplier": overtime_multiplier,
-            "standard_hours_per_day": standard_hours_per_day,
-            "currency": currency,
-            "annual_leave_days": annual_leave_days,
-            "tax_percent": tax_percent,
-            "health_insurance_percent": health_insurance_percent,
-            "has_tax_deduction": has_tax_deduction,
-            "has_health_insurance": has_health_insurance,
-        }
-        payroll_svc = payroll_service(db)
-        await payroll_svc.update_global_config(
-            hourly_rate=config_data.get("hourly_rate", 0),
-            overtime_multiplier=config_data.get("overtime_multiplier", 0),
-            standard_hours_per_day=config_data.get("standard_hours_per_day", 0),
-            monthly_salary=config_data.get("monthly_salary", 0),
-            currency=currency,
-            annual_leave_days=annual_leave_days,
-            tax_percent=tax_percent,
-            health_insurance_percent=health_insurance_percent,
-            has_tax_deduction=has_tax_deduction,
-            has_health_insurance=has_health_insurance,
-        )
-        await settings_repo.set_setting(db, "qr_token_regen_minutes", str(qr_regen_interval_minutes))
-        await db.commit()
-
-        # Re-fetch the updated config with the new QR setting
-        config = await payroll_svc.get_global_config()
-        qr_setting = await settings_repo.get_setting(db, "qr_token_regen_minutes")
-        return types.GlobalPayrollConfig(
-            id="global",
-            hourly_rate=Decimal(str(config["hourly_rate"])),
-            monthly_salary=Decimal(str(config["monthly_salary"])),
-            overtime_multiplier=Decimal(str(config["overtime_multiplier"])),
-            standard_hours_per_day=config["standard_hours_per_day"],
-            currency=config["currency"],
-            annual_leave_days=config["annual_leave_days"],
-            tax_percent=Decimal(str(config["tax_percent"])),
-            health_insurance_percent=Decimal(str(config["health_insurance_percent"])),
-            has_tax_deduction=config["has_tax_deduction"],
-            has_health_insurance=config["has_health_insurance"],
-            qr_regen_interval_minutes=int(qr_setting) if qr_setting else 60,
-        )
-
-    @strawberry.mutation
-    async def generate_my_payslip(
-            self,
-            start_date: datetime.date,
-            end_date: datetime.date,
-            info: strawberry.Info,
-    ) -> types.Payslip:
+    async def generate_daily_summary(
+        self,
+        date: str,
+        info: strawberry.Info,
+    ) -> types.DailySummaryType:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
 
-        await verify_module_enabled("salaries", db)
+        target_date = datetime.date.fromisoformat(date)
 
-        # Convert date to datetime for PayrollCalculator
-        start_dt = datetime.datetime.combine(start_date, datetime.time.min)
-        end_dt = datetime.datetime.combine(end_date, datetime.time.max)
-        calculator = crud.PayrollCalculator(db)
-        res = await calculator.calculate(current_user.id, start_dt, end_dt)
+        if current_user.role.name != "super_admin":
+            company_id = current_user.company_id
+        else:
+            raise AuthenticationException(detail=authenticate_msg)
 
-        # Save to DB
-        db_payslip = crud.Payslip(
-            user_id=current_user.id,
-            period_start=start_date,
-            period_end=end_date,
-            total_regular_hours=res["total_regular_hours"],
-            total_overtime_hours=res["total_overtime_hours"],
-            regular_amount=res["regular_amount"],
-            overtime_amount=res["overtime_amount"],
-            bonus_amount=res["bonus_amount"],
-            tax_amount=res["tax_amount"],
-            insurance_amount=res["insurance_amount"],
-            sick_days=res["sick_days"],
-            leave_days=res["leave_days"],
-            total_amount=res["total_amount"],
-            generated_at=crud.sofia_now(),
+        invoices_stmt = select(models.Invoice).where(
+            models.Invoice.date == target_date,
+            models.Invoice.company_id == company_id,
         )
-        db.add(db_payslip)
-        await db.commit()
-        await db.refresh(db_payslip)
+        invoices_result = await db.execute(invoices_stmt)
+        invoices = invoices_result.scalars().all()
 
-        return types.Payslip.from_pydantic(db_payslip)
+        cash_stmt = select(models.CashJournalEntry).where(
+            models.CashJournalEntry.date == target_date,
+            models.CashJournalEntry.company_id == company_id,
+        )
+        cash_result = await db.execute(cash_stmt)
+        cash_entries = cash_result.scalars().all()
+
+        invoices_count = len(invoices)
+        incoming_invoices_count = sum(1 for i in invoices if i.type == "incoming")
+        outgoing_invoices_count = sum(1 for i in invoices if i.type == "outgoing")
+
+        invoices_total = sum(float(i.total or 0) for i in invoices)
+        incoming_invoices_total = sum(
+            float(i.total or 0) for i in invoices if i.type == "incoming"
+        )
+        outgoing_invoices_total = sum(
+            float(i.total or 0) for i in invoices if i.type == "outgoing"
+        )
+
+        cash_income = sum(
+            float(c.amount or 0) for c in cash_entries if c.operation_type == "income"
+        )
+        cash_expense = sum(
+            float(c.amount or 0) for c in cash_entries if c.operation_type == "expense"
+        )
+        cash_balance = cash_income - cash_expense
+
+        vat_collected = sum(
+            float(i.vat_amount or 0) for i in invoices if i.type == "outgoing"
+        )
+        vat_paid = sum(
+            float(i.vat_amount or 0) for i in invoices if i.type == "incoming"
+        )
+
+        paid_invoices_count = sum(1 for i in invoices if i.status == "paid")
+        unpaid_invoices_count = sum(
+            1 for i in invoices if i.status in ["draft", "sent"]
+        )
+        overdue_invoices_count = sum(1 for i in invoices if i.status == "overdue")
+
+        existing_stmt = select(models.DailySummary).where(
+            models.DailySummary.date == target_date,
+            models.DailySummary.company_id == company_id,
+        )
+        existing_result = await db.execute(existing_stmt)
+        existing = existing_result.scalars().first()
+
+        if existing:
+            existing.invoices_count = invoices_count
+            existing.incoming_invoices_count = incoming_invoices_count
+            existing.outgoing_invoices_count = outgoing_invoices_count
+            existing.invoices_total = Decimal(str(invoices_total))
+            existing.incoming_invoices_total = Decimal(str(incoming_invoices_total))
+            existing.outgoing_invoices_total = Decimal(str(outgoing_invoices_total))
+            existing.cash_income = Decimal(str(cash_income))
+            existing.cash_expense = Decimal(str(cash_expense))
+            existing.cash_balance = Decimal(str(cash_balance))
+            existing.vat_collected = Decimal(str(vat_collected))
+            existing.vat_paid = Decimal(str(vat_paid))
+            existing.paid_invoices_count = paid_invoices_count
+            existing.unpaid_invoices_count = unpaid_invoices_count
+            existing.overdue_invoices_count = overdue_invoices_count
+            summary = existing
+        else:
+            summary = models.DailySummary(
+                date=target_date,
+                invoices_count=invoices_count,
+                incoming_invoices_count=incoming_invoices_count,
+                outgoing_invoices_count=outgoing_invoices_count,
+                invoices_total=Decimal(str(invoices_total)),
+                incoming_invoices_total=Decimal(str(incoming_invoices_total)),
+                outgoing_invoices_total=Decimal(str(outgoing_invoices_total)),
+                cash_income=Decimal(str(cash_income)),
+                cash_expense=Decimal(str(cash_expense)),
+                cash_balance=Decimal(str(cash_balance)),
+                vat_collected=Decimal(str(vat_collected)),
+                vat_paid=Decimal(str(vat_paid)),
+                paid_invoices_count=paid_invoices_count,
+                unpaid_invoices_count=unpaid_invoices_count,
+                overdue_invoices_count=overdue_invoices_count,
+                company_id=company_id,
+            )
+            db.add(summary)
+
+        await db.commit()
+        await db.refresh(summary)
+        return types.DailySummaryType.from_instance(summary)
+
+    @strawberry.mutation
+    async def generate_monthly_summary(
+        self,
+        year: int,
+        month: int,
+        info: strawberry.Info,
+    ) -> types.MonthlySummaryType:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        if current_user.role.name != "super_admin":
+            company_id = current_user.company_id
+        else:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        start_date = datetime.date(year, month, 1)
+        if month == 12:
+            end_date = datetime.date(year + 1, 1, 1) - datetime.timedelta(days=1)
+        else:
+            end_date = datetime.date(year, month + 1, 1) - datetime.timedelta(days=1)
+
+        invoices_stmt = select(models.Invoice).where(
+            models.Invoice.date >= start_date,
+            models.Invoice.date <= end_date,
+            models.Invoice.company_id == company_id,
+        )
+        invoices_result = await db.execute(invoices_stmt)
+        invoices = invoices_result.scalars().all()
+
+        cash_stmt = select(models.CashJournalEntry).where(
+            models.CashJournalEntry.date >= start_date,
+            models.CashJournalEntry.date <= end_date,
+            models.CashJournalEntry.company_id == company_id,
+        )
+        cash_result = await db.execute(cash_stmt)
+        cash_entries = cash_result.scalars().all()
+
+        invoices_count = len(invoices)
+        incoming_invoices_count = sum(1 for i in invoices if i.type == "incoming")
+        outgoing_invoices_count = sum(1 for i in invoices if i.type == "outgoing")
+
+        invoices_total = sum(float(i.total or 0) for i in invoices)
+        incoming_invoices_total = sum(
+            float(i.total or 0) for i in invoices if i.type == "incoming"
+        )
+        outgoing_invoices_total = sum(
+            float(i.total or 0) for i in invoices if i.type == "outgoing"
+        )
+
+        cash_income = sum(
+            float(c.amount or 0) for c in cash_entries if c.operation_type == "income"
+        )
+        cash_expense = sum(
+            float(c.amount or 0) for c in cash_entries if c.operation_type == "expense"
+        )
+        cash_balance = cash_income - cash_expense
+
+        vat_collected = sum(
+            float(i.vat_amount or 0) for i in invoices if i.type == "outgoing"
+        )
+        vat_paid = sum(
+            float(i.vat_amount or 0) for i in invoices if i.type == "incoming"
+        )
+
+        paid_invoices_count = sum(1 for i in invoices if i.status == "paid")
+        unpaid_invoices_count = sum(
+            1 for i in invoices if i.status in ["draft", "sent"]
+        )
+        overdue_invoices_count = sum(1 for i in invoices if i.status == "overdue")
+
+        existing_stmt = select(models.MonthlySummary).where(
+            models.MonthlySummary.year == year,
+            models.MonthlySummary.month == month,
+            models.MonthlySummary.company_id == company_id,
+        )
+        existing_result = await db.execute(existing_stmt)
+        existing = existing_result.scalars().first()
+
+        if existing:
+            existing.invoices_count = invoices_count
+            existing.incoming_invoices_count = incoming_invoices_count
+            existing.outgoing_invoices_count = outgoing_invoices_count
+            existing.invoices_total = Decimal(str(invoices_total))
+            existing.incoming_invoices_total = Decimal(str(incoming_invoices_total))
+            existing.outgoing_invoices_total = Decimal(str(outgoing_invoices_total))
+            existing.cash_income = Decimal(str(cash_income))
+            existing.cash_expense = Decimal(str(cash_expense))
+            existing.cash_balance = Decimal(str(cash_balance))
+            existing.vat_collected = Decimal(str(vat_collected))
+            existing.vat_paid = Decimal(str(vat_paid))
+            existing.paid_invoices_count = paid_invoices_count
+            existing.unpaid_invoices_count = unpaid_invoices_count
+            existing.overdue_invoices_count = overdue_invoices_count
+            summary = existing
+        else:
+            summary = models.MonthlySummary(
+                year=year,
+                month=month,
+                invoices_count=invoices_count,
+                incoming_invoices_count=incoming_invoices_count,
+                outgoing_invoices_count=outgoing_invoices_count,
+                invoices_total=Decimal(str(invoices_total)),
+                incoming_invoices_total=Decimal(str(incoming_invoices_total)),
+                outgoing_invoices_total=Decimal(str(outgoing_invoices_total)),
+                cash_income=Decimal(str(cash_income)),
+                cash_expense=Decimal(str(cash_expense)),
+                cash_balance=Decimal(str(cash_balance)),
+                vat_collected=Decimal(str(vat_collected)),
+                vat_paid=Decimal(str(vat_paid)),
+                paid_invoices_count=paid_invoices_count,
+                unpaid_invoices_count=unpaid_invoices_count,
+                overdue_invoices_count=overdue_invoices_count,
+                company_id=company_id,
+            )
+            db.add(summary)
+
+        await db.commit()
+        await db.refresh(summary)
+        return types.MonthlySummaryType.from_instance(summary)
+
+    @strawberry.mutation
+    async def generate_yearly_summary(
+        self,
+        year: int,
+        info: strawberry.Info,
+    ) -> types.YearlySummaryType:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        if current_user.role.name != "super_admin":
+            company_id = current_user.company_id
+        else:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        start_date = datetime.date(year, 1, 1)
+        end_date = datetime.date(year, 12, 31)
+
+        invoices_stmt = select(models.Invoice).where(
+            models.Invoice.date >= start_date,
+            models.Invoice.date <= end_date,
+            models.Invoice.company_id == company_id,
+        )
+        invoices_result = await db.execute(invoices_stmt)
+        invoices = invoices_result.scalars().all()
+
+        cash_stmt = select(models.CashJournalEntry).where(
+            models.CashJournalEntry.date >= start_date,
+            models.CashJournalEntry.date <= end_date,
+            models.CashJournalEntry.company_id == company_id,
+        )
+        cash_result = await db.execute(cash_stmt)
+        cash_entries = cash_result.scalars().all()
+
+        invoices_count = len(invoices)
+        incoming_invoices_count = sum(1 for i in invoices if i.type == "incoming")
+        outgoing_invoices_count = sum(1 for i in invoices if i.type == "outgoing")
+
+        invoices_total = sum(float(i.total or 0) for i in invoices)
+        incoming_invoices_total = sum(
+            float(i.total or 0) for i in invoices if i.type == "incoming"
+        )
+        outgoing_invoices_total = sum(
+            float(i.total or 0) for i in invoices if i.type == "outgoing"
+        )
+
+        cash_income = sum(
+            float(c.amount or 0) for c in cash_entries if c.operation_type == "income"
+        )
+        cash_expense = sum(
+            float(c.amount or 0) for c in cash_entries if c.operation_type == "expense"
+        )
+        cash_balance = cash_income - cash_expense
+
+        vat_collected = sum(
+            float(i.vat_amount or 0) for i in invoices if i.type == "outgoing"
+        )
+        vat_paid = sum(
+            float(i.vat_amount or 0) for i in invoices if i.type == "incoming"
+        )
+
+        paid_invoices_count = sum(1 for i in invoices if i.status == "paid")
+        unpaid_invoices_count = sum(
+            1 for i in invoices if i.status in ["draft", "sent"]
+        )
+        overdue_invoices_count = sum(1 for i in invoices if i.status == "overdue")
+
+        existing_stmt = select(models.YearlySummary).where(
+            models.YearlySummary.year == year,
+            models.YearlySummary.company_id == company_id,
+        )
+        existing_result = await db.execute(existing_stmt)
+        existing = existing_result.scalars().first()
+
+        if existing:
+            existing.invoices_count = invoices_count
+            existing.incoming_invoices_count = incoming_invoices_count
+            existing.outgoing_invoices_count = outgoing_invoices_count
+            existing.invoices_total = Decimal(str(invoices_total))
+            existing.incoming_invoices_total = Decimal(str(incoming_invoices_total))
+            existing.outgoing_invoices_total = Decimal(str(outgoing_invoices_total))
+            existing.cash_income = Decimal(str(cash_income))
+            existing.cash_expense = Decimal(str(cash_expense))
+            existing.cash_balance = Decimal(str(cash_balance))
+            existing.vat_collected = Decimal(str(vat_collected))
+            existing.vat_paid = Decimal(str(vat_paid))
+            existing.paid_invoices_count = paid_invoices_count
+            existing.unpaid_invoices_count = unpaid_invoices_count
+            existing.overdue_invoices_count = overdue_invoices_count
+            summary = existing
+        else:
+            summary = models.YearlySummary(
+                year=year,
+                invoices_count=invoices_count,
+                incoming_invoices_count=incoming_invoices_count,
+                outgoing_invoices_count=outgoing_invoices_count,
+                invoices_total=Decimal(str(invoices_total)),
+                incoming_invoices_total=Decimal(str(incoming_invoices_total)),
+                outgoing_invoices_total=Decimal(str(outgoing_invoices_total)),
+                cash_income=Decimal(str(cash_income)),
+                cash_expense=Decimal(str(cash_expense)),
+                cash_balance=Decimal(str(cash_balance)),
+                vat_collected=Decimal(str(vat_collected)),
+                vat_paid=Decimal(str(vat_paid)),
+                paid_invoices_count=paid_invoices_count,
+                unpaid_invoices_count=unpaid_invoices_count,
+                overdue_invoices_count=overdue_invoices_count,
+                company_id=company_id,
+            )
+            db.add(summary)
+
+        await db.commit()
+        await db.refresh(summary)
+        return types.YearlySummaryType.from_instance(summary)
+
+    @strawberry.mutation
+    async def add_bonus(
+            self,
+            employee_id: int,
+            amount: Decimal,
+            description: str,
+            info: strawberry.Info
+    ) -> types.Bonus:
+        """Add a bonus to an employee"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        bonus = models.Bonus(
+            employee_id=employee_id,
+            amount=amount,
+            description=description,
+            created_by=current_user.id
+        )
+        db.add(bonus)
+        await db.commit()
+        await db.refresh(bonus)
+
+        return types.Bonus.from_instance(bonus)
+
+    @strawberry.mutation
+    async def remove_bonus(
+            self,
+            bonus_id: int,
+            info: strawberry.Info
+    ) -> bool:
+        """Remove a bonus"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        bonus = await db.get(models.Bonus, bonus_id)
+        if not bonus:
+            raise Exception(f"Bonus {bonus_id} not found")
+
+        await db.delete(bonus)
+        await db.commit()
+
+        return True
 
     @strawberry.mutation
     async def generate_payslip(
             self,
-            user_id: int,
-            start_date: datetime.date,
-            end_date: datetime.date,
-            info: strawberry.Info,
+            employee_id: int,
+            period_start: datetime.date,
+            period_end: datetime.date,
+            info: strawberry.Info
     ) -> types.Payslip:
+        """Generate a payslip for an employee"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
 
-        await verify_module_enabled("salaries", db)
+        from backend.services import payroll_service
 
-        # Convert date to datetime for PayrollCalculator
-        start_dt = datetime.datetime.combine(start_date, datetime.time.min)
-        end_dt = datetime.datetime.combine(end_date, datetime.time.max)
-
-        calculator = crud.PayrollCalculator(db)
-        res = await calculator.calculate(user_id, start_dt, end_dt)
-
-        # Save to DB
-        db_payslip = crud.Payslip(
-            user_id=user_id,
-            period_start=start_date,
-            period_end=end_date,
-            total_regular_hours=res["total_regular_hours"],
-            total_overtime_hours=res["total_overtime_hours"],
-            regular_amount=res["regular_amount"],
-            overtime_amount=res["overtime_amount"],
-            bonus_amount=res["bonus_amount"],
-            tax_amount=res["tax_amount"],
-            insurance_amount=res["insurance_amount"],
-            sick_days=res["sick_days"],
-            leave_days=res["leave_days"],
-            total_amount=res["total_amount"],
-            generated_at=crud.sofia_now(),
+        payslip = await payroll_service.generate_payslip(
+            db, employee_id, period_start, period_end, current_user.id
         )
-        db.add(db_payslip)
-        await db.commit()
-        await db.refresh(db_payslip)
 
-        return types.Payslip.from_pydantic(db_payslip)
+        return types.Payslip.from_instance(payslip)
 
     @strawberry.mutation
-    async def add_bonus(self, input: BonusCreateInput, info: strawberry.Info) -> types.Bonus:
-        db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
-        bonus = await payroll_repo.create_bonus(
-            db,
-            user_id=input.user_id,
-            amount=input.amount,
-            date=input.date,
-            description=input.description,
-        )
-        async with atomic_with_savepoint(db, "bonus_created"):
-            pass  # Reserved for future notifications
-        await db.commit()
-        return types.Bonus.from_pydantic(bonus)
-
-    @strawberry.mutation
-    async def remove_bonus(self, id: int, info: strawberry.Info) -> bool:
-        db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
-        await payroll_repo.delete_bonus(db, id)
-        await db.commit()
-        return True
-
-    @strawberry.mutation
-    async def create_advance_payment(
+    async def generate_my_payslip(
             self,
-            user_id: int,
-            amount: float,
-            payment_date: datetime.date,
-            description: str | None = None,
-            info: strawberry.Info = None,
-    ) -> types.AdvancePayment:
-        if not info:
-            raise InvalidOperationException.info_required()
+            period_start: datetime.date,
+            period_end: datetime.date,
+            info: strawberry.Info
+    ) -> types.Payslip:
+        """Generate payslip for current user"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
 
-        advance = await payroll_repo.create_advance_payment(
-            db, user_id=user_id, amount=amount, request_date=payment_date,
+        from backend.services import payroll_service
+
+        payslip = await payroll_service.generate_payslip(
+            db, current_user.id, period_start, period_end, current_user.id
         )
-        return types.AdvancePayment.from_pydantic(advance)
 
-    @strawberry.mutation
-    async def create_service_loan(
-            self,
-            user_id: int,
-            total_amount: float,
-            installments_count: int,
-            start_date: datetime.date,
-            description: str,
-            info: strawberry.Info = None,
-    ) -> types.ServiceLoan:
-        if not info:
-            raise InvalidOperationException.info_required()
-        db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
-        loan = await payroll_repo.create_service_loan(
-            db, user_id=user_id, amount=total_amount, months=installments_count,
-        )
-        return types.ServiceLoan.from_pydantic(loan)
+        return types.Payslip.from_instance(payslip)
 
     @strawberry.mutation
     async def mark_payslip_as_paid(
-        self,
-        payslip_id: int,
-        payment_date: datetime.datetime | None = None,
-        payment_method: str = "bank",
-        info: strawberry.Info = None,
+            self,
+            payslip_id: int,
+            info: strawberry.Info
     ) -> types.Payslip:
-        if not info:
-            raise InvalidOperationException.info_required()
+        """Mark a payslip as paid"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
 
-        from backend.database.models import Payslip, sofia_now
-
-        payslip = await db.get(Payslip, payslip_id)
+        payslip = await db.get(models.Payslip, payslip_id)
         if not payslip:
-            raise NotFoundException.resource("Payslip")
+            raise Exception(f"Payslip {payslip_id} not found")
 
-        payslip.payment_status = "paid"
-        payslip.actual_payment_date = payment_date or sofia_now()
-        payslip.payment_method = payment_method
+        payslip.status = "paid"
+        payslip.paid_at = datetime.datetime.now()
 
         await db.commit()
         await db.refresh(payslip)
 
-        # Notify user
-        await notification_service.create_notification(
-            db,
-            user_id=payslip.user_id,
-            message=f"Заплата за период {payslip.period_start.strftime('%d.%m.%Y')} - {payslip.period_end.strftime('%d.%m.%Y')} е маркирана като платена.",
-        )
-        await db.commit()
-
-        return types.Payslip.from_pydantic(payslip)
+        return types.Payslip.from_instance(payslip)
 
     @strawberry.mutation
     async def bulk_mark_payslips_as_paid(
-        self,
-        payslip_ids: list[int],
-        payment_date: datetime.datetime | None = None,
-        payment_method: str = "bank",
-        info: strawberry.Info = None,
+            self,
+            payslip_ids: list[int],
+            info: strawberry.Info
     ) -> list[types.Payslip]:
-        """Bulk mark multiple payslips as paid.
-        Used for batch payment processing.
-        """
-        if not info:
-            raise InvalidOperationException.info_required()
+        """Mark multiple payslips as paid"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
 
-        from backend.database.models import Payslip, sofia_now
-
-        updated_payslips = []
-
+        payslips = []
         for payslip_id in payslip_ids:
-            payslip = await db.get(Payslip, payslip_id)
-            if payslip and payslip.payment_status != "paid":
-                payslip.payment_status = "paid"
-                payslip.actual_payment_date = payment_date or sofia_now()
-                payslip.payment_method = payment_method
-                await db.refresh(payslip)
-                updated_payslips.append(payslip)
+            payslip = await db.get(models.Payslip, payslip_id)
+            if payslip:
+                payslip.status = "paid"
+                payslip.paid_at = datetime.datetime.now()
+                payslips.append(payslip)
 
         await db.commit()
-        return [types.Payslip.from_pydantic(p) for p in updated_payslips]
+        for p in payslips:
+            await db.refresh(p)
+
+        return [types.Payslip.from_instance(p) for p in payslips]
 
     @strawberry.mutation
     async def generate_sepa_xml(
-        self,
-        company_id: int,
-        period_start: datetime.date,
-        period_end: datetime.date,
-        execution_date: datetime.date | None = None,
-        info: strawberry.Info = None,
+            self,
+            payslip_ids: list[int],
+            info: strawberry.Info
     ) -> str:
-        """Generate SEPA XML file for payroll payments.
-        """
-        if not info:
-            raise InvalidOperationException.info_required()
+        """Generate SEPA XML file for payslips"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
 
-        from sqlalchemy import and_
+        from backend.services import payroll_service
 
-        from backend.database.models import EmploymentContract, Payslip, User
-        from backend.services.sepa_generator import SEPAGenerator
-        # Get company settings
-        company_name = await settings_repo.get_setting(db, f"company_{company_id}_name") or "Company"
-        company_iban = await settings_repo.get_setting(db, f"company_{company_id}_iban") or ""
-        company_bic = await settings_repo.get_setting(db, f"company_{company_id}_bic") or ""
+        xml_content = await payroll_service.generate_sepa_xml(db, payslip_ids)
 
-        if not company_iban:
-            raise ValidationException(detail="Company IBAN not configured")
-
-        # Get paid payslips for the period
-        result = await db.execute(
-            select(Payslip).where(
-                and_(
-                    Payslip.period_start >= period_start,
-                    Payslip.period_end <= period_end,
-                    Payslip.payment_status == "paid",
-                ),
-            ),
-        )
-        payslips = result.scalars().all()
-
-        # Build payments list
-        payments = []
-        for payslip in payslips:
-            user = await db.get(User, payslip.user_id)
-            if user and user.iban:
-                # Try to get bank details from employment contract
-                emp_result = await db.execute(
-                    select(EmploymentContract).where(
-                        EmploymentContract.user_id == user.id,
-                        EmploymentContract.is_active,
-                    ),
-                )
-                emp_result.scalars().first()
-
-                payments.append({
-                    "name": f"{user.firstName or ''} {user.lastName or ''}".strip(),
-                    "iban": user.iban,
-                    "amount": float(payslip.total_amount),
-                    "reference": f"SAL-{payslip.id}",
-                    "description": f"Заплата {period_start.strftime('%m/%Y')}",
-                })
-
-        # Generate SEPA XML
-        generator = SEPAGenerator(
-            sender_name=company_name,
-            sender_iban=company_iban,
-            sender_bic=company_bic,
-        )
-
-        validation = generator.validate_payments(payments)
-        if not validation["valid"]:
-            raise ValidationException(detail=f"Invalid payments: {', '.join(validation['errors'])}")
-
-        return generator.generate_payment_xml(
-            payments=payments,
-            batch_name=f"Payroll {period_start.strftime('%m/%Y')}",
-            execution_date=execution_date.strftime("%Y-%m-%d") if execution_date else None,
-        )
+        return xml_content

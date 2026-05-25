@@ -87,33 +87,29 @@ class EmploymentContract:
     async def company(self, info: strawberry.Info) -> Company | None:
         if not self.company_id:
             return None
-        db = info.context["db"]
-        res = await db.get(models.Company, self.company_id)
-        return Company.from_pydantic(res) if res else None
+        result = await info.context["dataloaders"]["company_by_id"].load(self.company_id)
+        return Company.from_pydantic(result) if result else None
 
     @strawberry.field
     async def department(self, info: strawberry.Info) -> Department | None:
         if not self.department_id:
             return None
-        db = info.context["db"]
-        res = await db.get(models.Department, self.department_id)
-        return Department.from_pydantic(res) if res else None
+        result = await info.context["dataloaders"]["department_by_id"].load(self.department_id)
+        return Department.from_pydantic(result) if result else None
 
     @strawberry.field
     async def position(self, info: strawberry.Info) -> Position | None:
         if not self.position_id:
             return None
-        db = info.context["db"]
-        res = await db.get(models.Position, self.position_id)
-        return Position.from_pydantic(res) if res else None
+        result = await info.context["dataloaders"]["position_by_id"].load(self.position_id)
+        return Position.from_pydantic(result) if result else None
 
     @strawberry.field
     async def position_title(self, info: strawberry.Info) -> str | None:
         if not self.position_id:
             return None
-        db = info.context["db"]
-        res = await db.get(models.Position, self.position_id)
-        return res.title if res else None
+        result = await info.context["dataloaders"]["position_by_id"].load(self.position_id)
+        return result.title if result else None
 
     # @strawberry.field
     # async def annexes(self, info: strawberry.Info) -> list["ContractAnnex"]:

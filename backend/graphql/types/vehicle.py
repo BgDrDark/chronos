@@ -340,127 +340,73 @@ class Vehicle:
     async def type(self, info: strawberry.Info) -> VehicleType | None:
         if not self.vehicle_type_id:
             return None
-        db = info.context["db"]
-        from backend.database.models import VehicleType as DbVehicleType
-        res = await db.get(DbVehicleType, self.vehicle_type_id)
-        return VehicleType.from_pydantic(res) if res else None
+        result = await info.context["dataloaders"]["vehicle_type_by_id"].load(self.vehicle_type_id)
+        return VehicleType.from_pydantic(result) if result else None
 
     @strawberry.field
     async def documents(self, info: strawberry.Info) -> list[VehicleDocument] | None:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleDocument as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleDocument.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_documents_by_vehicle_id"].load(self.id)
+        return [VehicleDocument.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def fuel_cards(self, info: strawberry.Info) -> list[VehicleFuelCard] | None:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleFuelCard as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleFuelCard.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_fuel_cards_by_vehicle_id"].load(self.id)
+        return [VehicleFuelCard.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def vignettes(self, info: strawberry.Info) -> list[VehicleVignette] | None:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleVignette as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleVignette.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_vignettes_by_vehicle_id"].load(self.id)
+        return [VehicleVignette.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def tolls(self, info: strawberry.Info) -> list[VehicleToll]:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleToll as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleToll.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_tolls_by_vehicle_id"].load(self.id)
+        return [VehicleToll.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def mileages(self, info: strawberry.Info) -> list[VehicleMileage]:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleMileage as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleMileage.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_mileages_by_vehicle_id"].load(self.id)
+        return [VehicleMileage.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def fuel_records(self, info: strawberry.Info) -> list[VehicleFuel]:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleFuel as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleFuel.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_fuel_records_by_vehicle_id"].load(self.id)
+        return [VehicleFuel.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def repairs(self, info: strawberry.Info) -> list[VehicleRepair]:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleRepair as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleRepair.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_repairs_by_vehicle_id"].load(self.id)
+        return [VehicleRepair.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def schedules(self, info: strawberry.Info) -> list[VehicleSchedule]:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleSchedule as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleSchedule.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_schedules_by_vehicle_id"].load(self.id)
+        return [VehicleSchedule.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def inspections(self, info: strawberry.Info) -> list[VehicleInspection]:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleInspection as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleInspection.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_inspections_by_vehicle_id"].load(self.id)
+        return [VehicleInspection.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def pre_trip_inspections(self, info: strawberry.Info) -> list[VehiclePreTripInspection]:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehiclePreTripInspection as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehiclePreTripInspection.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_pre_trip_inspections_by_vehicle_id"].load(self.id)
+        return [VehiclePreTripInspection.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def drivers(self, info: strawberry.Info) -> list[VehicleDriver]:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleDriver as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleDriver.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_drivers_by_vehicle_id"].load(self.id)
+        return [VehicleDriver.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def trips(self, info: strawberry.Info) -> list[VehicleTrip]:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleTrip as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleTrip.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_trips_by_vehicle_id"].load(self.id)
+        return [VehicleTrip.from_pydantic(d) for d in results]
 
     @strawberry.field
     async def expenses(self, info: strawberry.Info) -> list[VehicleExpense]:
-        db = info.context["db"]
-        from sqlalchemy import select
-        from backend.database.models import VehicleExpense as DbModel
-        stmt = select(DbModel).where(DbModel.vehicle_id == self.id)
-        res = await db.execute(stmt)
-        return [VehicleExpense.from_pydantic(d) for d in res.scalars().all()]
+        results = await info.context["dataloaders"]["vehicle_expenses_by_vehicle_id"].load(self.id)
+        return [VehicleExpense.from_pydantic(d) for d in results]
 
 
 __all__ = [

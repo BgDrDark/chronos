@@ -143,3 +143,9 @@ class OfficeLocation:
     radius: int
     entry_enabled: bool
     exit_enabled: bool
+
+
+@sp.type(schemas.GlobalSetting)
+class GlobalSetting:
+    key: strawberry.auto
+    value: strawberry.auto

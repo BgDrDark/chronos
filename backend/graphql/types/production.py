@@ -40,9 +40,8 @@ class RecipeIngredient:
     async def workstation(self, info: strawberry.Info) -> Optional[Workstation]:
         if not self.workstation_id:
             return None
-        db = info.context["db"]
-        res = await db.get(models.Workstation, self.workstation_id)
-        return Workstation.from_pydantic(res)
+        result = await info.context["dataloaders"]["workstation_by_id"].load(self.workstation_id)
+        return Workstation.from_pydantic(result) if result else None
 
 
 @sp.type(schemas.RecipeStep)
@@ -57,9 +56,8 @@ class RecipeStep:
 
     @strawberry.field
     async def workstation(self, info: strawberry.Info) -> Workstation:
-        db = info.context["db"]
-        res = await db.get(models.Workstation, self.workstation_id)
-        return Workstation.from_pydantic(res)
+        result = await info.context["dataloaders"]["workstation_by_id"].load(self.workstation_id)
+        return Workstation.from_pydantic(result)
 
 
 @sp.type(schemas.RecipeSection)
@@ -75,20 +73,16 @@ class RecipeSection:
     @strawberry.field
     async def ingredients(self, info: strawberry.Info) -> list[RecipeIngredient]:
         try:
-            db = info.context["db"]
-            stmt = select(models.RecipeIngredient).where(models.RecipeIngredient.section_id == self.id)
-            res = await db.execute(stmt)
-            return [RecipeIngredient.from_pydantic(i) for i in res.scalars().all()]
+            results = await info.context["dataloaders"]["recipe_ingredients_by_section_id"].load(self.id)
+            return [RecipeIngredient.from_pydantic(i) for i in results]
         except Exception as e:
             print(f"Error loading ingredients for section {self.id}: {e}")
             return []
 
     @strawberry.field
     async def steps(self, info: strawberry.Info) -> list[RecipeStep]:
-        db = info.context["db"]
-        stmt = select(models.RecipeStep).where(models.RecipeStep.section_id == self.id).order_by(models.RecipeStep.step_order)
-        res = await db.execute(stmt)
-        return [RecipeStep.from_pydantic(s) for s in res.scalars().all()]
+        results = await info.context["dataloaders"]["recipe_steps_by_section_id"].load(self.id)
+        return [RecipeStep.from_pydantic(s) for s in results]
 
 
 @sp.type(schemas.Recipe)
@@ -143,26 +137,18 @@ class Recipe:
 
     @strawberry.field
     async def sections(self, info: strawberry.Info) -> list[RecipeSection]:
-        db = info.context["db"]
-        stmt = select(models.RecipeSection).where(
-            models.RecipeSection.recipe_id == self.id,
-        ).order_by(models.RecipeSection.section_order)
-        res = await db.execute(stmt)
-        return [RecipeSection.from_pydantic(s) for s in res.scalars().all()]
+        results = await info.context["dataloaders"]["recipe_sections_by_recipe_id"].load(self.id)
+        return [RecipeSection.from_pydantic(s) for s in results]
 
     @strawberry.field
     async def ingredients(self, info: strawberry.Info) -> list[RecipeIngredient]:
-        db = info.context["db"]
-        stmt = select(models.RecipeIngredient).where(models.RecipeIngredient.recipe_id == self.id)
-        res = await db.execute(stmt)
-        return [RecipeIngredient.from_pydantic(i) for i in res.scalars().all()]
+        results = await info.context["dataloaders"]["recipe_ingredients_by_recipe_id"].load(self.id)
+        return [RecipeIngredient.from_pydantic(i) for i in results]
 
     @strawberry.field
     async def steps(self, info: strawberry.Info) -> list[RecipeStep]:
-        db = info.context["db"]
-        stmt = select(models.RecipeStep).where(models.RecipeStep.recipe_id == self.id).order_by(models.RecipeStep.step_order)
-        res = await db.execute(stmt)
-        return [RecipeStep.from_pydantic(s) for s in res.scalars().all()]
+        results = await info.context["dataloaders"]["recipe_steps_by_recipe_id"].load(self.id)
+        return [RecipeStep.from_pydantic(s) for s in results]
 
 
 @sp.type(schemas.PriceHistory)
@@ -227,9 +213,8 @@ class ProductionTask:
 
     @strawberry.field
     async def workstation(self, info: strawberry.Info) -> Workstation:
-        db = info.context["db"]
-        res = await db.get(models.Workstation, self.workstation_id)
-        return Workstation.from_pydantic(res)
+        result = await info.context["dataloaders"]["workstation_by_id"].load(self.workstation_id)
+        return Workstation.from_pydantic(result)
 
     @strawberry.field
     async def assigned_user(self, info: strawberry.Info) -> User | None:
@@ -306,16 +291,13 @@ class ProductionOrder:
 
     @strawberry.field
     async def recipe(self, info: strawberry.Info) -> Recipe:
-        db = info.context["db"]
-        res = await db.get(models.Recipe, self.recipe_id)
-        return Recipe.from_pydantic(res)
+        result = await info.context["dataloaders"]["recipe_by_id"].load(self.recipe_id)
+        return Recipe.from_pydantic(result)
 
     @strawberry.field
     async def tasks(self, info: strawberry.Info) -> list[ProductionTask]:
-        db = info.context["db"]
-        stmt = select(models.ProductionTask).where(models.ProductionTask.order_id == self.id)
-        res = await db.execute(stmt)
-        return [ProductionTask.from_pydantic(t) for t in res.scalars().all()]
+        results = await info.context["dataloaders"]["production_tasks_by_order_id"].load(self.id)
+        return [ProductionTask.from_pydantic(t) for t in results]
 
 
 @strawberry.type
@@ -361,24 +343,13 @@ class ProductionRecord:
 
     @strawberry.field
     async def ingredients(self, info: strawberry.Info) -> list[ProductionRecordIngredient]:
-        from sqlalchemy.orm import selectinload
-        db = info.context["db"]
-        stmt = select(models.ProductionRecordIngredient).options(
-            selectinload(models.ProductionRecordIngredient.ingredient),
-        ).where(models.ProductionRecordIngredient.record_id == self.id)
-        res = await db.execute(stmt)
-        return [ProductionRecordIngredient.from_pydantic(i) for i in res.scalars().all()]
+        results = await info.context["dataloaders"]["production_record_ingredients_by_record_id"].load(self.id)
+        return [ProductionRecordIngredient.from_pydantic(i) for i in results]
 
     @strawberry.field
     async def workers(self, info: strawberry.Info) -> list[ProductionRecordWorker]:
-        from sqlalchemy.orm import selectinload
-        db = info.context["db"]
-        stmt = select(models.ProductionRecordWorker).options(
-            selectinload(models.ProductionRecordWorker.user),
-            selectinload(models.ProductionRecordWorker.workstation),
-        ).where(models.ProductionRecordWorker.record_id == self.id)
-        res = await db.execute(stmt)
-        return [ProductionRecordWorker.from_pydantic(t) for t in res.scalars().all()]
+        results = await info.context["dataloaders"]["production_record_workers_by_record_id"].load(self.id)
+        return [ProductionRecordWorker.from_pydantic(t) for t in results]
 
 
 __all__ = [
