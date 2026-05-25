@@ -1,26 +1,23 @@
-"""
-Email service for Chronos ERP.
+"""Email service for Chronos ERP.
 
 Provides SMTP configuration from DB GlobalSettings with fallback to config.py,
 and email sending functionality used across the application.
 """
 
 import logging
-from typing import Optional, List
 
-from fastapi_mail import FastMail, ConnectionConfig, MessageSchema, MessageType
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.models import GlobalSetting
 from backend.config import settings
+from backend.database.models import GlobalSetting
 
 logger = logging.getLogger(__name__)
 
 
 async def get_mail_config(db: AsyncSession) -> ConnectionConfig:
-    """
-    Get SMTP config from DB GlobalSettings.
+    """Get SMTP config from DB GlobalSettings.
     Falls back to config.py settings if DB values are missing.
     """
     stmt = select(GlobalSetting)
@@ -51,12 +48,11 @@ async def get_mail_config(db: AsyncSession) -> ConnectionConfig:
 async def send_email(
     db: AsyncSession,
     subject: str,
-    recipients: List[str],
+    recipients: list[str],
     body: str,
-    html: Optional[str] = None,
+    html: str | None = None,
 ) -> bool:
-    """
-    Send email using DB SMTP config.
+    """Send email using DB SMTP config.
 
     Args:
         db: Database session
@@ -67,6 +63,7 @@ async def send_email(
 
     Returns:
         True if email was sent successfully, False otherwise.
+
     """
     try:
         config = await get_mail_config(db)

@@ -1,48 +1,66 @@
 import asyncio
-from typing import Annotated, Optional
-from fastapi import FastAPI, Depends, Request
-from fastapi.middleware.cors import CORSMiddleware
-from strawberry.fastapi import GraphQLRouter
-from sqlalchemy.ext.asyncio import AsyncSession
-from starlette_csrf.middleware import CSRFMiddleware
-from backend.routers import auth, export, system, kiosk, webauthn, google, documents, notifications, warehouse, gateway, terminal, trz_export, deploy
-from backend.graphql.schema import schema
-from backend.database.database import get_db
-from backend.database.session_proxy import LockedSession
-from backend.database.transaction_manager import TransactionError, DeadlockError, ConcurrentModificationError
-from backend.auth import jwt_utils
-from backend import schemas
-from backend.config import settings
-from backend.graphql.dataloaders import create_dataloaders 
-from starlette.middleware.base import BaseHTTPMiddleware
-from contextlib import asynccontextmanager
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from backend.jobs.rotation_job import check_and_rotate_keys
-from backend.jobs.contract_job import check_expired_contracts
-from backend.jobs.inventory_check_job import check_inventory_levels
-from backend.jobs.fleet_notifications_job import check_fleet_notifications
-from backend.jobs.maintenance_job import check_scheduled_maintenance
-from backend.jobs.update_scheduler_job import check_scheduled_update
-from fastapi.responses import JSONResponse
-from fastapi import status
 import logging
 import sys
+from contextlib import asynccontextmanager
+from typing import Annotated
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from fastapi import Depends, FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette_csrf.middleware import CSRFMiddleware
+from strawberry.fastapi import GraphQLRouter
+
+from backend import schemas
+from backend.auth import jwt_utils
+from backend.config import settings
+from backend.database.database import get_db
+from backend.database.transaction_manager import (
+    ConcurrentModificationError,
+    DeadlockError,
+    TransactionError,
+)
+from backend.graphql.dataloaders import create_dataloaders
+from backend.graphql.schema import schema
+from backend.jobs.contract_job import check_expired_contracts
+from backend.jobs.fleet_notifications_job import check_fleet_notifications
+from backend.jobs.inventory_check_job import check_inventory_levels
+from backend.jobs.maintenance_job import check_scheduled_maintenance
+from backend.jobs.rotation_job import check_and_rotate_keys
+from backend.jobs.update_scheduler_job import check_scheduled_update
+from backend.routers import (
+    auth,
+    deploy,
+    documents,
+    export,
+    gateway,
+    google,
+    kiosk,
+    notifications,
+    system,
+    terminal,
+    trz_export,
+    warehouse,
+    webauthn,
+)
 
 # Configure logging for the application
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(name)s %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
 # Set specific loggers to INFO
 logging.getLogger("uvicorn").setLevel(logging.INFO)
 logging.getLogger("uvicorn.access").setLevel(logging.INFO)
 
-from backend.auth.limiter import limiter
 from slowapi.errors import RateLimitExceeded
+
+from backend.auth.limiter import limiter
 from backend.exceptions import CHRONOSException
-from backend.utils.error_handling import get_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -51,22 +69,22 @@ async def lifespan(app: FastAPI):
     # Startup: Initialize Scheduler
     scheduler = AsyncIOScheduler()
     # Run once a day to check for rotation
-    scheduler.add_job(check_and_rotate_keys, 'interval', hours=24)
+    scheduler.add_job(check_and_rotate_keys, "interval", hours=24)
     # Run once a day to check for expired contracts
-    scheduler.add_job(check_expired_contracts, 'interval', hours=24)
+    scheduler.add_job(check_expired_contracts, "interval", hours=24)
     # Run daily at 2:00 AM for inventory check
-    scheduler.add_job(check_inventory_levels, 'cron', hour=2, minute=0)
+    scheduler.add_job(check_inventory_levels, "cron", hour=2, minute=0)
     # Run daily at 6:00 AM for fleet notifications
-    scheduler.add_job(check_fleet_notifications, 'cron', hour=6, minute=0)
+    scheduler.add_job(check_fleet_notifications, "cron", hour=6, minute=0)
     # Silence APScheduler executor INFO logs (they spam "Running job..." every interval)
     logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
 
     # Run every 1 minute to check for scheduled maintenance activation
-    scheduler.add_job(check_scheduled_maintenance, 'interval', minutes=1)
+    scheduler.add_job(check_scheduled_maintenance, "interval", minutes=1)
     # Run every 5 minutes to check for scheduled auto-update activation
-    scheduler.add_job(check_scheduled_update, 'interval', minutes=5)
+    scheduler.add_job(check_scheduled_update, "interval", minutes=5)
     scheduler.start()
-    
+
     # Run check with delay on startup to ensure DB is initialized
     async def delayed_startup_jobs():
         await asyncio.sleep(10) # 10 seconds buffer for DB initialization
@@ -79,7 +97,7 @@ async def lifespan(app: FastAPI):
             logger.error(f"Error during initial background jobs check: {e}")
 
     asyncio.create_task(delayed_startup_jobs())
-    
+
     # Start behavioral analysis scheduler
     try:
         from backend.modules.behavioral_analysis.scheduler import start_scheduler
@@ -87,26 +105,26 @@ async def lifespan(app: FastAPI):
         logger.info("Behavioral analysis scheduler initialized")
     except Exception as e:
         logger.error(f"Failed to start behavioral analysis scheduler: {e}")
-    
+
     yield
-    
+
     # Shutdown behavioral analysis scheduler
     try:
         from backend.modules.behavioral_analysis.scheduler import stop_scheduler
         stop_scheduler()
     except Exception as e:
         logger.error(f"Failed to stop behavioral analysis scheduler: {e}")
-    
+
     # Shutdown
     scheduler.shutdown()
 
 # Force reload context - 2026-01-06 23:25
 app = FastAPI(
-    title="Chronos API", 
-    version="3.4.7.0", 
+    title="Chronos API",
+    version=settings.VERSION,
     lifespan=lifespan,
     docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None
+    redoc_url="/redoc" if settings.DEBUG else None,
 )
 app.state.limiter = limiter
 
@@ -120,8 +138,8 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
         content={
             "error": "Rate limit exceeded",
             "message": "Превишихте броя на заявките. Моля, изчакайте малко и опитайте отново.",
-            "retry_after": 1
-        }
+            "retry_after": 1,
+        },
     )
 
 # Transaction Error Handlers
@@ -134,8 +152,8 @@ async def transaction_exception_handler(request: Request, exc: TransactionError)
         content={
             "error": "Database transaction failed",
             "message": "Възникна грешка при операция с базата данни. Моля, опитайте отново.",
-            "detail": str(exc) if settings.DEBUG else None
-        }
+            "detail": str(exc) if settings.DEBUG else None,
+        },
     )
 
 @app.exception_handler(DeadlockError)
@@ -147,8 +165,8 @@ async def deadlock_exception_handler(request: Request, exc: DeadlockError):
         content={
             "error": "Database conflict",
             "message": "Конфликт с друга операция. Моля, изчакайте няколко секунди и опитайте отново.",
-            "retry_after": 2  # Suggest retry after 2 seconds
-        }
+            "retry_after": 2,  # Suggest retry after 2 seconds
+        },
     )
 
 @app.exception_handler(ConcurrentModificationError)
@@ -160,8 +178,8 @@ async def concurrent_modification_exception_handler(request: Request, exc: Concu
         content={
             "error": "Concurrent modification",
             "message": "Данните са променени от друг потребител. Моля, опреснете страницата и опитайте отново.",
-            "retry_after": 1
-        }
+            "retry_after": 1,
+        },
     )
 
 # CHRONOS Custom Exception Handlers
@@ -179,11 +197,11 @@ async def chronos_exception_handler(request: Request, exc: CHRONOSException):
     """
     logger.error(
         f"CHRONOS error [{exc.error_code}] in {request.method} {request.url}: {exc.detail}",
-        extra={"original_error": str(exc.original_error) if exc.original_error else None}
+        extra={"original_error": str(exc.original_error) if exc.original_error else None},
     )
     return JSONResponse(
         status_code=exc.status_code,
-        content=exc.to_dict()
+        content=exc.to_dict(),
     )
 
 @app.get("/health")
@@ -192,7 +210,8 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "Chronos API",
-        "version": "3.4.7.0"
+        "version": settings.VERSION,
+        "uptime": "TODO",  # Could be implemented with a startup timestamp
     }
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -227,6 +246,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 # CSRF Protection - exempt auth endpoints, protect everything else
 import re
+
 app.add_middleware(
     CSRFMiddleware,
     secret=settings.CSRF_SECRET_KEY,
@@ -310,8 +330,9 @@ app.include_router(terminal.router)
 app.include_router(webauthn.router)
 app.include_router(google.router)
 app.include_router(deploy.router)
-from fastapi.staticfiles import StaticFiles
 import os
+
+from fastapi.staticfiles import StaticFiles
 
 app.include_router(documents.router)
 
@@ -320,12 +341,11 @@ if not os.path.exists("uploads"):
     os.makedirs("uploads")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-from backend.graphql.dataloaders import create_dataloaders 
 
 async def get_context(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Optional[schemas.User], Depends(jwt_utils.get_optional_current_user)],
+    current_user: Annotated[schemas.User | None, Depends(jwt_utils.get_optional_current_user)],
 ):
     dataloaders = create_dataloaders(db)
     return {
@@ -336,8 +356,8 @@ async def get_context(
     }
 
 graphql_app = GraphQLRouter(
-    schema, 
-    context_getter=get_context
+    schema,
+    context_getter=get_context,
 )
 app.include_router(graphql_app, prefix="/graphql")
 

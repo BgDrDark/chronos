@@ -1,20 +1,18 @@
-"""
-Notification Dispatcher for Chronos ERP.
+"""Notification Dispatcher for Chronos ERP.
 
 Dispatches notifications based on NotificationSettings for each event type.
 Handles email, push, and in-app notifications with interval throttling.
 """
 
 import logging
-from typing import Optional, Dict, List
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from backend.config import settings
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.models import NotificationSetting, User, Role
+from backend.config import settings
+from backend.database.models import NotificationSetting, Role, User
 from backend.services.email_service import send_email
 from backend.services.notification_service import notification_service
 
@@ -32,10 +30,9 @@ class NotificationDispatcher:
         event_type: str,
         company_id: int,
         event_details: str,
-        user_id: Optional[int] = None,
-    ) -> Dict[str, int]:
-        """
-        Dispatch notification based on settings for the given event type.
+        user_id: int | None = None,
+    ) -> dict[str, int]:
+        """Dispatch notification based on settings for the given event type.
 
         Args:
             event_type: The type of event (e.g., 'leave_approved', 'shift_swap')
@@ -45,6 +42,7 @@ class NotificationDispatcher:
 
         Returns:
             Dict with counts: {'emails_sent': int, 'pushes_sent': int, 'in_app_created': int}
+
         """
         result = {"emails_sent": 0, "pushes_sent": 0, "in_app_created": 0}
 
@@ -96,7 +94,7 @@ class NotificationDispatcher:
                 service = notification_service(self.db)
                 await service.create_notification(
                     user_id=uid,
-                    message=f"{event_type}: {event_details}"
+                    message=f"{event_type}: {event_details}",
                 )
                 result["in_app_created"] += 1
             except Exception as e:
@@ -107,18 +105,18 @@ class NotificationDispatcher:
 
         logger.info(
             f"Dispatched {event_type}: {result['emails_sent']} emails, "
-            f"{result['pushes_sent']} pushes, {result['in_app_created']} in-app"
+            f"{result['pushes_sent']} pushes, {result['in_app_created']} in-app",
         )
         return result
 
     async def _get_setting(
-        self, event_type: str, company_id: int
-    ) -> Optional[NotificationSetting]:
+        self, event_type: str, company_id: int,
+    ) -> NotificationSetting | None:
         """Get notification setting for event type and company."""
         stmt = select(NotificationSetting).where(
             NotificationSetting.event_type == event_type,
             NotificationSetting.company_id == company_id,
-            NotificationSetting.enabled == True,
+            NotificationSetting.enabled,
         )
         result = await self.db.execute(stmt)
         return result.scalars().first()
@@ -136,11 +134,11 @@ class NotificationDispatcher:
         self,
         setting: NotificationSetting,
         company_id: int,
-        user_id: Optional[int] = None,
-    ) -> Dict[str, List]:
+        user_id: int | None = None,
+    ) -> dict[str, list]:
         """Resolve recipients from setting configuration."""
-        emails: List[str] = []
-        user_ids: List[int] = []
+        emails: list[str] = []
+        user_ids: list[int] = []
 
         if setting.recipients:
             for recipient in setting.recipients:
@@ -167,7 +165,7 @@ class NotificationDispatcher:
         if user_id and user_id not in user_ids:
             user_ids.append(user_id)
             user_res = await self.db.execute(
-                select(User).where(User.id == user_id)
+                select(User).where(User.id == user_id),
             )
             user = user_res.scalars().first()
             if user and user.email:
@@ -178,23 +176,23 @@ class NotificationDispatcher:
             "user_ids": list(set(user_ids)),
         }
 
-    async def _get_users_by_role(self, role_name: str, company_id: int) -> List[User]:
+    async def _get_users_by_role(self, role_name: str, company_id: int) -> list[User]:
         """Get active users with a specific role in a company."""
         stmt = select(User).where(
             User.company_id == company_id,
-            User.is_active == True,
+            User.is_active,
             User.role_id.in_(
-                select(Role.id).where(Role.name == role_name)
+                select(Role.id).where(Role.name == role_name),
             ),
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def _get_all_active_users(self, company_id: int) -> List[User]:
+    async def _get_all_active_users(self, company_id: int) -> list[User]:
         """Get all active users in a company."""
         stmt = select(User).where(
             User.company_id == company_id,
-            User.is_active == True,
+            User.is_active,
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())

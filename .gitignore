@@ -12,6 +12,10 @@ e2e/
 e2e-tests/
 e2e-tests-*
 e2e-*
+agents.md
+claude.md
+AGENTS.md
+CLAUDE.md
 
 
 # ==========================================
@@ -162,6 +166,8 @@ NOTIFICATIONS_REFACTOR_PLAN.md
 scripts/update.key
 to_save/scripts/update.key
 docs/
+setup-update-manager.sh
+update-manager.py
 
 # ==========================================
 # ONE-OFF DEBUG / UTILITY SCRIPTS
@@ -204,3 +210,9 @@ backend/scripts/seed_*
 # DEPLOYMENT PACKAGE (offline server bundle)
 # ==========================================
 to_save/
+
+# ==========================================
+# AI TOOLS & CODE INTELLIGENCE
+# ==========================================
+.gitnexus/
+.agents/

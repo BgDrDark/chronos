@@ -1,9 +1,11 @@
-import httpx
 import datetime
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession
+
+import httpx
 from sqlalchemy import select
-from backend.database.models import PublicHoliday, sofia_now
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.database.models import PublicHoliday
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +13,7 @@ API_URL = "https://date.nager.at/api/v3/PublicHolidays/{year}/BG"
 
 async def fetch_and_store_holidays(db: AsyncSession, year: int) -> int | bool:
     url = API_URL.format(year=year)
-    
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
@@ -26,21 +28,21 @@ async def fetch_and_store_holidays(db: AsyncSession, year: int) -> int | bool:
         date_str = h.get("date")
         local_name = h.get("localName")
         name = h.get("name")
-        
+
         holiday_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
-        
+
         # Check if exists
         result = await db.execute(select(PublicHoliday).where(PublicHoliday.date == holiday_date))
         existing = result.scalars().first()
-        
+
         if not existing:
             new_holiday = PublicHoliday(
                 date=holiday_date,
                 name=name,
-                local_name=local_name
+                local_name=local_name,
             )
             db.add(new_holiday)
             count_new += 1
-            
+
     await db.commit()
     return count_new

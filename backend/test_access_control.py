@@ -1,10 +1,9 @@
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
+
 from backend.main import app
-from backend.database.models import User, Role, Company, Gateway, AccessZone, AccessDoor
-from backend.database.database import get_db
-from sqlalchemy import select, delete, insert
+
 
 @pytest_asyncio.fixture
 async def test_client():
@@ -21,9 +20,9 @@ async def test_gateway_registration_flow(test_client):
         "ip_address": "127.0.0.1",
         "local_hostname": "test-box",
         "terminal_port": 1424,
-        "web_port": 8889
+        "web_port": 8889,
     }
-    
+
     # 1. Първоначална регистрация
     response = await test_client.post("/gateways/register", json=payload)
     assert response.status_code == 200

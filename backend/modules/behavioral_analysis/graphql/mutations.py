@@ -1,42 +1,38 @@
-import strawberry
-from typing import Optional, List
-from strawberry.types import Info
 from datetime import date
-from sqlalchemy import select
+
+import strawberry
 from backend.database.models import User
-from backend.modules.behavioral_analysis.models import (
-    BehavioralRule,
-    BehavioralRetentionSettings,
-    BehavioralStatusThresholds,
-    BehavioralComputationSettings,
-    BehavioralMetricWeights,
-    BehavioralRecommendation,
-    RecommendationFeedback,
-    DepartmentHealthReport,
-    BiasReport,
-)
-from backend.modules.behavioral_analysis.graphql.types import (
-    BehavioralRuleType,
-    BehavioralSettingsType,
-    BehavioralRecommendationType,
-    RecommendationFeedbackType,
-    OrganizationalHealthType,
-    BiasReportType,
-)
 from backend.exceptions import NotFoundException, PermissionDeniedException
 from backend.modules.behavioral_analysis.feedback_loop import FeedbackLoop
-from backend.modules.behavioral_analysis.organizational_health import OrganizationalHealth
+from backend.modules.behavioral_analysis.graphql.types import (
+    BehavioralRecommendationType,
+    BehavioralRuleType,
+    BehavioralSettingsType,
+    BiasReportType,
+    OrganizationalHealthType,
+    RecommendationFeedbackType,
+)
+from backend.modules.behavioral_analysis.models import (
+    BehavioralRecommendation,
+    BehavioralRetentionSettings,
+    BehavioralRule,
+)
+from backend.modules.behavioral_analysis.organizational_health import (
+    OrganizationalHealth,
+)
+from sqlalchemy import select
+from strawberry.types import Info
 
 
 @strawberry.input
 class BehavioralRuleInput:
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     rule_type: str = "custom"
     condition_type: str
     condition_config: strawberry.scalars.JSON
     recommendation_template: strawberry.scalars.JSON
-    auto_execute_action: Optional[str] = None
+    auto_execute_action: str | None = None
     auto_execute: bool = False
     is_active: bool = True
     shadow_mode: bool = False
@@ -58,14 +54,14 @@ class BehavioralSettingsInput:
 class BehavioralMutation:
     @strawberry.mutation
     async def create_behavioral_rule(
-        self, info: Info, input: BehavioralRuleInput
+        self, info: Info, input: BehavioralRuleInput,
     ) -> BehavioralRuleType:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         if current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("create behavioral rule")
-            
+
         rule = BehavioralRule(
             name=input.name,
             description=input.description,
@@ -84,7 +80,7 @@ class BehavioralMutation:
         db.add(rule)
         await db.commit()
         await db.refresh(rule)
-        
+
         return BehavioralRuleType(
             id=rule.id,
             name=rule.name,
@@ -112,24 +108,24 @@ class BehavioralMutation:
 
     @strawberry.mutation
     async def update_behavioral_rule(
-        self, info: Info, rule_id: int, input: BehavioralRuleInput
+        self, info: Info, rule_id: int, input: BehavioralRuleInput,
     ) -> BehavioralRuleType:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         result = await db.execute(
             select(BehavioralRule).where(
                 BehavioralRule.id == rule_id,
                 BehavioralRule.company_id == current_user.company_id,
-            )
+            ),
         )
         rule = result.scalar_one_or_none()
         if not rule:
             raise NotFoundException.resource("BehavioralRule", rule_id=rule_id)
-            
+
         if rule.is_system and current_user.role.name != "super_admin":
             raise PermissionDeniedException.for_action("update system rule")
-            
+
         rule.name = input.name
         rule.description = input.description
         rule.condition_type = input.condition_type
@@ -139,10 +135,10 @@ class BehavioralMutation:
         rule.auto_execute = input.auto_execute
         rule.is_active = input.is_active
         rule.shadow_mode = input.shadow_mode
-        
+
         await db.commit()
         await db.refresh(rule)
-        
+
         return BehavioralRuleType(
             id=rule.id,
             name=rule.name,
@@ -172,48 +168,48 @@ class BehavioralMutation:
     async def delete_behavioral_rule(self, info: Info, rule_id: int) -> bool:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         result = await db.execute(
             select(BehavioralRule).where(
                 BehavioralRule.id == rule_id,
                 BehavioralRule.company_id == current_user.company_id,
-            )
+            ),
         )
         rule = result.scalar_one_or_none()
         if not rule:
             raise NotFoundException.resource("BehavioralRule", rule_id=rule_id)
-            
+
         if rule.is_system:
             raise PermissionDeniedException.for_action("delete system rule")
-            
+
         await db.delete(rule)
         await db.commit()
         return True
 
     @strawberry.mutation
     async def update_behavioral_settings(
-        self, info: Info, input: BehavioralSettingsInput
+        self, info: Info, input: BehavioralSettingsInput,
     ) -> BehavioralSettingsType:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         if current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("update behavioral settings")
-            
+
         result = await db.execute(
             select(BehavioralRetentionSettings).where(
-                BehavioralRetentionSettings.company_id == current_user.company_id
-            )
+                BehavioralRetentionSettings.company_id == current_user.company_id,
+            ),
         )
         settings = result.scalar_one_or_none()
-        
+
         if not settings:
             settings = BehavioralRetentionSettings(
                 company_id=current_user.company_id,
                 updated_by=current_user.id,
             )
             db.add(settings)
-            
+
         settings.raw_profile_days = input.raw_profile_days
         settings.aggregated_profile_months = input.aggregated_profile_months
         settings.recommendation_months = input.recommendation_months
@@ -223,10 +219,10 @@ class BehavioralMutation:
         settings.cleanup_schedule = input.cleanup_schedule
         settings.anonymize_instead_of_delete = input.anonymize_instead_of_delete
         settings.updated_by = current_user.id
-        
+
         await db.commit()
         await db.refresh(settings)
-        
+
         return BehavioralSettingsType(
             id=settings.id,
             company_id=settings.company_id,
@@ -244,30 +240,30 @@ class BehavioralMutation:
 
     @strawberry.mutation
     async def update_recommendation_status(
-        self, info: Info, recommendation_id: int, status: str, dispute_reason: Optional[str] = None, dispute_notes: Optional[str] = None
+        self, info: Info, recommendation_id: int, status: str, dispute_reason: str | None = None, dispute_notes: str | None = None,
     ) -> BehavioralRecommendationType:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         result = await db.execute(
             select(BehavioralRecommendation).where(
                 BehavioralRecommendation.id == recommendation_id,
                 BehavioralRecommendation.user_id == current_user.id,
-            )
+            ),
         )
         rec = result.scalar_one_or_none()
         if not rec:
             raise NotFoundException.resource("Recommendation", id=recommendation_id)
-            
+
         rec.status = status
         if dispute_reason:
             rec.dispute_reason = dispute_reason
         if dispute_notes:
             rec.dispute_notes = dispute_notes
-            
+
         await db.commit()
         await db.refresh(rec)
-        
+
         return BehavioralRecommendationType(
             id=rec.id,
             rule_id=rec.rule_id,
@@ -293,22 +289,22 @@ class BehavioralMutation:
 
     @strawberry.mutation
     async def record_recommendation_feedback(
-        self, info: Info, recommendation_id: int, action: str, notes: Optional[str] = None
+        self, info: Info, recommendation_id: int, action: str, notes: str | None = None,
     ) -> RecommendationFeedbackType:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         if current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("record feedback")
-            
+
         loop = FeedbackLoop(db)
         feedback = await loop.record_feedback(
             recommendation_id=recommendation_id,
             manager_id=current_user.id,
             action=action,
-            notes=notes
+            notes=notes,
         )
-        
+
         return RecommendationFeedbackType(
             id=feedback.id,
             recommendation_id=feedback.recommendation_id,
@@ -326,20 +322,20 @@ class BehavioralMutation:
 
     @strawberry.mutation
     async def compute_organizational_health(
-        self, info: Info, period_start: Optional[str] = None, period_end: Optional[str] = None
-    ) -> List[OrganizationalHealthType]:
+        self, info: Info, period_start: str | None = None, period_end: str | None = None,
+    ) -> list[OrganizationalHealthType]:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         if current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("compute health")
-            
+
         start = date.fromisoformat(period_start) if period_start else date.today().replace(day=1)
         end = date.fromisoformat(period_end) if period_end else date.today()
-            
+
         health = OrganizationalHealth(db)
         reports = await health.generate_department_reports(current_user.company_id, start, end)
-        
+
         return [
             OrganizationalHealthType(
                 department_id=r.department_id,
@@ -359,20 +355,20 @@ class BehavioralMutation:
 
     @strawberry.mutation
     async def compute_bias_report(
-        self, info: Info, period_start: Optional[str] = None, period_end: Optional[str] = None
+        self, info: Info, period_start: str | None = None, period_end: str | None = None,
     ) -> BiasReportType:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         if current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("compute bias report")
-            
+
         start = date.fromisoformat(period_start) if period_start else date.today().replace(day=1)
         end = date.fromisoformat(period_end) if period_end else date.today()
-            
+
         health = OrganizationalHealth(db)
         report = await health.generate_bias_report(current_user.company_id, start, end)
-        
+
         return BiasReportType(
             id=report.id,
             company_id=report.company_id,

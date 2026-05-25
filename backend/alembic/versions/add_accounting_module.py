@@ -5,16 +5,14 @@ Revises: 3c93f2e81c02
 Create Date: 2026-02-14 12:00:00.000000
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
 
-
-revision: str = 'add_accounting_module'
-down_revision: Union[str, Sequence[str], None] = '3c93f2e81c02'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "add_accounting_module"
+down_revision: str | Sequence[str] | None = "3c93f2e81c02"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

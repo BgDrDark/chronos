@@ -5,20 +5,18 @@ Revises: 002_add_database_constraints
 Create Date: 2026-02-04 12:00:00.000000
 
 """
+
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
-revision = '003_add_triggers_and_functions'
-down_revision = '002_add_database_constraints'
+revision = "003_add_triggers_and_functions"
+down_revision = "002_add_database_constraints"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
     """Add database triggers and advanced functions"""
-    
     # Function to prevent overlapping work schedules
     op.execute("""
         CREATE OR REPLACE FUNCTION prevent_overlapping_schedules()
@@ -38,18 +36,18 @@ def upgrade() -> None:
         END;
         $$ LANGUAGE plpgsql;
     """)
-    
+
     # Trigger to prevent overlapping schedules
     op.execute("""
         DROP TRIGGER IF EXISTS trigger_prevent_overlapping_schedules ON work_schedules;
     """)
-    
+
     op.execute("""
         CREATE TRIGGER trigger_prevent_overlapping_schedules
         BEFORE INSERT OR UPDATE ON work_schedules
         FOR EACH ROW EXECUTE FUNCTION prevent_overlapping_schedules();
     """)
-    
+
     # Function to validate leave request dates and prevent overlaps
     op.execute("""
         CREATE OR REPLACE FUNCTION validate_leave_request()
@@ -82,18 +80,18 @@ def upgrade() -> None:
         END;
         $$ LANGUAGE plpgsql;
     """)
-    
+
     # Trigger for leave request validation
     op.execute("""
         DROP TRIGGER IF EXISTS trigger_validate_leave_request ON leave_requests;
     """)
-    
+
     op.execute("""
         CREATE TRIGGER trigger_validate_leave_request
         BEFORE INSERT OR UPDATE ON leave_requests
         FOR EACH ROW EXECUTE FUNCTION validate_leave_request();
     """)
-    
+
     # Function to automatically update leave balance
     op.execute("""
         CREATE OR REPLACE FUNCTION update_leave_balance()
@@ -122,18 +120,18 @@ def upgrade() -> None:
         END;
         $$ LANGUAGE plpgsql;
     """)
-    
+
     # Trigger for automatic leave balance updates
     op.execute("""
         DROP TRIGGER IF EXISTS trigger_update_leave_balance ON leave_requests;
     """)
-    
+
     op.execute("""
         CREATE TRIGGER trigger_update_leave_balance
         AFTER INSERT OR UPDATE ON leave_requests
         FOR EACH ROW EXECUTE FUNCTION update_leave_balance();
     """)
-    
+
     # Function for audit logging
     op.execute("""
         CREATE OR REPLACE FUNCTION log_audit_trail()
@@ -180,18 +178,18 @@ def upgrade() -> None:
         END;
         $$ LANGUAGE plpgsql;
     """)
-    
+
     # Add audit triggers to important tables
     audit_tables = [
-        'users', 'payrolls', 'payslips', 'leave_requests', 'work_schedules',
-        'timelogs', 'shifts', 'companies', 'departments', 'positions'
+        "users", "payrolls", "payslips", "leave_requests", "work_schedules",
+        "timelogs", "shifts", "companies", "departments", "positions",
     ]
-    
+
     for table in audit_tables:
         op.execute(f"""
             DROP TRIGGER IF EXISTS trigger_audit_{table} ON {table};
         """)
-        
+
         op.execute(f"""
             CREATE TRIGGER trigger_audit_{table}
             AFTER INSERT OR UPDATE OR DELETE ON {table}
@@ -200,27 +198,26 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Remove database triggers and functions"""
-    
     # Drop triggers
     audit_tables = [
-        'users', 'payrolls', 'payslips', 'leave_requests', 'work_schedules',
-        'timelogs', 'shifts', 'companies', 'departments', 'positions'
+        "users", "payrolls", "payslips", "leave_requests", "work_schedules",
+        "timelogs", "shifts", "companies", "departments", "positions",
     ]
-    
+
     for table in audit_tables:
         op.execute(f"DROP TRIGGER IF EXISTS trigger_audit_{table} ON {table};")
-    
+
     op.execute("DROP TRIGGER IF EXISTS trigger_update_leave_balance ON leave_requests;")
     op.execute("DROP TRIGGER IF EXISTS trigger_validate_leave_request ON leave_requests;")
     op.execute("DROP TRIGGER IF EXISTS trigger_prevent_overlapping_schedules ON work_schedules;")
-    
+
     # Drop functions
     functions_to_drop = [
-        'log_audit_trail',
-        'update_leave_balance',
-        'validate_leave_request',
-        'prevent_overlapping_schedules'
+        "log_audit_trail",
+        "update_leave_balance",
+        "validate_leave_request",
+        "prevent_overlapping_schedules",
     ]
-    
+
     for function_name in functions_to_drop:
         op.execute(f"DROP FUNCTION IF EXISTS {function_name}();")

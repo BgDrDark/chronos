@@ -1,31 +1,31 @@
-from typing import Optional, Dict, Any
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from typing import Any
 
-from backend.database.models import (
-    Payroll, Payslip, User, GlobalSetting, sofia_now
-)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.crud.repositories import payroll_repo, settings_repo
+from backend.database.models import Payslip, sofia_now
 from backend.services.payroll_calculator import PayrollCalculator
 
 
 class PayrollService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self.repo = payroll_repo
+        self.settings = settings_repo
 
-    async def get_global_config(self) -> Dict[str, Any]:
-        """Get global payroll configuration"""
-        hourly_rate = await self._get_setting("global_hourly_rate")
-        monthly_salary = await self._get_setting("global_monthly_salary")
-        overtime_multiplier = await self._get_setting("global_overtime_multiplier")
-        standard_hours_per_day = await self._get_setting("global_standard_hours_per_day")
-        currency = await self._get_setting("global_currency")
-        annual_leave_days = await self._get_setting("global_annual_leave_days")
-        tax_percent = await self._get_setting("global_tax_percent")
-        health_insurance_percent = await self._get_setting("global_health_insurance_percent")
-        has_tax_deduction = await self._get_setting("global_has_tax_deduction")
-        has_health_insurance = await self._get_setting("global_has_health_insurance")
+    async def get_global_config(self) -> dict[str, Any]:
+        hourly_rate = await self.settings.get_setting(self.db, "global_hourly_rate")
+        monthly_salary = await self.settings.get_setting(self.db, "global_monthly_salary")
+        overtime_multiplier = await self.settings.get_setting(self.db, "global_overtime_multiplier")
+        standard_hours_per_day = await self.settings.get_setting(self.db, "global_standard_hours_per_day")
+        currency = await self.settings.get_setting(self.db, "global_currency")
+        annual_leave_days = await self.settings.get_setting(self.db, "global_annual_leave_days")
+        tax_percent = await self.settings.get_setting(self.db, "global_tax_percent")
+        health_insurance_percent = await self.settings.get_setting(self.db, "global_health_insurance_percent")
+        has_tax_deduction = await self.settings.get_setting(self.db, "global_has_tax_deduction")
+        has_health_insurance = await self.settings.get_setting(self.db, "global_has_health_insurance")
 
         return {
             "hourly_rate": float(hourly_rate) if hourly_rate else 0.0,
@@ -37,7 +37,7 @@ class PayrollService:
             "tax_percent": float(tax_percent) if tax_percent else 10.00,
             "health_insurance_percent": float(health_insurance_percent) if health_insurance_percent else 13.78,
             "has_tax_deduction": (has_tax_deduction == "True") if has_tax_deduction is not None else True,
-            "has_health_insurance": (has_health_insurance == "True") if has_health_insurance is not None else True
+            "has_health_insurance": (has_health_insurance == "True") if has_health_insurance is not None else True,
         }
 
     async def update_global_config(
@@ -52,19 +52,18 @@ class PayrollService:
         health_insurance_percent: float,
         has_tax_deduction: bool,
         has_health_insurance: bool,
-        admin_user_id: Optional[int] = None
-    ) -> Dict[str, Any]:
-        """Update global payroll configuration"""
-        await self._set_setting("global_hourly_rate", str(hourly_rate))
-        await self._set_setting("global_monthly_salary", str(monthly_salary))
-        await self._set_setting("global_overtime_multiplier", str(overtime_multiplier))
-        await self._set_setting("global_standard_hours_per_day", str(standard_hours_per_day))
-        await self._set_setting("global_currency", currency)
-        await self._set_setting("global_annual_leave_days", str(annual_leave_days))
-        await self._set_setting("global_tax_percent", str(tax_percent))
-        await self._set_setting("global_health_insurance_percent", str(health_insurance_percent))
-        await self._set_setting("global_has_tax_deduction", str(has_tax_deduction))
-        await self._set_setting("global_has_health_insurance", str(has_health_insurance))
+        admin_user_id: int | None = None,
+    ) -> dict[str, Any]:
+        await self.settings.set_setting(self.db, "global_hourly_rate", str(hourly_rate))
+        await self.settings.set_setting(self.db, "global_monthly_salary", str(monthly_salary))
+        await self.settings.set_setting(self.db, "global_overtime_multiplier", str(overtime_multiplier))
+        await self.settings.set_setting(self.db, "global_standard_hours_per_day", str(standard_hours_per_day))
+        await self.settings.set_setting(self.db, "global_currency", currency)
+        await self.settings.set_setting(self.db, "global_annual_leave_days", str(annual_leave_days))
+        await self.settings.set_setting(self.db, "global_tax_percent", str(tax_percent))
+        await self.settings.set_setting(self.db, "global_health_insurance_percent", str(health_insurance_percent))
+        await self.settings.set_setting(self.db, "global_has_tax_deduction", str(has_tax_deduction))
+        await self.settings.set_setting(self.db, "global_has_health_insurance", str(has_health_insurance))
 
         return await self.get_global_config()
 
@@ -72,9 +71,8 @@ class PayrollService:
         self,
         user_id: int,
         start_date: datetime,
-        end_date: datetime
-    ) -> Dict[str, Any]:
-        """Calculate payroll for a user"""
+        end_date: datetime,
+    ) -> dict[str, Any]:
         calculator = PayrollCalculator(self.db)
         return await calculator.calculate(user_id, start_date, end_date)
 
@@ -85,14 +83,14 @@ class PayrollService:
         period_end: datetime,
         gross_amount: Decimal,
         net_amount: Decimal,
-        deductions: Dict[str, Decimal],
-        tax_amount: Decimal = Decimal("0"),
-        insurance_amount: Decimal = Decimal("0"),
-        bonus_amount: Decimal = Decimal("0"),
-        bonus_description: str = None
+        deductions: dict[str, Decimal],
+        tax_amount: Decimal = Decimal(0),
+        insurance_amount: Decimal = Decimal(0),
+        bonus_amount: Decimal = Decimal(0),
+        bonus_description: str = None,
     ) -> Payslip:
-        """Create a payslip for a user"""
-        payslip = Payslip(
+        return await self.repo.create_payslip(
+            self.db,
             user_id=user_id,
             period_start=period_start,
             period_end=period_end,
@@ -102,87 +100,34 @@ class PayrollService:
             insurance_amount=insurance_amount,
             bonus_amount=bonus_amount,
             bonus_description=bonus_description,
-            deductions=deductions if deductions else {},
+            deductions=deductions or {},
             generated_at=sofia_now(),
             is_locked=False,
             is_paid=False,
-            payment_date=None
+            payment_date=None,
         )
-        self.db.add(payslip)
-        await self.db.commit()
-        await self.db.refresh(payslip)
-        return payslip
 
     async def mark_payslip_as_paid(
         self,
         payslip_id: int,
         payment_date: datetime = None,
-        payment_method: str = "bank"
-    ) -> Optional[Payslip]:
-        """Mark a payslip as paid"""
-        stmt = select(Payslip).where(Payslip.id == payslip_id)
-        result = await self.db.execute(stmt)
-        payslip = result.scalars().first()
-
-        if payslip:
-            payslip.is_paid = True
-            payslip.payment_date = payment_date or sofia_now()
-            self.db.add(payslip)
-            await self.db.commit()
-            await self.db.refresh(payslip)
-
-        return payslip
+        payment_method: str = "bank",
+    ) -> Payslip | None:
+        return await self.repo.update_payslip(
+            self.db, payslip_id,
+            is_paid=True,
+            payment_date=payment_date or sofia_now(),
+        )
 
     async def set_monthly_work_days(
         self,
         year: int,
         month: int,
-        days_count: int
+        days_count: int,
     ) -> Any:
-        """Set custom work days for a month"""
-        from backend.database.models import MonthlyWorkDays
-
-        stmt = select(MonthlyWorkDays).where(
-            MonthlyWorkDays.year == year,
-            MonthlyWorkDays.month == month
+        return await self.repo.set_monthly_work_days(
+            self.db, year, month, days_count,
         )
-        result = await self.db.execute(stmt)
-        existing = result.scalars().first()
-
-        if existing:
-            existing.days_count = days_count
-            self.db.add(existing)
-        else:
-            existing = MonthlyWorkDays(
-                year=year,
-                month=month,
-                days_count=days_count
-            )
-            self.db.add(existing)
-
-        await self.db.commit()
-        await self.db.refresh(existing)
-        return existing
-
-    async def _get_setting(self, key: str) -> Optional[str]:
-        stmt = select(GlobalSetting).where(GlobalSetting.key == key)
-        result = await self.db.execute(stmt)
-        setting = result.scalars().first()
-        return setting.value if setting else None
-
-    async def _set_setting(self, key: str, value: str) -> None:
-        stmt = select(GlobalSetting).where(GlobalSetting.key == key)
-        result = await self.db.execute(stmt)
-        setting = result.scalars().first()
-
-        if setting:
-            setting.value = value
-            self.db.add(setting)
-        else:
-            new_setting = GlobalSetting(key=key, value=value)
-            self.db.add(new_setting)
-
-        await self.db.flush()
 
 
 payroll_service = PayrollService

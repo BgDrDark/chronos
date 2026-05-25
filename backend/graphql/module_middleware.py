@@ -1,12 +1,14 @@
-import time
 import asyncio
 import logging
-from typing import Any, Callable, Dict
+import time
+from collections.abc import Callable
+from typing import Any
+
 from strawberry.extensions import SchemaExtension
+
+from backend.auth.module_guard import ModuleDisabledException, verify_module_enabled
+from backend.database.models import ThrottleLog, sofia_now
 from graphql import GraphQLList, GraphQLNonNull, OperationType
-from backend.auth.module_guard import verify_module_enabled, ModuleDisabledException
-from backend.database.models import ThrottleLog
-from backend.database.models import sofia_now
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ MODULE_MAPPING = {
     "deleteWorkSchedule": "shifts",
     "createScheduleTemplate": "shifts",
     "applyScheduleTemplate": "shifts",
-    
+
     # Payroll & Salaries
     "calculatePayroll": "salaries",
     "generatePayslip": "salaries",
@@ -43,13 +45,13 @@ MODULE_MAPPING = {
     "updateGlobalPayrollConfig": "salaries",
     "payrollPeriods": "salaries",
     "payrollSummary": "salaries",
-    
+
     # Kiosk
     "terminals": "kiosk",
     "gateways": "kiosk",
     "kioskDevices": "kiosk",
     "createKioskDevice": "kiosk",
-    
+
     # Integrations
     "googleCalendarAccounts": "integrations",
     "syncGoogleCalendar": "integrations",
@@ -87,7 +89,7 @@ MODULE_MAPPING = {
     "scrapTask": "confectionery",
     "getScrapLogs": "confectionery",
     "markTaskScrap": "confectionery",
-    
+
     # Fleet (NEW - optional)
     "vehicles": "fleet",
     "vehicleDocuments": "fleet",
@@ -114,13 +116,13 @@ MODULE_MAPPING = {
     "createToll": "fleet",
     "updateToll": "fleet",
     "fleetReports": "fleet",
-    
+
     # Cost Centers (NEW - core)
     "costCenters": "cost_centers",
     "createCostCenter": "cost_centers",
     "updateCostCenter": "cost_centers",
     "deleteCostCenter": "cost_centers",
-    
+
     # Inventory (NEW - optional)
     "batches": "inventory",
     "batch": "inventory",
@@ -135,7 +137,7 @@ MODULE_MAPPING = {
     "addInventoryItem": "inventory",
     "completeInventorySession": "inventory",
     "stockConsumptionLogs": "inventory",
-    
+
     # Behavioral Analysis (NEW - optional)
     "behavioralProfiles": "behavioral_analysis",
     "behavioralAnomalies": "behavioral_analysis",
@@ -252,7 +254,6 @@ THROTTLE_CONFIG = {
     "createSupplier": 10,
     "updateSupplier": 5,
     "deleteSupplier": 10,
-    "createInventorySession": 10,
 
     # Access Control
     "createAccessZone": 10,
@@ -318,14 +319,14 @@ THROTTLE_CONFIG = {
 }
 
 class ModuleGuardMiddleware(SchemaExtension):
-    _last_calls: Dict[str, float] = {}
+    _last_calls: dict[str, float] = {}
 
     async def resolve(self, next_: Callable, root: Any, info: Any, *args, **kwargs) -> Any:
         # field_name from GraphQLResolveInfo is in camelCase
         field_name = info.field_name
         current_user = info.context.get("current_user")
         user_id = current_user.id if current_user else "anonymous"
-        
+
         # 1. Module Guard Check
         if field_name in MODULE_MAPPING:
             module_code = MODULE_MAPPING[field_name]
@@ -340,7 +341,7 @@ class ModuleGuardMiddleware(SchemaExtension):
 
                     # For queries, return appropriate empty value based on return type
                     return_type = info.return_type
-                    
+
                     def is_list(t):
                         if isinstance(t, GraphQLNonNull):
                             return is_list(t.of_type)
@@ -348,21 +349,21 @@ class ModuleGuardMiddleware(SchemaExtension):
 
                     if is_list(return_type):
                          return []
-                    
+
                     return None
-        
+
 # 2. Throttling Check
         if field_name in THROTTLE_CONFIG:
             throttle_key = f"{user_id}:{field_name}"
             now = time.time()
             last_call = self._last_calls.get(throttle_key, 0)
-            
+
             if now - last_call < THROTTLE_CONFIG[field_name]:
                 wait_time = int(THROTTLE_CONFIG[field_name] - (now - last_call)) + 1
                 raise Exception(f"Твърде много заявки за '{field_name}'. Моля, изчакайте {wait_time} секунди.")
-            
+
             self._last_calls[throttle_key] = now
-            
+
             db = info.context.get("db")
             if db:
                 try:
@@ -371,12 +372,12 @@ class ModuleGuardMiddleware(SchemaExtension):
                         user_id=current_user.id if current_user else 0,
                         field_name=field_name,
                         ip_address=ip_address,
-                        called_at=sofia_now()
+                        called_at=sofia_now(),
                     )
                     db.add(throttle_log)
                 except Exception as e:
                     logger.warning(f"Failed to log throttle: {e}")
-        
+
         result = next_(root, info, *args, **kwargs)
         if asyncio.iscoroutine(result):
             return await result

@@ -1,5 +1,4 @@
-"""
-Comprehensive tests for TRZ (Labor Law) Employment Contracts.
+"""Comprehensive tests for TRZ (Labor Law) Employment Contracts.
 
 Tests cover:
 - Contract creation (draft state)
@@ -11,24 +10,23 @@ Tests cover:
 - Error handling
 """
 
-import pytest
+import uuid
 from datetime import date, datetime
-from decimal import Decimal
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-
-from backend.main import app
-from backend.database.database import get_db
-from backend.database.models import (
-    EmploymentContract, User, Company, Role, 
-    ContractAnnex, Position, Department
-)
-from backend import crud
-from backend.schemas import RoleCreate, UserCreate
 
 import backend.auth.security as security_module
-import uuid
+import pytest
+from backend import crud
+from backend.database.models import (
+    Company,
+    ContractAnnex,
+    EmploymentContract,
+    Role,
+    User,
+)
+from backend.schemas import RoleCreate, UserCreate
+from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 _original_encrypt = security_module.encrypt_data
 _original_decrypt = security_module.decrypt_data
@@ -56,7 +54,7 @@ async def test_company(test_db: AsyncSession) -> Company:
     company = Company(
         name=f"Test Company {unique_suffix}",
         eik=f"123456{unique_suffix}",
-        bulstat=f"BG{unique_suffix}56789"
+        bulstat=f"BG{unique_suffix}56789",
     )
     test_db.add(company)
     await test_db.commit()
@@ -84,9 +82,9 @@ async def test_user(test_db: AsyncSession, test_company: Company, test_role: Rol
             password="testpassword123",
             first_name="Иван",
             last_name="Иванов",
-            egn="1234567890"
+            egn="1234567890",
         ),
-        role_name="employee"
+        role_name="employee",
     )
     user.company_id = test_company.id
     await test_db.commit()
@@ -105,9 +103,9 @@ async def admin_user(test_db: AsyncSession, test_company: Company, test_role: Ro
             password="adminpassword123",
             first_name="Админ",
             last_name="Админов",
-            egn="0000000000"
+            egn="0000000000",
         ),
-        role_name="admin"
+        role_name="admin",
     )
     admin.company_id = test_company.id
     await test_db.commit()
@@ -120,7 +118,7 @@ async def auth_headers(async_client: AsyncClient, admin_user: User) -> dict:
     """Get auth headers for admin user."""
     response = await async_client.post(
         "/auth/token",
-        data={"username": admin_user.email, "password": "adminpassword123"}
+        data={"username": admin_user.email, "password": "adminpassword123"},
     )
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -131,9 +129,9 @@ class TestContractCreation:
 
     @pytest.mark.asyncio
     async def test_create_contract_requires_auth(
-        self, 
+        self,
         async_client: AsyncClient,
-        test_company: Company
+        test_company: Company,
     ):
         """Test that creating contract requires authentication."""
         response = await async_client.post(
@@ -154,10 +152,10 @@ class TestContractCreation:
                         "employeeEgn": "1234567890",
                         "companyId": test_company.id,
                         "contractType": "full_time",
-                        "startDate": "2024-01-15"
-                    }
-                }
-            }
+                        "startDate": "2024-01-15",
+                    },
+                },
+            },
         )
         assert response.status_code == 200
         # Should require auth
@@ -169,7 +167,7 @@ class TestContractCreation:
         self,
         async_client: AsyncClient,
         auth_headers: dict,
-        test_company: Company
+        test_company: Company,
     ):
         """Test creating a contract with all valid fields."""
         response = await async_client.post(
@@ -198,19 +196,19 @@ class TestContractCreation:
                         "startDate": "2024-02-01",
                         "endDate": "2025-02-01",
                         "baseSalary": 1500.00,
-                        "workHoursPerWeek": 40
-                    }
-                }
+                        "workHoursPerWeek": 40,
+                    },
+                },
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         if "errors" in data:
             print(f"GraphQL errors: {data['errors']}")
         assert "errors" not in data
-        
+
         contract = data["data"]["createEmploymentContract"]
         assert contract["employeeName"] == "Петър Петров"
         assert contract["employeeEgn"] == "7501010010"
@@ -223,7 +221,7 @@ class TestContractCreation:
         self,
         async_client: AsyncClient,
         auth_headers: dict,
-        test_company: Company
+        test_company: Company,
     ):
         """Test creating contract with only required fields."""
         response = await async_client.post(
@@ -243,13 +241,13 @@ class TestContractCreation:
                         "employeeEgn": "8012120011",
                         "companyId": test_company.id,
                         "contractType": "part_time",
-                        "startDate": "2024-03-01"
-                    }
-                }
+                        "startDate": "2024-03-01",
+                    },
+                },
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "errors" not in data
@@ -260,7 +258,7 @@ class TestContractCreation:
         self,
         async_client: AsyncClient,
         auth_headers: dict,
-        test_company: Company
+        test_company: Company,
     ):
         """Test that contract without employee name fails."""
         response = await async_client.post(
@@ -278,13 +276,13 @@ class TestContractCreation:
                         "employeeEgn": "7501010010",
                         "companyId": test_company.id,
                         "contractType": "full_time",
-                        "startDate": "2024-01-15"
-                    }
-                }
+                        "startDate": "2024-01-15",
+                    },
+                },
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         # Should fail validation
@@ -298,7 +296,7 @@ class TestContractSigning:
     async def draft_contract(
         self,
         test_db: AsyncSession,
-        test_company: Company
+        test_company: Company,
     ) -> EmploymentContract:
         """Create a draft contract for signing tests."""
         contract = EmploymentContract(
@@ -308,7 +306,7 @@ class TestContractSigning:
             user_id=0,
             contract_type="full_time",
             start_date=date(2024, 1, 15),
-            status="draft"
+            status="draft",
         )
         test_db.add(contract)
         await test_db.commit()
@@ -320,7 +318,7 @@ class TestContractSigning:
         self,
         async_client: AsyncClient,
         auth_headers: dict,
-        draft_contract: EmploymentContract
+        draft_contract: EmploymentContract,
     ):
         """Test signing a draft contract."""
         response = await async_client.post(
@@ -335,15 +333,15 @@ class TestContractSigning:
                         }
                     }
                 """,
-                "variables": {"id": draft_contract.id}
+                "variables": {"id": draft_contract.id},
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "errors" not in data
-        
+
         result = data["data"]["signEmploymentContract"]
         assert result["status"] == "signed"
         assert result["signedAt"] is not None
@@ -354,14 +352,14 @@ class TestContractSigning:
         async_client: AsyncClient,
         auth_headers: dict,
         test_db: AsyncSession,
-        draft_contract: EmploymentContract
+        draft_contract: EmploymentContract,
     ):
         """Test that signing already signed contract fails."""
         # First sign
         draft_contract.status = "signed"
         draft_contract.signed_at = datetime.now()
         await test_db.commit()
-        
+
         response = await async_client.post(
             "/graphql",
             json={
@@ -372,11 +370,11 @@ class TestContractSigning:
                         }
                     }
                 """,
-                "variables": {"id": draft_contract.id}
+                "variables": {"id": draft_contract.id},
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         # Should return error about already signed
@@ -386,7 +384,7 @@ class TestContractSigning:
     async def test_sign_nonexistent_contract(
         self,
         async_client: AsyncClient,
-        auth_headers: dict
+        auth_headers: dict,
     ):
         """Test signing a non-existent contract returns error."""
         response = await async_client.post(
@@ -399,11 +397,11 @@ class TestContractSigning:
                         }
                     }
                 """,
-                "variables": {"id": 999999}
+                "variables": {"id": 999999},
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "errors" in data
@@ -416,7 +414,7 @@ class TestContractLinking:
     async def signed_contract(
         self,
         test_db: AsyncSession,
-        test_company: Company
+        test_company: Company,
     ) -> EmploymentContract:
         """Create a signed contract for linking tests."""
         contract = EmploymentContract(
@@ -427,7 +425,7 @@ class TestContractLinking:
             contract_type="full_time",
             start_date=date(2024, 1, 1),
             status="signed",
-            signed_at=datetime.now()
+            signed_at=datetime.now(),
         )
         test_db.add(contract)
         await test_db.commit()
@@ -440,7 +438,7 @@ class TestContractLinking:
         async_client: AsyncClient,
         auth_headers: dict,
         signed_contract: EmploymentContract,
-        test_user: User
+        test_user: User,
     ):
         """Test linking a signed contract to a user."""
         response = await async_client.post(
@@ -457,16 +455,16 @@ class TestContractLinking:
                 """,
                 "variables": {
                     "contractId": signed_contract.id,
-                    "userId": test_user.id
-                }
+                    "userId": test_user.id,
+                },
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "errors" not in data
-        
+
         result = data["data"]["linkEmploymentContractToUser"]
         assert result["status"] == "linked"
         assert result["userId"] == test_user.id
@@ -477,7 +475,7 @@ class TestContractLinking:
         async_client: AsyncClient,
         auth_headers: dict,
         draft_contract: EmploymentContract,
-        test_user: User
+        test_user: User,
     ):
         """Test that linking a draft (unsigned) contract fails."""
         response = await async_client.post(
@@ -492,12 +490,12 @@ class TestContractLinking:
                 """,
                 "variables": {
                     "contractId": draft_contract.id,
-                    "userId": test_user.id
-                }
+                    "userId": test_user.id,
+                },
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "errors" in data
@@ -507,7 +505,7 @@ class TestContractLinking:
         self,
         async_client: AsyncClient,
         auth_headers: dict,
-        signed_contract: EmploymentContract
+        signed_contract: EmploymentContract,
     ):
         """Test linking to non-existent user fails."""
         response = await async_client.post(
@@ -522,12 +520,12 @@ class TestContractLinking:
                 """,
                 "variables": {
                     "contractId": signed_contract.id,
-                    "userId": 999999
-                }
+                    "userId": 999999,
+                },
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "errors" in data
@@ -540,7 +538,7 @@ class TestContractQueries:
     async def multiple_contracts(
         self,
         test_db: AsyncSession,
-        test_company: Company
+        test_company: Company,
     ):
         """Create multiple contracts with different statuses."""
         contracts = [
@@ -551,7 +549,7 @@ class TestContractQueries:
                 user_id=0,
                 contract_type="full_time",
                 start_date=date(2024, 1, 1),
-                status="draft"
+                status="draft",
             ),
             EmploymentContract(
                 employee_name="Подписан 1",
@@ -561,7 +559,7 @@ class TestContractQueries:
                 contract_type="part_time",
                 start_date=date(2024, 2, 1),
                 status="signed",
-                signed_at=datetime.now()
+                signed_at=datetime.now(),
             ),
             EmploymentContract(
                 employee_name="Свързан 1",
@@ -570,7 +568,7 @@ class TestContractQueries:
                 user_id=2,
                 contract_type="full_time",
                 start_date=date(2024, 3, 1),
-                status="linked"
+                status="linked",
             ),
         ]
         for contract in contracts:
@@ -583,7 +581,7 @@ class TestContractQueries:
         self,
         async_client: AsyncClient,
         auth_headers: dict,
-        multiple_contracts: list
+        multiple_contracts: list,
     ):
         """Test fetching all contracts."""
         response = await async_client.post(
@@ -597,15 +595,15 @@ class TestContractQueries:
                             status
                         }
                     }
-                """
+                """,
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "errors" not in data
-        
+
         contracts = data["data"]["employmentContracts"]
         assert len(contracts) >= 3
 
@@ -614,7 +612,7 @@ class TestContractQueries:
         self,
         async_client: AsyncClient,
         auth_headers: dict,
-        multiple_contracts: list
+        multiple_contracts: list,
     ):
         """Test filtering contracts by status."""
         response = await async_client.post(
@@ -629,15 +627,15 @@ class TestContractQueries:
                         }
                     }
                 """,
-                "variables": {"status": "draft"}
+                "variables": {"status": "draft"},
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "errors" not in data
-        
+
         contracts = data["data"]["employmentContracts"]
         for contract in contracts:
             assert contract["status"] == "draft"
@@ -647,11 +645,11 @@ class TestContractQueries:
         self,
         async_client: AsyncClient,
         auth_headers: dict,
-        multiple_contracts: list
+        multiple_contracts: list,
     ):
         """Test fetching a single contract by ID."""
         contract_id = multiple_contracts[0].id
-        
+
         response = await async_client.post(
             "/graphql",
             json={
@@ -668,15 +666,15 @@ class TestContractQueries:
                         }
                     }
                 """,
-                "variables": {"id": contract_id}
+                "variables": {"id": contract_id},
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "errors" not in data
-        
+
         contract = data["data"]["employmentContract"]
         assert contract["id"] == contract_id
         assert "annexes" in contract
@@ -689,7 +687,7 @@ class TestContractAnnexes:
     async def contract_with_annexes(
         self,
         test_db: AsyncSession,
-        test_company: Company
+        test_company: Company,
     ):
         """Create a contract with annexes."""
         contract = EmploymentContract(
@@ -699,12 +697,12 @@ class TestContractAnnexes:
             user_id=1,
             contract_type="full_time",
             start_date=date(2024, 1, 1),
-            status="linked"
+            status="linked",
         )
         test_db.add(contract)
         await test_db.commit()
         await test_db.refresh(contract)
-        
+
         # Add annexes
         annex1 = ContractAnnex(
             contract_id=contract.id,
@@ -714,7 +712,7 @@ class TestContractAnnexes:
             change_type="salary_increase",
             status="signed",
             is_signed=True,
-            signed_at=datetime.now()
+            signed_at=datetime.now(),
         )
         annex2 = ContractAnnex(
             contract_id=contract.id,
@@ -723,11 +721,11 @@ class TestContractAnnexes:
             base_salary=2200.00,
             change_type="salary_increase",
             status="draft",
-            is_signed=False
+            is_signed=False,
         )
         test_db.add_all([annex1, annex2])
         await test_db.commit()
-        
+
         return contract
 
     @pytest.mark.asyncio
@@ -735,7 +733,7 @@ class TestContractAnnexes:
         self,
         async_client: AsyncClient,
         auth_headers: dict,
-        contract_with_annexes: EmploymentContract
+        contract_with_annexes: EmploymentContract,
     ):
         """Test fetching contract with its annexes."""
         response = await async_client.post(
@@ -758,15 +756,15 @@ class TestContractAnnexes:
                         }
                     }
                 """,
-                "variables": {"id": contract_with_annexes.id}
+                "variables": {"id": contract_with_annexes.id},
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "errors" not in data
-        
+
         contract = data["data"]["employmentContract"]
         assert len(contract["annexes"]) == 2
 
@@ -775,7 +773,7 @@ class TestContractAnnexes:
         self,
         async_client: AsyncClient,
         auth_headers: dict,
-        contract_with_annexes: EmploymentContract
+        contract_with_annexes: EmploymentContract,
     ):
         """Test that annexes are returned ordered by effective date descending."""
         response = await async_client.post(
@@ -790,14 +788,14 @@ class TestContractAnnexes:
                         }
                     }
                 """,
-                "variables": {"id": contract_with_annexes.id}
+                "variables": {"id": contract_with_annexes.id},
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         annexes = data["data"]["employmentContract"]["annexes"]
         # Most recent first
         dates = [a["effectiveDate"] for a in annexes]
@@ -812,17 +810,17 @@ class TestContractPermissions:
         self,
         async_client: AsyncClient,
         test_db: AsyncSession,
-        test_company: Company
+        test_company: Company,
     ):
         """Test that non-admin users cannot create contracts."""
         # Create employee role and user
         employee_role = await crud.get_role_by_name(test_db, "employee")
         if not employee_role:
             employee_role = await crud.create_role(
-                test_db, 
-                RoleCreate(name="employee", description="Employee")
+                test_db,
+                RoleCreate(name="employee", description="Employee"),
             )
-        
+
         employee = await crud.create_user(
             test_db,
             UserCreate(
@@ -830,19 +828,19 @@ class TestContractPermissions:
                 password="emppassword123",
                 first_name="Служител",
                 last_name="Служителов",
-                egn="9010100010"
+                egn="9010100010",
             ),
-            role_name="employee"
+            role_name="employee",
         )
-        
+
         # Login as employee
         response = await async_client.post(
             "/auth/token",
-            data={"username": employee.email, "password": "emppassword123"}
+            data={"username": employee.email, "password": "emppassword123"},
         )
         token = response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        
+
         # Try to create contract
         response = await async_client.post(
             "/graphql",
@@ -860,13 +858,13 @@ class TestContractPermissions:
                         "employeeEgn": "9010100010",
                         "companyId": test_company.id,
                         "contractType": "full_time",
-                        "startDate": "2024-01-15"
-                    }
-                }
+                        "startDate": "2024-01-15",
+                    },
+                },
             },
-            headers=headers
+            headers=headers,
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         # Should fail with permission error
@@ -883,7 +881,7 @@ class TestContractStatusFlow:
         auth_headers: dict,
         test_db: AsyncSession,
         test_company: Company,
-        test_user: User
+        test_user: User,
     ):
         """Test complete contract lifecycle: create -> sign -> link."""
         # Step 1: Create contract
@@ -905,20 +903,20 @@ class TestContractStatusFlow:
                         "companyId": test_company.id,
                         "contractType": "full_time",
                         "startDate": "2024-01-01",
-                        "baseSalary": 1000.00
-                    }
-                }
+                        "baseSalary": 1000.00,
+                    },
+                },
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert create_response.status_code == 200
         create_data = create_response.json()
         assert "errors" not in create_data
         assert create_data["data"]["createEmploymentContract"]["status"] == "draft"
-        
+
         contract_id = create_data["data"]["createEmploymentContract"]["id"]
-        
+
         # Step 2: Sign contract
         sign_response = await async_client.post(
             "/graphql",
@@ -931,17 +929,17 @@ class TestContractStatusFlow:
                         }
                     }
                 """,
-                "variables": {"id": contract_id}
+                "variables": {"id": contract_id},
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert sign_response.status_code == 200
         sign_data = sign_response.json()
         assert "errors" not in sign_data
         assert sign_data["data"]["signEmploymentContract"]["status"] == "signed"
         assert sign_data["data"]["signEmploymentContract"]["signedAt"] is not None
-        
+
         # Step 3: Link to user
         link_response = await async_client.post(
             "/graphql",
@@ -956,21 +954,21 @@ class TestContractStatusFlow:
                 """,
                 "variables": {
                     "contractId": contract_id,
-                    "userId": test_user.id
-                }
+                    "userId": test_user.id,
+                },
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         assert link_response.status_code == 200
         link_data = link_response.json()
         assert "errors" not in link_data
         assert link_data["data"]["linkEmploymentContractToUser"]["status"] == "linked"
         assert link_data["data"]["linkEmploymentContractToUser"]["userId"] == test_user.id
-        
+
         # Verify in database
         result = await test_db.execute(
-            select(EmploymentContract).where(EmploymentContract.id == contract_id)
+            select(EmploymentContract).where(EmploymentContract.id == contract_id),
         )
         contract = result.scalar_one()
         assert contract.status == "linked"

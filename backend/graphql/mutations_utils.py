@@ -3,8 +3,7 @@ from typing import Any
 
 
 def wrap_with_atomic(db_session) -> Any:
-    """
-    Wrap a database session with atomic_transaction.
+    """Wrap a database session with atomic_transaction.
     
     Returns a context manager that can be used to wrap mutations.
     

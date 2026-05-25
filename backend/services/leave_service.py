@@ -1,39 +1,44 @@
-from typing import Optional, List
-from datetime import date, datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import date, timedelta
+
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.database.models import LeaveRequest, LeaveBalance, Payroll, WorkSchedule, Shift, Notification
-from backend.database.models import sofia_now
+from backend.crud.repositories import payroll_repo, time_repo
+from backend.database.models import (
+    LeaveBalance,
+    LeaveRequest,
+    Notification,
+    Shift,
+    WorkSchedule,
+    sofia_now,
+)
 
 
 class LeaveService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self.time_repo = time_repo
+        self.payroll_repo = payroll_repo
 
     async def get_balance(self, user_id: int, year: int) -> LeaveBalance:
-        payroll_stmt = select(Payroll).where(Payroll.user_id == user_id)
-        payroll_res = await self.db.execute(payroll_stmt)
-        payroll = payroll_res.scalars().first()
-
+        payrolls = await self.payroll_repo.get_user_payrolls(self.db, user_id)
+        payroll = payrolls[0] if payrolls else None
         configured_days = payroll.annual_leave_days if payroll and payroll.annual_leave_days is not None else 20
 
-        stmt = select(LeaveBalance).where(LeaveBalance.user_id == user_id, LeaveBalance.year == year)
-        result = await self.db.execute(stmt)
-        balance = result.scalars().first()
+        balances = await self.time_repo.get_leave_balance(self.db, user_id, year=year)
+        balance = balances[0] if balances else None
 
         if not balance:
             balance = LeaveBalance(user_id=user_id, year=year, total_days=configured_days, used_days=0)
             self.db.add(balance)
             await self.db.commit()
             await self.db.refresh(balance)
-        else:
-            if balance.total_days != configured_days:
-                balance.total_days = configured_days
-                self.db.add(balance)
-                await self.db.commit()
-                await self.db.refresh(balance)
+        elif balance.total_days != configured_days:
+            balance.total_days = configured_days
+            self.db.add(balance)
+            await self.db.commit()
+            await self.db.refresh(balance)
 
         return balance
 
@@ -49,9 +54,9 @@ class LeaveService:
     async def approve_request(
         self,
         request_id: int,
-        admin_comment: Optional[str] = None,
-        admin_user_id: Optional[int] = None,
-        employer_top_up: Optional[bool] = False
+        admin_comment: str | None = None,
+        admin_user_id: int | None = None,
+        employer_top_up: bool | None = False,
     ) -> LeaveRequest:
         request = await self._get_request(request_id)
         if not request:
@@ -70,7 +75,7 @@ class LeaveService:
             balance = await self.get_balance(request.user_id, request.start_date.year)
             if balance.used_days + working_days > balance.total_days:
                 raise ValueError(
-                    f"Недостатъчен баланс за отпуск. Заявени: {working_days}, Оставащи: {balance.total_days - balance.used_days}"
+                    f"Недостатъчен баланс за отпуск. Заявени: {working_days}, Оставащи: {balance.total_days - balance.used_days}",
                 )
             balance.used_days += working_days
             self.db.add(balance)
@@ -86,8 +91,8 @@ class LeaveService:
     async def reject_request(
         self,
         request_id: int,
-        admin_comment: Optional[str] = None,
-        admin_user_id: Optional[int] = None
+        admin_comment: str | None = None,
+        admin_user_id: int | None = None,
     ) -> LeaveRequest:
         request = await self._get_request(request_id)
         if not request:
@@ -109,7 +114,7 @@ class LeaveService:
         self,
         request_id: int,
         current_user_id: int,
-        is_admin: bool = False
+        is_admin: bool = False,
     ) -> LeaveRequest:
         request = await self._get_request(request_id)
         if not request:
@@ -143,29 +148,21 @@ class LeaveService:
 
         return request
 
-    async def get_my_requests(self, user_id: int) -> List[LeaveRequest]:
-        stmt = select(LeaveRequest).where(LeaveRequest.user_id == user_id).order_by(
-            LeaveRequest.start_date.desc()
-        ).options(
-            selectinload(LeaveRequest.user)
-        )
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+    async def get_my_requests(self, user_id: int) -> list[LeaveRequest]:
+        return await self.time_repo.get_user_leave_requests(self.db, user_id)
 
-    async def get_pending_requests(self, company_id: Optional[int] = None) -> List[LeaveRequest]:
+    async def get_pending_requests(self, company_id: int | None = None) -> list[LeaveRequest]:
         stmt = select(LeaveRequest).where(LeaveRequest.status == "pending")
         if company_id:
             stmt = stmt.where(LeaveRequest.company_id == company_id)
         stmt = stmt.order_by(LeaveRequest.created_at.desc()).options(
-            selectinload(LeaveRequest.user)
+            selectinload(LeaveRequest.user),
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def _get_request(self, request_id: int) -> Optional[LeaveRequest]:
-        stmt = select(LeaveRequest).where(LeaveRequest.id == request_id)
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
+    async def _get_request(self, request_id: int) -> LeaveRequest | None:
+        return await self.time_repo.get_leave_request_by_id(self.db, request_id)
 
     async def _update_schedule_for_leave(self, request: LeaveRequest) -> None:
         target_shift = await self._get_shift_by_type(request.leave_type)
@@ -176,7 +173,7 @@ class LeaveService:
                 if current.weekday() < 5:
                     sched_stmt = select(WorkSchedule).where(
                         WorkSchedule.user_id == request.user_id,
-                        WorkSchedule.date == current
+                        WorkSchedule.date == current,
                     )
                     sched_res = await self.db.execute(sched_stmt)
                     schedule = sched_res.scalars().first()
@@ -188,12 +185,12 @@ class LeaveService:
                         schedule = WorkSchedule(
                             user_id=request.user_id,
                             shift_id=target_shift.id,
-                            date=current
+                            date=current,
                         )
                         self.db.add(schedule)
                 current += timedelta(days=1)
 
-    async def _get_shift_by_type(self, leave_type: str) -> Optional[Shift]:
+    async def _get_shift_by_type(self, leave_type: str) -> Shift | None:
         if leave_type == "paid_leave":
             shift_type = "leave"
         elif leave_type == "unpaid_leave":
@@ -224,7 +221,7 @@ class LeaveService:
         while curr <= request.end_date:
             sched_stmt = select(WorkSchedule).where(
                 WorkSchedule.user_id == request.user_id,
-                WorkSchedule.date == curr
+                WorkSchedule.date == curr,
             )
             sched_res = await self.db.execute(sched_stmt)
             schedule = sched_res.scalars().first()
@@ -249,7 +246,7 @@ class LeaveService:
         while curr <= request.end_date:
             sched_stmt = select(WorkSchedule).where(
                 WorkSchedule.user_id == request.user_id,
-                WorkSchedule.date == curr
+                WorkSchedule.date == curr,
             )
             sched_res = await self.db.execute(sched_stmt)
             schedule = sched_res.scalars().first()
@@ -266,7 +263,7 @@ class LeaveService:
     async def _notify_status(self, request: LeaveRequest, status_bg: str) -> None:
         notification = Notification(
             user_id=request.user_id,
-            message=f"Вашата заявка за отпуск за периода {request.start_date} - {request.end_date} беше {status_bg}."
+            message=f"Вашата заявка за отпуск за периода {request.start_date} - {request.end_date} беше {status_bg}.",
         )
         self.db.add(notification)
         await self.db.flush()
@@ -277,7 +274,7 @@ class LeaveService:
                 self.db,
                 request.user_id,
                 "Статус на отпуска",
-                f"Заявката Ви за {request.start_date} беше {status_bg}."
+                f"Заявката Ви за {request.start_date} беше {status_bg}.",
             )
         except Exception:
             pass

@@ -1,20 +1,19 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from backend.config import settings
-from typing import Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, func
 
+from backend.config import settings
 from backend.modules.behavioral_analysis.models import (
-    BehavioralProfile,
     BehavioralAnomaly,
+    BehavioralProfile,
     BehavioralRecommendation,
-    RecommendationFeedback,
     BehavioralRetentionSettings,
-    DepartmentHealthReport,
     BiasReport,
+    DepartmentHealthReport,
+    RecommendationFeedback,
 )
+from sqlalchemy import delete, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +59,11 @@ class BehavioralCleanup:
         logger.info(f"Cleanup completed for company {company_id}: {results}")
         return results
 
-    async def _get_retention_settings(self, company_id: int) -> Optional[BehavioralRetentionSettings]:
+    async def _get_retention_settings(self, company_id: int) -> BehavioralRetentionSettings | None:
         result = await self.db.execute(
             select(BehavioralRetentionSettings).where(
-                BehavioralRetentionSettings.company_id == company_id
-            )
+                BehavioralRetentionSettings.company_id == company_id,
+            ),
         )
         return result.scalar_one_or_none()
 
@@ -99,8 +98,8 @@ class BehavioralCleanup:
             BehavioralAnomaly.detected_at < cutoff,
             BehavioralAnomaly.profile_id.in_(
                 select(BehavioralProfile.id).where(
-                    BehavioralProfile.company_id == company_id
-                )
+                    BehavioralProfile.company_id == company_id,
+                ),
             ),
         )
         result = await self.db.execute(stmt)
@@ -112,8 +111,8 @@ class BehavioralCleanup:
             BehavioralRecommendation.created_at < cutoff,
             BehavioralRecommendation.user_id.in_(
                 select(BehavioralProfile.user_id).where(
-                    BehavioralProfile.company_id == company_id
-                )
+                    BehavioralProfile.company_id == company_id,
+                ),
             ),
         )
         result = await self.db.execute(stmt)
@@ -127,10 +126,10 @@ class BehavioralCleanup:
                 select(BehavioralRecommendation.id).where(
                     BehavioralRecommendation.user_id.in_(
                         select(BehavioralProfile.user_id).where(
-                            BehavioralProfile.company_id == company_id
-                        )
-                    )
-                )
+                            BehavioralProfile.company_id == company_id,
+                        ),
+                    ),
+                ),
             ),
         )
         result = await self.db.execute(stmt)

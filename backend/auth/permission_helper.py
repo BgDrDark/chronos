@@ -1,10 +1,7 @@
 from functools import wraps
-from typing import Optional, List
-import strawberry
-from strawberry.types import Info
 
 from backend.auth.rbac_service import PermissionService
-from backend.exceptions import PermissionDeniedException, AuthenticationException
+from backend.exceptions import AuthenticationException, PermissionDeniedException
 
 
 def get_permission_error_message(permission: str) -> str:
@@ -49,30 +46,29 @@ async def check_permission(
     current_user,
     permission: str,
     db,
-    company_id: Optional[int] = None
+    company_id: int | None = None,
 ) -> bool:
     """Check if user has permission"""
     if not current_user:
         raise AuthenticationException(detail="Не сте идентифицирани в системата")
-    
+
     perm_service = PermissionService(db)
     has_perm = await perm_service.check_permission(
         current_user.id,
         permission,
-        company_id=company_id or getattr(current_user, 'company_id', None)
+        company_id=company_id or getattr(current_user, "company_id", None),
     )
-    
+
     if not has_perm:
         raise PermissionDeniedException(
-            detail=get_permission_error_message(permission)
+            detail=get_permission_error_message(permission),
         )
-    
+
     return True
 
 
 def require_permission(permission: str):
-    """
-    Decorator for GraphQL resolvers to check permissions.
+    """Decorator for GraphQL resolvers to check permissions.
     
     Usage:
     
@@ -84,42 +80,41 @@ def require_permission(permission: str):
     def decorator(func):
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
-            info = kwargs.get('info')
+            info = kwargs.get("info")
             if not info:
                 raise PermissionDeniedException(detail="Missing info context")
-            
-            current_user = info.context.get('current_user')
-            db = info.context.get('db')
-            
+
+            current_user = info.context.get("current_user")
+            db = info.context.get("db")
+
             if not current_user:
                 raise AuthenticationException(detail="Не сте идентифицирани в системата")
-            
+
             if not db:
                 raise PermissionDeniedException(detail="Missing database context")
-            
-            company_id = kwargs.get('company_id') or getattr(current_user, 'company_id', None)
-            
+
+            company_id = kwargs.get("company_id") or getattr(current_user, "company_id", None)
+
             perm_service = PermissionService(db)
             has_perm = await perm_service.check_permission(
                 current_user.id,
                 permission,
-                company_id=company_id
+                company_id=company_id,
             )
-            
+
             if not has_perm:
                 raise PermissionDeniedException(
-                    detail=get_permission_error_message(permission)
+                    detail=get_permission_error_message(permission),
                 )
-            
+
             return await func(self, *args, **kwargs)
-        
+
         return wrapper
     return decorator
 
 
-def require_permissions(permissions: List[str]):
-    """
-    Decorator for GraphQL resolvers to check multiple permissions.
+def require_permissions(permissions: list[str]):
+    """Decorator for GraphQL resolvers to check multiple permissions.
     User needs ALL permissions to proceed.
     
     Usage:
@@ -132,44 +127,43 @@ def require_permissions(permissions: List[str]):
     def decorator(func):
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
-            info = kwargs.get('info')
+            info = kwargs.get("info")
             if not info:
                 raise PermissionDeniedException(detail="Missing info context")
-            
-            current_user = info.context.get('current_user')
-            db = info.context.get('db')
-            
+
+            current_user = info.context.get("current_user")
+            db = info.context.get("db")
+
             if not current_user:
                 raise AuthenticationException(detail="Не сте идентифицирани в системата")
-            
+
             if not db:
                 raise PermissionDeniedException(detail="Missing database context")
-            
-            company_id = kwargs.get('company_id') or getattr(current_user, 'company_id', None)
-            
+
+            company_id = kwargs.get("company_id") or getattr(current_user, "company_id", None)
+
             perm_service = PermissionService(db)
-            
+
             for perm in permissions:
                 has_perm = await perm_service.check_permission(
                     current_user.id,
                     perm,
-                    company_id=company_id
+                    company_id=company_id,
                 )
-                
+
                 if not has_perm:
                     raise PermissionDeniedException(
-                        detail=get_permission_error_message(perm)
+                        detail=get_permission_error_message(perm),
                     )
-            
+
             return await func(self, *args, **kwargs)
-        
+
         return wrapper
     return decorator
 
 
-async def require_role(current_user, allowed_roles: List[str], info) -> bool:
-    """
-    Legacy support: Check if user has one of the allowed roles.
+async def require_role(current_user, allowed_roles: list[str], info) -> bool:
+    """Legacy support: Check if user has one of the allowed roles.
     This is kept for backward compatibility during migration.
     
     Usage:
@@ -182,20 +176,20 @@ async def require_role(current_user, allowed_roles: List[str], info) -> bool:
     """
     if not current_user:
         raise AuthenticationException(detail="Не сте идентифицирани в системата")
-    
+
     if not allowed_roles:
         return True
-    
-    user_role = getattr(current_user, 'role', None)
+
+    user_role = getattr(current_user, "role", None)
     if not user_role:
         return False
-    
-    role_name = getattr(user_role, 'name', None)
+
+    role_name = getattr(user_role, "name", None)
     if role_name not in allowed_roles:
         raise PermissionDeniedException(
-            detail=f"Нямате права за това действие. Необходима роля: {allowed_roles}"
+            detail=f"Нямате права за това действие. Необходима роля: {allowed_roles}",
         )
-    
+
     return True
 
 
@@ -203,11 +197,10 @@ async def require_permission_or_role(
     current_user,
     permission: str,
     db,
-    fallback_roles: List[str],
-    company_id: Optional[int] = None
+    fallback_roles: list[str],
+    company_id: int | None = None,
 ) -> bool:
-    """
-    Hybrid permission check: tries permission system first, falls back to role check.
+    """Hybrid permission check: tries permission system first, falls back to role check.
     
     This allows gradual migration - uses new RBAC if permissions exist in DB,
     otherwise falls back to legacy role.name check.
@@ -228,30 +221,30 @@ async def require_permission_or_role(
     """
     if not current_user:
         raise AuthenticationException(detail="Не сте идентифицирани в системата")
-    
+
     try:
         perm_service = PermissionService(db)
         has_perm = await perm_service.check_permission(
             current_user.id,
             permission,
-            company_id=company_id or getattr(current_user, 'company_id', None)
+            company_id=company_id or getattr(current_user, "company_id", None),
         )
-        
+
         if has_perm:
             return True
     except Exception:
         pass
-    
-    user_role = getattr(current_user, 'role', None)
+
+    user_role = getattr(current_user, "role", None)
     if not user_role:
         raise PermissionDeniedException(detail="Нямате права за това действие")
-    
-    role_name = getattr(user_role, 'name', None)
+
+    role_name = getattr(user_role, "name", None)
     if role_name not in fallback_roles:
         raise PermissionDeniedException(
-            detail=f"Нямате права за това действие"
+            detail="Нямате права за това действие",
         )
-    
+
     return True
 
 

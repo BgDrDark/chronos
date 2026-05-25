@@ -1,6 +1,6 @@
+from datetime import date, datetime
+
 import strawberry
-from typing import Optional, List
-from datetime import datetime, date
 from backend.utils.json_type import JSONScalar
 
 
@@ -28,7 +28,7 @@ class BehavioralProfileType:
     status: str
     confidence_score: float
 
-    contribution_factors: Optional[JSONScalar] = None
+    contribution_factors: JSONScalar | None = None
     rule_engine_version: str
     computed_at: datetime
     version: int
@@ -47,9 +47,9 @@ class BehavioralAnomalyType:
     deviation: float
     confidence_score: float
     suppressed: bool
-    suppression_reason: Optional[str] = None
+    suppression_reason: str | None = None
     description: str
-    context_summary: Optional[JSONScalar] = None
+    context_summary: JSONScalar | None = None
     detected_at: datetime
 
 
@@ -57,7 +57,7 @@ class BehavioralAnomalyType:
 class BehavioralRuleType:
     id: int
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     rule_type: str
     is_system: bool
     is_active: bool
@@ -66,7 +66,7 @@ class BehavioralRuleType:
     condition_type: str
     condition_config: JSONScalar
     recommendation_template: JSONScalar
-    auto_execute_action: Optional[str] = None
+    auto_execute_action: str | None = None
     auto_execute: bool
     effectiveness_score: float
     false_positive_rate: float
@@ -84,23 +84,23 @@ class BehavioralRecommendationType:
     id: int
     rule_id: int
     user_id: int
-    anomaly_id: Optional[int] = None
+    anomaly_id: int | None = None
     type: str
     priority: str
     title: str
     description: str
     suggested_action: str
     explanation: str
-    coaching_tips: Optional[JSONScalar] = None
+    coaching_tips: JSONScalar | None = None
     confidence_score: float
     status: str
     auto_executed: bool
     throttled: bool
     aggregated_count: int
-    dispute_reason: Optional[str] = None
-    dispute_notes: Optional[str] = None
+    dispute_reason: str | None = None
+    dispute_notes: str | None = None
     created_at: datetime
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
 
 @strawberry.type
@@ -140,13 +140,13 @@ class RecommendationFeedbackType:
     recommendation_id: int
     manager_id: int
     manager_action: str
-    manager_notes: Optional[str] = None
+    manager_notes: str | None = None
     action_taken_at: datetime
     outcome: str
     outcome_measured_at: datetime
     days_to_outcome: int
-    metric_before: Optional[JSONScalar] = None
-    metric_after: Optional[JSONScalar] = None
+    metric_before: JSONScalar | None = None
+    metric_after: JSONScalar | None = None
     improvement_delta: float
 
 
@@ -165,13 +165,13 @@ class BiasReportType:
 class BehavioralSystemHealthType:
     id: int
     company_id: int
-    last_computation_at: Optional[datetime] = None
+    last_computation_at: datetime | None = None
     last_computation_status: str = "unknown"
-    last_computation_duration_seconds: Optional[int] = None
+    last_computation_duration_seconds: int | None = None
     employees_processed: int = 0
     employees_failed: int = 0
     circuit_breaker_open: bool = False
     circuit_breaker_failure_count: int = 0
-    last_successful_profile_date: Optional[datetime] = None
+    last_successful_profile_date: datetime | None = None
     triggered_alerts_today: int = 0
-    last_bias_check: Optional[datetime] = None
+    last_bias_check: datetime | None = None

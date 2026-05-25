@@ -1,31 +1,31 @@
 import sys
 from os.path import abspath, dirname
+
 # Add the project root to the python path
 sys.path.insert(0, dirname(dirname(dirname(abspath(__file__)))))
 
 from logging.config import fileConfig
 
-from sqlalchemy import pool, create_engine
-
-from alembic import context
-
 from backend.config import settings
 from backend.database.models import Base
 from backend.modules.behavioral_analysis.models import (  # noqa: F401
-    BehavioralProfile,
     BehavioralAnomaly,
-    BehavioralRule,
-    BehavioralRecommendation,
-    RecommendationFeedback,
-    BehavioralRetentionSettings,
-    BehavioralStatusThresholds,
     BehavioralComputationSettings,
     BehavioralMetricWeights,
     BehavioralPeerGroupCache,
+    BehavioralProfile,
+    BehavioralRecommendation,
+    BehavioralRetentionSettings,
+    BehavioralRule,
+    BehavioralStatusThresholds,
     BehavioralSystemHealth,
-    DepartmentHealthReport,
     BiasReport,
+    DepartmentHealthReport,
+    RecommendationFeedback,
 )
+from sqlalchemy import create_engine
+
+from alembic import context
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -88,7 +88,7 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata,
         )
 
         with context.begin_transaction():

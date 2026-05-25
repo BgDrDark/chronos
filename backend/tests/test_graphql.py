@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
 @pytest.mark.asyncio
 async def test_create_role(client: TestClient, test_db: AsyncSession, create_admin_and_login):
     _, token = create_admin_and_login
@@ -111,7 +112,7 @@ async def test_update_user(client: TestClient, test_db: AsyncSession, create_adm
     update_variables = {
         "id": user_to_update.id,
         "email": "updated_user@example.com",
-        "isActive": False
+        "isActive": False,
     }
     headers = {"Authorization": f"Bearer {admin_token}"}
     response = client.post("/graphql", json={"query": update_query, "variables": update_variables}, headers=headers)
@@ -132,15 +133,15 @@ async def test_update_user(client: TestClient, test_db: AsyncSession, create_adm
     """
     update_password_variables = {
         "id": user_to_update.id,
-        "password": "new_user_password"
+        "password": "new_user_password",
     }
     response = client.post("/graphql", json={"query": update_password_query, "variables": update_password_variables}, headers=headers)
     assert response.status_code == 200
-    
+
     # Verify new password by trying to log in
     login_response = client.post(
         "/auth/token",
-        data={"username": "updated_user@example.com", "password": "new_user_password"}
+        data={"username": "updated_user@example.com", "password": "new_user_password"},
     )
     assert login_response.status_code == 200
 
@@ -158,7 +159,7 @@ async def test_delete_user(client: TestClient, test_db: AsyncSession, create_adm
     # Test unauthorized delete
     login_response = client.post(
         "/auth/token",
-        data={"username": user_to_delete.email, "password": "userpassword"}
+        data={"username": user_to_delete.email, "password": "userpassword"},
     )
     unauth_token = login_response.json()["access_token"]
 

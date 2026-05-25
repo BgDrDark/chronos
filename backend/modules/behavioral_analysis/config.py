@@ -48,7 +48,8 @@ def DEFAULT_SETTINGS(company_id: int) -> dict:
     }
 
 
-DEFAULT_RULES = lambda company_id: [
+def DEFAULT_RULES(company_id):
+    return [
     {
         "name": "Прекомерно извънредно време",
         "description": "Служител работи >12 часа извънредно за седмица",

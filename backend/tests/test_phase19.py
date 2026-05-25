@@ -1,15 +1,19 @@
-import pytest
 from datetime import date, datetime
-from sqlalchemy import select
-from backend.database.models import User, WorkSchedule, Shift, ShiftSwapRequest, Role
-from backend.services.backup_service import BackupService # Not needed, but for context
-from backend import crud
+
+import pytest
+from backend.config import settings
+from backend.database.models import (
+    Base,
+    Role,
+    Shift,
+    ShiftSwapRequest,
+    User,
+    WorkSchedule,
+)
 
 # Reuse sync_db from previous tests if possible or define here
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from backend.database.models import Base
-from backend.config import settings
 
 SYNC_TEST_DB_URL = str(settings.DATABASE_URL).replace("+asyncpg", "+psycopg").replace("chronosdb", "test_swap_db")
 
@@ -71,7 +75,7 @@ def test_shift_swap_lifecycle(db):
         target_user_id=user_b.id,
         requestor_schedule_id=sched_a.id,
         target_schedule_id=sched_b.id,
-        status="pending"
+        status="pending",
     )
     db.add(swap)
     db.commit()
@@ -84,22 +88,22 @@ def test_shift_swap_lifecycle(db):
     # C) Admin approves & Executes
     # Logic from crud.update_swap_status
     swap.status = "approved"
-    
+
     # The Swap Logic:
     s_a = db.get(WorkSchedule, swap.requestor_schedule_id)
     s_b = db.get(WorkSchedule, swap.target_schedule_id)
-    
+
     tmp_id = s_a.shift_id
     s_a.shift_id = s_b.shift_id
     s_b.shift_id = tmp_id
-    
+
     db.add_all([s_a, s_b, swap])
     db.commit()
 
     # --- FINAL VERIFICATION ---
     db.refresh(sched_a)
     db.refresh(sched_b)
-    
+
     # Check if User A now has Shift 2 (Night)
     assert sched_a.shift_id == shift_2.id
     # Check if User B now has Shift 1 (Day)

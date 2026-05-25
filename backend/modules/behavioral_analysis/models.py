@@ -1,19 +1,18 @@
-from datetime import datetime, date
-from typing import Optional, List
+from datetime import date, datetime
+
+from backend.database.models import Base
 from sqlalchemy import (
-    ForeignKey,
-    String,
-    Float,
-    Integer,
-    Boolean,
-    DateTime,
-    Date,
     JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from backend.database.models import Base
 
 
 class BehavioralProfile(Base):
@@ -41,13 +40,13 @@ class BehavioralProfile(Base):
     status: Mapped[str] = mapped_column(String(20), default="stable")
     confidence_score: Mapped[float] = mapped_column(Float, default=1.0)
 
-    contribution_factors: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    contribution_factors: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     rule_engine_version: Mapped[str] = mapped_column(String(20), default="v1.0.0")
 
     computed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     version: Mapped[int] = mapped_column(Integer, default=1)
 
-    anomalies: Mapped[List["BehavioralAnomaly"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
+    anomalies: Mapped[list["BehavioralAnomaly"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
 
 
 class BehavioralAnomaly(Base):
@@ -64,9 +63,9 @@ class BehavioralAnomaly(Base):
     deviation: Mapped[float] = mapped_column(Float)
     confidence_score: Mapped[float] = mapped_column(Float, default=1.0)
     suppressed: Mapped[bool] = mapped_column(default=False)
-    suppression_reason: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    suppression_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
     description: Mapped[str] = mapped_column(String(500))
-    context_summary: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    context_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     detected_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     profile: Mapped["BehavioralProfile"] = relationship(back_populates="anomalies")
@@ -77,7 +76,7 @@ class BehavioralRule(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
-    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     rule_type: Mapped[str] = mapped_column(String(20))
     is_system: Mapped[bool] = mapped_column(default=False)
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -86,7 +85,7 @@ class BehavioralRule(Base):
     condition_type: Mapped[str] = mapped_column(String(30))
     condition_config: Mapped[dict] = mapped_column(JSON)
     recommendation_template: Mapped[dict] = mapped_column(JSON)
-    auto_execute_action: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    auto_execute_action: Mapped[str | None] = mapped_column(String(20), nullable=True)
     auto_execute: Mapped[bool] = mapped_column(default=False)
     effectiveness_score: Mapped[float] = mapped_column(Float, default=0.0)
     false_positive_rate: Mapped[float] = mapped_column(Float, default=0.0)
@@ -105,23 +104,23 @@ class BehavioralRecommendation(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     rule_id: Mapped[int] = mapped_column(ForeignKey("behavioral_rules.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    anomaly_id: Mapped[Optional[int]] = mapped_column(ForeignKey("behavioral_anomalies.id"), nullable=True)
+    anomaly_id: Mapped[int | None] = mapped_column(ForeignKey("behavioral_anomalies.id"), nullable=True)
     type: Mapped[str] = mapped_column(String(50))
     priority: Mapped[str] = mapped_column(String(20))
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(String(1000))
     suggested_action: Mapped[str] = mapped_column(String(500))
     explanation: Mapped[str] = mapped_column(String(500))
-    coaching_tips: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    coaching_tips: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     confidence_score: Mapped[float] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     auto_executed: Mapped[bool] = mapped_column(default=False)
     throttled: Mapped[bool] = mapped_column(default=False)
     aggregated_count: Mapped[int] = mapped_column(Integer, default=1)
-    dispute_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    dispute_notes: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    dispute_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    dispute_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class RecommendationFeedback(Base):
@@ -131,13 +130,13 @@ class RecommendationFeedback(Base):
     recommendation_id: Mapped[int] = mapped_column(ForeignKey("behavioral_recommendations.id", ondelete="CASCADE"), index=True)
     manager_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     manager_action: Mapped[str] = mapped_column(String(20))
-    manager_notes: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    manager_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     action_taken_at: Mapped[datetime] = mapped_column(DateTime)
     outcome: Mapped[str] = mapped_column(String(20))
     outcome_measured_at: Mapped[datetime] = mapped_column(DateTime)
     days_to_outcome: Mapped[int] = mapped_column(Integer)
-    metric_before: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    metric_after: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    metric_before: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    metric_after: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     improvement_delta: Mapped[float] = mapped_column(Float)
 
 
@@ -229,16 +228,16 @@ class BehavioralSystemHealth(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), unique=True)
-    last_computation_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_computation_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_computation_status: Mapped[str] = mapped_column(String(20), default="unknown")
-    last_computation_duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    last_computation_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     employees_processed: Mapped[int] = mapped_column(Integer, default=0)
     employees_failed: Mapped[int] = mapped_column(Integer, default=0)
     circuit_breaker_open: Mapped[bool] = mapped_column(default=False)
     circuit_breaker_failure_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_successful_profile_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_successful_profile_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     triggered_alerts_today: Mapped[int] = mapped_column(Integer, default=0)
-    last_bias_check: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_bias_check: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class DepartmentHealthReport(Base):

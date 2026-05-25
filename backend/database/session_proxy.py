@@ -1,15 +1,17 @@
 import asyncio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
 class LockedSession:
-    """
-    A proxy for AsyncSession that uses an asyncio.Lock to serialize access
+    """A proxy for AsyncSession that uses an asyncio.Lock to serialize access
     to all async methods.
     
     This prevents 'InterfaceError: cannot perform operation: another operation is in progress'
     which occurs when Strawberry GraphQL executes multiple resolvers concurrently 
     using the same database connection.
     """
+
     def __init__(self, session: AsyncSession, lock: asyncio.Lock):
         self.session = session
         self.lock = lock
@@ -45,11 +47,11 @@ class LockedSession:
     async def refresh(self, *args, **kwargs):
         async with self.lock:
             return await self.session.refresh(*args, **kwargs)
-            
+
     async def flush(self, *args, **kwargs):
         async with self.lock:
             return await self.session.flush(*args, **kwargs)
-            
+
     async def close(self):
         async with self.lock:
             return await self.session.close()
@@ -97,6 +99,6 @@ class LockedSession:
 
     def expunge_all(self, *args, **kwargs):
         return self.session.expunge_all(*args, **kwargs)
-        
+
     def __getattr__(self, name):
         return getattr(self.session, name)

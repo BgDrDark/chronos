@@ -1,15 +1,12 @@
-import datetime
 from datetime import date, timedelta
-from typing import List, Tuple
 
 
 class OrthodoxHolidayService:
     """Service for calculating Bulgarian Orthodox holidays"""
-    
+
     @staticmethod
     def easter_date(year: int) -> date:
-        """
-        Calculate Orthodox Easter (Pascha) using the Julian calendar algorithm.
+        """Calculate Orthodox Easter (Pascha) using the Julian calendar algorithm.
         Returns the date of Orthodox Easter for a given year.
         """
         # Julian calendar calculation
@@ -18,34 +15,33 @@ class OrthodoxHolidayService:
         c = year % 19
         d = (19 * c + 15) % 30
         e = (2 * a + 4 * b - d + 28) % 7
-        
+
         month = 3 + (d + e) / 28
         day = d + e - (d + e) / 28 * 28 + 1
-        
+
         if month > 12:
             month -= 12
             year += 1
-        
+
         # Orthodox Easter is calculated in Julian calendar, then converted
         # For simplicity, we return the approximate Gregorian date
         easter_julian = date(year, int(month), int(day))
-        
+
         # The difference between Julian and Gregorian calendars
         # 1900-2099: 13 days, 1800-1899: 12 days, etc.
         century = year // 100
         correction = 10 - (century - 16) if century >= 16 else 0
-        
+
         return easter_julian + timedelta(days=correction)
-    
+
     @staticmethod
-    def get_orthodox_holidays(year: int) -> List[Tuple[date, str, str, bool]]:
-        """
-        Get all Orthodox holidays for a given year.
+    def get_orthodox_holidays(year: int) -> list[tuple[date, str, str, bool]]:
+        """Get all Orthodox holidays for a given year.
         Returns list of (date, name, local_name, is_fixed)
         """
         holidays = []
         easter = OrthodoxHolidayService.easter_date(year)
-        
+
         # Fixed Orthodox holidays (Julian calendar converted to Gregorian)
         # The Julian calendar is 13 days behind Gregorian in 1900-2099
         fixed_holidays = [
@@ -90,7 +86,7 @@ class OrthodoxHolidayService:
             (12, 27, "St. Georgi", "Св. Йордан", True),
             (12, 31, "St. Silvester", "Силвестровден", True),
         ]
-        
+
         # Add fixed holidays
         for month, day, name, local_name, is_fixed in fixed_holidays:
             try:
@@ -104,38 +100,38 @@ class OrthodoxHolidayService:
                 holidays.append((gregorian_date, name, local_name, is_fixed))
             except ValueError:
                 pass
-        
+
         # Add Easter and movable feasts
         holidays.append((easter, "Easter", "Великден", False))
-        
+
         # Palm Sunday (8 days before Easter)
         palm_sunday = easter + timedelta(days=-8)
         holidays.append((palm_sunday, "Palm Sunday", "Цветница", False))
-        
+
         # Great Monday
         great_monday = easter + timedelta(days=-7)
         holidays.append((great_monday, "Great Monday", "Велики понеделник", False))
-        
+
         # Great Tuesday
         great_tuesday = easter + timedelta(days=-6)
         holidays.append((great_tuesday, "Great Tuesday", "Велики вторник", False))
-        
+
         # Ascension (39 days after Easter)
         ascension = easter + timedelta(days=39)
         holidays.append((ascension, "Ascension", "Възнесение", False))
-        
+
         # Pentecost (49 days after Easter)
         pentecost = easter + timedelta(days=49)
         holidays.append((pentecost, "Pentecost", "Св. Дух", False))
-        
+
         # St. Peter and Paul (57 days after Easter - usually June 29)
         st_peter_paul = easter + timedelta(days=57)
         holidays.append((st_peter_paul, "St. Peter and Paul", "Петровден", False))
-        
+
         # St. George's Day (if not already on April 23)
         st_george = easter + timedelta(days=56)
         holidays.append((st_george, "St. George", "Гергьовден", False))
-        
+
         # Dormition Fast (August 1-14)
         for day in range(1, 15):
             try:
@@ -143,7 +139,7 @@ class OrthodoxHolidayService:
                 holidays.append((fast_date, "Dormition Fast", "Голямa Богородица", False))
             except:
                 pass
-        
+
         # Nativity Fast (November 25 - December 24)
         for day in range(25, 32):
             try:
@@ -161,32 +157,34 @@ class OrthodoxHolidayService:
                 holidays.append((christmas_eve_date, "Christmas Eve Fast", "Бъднивечерски пост", False))
         except:
             pass
-        
+
         # Sort by date
         holidays.sort(key=lambda x: x[0])
-        
+
         return holidays
 
 
 async def fetch_and_store_orthodox_holidays(db, year: int) -> int:
     """Fetch and store Orthodox holidays for a given year"""
     from datetime import date
+
     from sqlalchemy import select
+
     from backend.database.models import OrthodoxHoliday
-    
+
     holidays = OrthodoxHolidayService.get_orthodox_holidays(year)
-    
+
     count_new = 0
     existing_dates = set()
-    
+
     start_date = date(year, 1, 1)
     end_date = date(year, 12, 31)
-    
+
     result = await db.execute(
-        select(OrthodoxHoliday.date).where(OrthodoxHoliday.date >= start_date).where(OrthodoxHoliday.date <= end_date)
+        select(OrthodoxHoliday.date).where(OrthodoxHoliday.date >= start_date).where(OrthodoxHoliday.date <= end_date),
     )
     existing_dates = {row[0] for row in result.fetchall()}
-    
+
     new_holidays = []
     for holiday_date, name, local_name, is_fixed in holidays:
         if holiday_date not in existing_dates:
@@ -194,9 +192,9 @@ async def fetch_and_store_orthodox_holidays(db, year: int) -> int:
                 "date": holiday_date,
                 "name": name,
                 "local_name": local_name,
-                "is_fixed": is_fixed
+                "is_fixed": is_fixed,
             })
-    
+
     if new_holidays:
         for h in new_holidays:
             try:
@@ -205,6 +203,6 @@ async def fetch_and_store_orthodox_holidays(db, year: int) -> int:
                 count_new += 1
             except Exception:
                 pass
-    
+
     await db.commit()
     return count_new

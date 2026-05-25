@@ -10,20 +10,21 @@ MODULE_CONFIG = {
 
 async def initialize_module(db, company_id: int):
     """Create default settings and built-in rules for new company"""
-    from .config import DEFAULT_RULES, DEFAULT_SETTINGS
     from sqlalchemy import select
+
+    from .config import DEFAULT_RULES, DEFAULT_SETTINGS
     from .models import (
-        BehavioralRetentionSettings,
-        BehavioralStatusThresholds,
         BehavioralComputationSettings,
         BehavioralMetricWeights,
+        BehavioralRetentionSettings,
         BehavioralRule,
+        BehavioralStatusThresholds,
     )
 
     existing = await db.execute(
         select(BehavioralRetentionSettings).where(
-            BehavioralRetentionSettings.company_id == company_id
-        )
+            BehavioralRetentionSettings.company_id == company_id,
+        ),
     )
     if existing.scalar_one_or_none():
         return
@@ -46,16 +47,17 @@ async def initialize_module(db, company_id: int):
 async def cleanup_module(db, company_id: int):
     """Anonymize behavioral data when module is disabled"""
     from sqlalchemy import update
+
     from .models import BehavioralProfile, BehavioralRecommendation
-    
+
     await db.execute(
         update(BehavioralProfile)
         .where(BehavioralProfile.company_id == company_id)
-        .values(status="archived", contribution_factors=None)
+        .values(status="archived", contribution_factors=None),
     )
     await db.execute(
         update(BehavioralRecommendation)
         .where(BehavioralRecommendation.status == "pending")
-        .values(status="archived")
+        .values(status="archived"),
     )
     await db.commit()

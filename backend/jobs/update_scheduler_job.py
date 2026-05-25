@@ -3,11 +3,12 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
+
 from backend.config import settings
 from backend.database.database import AsyncSessionLocal
 from backend.database.models import UpdateSchedule
 from backend.services.update_service import update_service
-from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +27,9 @@ async def check_scheduled_update():
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(UpdateSchedule)
-                .where(UpdateSchedule.enabled == True)
+                .where(UpdateSchedule.enabled)
                 .order_by(UpdateSchedule.id.desc())
-                .limit(1)
+                .limit(1),
             )
             schedule = result.scalar_one_or_none()
 
@@ -51,7 +52,7 @@ async def check_scheduled_update():
 
             if not should_run:
                 if _update_check_count % 120 == 0:
-                    logger.debug(f"Update scheduler check OK (not yet time)")
+                    logger.debug("Update scheduler check OK (not yet time)")
                 return
 
             logger.warning(f"🔄 Scheduled auto-update triggered (type={schedule.schedule_type})")

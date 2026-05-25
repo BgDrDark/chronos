@@ -1,12 +1,9 @@
 """Service за автоматични актуализации"""
 import logging
 import os
-import subprocess
-import httpx
-from typing import Optional
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import settings
@@ -88,7 +85,7 @@ class UpdateService:
                 response = await client.post(
                     f"{deploy_manager_url}/deploy",
                     json={"version": latest_version},
-                    headers={"Authorization": f"UpdateKey {deploy_key}"}
+                    headers={"Authorization": f"UpdateKey {deploy_key}"},
                 )
 
                 if response.status_code != 200:
@@ -103,7 +100,7 @@ class UpdateService:
                         "output": "\n".join(output_lines),
                     }
 
-                output_lines.append(f"[AUTO-UPDATE] Deploy started successfully")
+                output_lines.append("[AUTO-UPDATE] Deploy started successfully")
 
             # 3. Poll за статус (до 10 мин)
             final_status = await self._poll_deploy_status(deploy_manager_url, latest_version, output_lines)
@@ -123,7 +120,7 @@ class UpdateService:
 
         except Exception as e:
             logger.error(f"Auto-update failed: {e}")
-            output_lines.append(f"[AUTO-UPDATE] Error: {str(e)}")
+            output_lines.append(f"[AUTO-UPDATE] Error: {e!s}")
 
             await self._send_update_email(
                 version="unknown",
@@ -142,7 +139,7 @@ class UpdateService:
         import asyncio
 
         max_polls = 300  # 10 мин при 2 сек интервал
-        for i in range(max_polls):
+        for _i in range(max_polls):
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     response = await client.get(f"{manager_url}/deploy-status")
@@ -163,12 +160,13 @@ class UpdateService:
 
     async def _send_update_email(self, version: str, status: str, output: str):
         """Изпраща email уведомление за update"""
-        from backend.database.models import UpdateSchedule
         from sqlalchemy import select
+
+        from backend.database.models import UpdateSchedule
 
         try:
             result = await self.db.execute(
-                select(UpdateSchedule).order_by(UpdateSchedule.id.desc()).limit(1)
+                select(UpdateSchedule).order_by(UpdateSchedule.id.desc()).limit(1),
             )
             schedule = result.scalar_one_or_none()
 
@@ -190,8 +188,8 @@ class UpdateService:
                 return
 
             import smtplib
-            from email.mime.text import MIMEText
             from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
 
             status_text = {
                 "success": "Успешно",

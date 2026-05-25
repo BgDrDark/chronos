@@ -1,11 +1,11 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database.database import get_db
 from backend.modules.behavioral_analysis.cleanup import BehavioralCleanup
 from backend.modules.behavioral_analysis.triggered_events import TriggeredEventProcessor
 from backend.services.module_service import ModuleService
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,8 @@ async def get_cleanup_status(company_id: int, db: AsyncSession = Depends(get_db)
 
     result = await db.execute(
         select(BehavioralRetentionSettings).where(
-            BehavioralRetentionSettings.company_id == company_id
-        )
+            BehavioralRetentionSettings.company_id == company_id,
+        ),
     )
     settings = result.scalar_one_or_none()
 

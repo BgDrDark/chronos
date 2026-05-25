@@ -1,16 +1,16 @@
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
-from backend.config import settings
-from typing import List, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from sqlalchemy.orm import selectinload
 
-from backend.database.models import Department, User, Position
+from backend.config import settings
+from backend.database.models import Department, Position, User
 from backend.modules.behavioral_analysis.models import (
-    BehavioralProfile, DepartmentHealthReport, BiasReport
+    BehavioralProfile,
+    BiasReport,
+    DepartmentHealthReport,
 )
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +20,9 @@ class OrganizationalHealth:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def generate_department_reports(self, company_id: int, period_start: date, period_end: date) -> List[DepartmentHealthReport]:
+    async def generate_department_reports(self, company_id: int, period_start: date, period_end: date) -> list[DepartmentHealthReport]:
         depts_result = await self.db.execute(
-            select(Department).where(Department.company_id == company_id)
+            select(Department).where(Department.company_id == company_id),
         )
         departments = depts_result.scalars().all()
 
@@ -30,18 +30,18 @@ class OrganizationalHealth:
         for dept in departments:
             stmt = (
                 select(
-                    func.avg(BehavioralProfile.burnout_risk).label('avg_burnout'),
-                    func.avg(BehavioralProfile.engagement_score).label('avg_engagement'),
-                    func.avg(BehavioralProfile.efficiency_score).label('avg_efficiency'),
-                    func.avg(BehavioralProfile.punctuality_score).label('avg_punctuality'),
-                    func.count(BehavioralProfile.id).label('count')
+                    func.avg(BehavioralProfile.burnout_risk).label("avg_burnout"),
+                    func.avg(BehavioralProfile.engagement_score).label("avg_engagement"),
+                    func.avg(BehavioralProfile.efficiency_score).label("avg_efficiency"),
+                    func.avg(BehavioralProfile.punctuality_score).label("avg_punctuality"),
+                    func.count(BehavioralProfile.id).label("count"),
                 )
                 .join(User, BehavioralProfile.user_id == User.id)
                 .join(Position, User.position_id == Position.id)
                 .where(
                     Position.department_id == dept.id,
                     BehavioralProfile.period_start >= period_start,
-                    BehavioralProfile.period_end <= period_end
+                    BehavioralProfile.period_end <= period_end,
                 )
             )
             result = await self.db.execute(stmt)
@@ -61,7 +61,7 @@ class OrganizationalHealth:
                     employee_count=int(row.count),
                     turnover_rate=0.0,
                     trend="stable",
-                    is_systemic_issue=(row.avg_burnout or 0) > 0.7
+                    is_systemic_issue=(row.avg_burnout or 0) > 0.7,
                 )
                 self.db.add(report)
                 reports.append(report)
@@ -82,7 +82,7 @@ class OrganizationalHealth:
                 period_end=period_end,
                 findings=[],
                 overall_bias_detected=False,
-                generated_at=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+                generated_at=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
             )
 
         for i in range(len(departments)):
@@ -101,7 +101,7 @@ class OrganizationalHealth:
                         "group_a_avg": avg_a,
                         "group_b_avg": avg_b,
                         "difference": abs(avg_a - avg_b),
-                        "recommendation": f"Review workload distribution between {dept_a.name} and {dept_b.name}"
+                        "recommendation": f"Review workload distribution between {dept_a.name} and {dept_b.name}",
                     })
 
         report = BiasReport(
@@ -110,7 +110,7 @@ class OrganizationalHealth:
             period_end=period_end,
             findings=findings,
             overall_bias_detected=len(findings) > 0,
-            generated_at=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+            generated_at=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
         )
         self.db.add(report)
         await self.db.commit()
@@ -124,7 +124,7 @@ class OrganizationalHealth:
             .where(
                 Position.department_id == dept_id,
                 BehavioralProfile.period_start >= start,
-                BehavioralProfile.period_end <= end
+                BehavioralProfile.period_end <= end,
             )
         )
         result = await self.db.execute(stmt)

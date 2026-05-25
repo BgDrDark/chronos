@@ -1,9 +1,11 @@
 import asyncio
-from backend.database.database import AsyncSessionLocal
-from backend.database.models import Role, Module
+import logging
+
 from sqlalchemy import text
 from sqlalchemy.future import select
-import logging
+
+from backend.database.database import AsyncSessionLocal
+from backend.database.models import Module, Role
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -11,14 +13,14 @@ logger = logging.getLogger(__name__)
 async def test_database_structure():
     async with AsyncSessionLocal() as db:
         logger.info("--- СТАРТ НА ТЕСТ: ФАЗА 1 ---")
-        
+
         # 1. Проверка на таблиците
         new_tables = [
-            "storage_zones", "suppliers", "ingredients", "batches", 
-            "recipes", "recipe_ingredients", "workstations", 
-            "recipe_steps", "production_orders", "production_tasks"
+            "storage_zones", "suppliers", "ingredients", "batches",
+            "recipes", "recipe_ingredients", "workstations",
+            "recipe_steps", "production_orders", "production_tasks",
         ]
-        
+
         logger.info("Проверка на нови таблици...")
         for table in new_tables:
             result = await db.execute(text(f"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = '{table}');"))
@@ -46,7 +48,7 @@ async def test_database_structure():
         if module:
             logger.info(f"✅ Модул '{module.name}' е активен (Status: {module.is_enabled}).")
         else:
-            logger.error(f"❌ Модул 'confectionery' НЕ Е регистриран!")
+            logger.error("❌ Модул 'confectionery' НЕ Е регистриран!")
 
         logger.info("--- КРАЙ НА ТЕСТА ---")
 

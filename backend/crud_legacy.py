@@ -1,27 +1,53 @@
-from datetime import datetime, timezone, date, timedelta
-from zoneinfo import ZoneInfo
-import os, sys
-from typing import Optional, List, Any
+from __future__ import annotations
+
+import os
+import sys
+from datetime import date, datetime, timedelta
 from decimal import Decimal
-import math
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import Date, select, delete, or_, func, desc, asc, update
-from sqlalchemy.orm import selectinload
+from zoneinfo import ZoneInfo
+
 from fastapi import HTTPException, status
+from sqlalchemy import asc, delete, desc, func, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from backend.utils.security import sanitize_html
 from backend import schemas
 from backend.config import settings
-from backend.database.models import User, Role, TimeLog, Payroll, Payslip, Shift, WorkSchedule, GlobalSetting, \
-    LeaveRequest, LeaveBalance, sofia_now, AuthKey, UserSession, AuditLog, ShiftSwapRequest, ScheduleTemplate, \
-    ScheduleTemplateItem, PushSubscription, Webhook, APIKey, EmploymentContract, AdvancePayment, ServiceLoan
-from backend.database.transaction_manager import atomic_transaction, with_row_lock, TransactionError
-from backend.services.payroll_calculator import PayrollCalculator
+from backend.database.models import (
+    AdvancePayment,
+    APIKey,
+    AuditLog,
+    AuthKey,
+    EmploymentContract,
+    GlobalSetting,
+    LeaveBalance,
+    LeaveRequest,
+    Payroll,
+    Payslip,
+    PushSubscription,
+    Role,
+    ScheduleTemplate,
+    ScheduleTemplateItem,
+    ServiceLoan,
+    Shift,
+    ShiftSwapRequest,
+    TimeLog,
+    User,
+    UserSession,
+    Webhook,
+    WorkSchedule,
+    sofia_now,
+)
+from backend.database.transaction_manager import (
+    TransactionError,
+    atomic_transaction,
+    with_row_lock,
+)
 from backend.utils.geo import calculate_distance
+from backend.utils.security import sanitize_html
 
 # Re-export for mutations compatibility
-from backend.database.models import Payslip
-from backend.database.models import sofia_now
 
 
 # ... (rest of imports)
@@ -33,19 +59,16 @@ async def ensure_vapid_keys(db: AsyncSession):
     priv = await get_global_setting(db, "vapid_private_key")
 
     if not pub or not priv:
-        from pywebpush import vapid_errors
-        from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.primitives.asymmetric import ec
 
         # Generate new VAPID keys
         private_key = ec.generate_private_key(ec.SECP256R1())
-        public_key = private_key.public_key()
+        private_key.public_key()
 
         # We need raw bytes for VAPID (uncompressed)
         # For simplicity, pywebpush has a utility or we use cryptography
         # Actually pywebpush doesn't have a direct generator in 2.2.0, but we can use openssl or cryptography
         # Here's a quick way:
-        import base64
 
         # This is a bit complex to do manually with cryptography to match VAPID spec (uncompressed EC)
         # So we'll use a simpler placeholder or a known working method if possible.
@@ -56,7 +79,7 @@ async def ensure_vapid_keys(db: AsyncSession):
         print("VAPID keys missing. Generating...")
         # (Skip complex key gen for a moment, use a hardcoded ones for testing OR real generation)
         # Let's generate real ones.
-        return None  # Will handle in a script for safety
+        return  # Will handle in a script for safety
 
 
 async def subscribe_user_to_push(db: AsyncSession, user_id: int, sub_data: dict):
@@ -76,7 +99,7 @@ async def subscribe_user_to_push(db: AsyncSession, user_id: int, sub_data: dict)
         user_id=user_id,
         endpoint=endpoint,
         p256dh=p256dh,
-        auth=auth
+        auth=auth,
     )
     db.add(new_sub)
     await db.commit()
@@ -85,8 +108,9 @@ async def subscribe_user_to_push(db: AsyncSession, user_id: int, sub_data: dict)
 
 async def send_push_to_user(db: AsyncSession, user_id: int, title: str, body: str, icon: str = "/pwa-192x192.png",
                             url: str = "/"):
-    from pywebpush import webpush, WebPushException
     import json
+
+    from pywebpush import WebPushException, webpush
 
     # Get VAPID Keys
     vapid_private = await get_global_setting(db, "vapid_private_key")
@@ -106,8 +130,8 @@ async def send_push_to_user(db: AsyncSession, user_id: int, title: str, body: st
             "title": title,
             "body": body,
             "icon": icon,
-            "data": {"url": url}
-        }
+            "data": {"url": url},
+        },
     }
 
     for sub in subs:
@@ -115,11 +139,11 @@ async def send_push_to_user(db: AsyncSession, user_id: int, title: str, body: st
             webpush(
                 subscription_info={
                     "endpoint": sub.endpoint,
-                    "keys": {"p256dh": sub.p256dh, "auth": sub.auth}
+                    "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
                 },
                 data=json.dumps(payload),
                 vapid_private_key=vapid_private,
-                vapid_claims={"sub": f"mailto:{vapid_email}"}
+                vapid_claims={"sub": f"mailto:{vapid_email}"},
             )
         except WebPushException as ex:
             print(f"Push failed for {sub.endpoint}: {ex}")
@@ -132,7 +156,9 @@ async def send_push_to_user(db: AsyncSession, user_id: int, title: str, body: st
 # --- Schedule Templates ---
 
 async def create_schedule_template(db: AsyncSession, name: str, company_id: int,
-                                   description: Optional[str] = None, items: List[dict] = []):
+                                   description: str | None = None, items: list[dict] = None):
+    if items is None:
+        items = []
     template = ScheduleTemplate(name=name, company_id=company_id, description=description)
     db.add(template)
     await db.flush()  # Get template ID
@@ -141,7 +167,7 @@ async def create_schedule_template(db: AsyncSession, name: str, company_id: int,
         tmpl_item = ScheduleTemplateItem(
             template_id=template.id,
             day_index=item["day_index"],
-            shift_id=item.get("shift_id")
+            shift_id=item.get("shift_id"),
         )
         db.add(tmpl_item)
 
@@ -161,7 +187,7 @@ async def get_schedule_templates(db: AsyncSession, company_id: int = None):
 
 async def get_schedule_template(db: AsyncSession, template_id: int, company_id: int = None):
     stmt = select(ScheduleTemplate).where(ScheduleTemplate.id == template_id).options(
-        selectinload(ScheduleTemplate.items).selectinload(ScheduleTemplateItem.shift)
+        selectinload(ScheduleTemplate.items).selectinload(ScheduleTemplateItem.shift),
     )
     if company_id:
         stmt = stmt.where(ScheduleTemplate.company_id == company_id)
@@ -186,7 +212,7 @@ async def apply_schedule_template(
         user_id: int,
         start_date: date,
         end_date: date,
-        admin_id: int
+        admin_id: int,
 ):
     template = await get_schedule_template(db, template_id)
     if not template or not template.items:
@@ -215,10 +241,9 @@ async def apply_schedule_template(
             else:
                 new_sched = WorkSchedule(user_id=user_id, date=current_date, shift_id=target_item.shift_id)
                 db.add(new_sched)
-        else:
-            # If template says null (Day Off), we might want to delete existing shift
-            if existing:
-                await db.delete(existing)
+        # If template says null (Day Off), we might want to delete existing shift
+        elif existing:
+            await db.delete(existing)
 
         current_date += timedelta(days=1)
         days_processed += 1
@@ -226,7 +251,7 @@ async def apply_schedule_template(
     await log_audit_action(
         db, admin_id, "APPLY_SCHEDULE_TEMPLATE",
         target_type="User", target_id=user_id,
-        details=f"Applied template '{template.name}' from {start_date} to {end_date}"
+        details=f"Applied template '{template.name}' from {start_date} to {end_date}",
     )
 
     await db.commit()
@@ -240,7 +265,7 @@ async def create_swap_request(
         requestor_id: int,
         requestor_schedule_id: int,
         target_user_id: int,
-        target_schedule_id: int
+        target_schedule_id: int,
 ):
     # Verify schedules exist and belong to correct users
     req_sched = await db.get(WorkSchedule, requestor_schedule_id)
@@ -254,7 +279,7 @@ async def create_swap_request(
     # Check for existing pending request for these schedules
     stmt = select(ShiftSwapRequest).where(
         ShiftSwapRequest.requestor_schedule_id == requestor_schedule_id,
-        ShiftSwapRequest.status == "pending"
+        ShiftSwapRequest.status == "pending",
     )
     res = await db.execute(stmt)
     if res.scalars().first():
@@ -265,7 +290,7 @@ async def create_swap_request(
         requestor_schedule_id=requestor_schedule_id,
         target_user_id=target_user_id,
         target_schedule_id=target_schedule_id,
-        status="pending"
+        status="pending",
     )
     db.add(swap)
     await db.commit()
@@ -284,7 +309,7 @@ async def get_swap_request(db: AsyncSession, swap_id: int):
         selectinload(ShiftSwapRequest.requestor),
         selectinload(ShiftSwapRequest.target_user),
         selectinload(ShiftSwapRequest.requestor_schedule).selectinload(WorkSchedule.shift),
-        selectinload(ShiftSwapRequest.target_schedule).selectinload(WorkSchedule.shift)
+        selectinload(ShiftSwapRequest.target_schedule).selectinload(WorkSchedule.shift),
     )
     res = await db.execute(stmt)
     return res.scalars().first()
@@ -294,7 +319,7 @@ async def update_swap_status(
         db: AsyncSession,
         swap_id: int,
         new_status: str,
-        admin_user_id: Optional[int] = None
+        admin_user_id: int | None = None,
 ):
     swap = await get_swap_request(db, swap_id)
     if not swap:
@@ -318,7 +343,7 @@ async def update_swap_status(
         await log_audit_action(
             db, admin_user_id, "APPROVE_SHIFT_SWAP",
             target_type="ShiftSwapRequest", target_id=swap_id,
-            details=f"Swapped {swap.requestor.email} and {swap.target_user.email} shifts for {req_sched.date} and {tar_sched.date}"
+            details=f"Swapped {swap.requestor.email} and {swap.target_user.email} shifts for {req_sched.date} and {tar_sched.date}",
         )
 
         # Notify both
@@ -337,12 +362,12 @@ async def update_swap_status(
         await notify_admins(db,
                             f"Нова размяна на смени чака одобрение: {swap.requestor.email} <-> {swap.target_user.email}")
         await create_notification(db, swap.requestor_id,
-                                  f"Колегата ПРИЕ вашата покана за размяна. Чака се одобрение от администратор.")
+                                  "Колегата ПРИЕ вашата покана за размяна. Чака се одобрение от администратор.")
         await send_push_to_user(db, swap.requestor_id, "Поканата е приета",
                                 "Колегата прие вашата размяна. Чака се одобрение.")
 
     elif new_status == "rejected":
-        await create_notification(db, swap.requestor_id, f"Колегата ОТКАЗА вашата покана за размяна.")
+        await create_notification(db, swap.requestor_id, "Колегата ОТКАЗА вашата покана за размяна.")
         await send_push_to_user(db, swap.requestor_id, "Поканата е отказана",
                                 "Колегата отказа вашата покана за размяна.")
 
@@ -356,13 +381,13 @@ async def get_my_swap_requests(db: AsyncSession, user_id: int):
     stmt = select(ShiftSwapRequest).where(
         or_(
             ShiftSwapRequest.requestor_id == user_id,
-            ShiftSwapRequest.target_user_id == user_id
-        )
+            ShiftSwapRequest.target_user_id == user_id,
+        ),
     ).order_by(ShiftSwapRequest.created_at.desc()).options(
         selectinload(ShiftSwapRequest.requestor),
         selectinload(ShiftSwapRequest.target_user),
         selectinload(ShiftSwapRequest.requestor_schedule).selectinload(WorkSchedule.shift),
-        selectinload(ShiftSwapRequest.target_schedule).selectinload(WorkSchedule.shift)
+        selectinload(ShiftSwapRequest.target_schedule).selectinload(WorkSchedule.shift),
     )
     res = await db.execute(stmt)
     return res.scalars().all()
@@ -374,23 +399,27 @@ async def get_all_pending_swaps(db: AsyncSession):
         selectinload(ShiftSwapRequest.requestor),
         selectinload(ShiftSwapRequest.target_user),
         selectinload(ShiftSwapRequest.requestor_schedule).selectinload(WorkSchedule.shift),
-        selectinload(ShiftSwapRequest.target_schedule).selectinload(WorkSchedule.shift)
+        selectinload(ShiftSwapRequest.target_schedule).selectinload(WorkSchedule.shift),
     )
     res = await db.execute(stmt)
     return res.scalars().all()
 
 
-from backend.schemas import UserCreate, UserUpdate, RoleCreate
-from backend.auth.security import hash_password, encrypt_data, decrypt_data, validate_password_complexity
+from backend.auth.security import (
+    encrypt_data,
+    hash_password,
+    validate_password_complexity,
+)
+from backend.schemas import UserUpdate
 
 
 async def log_audit_action(
         db: AsyncSession,
-        user_id: Optional[int],
+        user_id: int | None,
         action: str,
-        target_type: Optional[str] = None,
-        target_id: Optional[int] = None,
-        details: Optional[str] = None
+        target_type: str | None = None,
+        target_id: int | None = None,
+        details: str | None = None,
 ):
     """Creates an entry in the audit log."""
     log_entry = AuditLog(
@@ -398,7 +427,7 @@ async def log_audit_action(
         action=action,
         target_type=target_type,
         target_id=target_id,
-        details=details
+        details=details,
     )
     db.add(log_entry)
     return log_entry
@@ -424,7 +453,7 @@ async def create_shift(db: AsyncSession, name: str, start_time: datetime.time, e
         tolerance_minutes=tolerance_minutes,
         break_duration_minutes=break_duration_minutes,
         pay_multiplier=pay_multiplier,
-        shift_type=shift_type
+        shift_type=shift_type,
     )
     db.add(db_shift)
     await db.commit()
@@ -432,10 +461,10 @@ async def create_shift(db: AsyncSession, name: str, start_time: datetime.time, e
     return db_shift
 
 
-async def update_shift(db: AsyncSession, shift_id: int, name: Optional[str] = None, start_time: Optional[datetime.time] = None,
-                        end_time: Optional[datetime.time] = None, tolerance_minutes: Optional[int] = None,
-                        break_duration_minutes: Optional[int] = None, pay_multiplier: Optional[Decimal] = None,
-                        shift_type: Optional[str] = None):
+async def update_shift(db: AsyncSession, shift_id: int, name: str | None = None, start_time: datetime.time | None = None,
+                        end_time: datetime.time | None = None, tolerance_minutes: int | None = None,
+                        break_duration_minutes: int | None = None, pay_multiplier: Decimal | None = None,
+                        shift_type: str | None = None):
     db_shift = await get_shift_by_id(db, shift_id)
     if not db_shift:
         raise HTTPException(status_code=404, detail="Shift not found")
@@ -452,7 +481,7 @@ async def update_shift(db: AsyncSession, shift_id: int, name: Optional[str] = No
     await db.refresh(db_shift)
     return db_shift
 
-async def delete_shift(db: AsyncSession, shift_id: int, admin_user_id: Optional[int] = None):
+async def delete_shift(db: AsyncSession, shift_id: int, admin_user_id: int | None = None):
     db_shift = await get_shift_by_id(db, shift_id)
     if not db_shift:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found")
@@ -463,7 +492,7 @@ async def delete_shift(db: AsyncSession, shift_id: int, admin_user_id: Optional[
     await log_audit_action(
         db, admin_user_id, "DELETE_SHIFT",
         target_type="Shift", target_id=shift_id,
-        details=f"Name: {shift_name}"
+        details=f"Name: {shift_name}",
     )
 
     await db.commit()
@@ -481,14 +510,14 @@ async def delete_schedule(db: AsyncSession, schedule_id: int):
     return True
 
 
-async def get_schedules_by_period(db: AsyncSession, start_date: datetime.date, end_date: datetime.date, company_id: Optional[int] = None):
+async def get_schedules_by_period(db: AsyncSession, start_date: datetime.date, end_date: datetime.date, company_id: int | None = None):
     stmt = select(WorkSchedule).where(WorkSchedule.date >= start_date).where(WorkSchedule.date <= end_date)
-    
+
     if company_id:
         stmt = stmt.join(User).where(User.company_id == company_id)
-        
+
     result = await db.execute(
-        stmt.options(selectinload(WorkSchedule.shift), selectinload(WorkSchedule.user))
+        stmt.options(selectinload(WorkSchedule.shift), selectinload(WorkSchedule.user)),
     )
     return result.scalars().all()
 
@@ -499,7 +528,7 @@ async def get_user_schedules(db: AsyncSession, user_id: int, start_date: datetim
         .where(WorkSchedule.user_id == user_id)
         .where(WorkSchedule.date >= start_date)
         .where(WorkSchedule.date <= end_date)
-        .options(selectinload(WorkSchedule.shift))
+        .options(selectinload(WorkSchedule.shift)),
     )
     return result.scalars().all()
 
@@ -534,7 +563,7 @@ async def notify_admins(db: AsyncSession, message: str):
 
 async def create_or_update_schedule(db: AsyncSession, user_id: int, shift_id: int, date: datetime.date):
     from backend.services.compliance_service import ComplianceService
-    
+
     # ТРЗ Валидация спрямо КТ
     is_valid, error_msg = await ComplianceService.validate_schedule_change(db, user_id, date, shift_id)
     if not is_valid:
@@ -543,7 +572,7 @@ async def create_or_update_schedule(db: AsyncSession, user_id: int, shift_id: in
     result = await db.execute(
         select(WorkSchedule)
         .where(WorkSchedule.user_id == user_id)
-        .where(WorkSchedule.date == date)
+        .where(WorkSchedule.date == date),
     )
     db_schedule = result.scalars().first()
 
@@ -573,9 +602,10 @@ async def create_bulk_schedules(
         shift_id: int,
         start_date: datetime.date,
         end_date: datetime.date,
-        days_of_week: list[int]  # 0=Mon, 6=Sun
+        days_of_week: list[int],  # 0=Mon, 6=Sun
 ):
     from datetime import timedelta
+
     from backend.services.compliance_service import ComplianceService
 
     shift = await get_shift_by_id(db, shift_id)
@@ -597,7 +627,7 @@ async def create_bulk_schedules(
                 result = await db.execute(
                     select(WorkSchedule)
                     .where(WorkSchedule.user_id == user_id)
-                    .where(WorkSchedule.date == current_date)
+                    .where(WorkSchedule.date == current_date),
                 )
                 db_schedule = result.scalars().first()
 
@@ -620,14 +650,14 @@ async def create_bulk_schedules(
 
 async def get_user_by_email(db: AsyncSession, email: str):
     result = await db.execute(
-        select(User).options(selectinload(User.role)).where(User.email == email)
+        select(User).options(selectinload(User.role)).where(User.email == email),
     )
     return result.scalars().first()
 
 
 async def get_user_by_username(db: AsyncSession, username: str):
     result = await db.execute(
-        select(User).options(selectinload(User.role)).where(User.username == username)
+        select(User).options(selectinload(User.role)).where(User.username == username),
     )
     return result.scalars().first()
 
@@ -638,16 +668,16 @@ async def get_user_by_email_or_username(db: AsyncSession, identifier: str):
         select(User).options(selectinload(User.role)).where(
             or_(
                 User.email == identifier,
-                User.username == identifier
-            )
-        )
+                User.username == identifier,
+            ),
+        ),
     )
     return result.scalars().first()
 
 
 async def get_user_by_qr_token(db: AsyncSession, qr_token: str):
     result = await db.execute(
-        select(User).where(User.qr_token == qr_token)
+        select(User).where(User.qr_token == qr_token),
     )
     return result.scalars().first()
 
@@ -665,17 +695,17 @@ async def regenerate_user_qr_token(db: AsyncSession, user_id: int):
     return user.qr_token
 
 
-async def create_user(db: AsyncSession, user: schemas.UserCreate, role_name: str = "user", role_id: Optional[int] = None):
+async def create_user(db: AsyncSession, user: schemas.UserCreate, role_name: str = "user", role_id: int | None = None):
     # Validate password complexity before hashing
     await validate_password_complexity(db, user.password)
-    
+
     hashed_password = hash_password(user.password)
 
     if role_id:
         role = await get_role_by_id(db, role_id)
     else:
         role = await get_role_by_name(db, role_name)
-        
+
     if not role:
         if role_name == "user":
             role = await create_role(db, schemas.RoleCreate(name="user", description="Standard user role"))
@@ -686,7 +716,7 @@ async def create_user(db: AsyncSession, user: schemas.UserCreate, role_name: str
     user_email = user.email
     if not user_email and user.username:
         user_email = f"{user.username}@local"
-    
+
     db_user = User(
         email=user_email,
         username=user.username,
@@ -707,7 +737,7 @@ async def create_user(db: AsyncSession, user: schemas.UserCreate, role_name: str
         company_id=user.company_id,
         department_id=user.department_id,
         position_id=user.position_id,
-        password_force_change=user.password_force_change
+        password_force_change=user.password_force_change,
     )
     db.add(db_user)
     await db.flush() # Flush to get db_user.id before committing
@@ -724,7 +754,7 @@ async def create_user(db: AsyncSession, user: schemas.UserCreate, role_name: str
             base_salary=float(user.base_salary) if user.base_salary else None,
             work_hours_per_week=user.work_hours_per_week or 40,
             probation_months=user.probation_months or 0,
-            salary_calculation_type=user.salary_calculation_type or 'gross',
+            salary_calculation_type=user.salary_calculation_type or "gross",
             salary_installments_count=getattr(user, "salary_installments_count", 1),
             monthly_advance_amount=float(user.monthly_advance_amount) if getattr(user, "monthly_advance_amount", None) else 0,
             tax_resident=user.tax_resident if user.tax_resident is not None else True,
@@ -737,9 +767,9 @@ async def create_user(db: AsyncSession, user: schemas.UserCreate, role_name: str
             overtime_rate=float(user.overtime_rate) if getattr(user, "overtime_rate", None) else 1.5,
             holiday_rate=float(user.holiday_rate) if getattr(user, "holiday_rate", None) else 2.0,
             work_class=getattr(user, "work_class", None),
-            dangerous_work=getattr(user, "dangerous_work", False)
+            dangerous_work=getattr(user, "dangerous_work", False),
         )
-    
+
     # If base_salary is provided, create a payroll configuration
     if user.base_salary is not None:
         await create_payroll_config(db, db_user.id, user.base_salary)
@@ -756,12 +786,12 @@ async def update_user(db: AsyncSession, user_id: int, user_in: UserUpdate):
 
     update_data = user_in.model_dump(exclude_unset=True)
 
-    if "egn" in update_data and update_data["egn"]:
+    if update_data.get("egn"):
         update_data["egn"] = encrypt_data(update_data["egn"])
-    if "iban" in update_data and update_data["iban"]:
+    if update_data.get("iban"):
         update_data["iban"] = encrypt_data(update_data["iban"])
 
-    if "password" in update_data and update_data["password"]:
+    if update_data.get("password"):
         await validate_password_complexity(db, update_data["password"])
         update_data["hashed_password"] = hash_password(update_data["password"])
         del update_data["password"]  # Remove plain password
@@ -790,26 +820,26 @@ async def update_last_login(db: AsyncSession, user_id: int):
     return db_user
 
 
-async def delete_user(db: AsyncSession, user_id: int, admin_user_id: Optional[int] = None):
+async def delete_user(db: AsyncSession, user_id: int, admin_user_id: int | None = None):
     db_user = await get_user_by_id(db, user_id)
     if not db_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Delete related records that don't have cascade delete
     from backend.database.models import EmploymentContract
-    
+
     # Delete employment contracts
     await db.execute(
-        delete(EmploymentContract).where(EmploymentContract.user_id == user_id)
+        delete(EmploymentContract).where(EmploymentContract.user_id == user_id),
     )
-    
+
     email = db_user.email
     await db.delete(db_user)
 
     await log_audit_action(
         db, admin_user_id, "DELETE_USER",
         target_type="User", target_id=user_id,
-        details=f"Email: {email}"
+        details=f"Email: {email}",
     )
 
     await db.commit()
@@ -818,7 +848,7 @@ async def delete_user(db: AsyncSession, user_id: int, admin_user_id: Optional[in
 
 async def get_role_by_name(db: AsyncSession, role_name: str):
     result = await db.execute(
-        select(Role).where(Role.name == role_name)
+        select(Role).where(Role.name == role_name),
     )
     return result.scalars().first()
 
@@ -831,16 +861,16 @@ async def create_role(db: AsyncSession, role: schemas.RoleCreate):
     return db_role
 
 
-async def update_role(db: AsyncSession, role_id: int, name: Optional[str] = None, description: Optional[str] = None):
+async def update_role(db: AsyncSession, role_id: int, name: str | None = None, description: str | None = None):
     db_role = await get_role_by_id(db, role_id)
     if not db_role:
         raise HTTPException(status_code=404, detail="Role not found")
-    
+
     if name is not None:
         db_role.name = name
     if description is not None:
         db_role.description = description
-        
+
     await db.commit()
     await db.refresh(db_role)
     return db_role
@@ -850,14 +880,14 @@ async def delete_role(db: AsyncSession, role_id: int):
     db_role = await get_role_by_id(db, role_id)
     if not db_role:
         raise HTTPException(status_code=404, detail="Role not found")
-    
+
     await db.delete(db_role)
     await db.commit()
     return True
 
 
-async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100, search: Optional[str] = None,
-                    sort_by: str = "id", sort_order: str = "asc", company_id: Optional[int] = None):
+async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100, search: str | None = None,
+                    sort_by: str = "id", sort_order: str = "asc", company_id: int | None = None):
     stmt = select(User).options(selectinload(User.role)).join(Role)
 
     if company_id:
@@ -873,8 +903,8 @@ async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100, search: O
                 User.job_title.ilike(search_filter),
                 User.department.ilike(search_filter),
                 User.company.ilike(search_filter),
-                Role.name.ilike(search_filter)
-            )
+                Role.name.ilike(search_filter),
+            ),
         )
 
     # Sorting
@@ -889,9 +919,9 @@ async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100, search: O
     return result.scalars().all()
 
 
-async def count_users(db: AsyncSession, search: Optional[str] = None, company_id: Optional[int] = None):
+async def count_users(db: AsyncSession, search: str | None = None, company_id: int | None = None):
     stmt = select(func.count(User.id)).join(Role)
-    
+
     if company_id:
         stmt = stmt.where(User.company_id == company_id)
 
@@ -905,8 +935,8 @@ async def count_users(db: AsyncSession, search: Optional[str] = None, company_id
                 User.job_title.ilike(search_filter),
                 User.department.ilike(search_filter),
                 User.company.ilike(search_filter),
-                Role.name.ilike(search_filter)
-            )
+                Role.name.ilike(search_filter),
+            ),
         )
     result = await db.execute(stmt)
     return result.scalar()
@@ -914,21 +944,21 @@ async def count_users(db: AsyncSession, search: Optional[str] = None, company_id
 
 async def get_user_by_id(db: AsyncSession, user_id: int):
     result = await db.execute(
-        select(User).options(selectinload(User.role)).where(User.id == user_id)
+        select(User).options(selectinload(User.role)).where(User.id == user_id),
     )
     return result.scalars().first()
 
 
 async def get_roles(db: AsyncSession, skip: int = 0, limit: int = 100):
     result = await db.execute(
-        select(Role).offset(skip).limit(limit)
+        select(Role).offset(skip).limit(limit),
     )
     return result.scalars().all()
 
 
 async def get_role_by_id(db: AsyncSession, role_id: int):
     result = await db.execute(
-        select(Role).where(Role.id == role_id)
+        select(Role).where(Role.id == role_id),
     )
     return result.scalars().first()
 
@@ -938,7 +968,7 @@ async def get_timelogs_by_user_and_period(db: AsyncSession, user_id: int, start_
         select(TimeLog)
         .where(TimeLog.user_id == user_id)
         .where(TimeLog.start_time >= start_date)
-        .where(TimeLog.start_time <= end_date)
+        .where(TimeLog.start_time <= end_date),
     )
     return result.scalars().all()
 
@@ -968,7 +998,7 @@ async def get_global_payroll_config(db: AsyncSession):
         tax_percent=float(tax_percent) if tax_percent else 10.00,
         health_insurance_percent=float(health_insurance_percent) if health_insurance_percent else 13.78,
         has_tax_deduction=(has_tax_deduction == "True") if has_tax_deduction is not None else True,
-        has_health_insurance=(has_health_insurance == "True") if has_health_insurance is not None else True
+        has_health_insurance=(has_health_insurance == "True") if has_health_insurance is not None else True,
     )
 
 
@@ -984,7 +1014,7 @@ async def update_global_payroll_config(
         health_insurance_percent: float,
         has_tax_deduction: bool,
         has_health_insurance: bool,
-        admin_user_id: Optional[int] = None
+        admin_user_id: int | None = None,
 ):
     await set_global_setting(db, "global_hourly_rate", str(hourly_rate))
     await set_global_setting(db, "global_monthly_salary", str(monthly_salary))
@@ -999,7 +1029,7 @@ async def update_global_payroll_config(
 
     await log_audit_action(
         db, admin_user_id, "UPDATE_GLOBAL_PAYROLL",
-        details=f"Rate: {hourly_rate}, Salary: {monthly_salary}, Currency: {currency}"
+        details=f"Rate: {hourly_rate}, Salary: {monthly_salary}, Currency: {currency}",
     )
 
     return await get_global_payroll_config(db)
@@ -1008,7 +1038,7 @@ async def update_global_payroll_config(
 async def get_payroll_config(db: AsyncSession, user_id: int):
     # 1. Try to get individual config
     result = await db.execute(
-        select(Payroll).where(Payroll.user_id == user_id)
+        select(Payroll).where(Payroll.user_id == user_id),
     )
     config = result.scalars().first()
     if config:
@@ -1018,7 +1048,7 @@ async def get_payroll_config(db: AsyncSession, user_id: int):
     user = await get_user_by_id(db, user_id)
     if user and user.position_id:
         pos_result = await db.execute(
-            select(Payroll).where(Payroll.position_id == user.position_id)
+            select(Payroll).where(Payroll.position_id == user.position_id),
         )
         pos_config = pos_result.scalars().first()
         if pos_config:
@@ -1037,15 +1067,15 @@ async def create_payslip(db: AsyncSession, payslip_data: dict):
 
 async def create_payroll_config(
     db: AsyncSession, user_id: int, monthly_salary: Decimal,
-    hourly_rate: Optional[Decimal] = None,
-    overtime_multiplier: Optional[Decimal] = None,
-    standard_hours_per_day: Optional[int] = None,
-    currency: Optional[str] = None,
-    annual_leave_days: Optional[int] = None,
-    tax_percent: Optional[Decimal] = None,
-    health_insurance_percent: Optional[Decimal] = None,
-    has_tax_deduction: Optional[bool] = None,
-    has_health_insurance: Optional[bool] = None
+    hourly_rate: Decimal | None = None,
+    overtime_multiplier: Decimal | None = None,
+    standard_hours_per_day: int | None = None,
+    currency: str | None = None,
+    annual_leave_days: int | None = None,
+    tax_percent: Decimal | None = None,
+    health_insurance_percent: Decimal | None = None,
+    has_tax_deduction: bool | None = None,
+    has_health_insurance: bool | None = None,
 ):
     # Default values for Payroll settings
     hourly_rate = hourly_rate if hourly_rate is not None else Decimal("0.00")
@@ -1069,7 +1099,7 @@ async def create_payroll_config(
         tax_percent=tax_percent,
         health_insurance_percent=health_insurance_percent,
         has_tax_deduction=has_tax_deduction,
-        has_health_insurance=has_health_insurance
+        has_health_insurance=has_health_insurance,
     )
     db.add(payroll_config)
     await db.flush() # To get ID for refresh if needed
@@ -1077,17 +1107,17 @@ async def create_payroll_config(
 
 async def update_payroll_config(
     db: AsyncSession, user_id: int,
-    monthly_salary: Optional[Decimal] = None,
-    hourly_rate: Optional[Decimal] = None,
-    overtime_multiplier: Optional[Decimal] = None,
-    standard_hours_per_day: Optional[int] = None,
-    currency: Optional[str] = None,
-    annual_leave_days: Optional[int] = None,
-    tax_percent: Optional[Decimal] = None,
-    health_insurance_percent: Optional[Decimal] = None,
-    has_tax_deduction: Optional[bool] = None,
-    has_health_insurance: Optional[bool] = None,
-    admin_user_id: Optional[int] = None
+    monthly_salary: Decimal | None = None,
+    hourly_rate: Decimal | None = None,
+    overtime_multiplier: Decimal | None = None,
+    standard_hours_per_day: int | None = None,
+    currency: str | None = None,
+    annual_leave_days: int | None = None,
+    tax_percent: Decimal | None = None,
+    health_insurance_percent: Decimal | None = None,
+    has_tax_deduction: bool | None = None,
+    has_health_insurance: bool | None = None,
+    admin_user_id: int | None = None,
 ):
     # This specifically updates INDIVIDUAL user config
     stmt = select(Payroll).where(Payroll.user_id == user_id)
@@ -1097,7 +1127,7 @@ async def update_payroll_config(
     if not payroll_config:
         # If no individual payroll config exists, create one
         return await create_payroll_config(
-            db, user_id, 
+            db, user_id,
             monthly_salary=monthly_salary or Decimal("0.00"),
             hourly_rate=hourly_rate,
             overtime_multiplier=overtime_multiplier,
@@ -1107,7 +1137,7 @@ async def update_payroll_config(
             tax_percent=tax_percent,
             health_insurance_percent=health_insurance_percent,
             has_tax_deduction=has_tax_deduction,
-            has_health_insurance=has_health_insurance
+            has_health_insurance=has_health_insurance,
         )
 
     update_data = {}
@@ -1124,15 +1154,15 @@ async def update_payroll_config(
 
     for field, value in update_data.items():
         setattr(payroll_config, field, value)
-    
+
     db.add(payroll_config)
-    
+
     await log_audit_action(
         db, admin_user_id, "UPDATE_USER_PAYROLL",
         target_type="User", target_id=user_id,
-        details=f"Updated payroll fields: {', '.join(update_data.keys())}"
+        details=f"Updated payroll fields: {', '.join(update_data.keys())}",
     )
-    
+
     await db.flush()
     return payroll_config
 
@@ -1140,17 +1170,17 @@ async def update_payroll_config(
 
 async def update_position_payroll_config(
     db: AsyncSession, position_id: int,
-    monthly_salary: Optional[Decimal] = None,
-    hourly_rate: Optional[Decimal] = None,
-    overtime_multiplier: Optional[Decimal] = None,
-    standard_hours_per_day: Optional[int] = None,
-    currency: Optional[str] = None,
-    annual_leave_days: Optional[int] = None,
-    tax_percent: Optional[Decimal] = None,
-    health_insurance_percent: Optional[Decimal] = None,
-    has_tax_deduction: Optional[bool] = None,
-    has_health_insurance: Optional[bool] = None,
-    admin_user_id: Optional[int] = None
+    monthly_salary: Decimal | None = None,
+    hourly_rate: Decimal | None = None,
+    overtime_multiplier: Decimal | None = None,
+    standard_hours_per_day: int | None = None,
+    currency: str | None = None,
+    annual_leave_days: int | None = None,
+    tax_percent: Decimal | None = None,
+    health_insurance_percent: Decimal | None = None,
+    has_tax_deduction: bool | None = None,
+    has_health_insurance: bool | None = None,
+    admin_user_id: int | None = None,
 ):
     # This specifically updates POSITION-based payroll config
     stmt = select(Payroll).where(Payroll.position_id == position_id)
@@ -1169,7 +1199,7 @@ async def update_position_payroll_config(
             tax_percent=tax_percent or Decimal("10.00"),
             health_insurance_percent=health_insurance_percent or Decimal("13.78"),
             has_tax_deduction=has_tax_deduction if has_tax_deduction is not None else True,
-            has_health_insurance=has_health_insurance if has_health_insurance is not None else True
+            has_health_insurance=has_health_insurance if has_health_insurance is not None else True,
         )
         db.add(config)
     else:
@@ -1187,13 +1217,13 @@ async def update_position_payroll_config(
 
         for field, value in update_data.items():
             setattr(config, field, value)
-        
+
         db.add(config)
 
     await log_audit_action(
         db, admin_user_id, "UPDATE_POSITION_PAYROLL",
         target_type="Position", target_id=position_id,
-        details=f"Updated position payroll fields"
+        details="Updated position payroll fields",
     )
 
     await db.flush()
@@ -1205,22 +1235,22 @@ async def get_active_time_log(db: AsyncSession, user_id: int):
     result = await db.execute(
         select(TimeLog)
         .where(TimeLog.user_id == user_id)
-        .where(TimeLog.end_time == None)
+        .where(TimeLog.end_time is None),
     )
     return result.scalars().first()
 
 
-async def start_time_log(db: AsyncSession, user_id: int, latitude: Optional[float] = None, longitude: Optional[float] = None,
-                         custom_time: Optional[datetime] = None):
-    from datetime import timedelta, datetime
+async def start_time_log(db: AsyncSession, user_id: int, latitude: float | None = None, longitude: float | None = None,
+                         custom_time: datetime | None = None):
+    from datetime import datetime
 
     async with atomic_transaction(db) as tx:
         # 1. Check for active log with row locking to prevent race conditions
         active_log_query = select(TimeLog).where(
-            TimeLog.user_id == user_id, 
-            TimeLog.end_time.is_(None)
+            TimeLog.user_id == user_id,
+            TimeLog.end_time.is_(None),
         )
-        
+
         try:
             active_log_result = await with_row_lock(tx, active_log_query)
             active_log = active_log_result.scalars().first()
@@ -1265,10 +1295,10 @@ async def start_time_log(db: AsyncSession, user_id: int, latitude: Optional[floa
 
         # Lock user's schedule for today to prevent concurrent modifications
         schedule_query = select(WorkSchedule).where(
-            WorkSchedule.user_id == user_id, 
-            WorkSchedule.date == today
+            WorkSchedule.user_id == user_id,
+            WorkSchedule.date == today,
         ).options(selectinload(WorkSchedule.shift))
-        
+
         try:
             schedule_result = await with_row_lock(tx, schedule_query)
             current_schedule = schedule_result.scalars().first()
@@ -1277,7 +1307,6 @@ async def start_time_log(db: AsyncSession, user_id: int, latitude: Optional[floa
                 raise TransactionError("Конфликт при зареждане на графика. Моля, опитайте отново.") from e
             raise
 
-        target_shift = None
         snapped_start_time = now_local
 
         # Helper to check match
@@ -1297,16 +1326,15 @@ async def start_time_log(db: AsyncSession, user_id: int, latitude: Optional[floa
 
         # B) If no match with assigned, check all others (Auto-Rotation)
         if not matched_shift:
-            best_diff = float('inf')
+            best_diff = float("inf")
             for shift in all_shifts:
                 shift_start_dt = datetime.combine(today, shift.start_time)
                 diff_mins = abs((now_local - shift_start_dt).total_seconds()) / 60.0
                 tolerance = shift.tolerance_minutes if shift.tolerance_minutes is not None else 15
 
-                if diff_mins <= tolerance:
-                    if diff_mins < best_diff:
-                        best_diff = diff_mins
-                        matched_shift = shift
+                if diff_mins <= tolerance and diff_mins < best_diff:
+                    best_diff = diff_mins
+                    matched_shift = shift
 
             # If found a better shift, update schedule!
             if matched_shift:
@@ -1328,25 +1356,25 @@ async def start_time_log(db: AsyncSession, user_id: int, latitude: Optional[floa
         # 5. Create TimeLog - all operations are within the same transaction
         db_log = TimeLog(user_id=user_id, start_time=snapped_start_time, latitude=latitude, longitude=longitude)
         tx.add(db_log)
-        
+
         # Flush to get the ID without committing
         await tx.flush()
         await tx.refresh(db_log)
-        
+
         return db_log
 
 
-async def end_time_log(db: AsyncSession, user_id: int, latitude: Optional[float] = None, longitude: Optional[float] = None,
-                       custom_time: Optional[datetime] = None, notes: Optional[str] = None):
-    from datetime import timedelta, datetime
+async def end_time_log(db: AsyncSession, user_id: int, latitude: float | None = None, longitude: float | None = None,
+                       custom_time: datetime | None = None, notes: str | None = None):
+    from datetime import datetime, timedelta
 
     async with atomic_transaction(db) as tx:
         # 1. Get active log with row locking to prevent concurrent modifications
         active_log_query = select(TimeLog).where(
-            TimeLog.user_id == user_id, 
-            TimeLog.end_time.is_(None)
+            TimeLog.user_id == user_id,
+            TimeLog.end_time.is_(None),
         )
-        
+
         try:
             active_log_result = await with_row_lock(tx, active_log_query)
             active_log = active_log_result.scalars().first()
@@ -1387,10 +1415,10 @@ async def end_time_log(db: AsyncSession, user_id: int, latitude: Optional[float]
 
         # 3. Get schedule to apply tolerance with row locking
         schedule_query = select(WorkSchedule).where(
-            WorkSchedule.user_id == user_id, 
-            WorkSchedule.date == log_date
+            WorkSchedule.user_id == user_id,
+            WorkSchedule.date == log_date,
         ).options(selectinload(WorkSchedule.shift))
-        
+
         try:
             schedule_result = await with_row_lock(tx, schedule_query)
             schedule = schedule_result.scalars().first()
@@ -1421,11 +1449,11 @@ async def end_time_log(db: AsyncSession, user_id: int, latitude: Optional[float]
         if notes:
             active_log.notes = sanitize_html(notes)
         tx.add(active_log)
-        
+
         # Flush to ensure data integrity without committing
         await tx.flush()
         await tx.refresh(active_log)
-        
+
         return active_log
 
 
@@ -1436,33 +1464,33 @@ async def check_time_overlap(db: AsyncSession, user_id: int, start_time: datetim
     This function does NOT create any records - it only checks.
     """
     from sqlalchemy import or_
-    
+
     sofia_tz = ZoneInfo(settings.TIMEZONE)
-    
+
     # Convert to naive if aware
     if start_time.tzinfo is not None:
         start_time = start_time.astimezone(sofia_tz).replace(tzinfo=None)
     if end_time.tzinfo is not None:
         end_time = end_time.astimezone(sofia_tz).replace(tzinfo=None)
-    
+
     # Check for overlapping records
     overlap_query = select(TimeLog).where(
         TimeLog.user_id == user_id,
         TimeLog.start_time < end_time,
         or_(
-            TimeLog.end_time == None,
-            TimeLog.end_time > start_time
-        )
+            TimeLog.end_time is None,
+            TimeLog.end_time > start_time,
+        ),
     )
-    
+
     result = await db.execute(overlap_query)
     overlapping_logs = result.scalars().all()
-    
+
     return len(overlapping_logs) > 0
 
 
 async def create_manual_time_log(db: AsyncSession, user_id: int, start_time: datetime, end_time: datetime,
-                                 break_duration_minutes: int = 0, notes: Optional[str] = None,
+                                 break_duration_minutes: int = 0, notes: str | None = None,
                                  is_manual: bool = True):
     # Convert to naive UTC if aware
     sofia_tz = ZoneInfo(settings.TIMEZONE)
@@ -1480,27 +1508,27 @@ async def create_manual_time_log(db: AsyncSession, user_id: int, start_time: dat
         invalid_query = select(TimeLog).where(
             TimeLog.user_id == user_id,
             TimeLog.start_time < end_time,
-            TimeLog.end_time < TimeLog.start_time
+            TimeLog.end_time < TimeLog.start_time,
         )
         invalid_result = await tx.execute(invalid_query)
         invalid_logs = invalid_result.scalars().all()
-        
+
         if invalid_logs:
             # Delete invalid records first
             for invalid_log in invalid_logs:
                 await tx.delete(invalid_log)
             await tx.flush()
-        
+
         # 1. Check for overlaps with row locking to prevent concurrent conflicts
         overlap_query = select(TimeLog).where(
             TimeLog.user_id == user_id,
             TimeLog.start_time < end_time,
             or_(
-                TimeLog.end_time == None,
-                TimeLog.end_time > start_time
-            )
+                TimeLog.end_time is None,
+                TimeLog.end_time > start_time,
+            ),
         )
-        
+
         try:
             overlap_result = await with_row_lock(tx, overlap_query)
             overlapping_logs = overlap_result.scalars().all()
@@ -1520,10 +1548,10 @@ async def create_manual_time_log(db: AsyncSession, user_id: int, start_time: dat
 
         # Check if schedule exists with row locking
         schedule_query = select(WorkSchedule).where(
-            WorkSchedule.user_id == user_id, 
-            WorkSchedule.date == log_date
+            WorkSchedule.user_id == user_id,
+            WorkSchedule.date == log_date,
         )
-        
+
         try:
             sched_result = await with_row_lock(tx, schedule_query)
             existing_schedule = sched_result.scalars().first()
@@ -1538,7 +1566,7 @@ async def create_manual_time_log(db: AsyncSession, user_id: int, start_time: dat
             all_shifts = shift_result.scalars().all()
 
             best_shift = None
-            min_diff = float('inf')
+            min_diff = float("inf")
 
             for shift in all_shifts:
                 shift_start_dt = datetime.combine(log_date, shift.start_time)
@@ -1546,10 +1574,9 @@ async def create_manual_time_log(db: AsyncSession, user_id: int, start_time: dat
                 diff_mins = abs((start_time - shift_start_dt).total_seconds()) / 60.0
                 tolerance = shift.tolerance_minutes if shift.tolerance_minutes is not None else 15
 
-                if diff_mins <= tolerance:
-                    if diff_mins < min_diff:
-                        min_diff = diff_mins
-                        best_shift = shift
+                if diff_mins <= tolerance and diff_mins < min_diff:
+                    min_diff = diff_mins
+                    best_shift = shift
 
             if best_shift:
                 new_schedule = WorkSchedule(user_id=user_id, shift_id=best_shift.id, date=log_date)
@@ -1557,19 +1584,19 @@ async def create_manual_time_log(db: AsyncSession, user_id: int, start_time: dat
 
         # 3. Create TimeLog within transaction
         db_log = TimeLog(
-            user_id=user_id, 
-            start_time=start_time, 
-            end_time=end_time, 
+            user_id=user_id,
+            start_time=start_time,
+            end_time=end_time,
             is_manual=True,
             break_duration_minutes=break_duration_minutes,
-            notes=sanitize_html(notes) if notes else None
+            notes=sanitize_html(notes) if notes else None,
         )
         tx.add(db_log)
-        
+
         # Flush to get the ID without committing
         await tx.flush()
         await tx.refresh(db_log)
-        
+
         return db_log
 
 
@@ -1577,7 +1604,7 @@ async def delete_time_log(db: AsyncSession, log_id: int):
     async with atomic_transaction(db) as tx:
         # 1. Check if TimeLog exists and lock it for deletion
         log_query = select(TimeLog).where(TimeLog.id == log_id)
-        
+
         try:
             log_result = await with_row_lock(tx, log_query)
             existing_log = log_result.scalars().first()
@@ -1588,27 +1615,27 @@ async def delete_time_log(db: AsyncSession, log_id: int):
 
         if not existing_log:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, 
-                detail="Time log not found or already deleted"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Time log not found or already deleted",
             )
 
         # 2. Delete the TimeLog within transaction
         await tx.delete(existing_log)
-        
+
         # Flush to ensure deletion without committing
         await tx.flush()
-        
+
         return True
 
 
 async def update_time_log(
     db: AsyncSession,
     log_id: int,
-    start_time: Optional[datetime] = None,
-    end_time: Optional[datetime] = None,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
     is_manual: bool = False,
     break_duration_minutes: int = 0,
-    notes: Optional[str] = None
+    notes: str | None = None,
 ):
     """Update an existing time log entry."""
     stmt = select(TimeLog).where(TimeLog.id == log_id)
@@ -1641,7 +1668,7 @@ async def create_leave_request(
         start_date: datetime.date,
         end_date: datetime.date,
         leave_type: str,
-        reason: str = None
+        reason: str = None,
 ):
     if start_date > end_date:
         raise ValueError("Началната дата не може да бъде след крайната дата.")
@@ -1652,7 +1679,7 @@ async def create_leave_request(
         end_date=end_date,
         leave_type=leave_type,
         reason=reason,
-        status="pending"
+        status="pending",
     )
     db.add(req)
     await db.commit()
@@ -1704,20 +1731,19 @@ async def get_leave_balance(db: AsyncSession, user_id: int, year: int):
         db.add(balance)
         await db.commit()
         await db.refresh(balance)
-    else:
-        # Sync total_days if different (and payroll exists/is configured)
-        # We only sync if the payroll setting is explicit or we want to enforce the default
-        if balance.total_days != configured_days:
-            balance.total_days = configured_days
-            db.add(balance)
-            await db.commit()
-            await db.refresh(balance)
+    # Sync total_days if different (and payroll exists/is configured)
+    # We only sync if the payroll setting is explicit or we want to enforce the default
+    elif balance.total_days != configured_days:
+        balance.total_days = configured_days
+        db.add(balance)
+        await db.commit()
+        await db.refresh(balance)
 
     return balance
 
 
-async def update_leave_request_status(db: AsyncSession, request_id: int, status: str, admin_comment: Optional[str] = None,
-                                      admin_user_id: Optional[int] = None, employer_top_up: Optional[bool] = False):
+async def update_leave_request_status(db: AsyncSession, request_id: int, status: str, admin_comment: str | None = None,
+                                      admin_user_id: int | None = None, employer_top_up: bool | None = False):
     stmt = select(LeaveRequest).where(LeaveRequest.id == request_id)
     result = await db.execute(stmt)
     req = result.scalars().first()
@@ -1735,7 +1761,7 @@ async def update_leave_request_status(db: AsyncSession, request_id: int, status:
     await log_audit_action(
         db, admin_user_id, "APPROVE_REJECT_LEAVE",
         target_type="LeaveRequest", target_id=request_id,
-        details=f"Status: {status}, Comment: {admin_comment}"
+        details=f"Status: {status}, Comment: {admin_comment}",
     )
 
     from datetime import timedelta
@@ -1878,9 +1904,8 @@ async def cancel_leave_request(db: AsyncSession, request_id: int, current_user_i
         return req
 
 
-async def delete_leave_request(db: AsyncSession, request_id: int, current_user_id: int, is_admin: Optional[bool] = False) -> bool:
-    """
-    Delete a leave request. Only the owner or admin can delete.
+async def delete_leave_request(db: AsyncSession, request_id: int, current_user_id: int, is_admin: bool | None = False) -> bool:
+    """Delete a leave request. Only the owner or admin can delete.
     """
     stmt = select(LeaveRequest).where(LeaveRequest.id == request_id)
     result = await db.execute(stmt)
@@ -1910,7 +1935,7 @@ async def update_leave_request(
         start_date: datetime.date = None,
         end_date: datetime.date = None,
         leave_type: str = None,
-        reason: str = None
+        reason: str = None,
 ):
     stmt = select(LeaveRequest).where(LeaveRequest.id == request_id)
     result = await db.execute(stmt)
@@ -1962,9 +1987,9 @@ async def update_leave_request(
             curr += timedelta(days=1)
 
         # 2. Apply New
-        new_start = start_date if start_date else req.start_date
-        new_end = end_date if end_date else req.end_date
-        new_type = leave_type if leave_type else req.leave_type
+        new_start = start_date or req.start_date
+        new_end = end_date or req.end_date
+        new_type = leave_type or req.leave_type
 
         # Check validation
         if new_start > new_end:
@@ -2030,13 +2055,13 @@ async def get_company(db: AsyncSession, company_id: int):
     return result.scalars().first()
 
 async def create_company(
-    db: AsyncSession, 
+    db: AsyncSession,
     name: str,
-    eik: Optional[str] = None,
-    bulstat: Optional[str] = None,
-    vat_number: Optional[str] = None,
-    address: Optional[str] = None,
-    mol_name: Optional[str] = None
+    eik: str | None = None,
+    bulstat: str | None = None,
+    vat_number: str | None = None,
+    address: str | None = None,
+    mol_name: str | None = None,
 ):
     company = Company(
         name=name,
@@ -2044,7 +2069,7 @@ async def create_company(
         bulstat=bulstat,
         vat_number=vat_number,
         address=address,
-        mol_name=mol_name
+        mol_name=mol_name,
     )
     db.add(company)
     await db.commit()
@@ -2052,20 +2077,20 @@ async def create_company(
     return company
 
 async def update_company(
-    db: AsyncSession, company_id: int, 
-    name: Optional[str] = None,
-    eik: Optional[str] = None,
-    bulstat: Optional[str] = None,
-    vat_number: Optional[str] = None,
-    address: Optional[str] = None,
-    mol_name: Optional[str] = None,
-    default_sales_account_id: Optional[int] = None,
-    default_expense_account_id: Optional[int] = None,
-    default_vat_account_id: Optional[int] = None,
-    default_customer_account_id: Optional[int] = None,
-    default_supplier_account_id: Optional[int] = None,
-    default_cash_account_id: Optional[int] = None,
-    default_bank_account_id: Optional[int] = None,
+    db: AsyncSession, company_id: int,
+    name: str | None = None,
+    eik: str | None = None,
+    bulstat: str | None = None,
+    vat_number: str | None = None,
+    address: str | None = None,
+    mol_name: str | None = None,
+    default_sales_account_id: int | None = None,
+    default_expense_account_id: int | None = None,
+    default_vat_account_id: int | None = None,
+    default_customer_account_id: int | None = None,
+    default_supplier_account_id: int | None = None,
+    default_cash_account_id: int | None = None,
+    default_bank_account_id: int | None = None,
 ):
     company = await get_company(db, company_id)
     if not company:
@@ -2084,14 +2109,14 @@ async def update_company(
     if default_supplier_account_id is not None: company.default_supplier_account_id = default_supplier_account_id
     if default_cash_account_id is not None: company.default_cash_account_id = default_cash_account_id
     if default_bank_account_id is not None: company.default_bank_account_id = default_bank_account_id
-    
+
     db.add(company)
     await db.commit()
     await db.refresh(company)
     return company
 
 
-async def get_departments(db: AsyncSession, company_id: Optional[int] = None):
+async def get_departments(db: AsyncSession, company_id: int | None = None):
     query = select(Department)
     if company_id:
         query = query.where(Department.company_id == company_id)
@@ -2099,29 +2124,29 @@ async def get_departments(db: AsyncSession, company_id: Optional[int] = None):
     return result.scalars().all()
 
 
-async def create_department(db: AsyncSession, name: str, company_id: Optional[int] = None, manager_id: Optional[int] = None):
+async def create_department(db: AsyncSession, name: str, company_id: int | None = None, manager_id: int | None = None):
     dept = Department(name=name, company_id=company_id, manager_id=manager_id)
     db.add(dept)
     await db.commit()
     await db.refresh(dept)
     return dept
 
-async def update_department(db: AsyncSession, department_id: int, name: Optional[str] = None, manager_id: Optional[int] = None):
+async def update_department(db: AsyncSession, department_id: int, name: str | None = None, manager_id: int | None = None):
     result = await db.execute(select(Department).where(Department.id == department_id))
     dept = result.scalars().first()
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found")
-    
+
     if name is not None: dept.name = name
     if manager_id is not None: dept.manager_id = manager_id
-    
+
     db.add(dept)
     await db.commit()
     await db.refresh(dept)
     return dept
 
 
-async def get_positions(db: AsyncSession, department_id: Optional[int] = None):
+async def get_positions(db: AsyncSession, department_id: int | None = None):
     query = select(Position)
     if department_id:
         query = query.where(Position.department_id == department_id)
@@ -2129,7 +2154,7 @@ async def get_positions(db: AsyncSession, department_id: Optional[int] = None):
     return result.scalars().all()
 
 
-async def create_position(db: AsyncSession, title: str, department_id: Optional[int] = None):
+async def create_position(db: AsyncSession, title: str, department_id: int | None = None):
     pos = Position(title=title, department_id=department_id)
     db.add(pos)
     await db.commit()
@@ -2162,9 +2187,16 @@ async def delete_position(db: AsyncSession, id: int):
 
 # --- Fleet Management ---
 from backend.database.models import (
-    Vehicle, VehicleMileage, VehicleFuel, VehicleRepair, 
-    VehicleInsurance, VehicleInspection, VehicleDriver, VehicleTrip
+    Vehicle,
+    VehicleDriver,
+    VehicleFuel,
+    VehicleInspection,
+    VehicleInsurance,
+    VehicleMileage,
+    VehicleRepair,
+    VehicleTrip,
 )
+
 
 async def create_vehicle(db: AsyncSession, **kwargs):
     vehicle = Vehicle(**kwargs)
@@ -2401,13 +2433,12 @@ async def is_smtp_configured(db: AsyncSession) -> bool:
 # --- Insurance Rates (Фаза 1: Осигуровки) ---
 
 async def get_insurance_rate(
-    db: AsyncSession, 
-    year: int, 
-    month: int, 
-    category: str
+    db: AsyncSession,
+    year: int,
+    month: int,
+    category: str,
 ) -> dict:
-    """
-    Връща осигурителната ставка за даден период.
+    """Връща осигурителната ставка за даден период.
     Първо търси в History таблицата, после в GlobalSettings.
     
     Args:
@@ -2418,43 +2449,45 @@ async def get_insurance_rate(
     
     Returns:
         dict с employee_rate и employer_rate
+
     """
-    from backend.database.models import InsuranceRateHistory
     from datetime import date
-    
+
+    from backend.database.models import InsuranceRateHistory
+
     # 1. Търси в историческа таблица
     target_date = date(year, month, 1)
-    
+
     result = await db.execute(
         select(InsuranceRateHistory).where(
             InsuranceRateHistory.category == category,
             InsuranceRateHistory.effective_from <= target_date,
             or_(
-                InsuranceRateHistory.effective_to == None,
-                InsuranceRateHistory.effective_to >= target_date
-            )
-        ).order_by(InsuranceRateHistory.effective_from.desc())
+                InsuranceRateHistory.effective_to is None,
+                InsuranceRateHistory.effective_to >= target_date,
+            ),
+        ).order_by(InsuranceRateHistory.effective_from.desc()),
     )
     history_rate = result.scalars().first()
-    
+
     if history_rate:
         return {
             "employee_rate": float(history_rate.employee_rate),
             "employer_rate": float(history_rate.employer_rate),
-            "source": "history"
+            "source": "history",
         }
-    
+
     # 2. Ако нема, вземи от GlobalSettings
     employee_key = f"payroll_{category}_employee_rate"
     employer_key = f"payroll_{category}_employer_rate"
-    
+
     employee_rate = await get_global_setting(db, employee_key)
     employer_rate = await get_global_setting(db, employer_key)
-    
+
     return {
         "employee_rate": float(employee_rate) if employee_rate else 0.0,
         "employer_rate": float(employer_rate) if employer_rate else 0.0,
-        "source": "settings"
+        "source": "settings",
     }
 
 
@@ -2466,22 +2499,21 @@ async def set_insurance_rate(
     employee_rate: float,
     employer_rate: float,
     effective_from: date,
-    effective_to: date = None
+    effective_to: date = None,
 ):
     """Записва нова осигурителна ставка в историята"""
     from backend.database.models import InsuranceRateHistory
-    from datetime import date
-    
+
     # Обнови или създай нов запис
     existing = await db.execute(
         select(InsuranceRateHistory).where(
             InsuranceRateHistory.year == year,
             InsuranceRateHistory.month == month,
-            InsuranceRateHistory.category == category
-        )
+            InsuranceRateHistory.category == category,
+        ),
     )
     existing_rate = existing.scalars().first()
-    
+
     if existing_rate:
         existing_rate.employee_rate = employee_rate
         existing_rate.employer_rate = employer_rate
@@ -2495,25 +2527,25 @@ async def set_insurance_rate(
             employee_rate=employee_rate,
             employer_rate=employer_rate,
             effective_from=effective_from,
-            effective_to=effective_to
+            effective_to=effective_to,
         )
         db.add(new_rate)
-    
+
     await db.commit()
 
 
 async def get_insurance_rates_for_period(
     db: AsyncSession,
     year: int,
-    month: int
+    month: int,
 ) -> dict:
     """Връща всички осигурителни ставки за период"""
     categories = ["doo", "zo", "dzpo", "tzpb"]
     rates = {}
-    
+
     for category in categories:
         rates[category] = await get_insurance_rate(db, year, month, category)
-    
+
     return rates
 
 
@@ -2522,41 +2554,41 @@ async def get_insurance_rates_for_period(
 async def get_tax_rate(
     db: AsyncSession,
     year: int,
-    month: int
+    month: int,
 ) -> dict:
-    """
-    Връща данъчната ставка (ДДФЛ) за даден период.
+    """Връща данъчната ставка (ДДФЛ) за даден период.
     Първо търси в History таблицата, после в GlobalSettings.
     """
-    from backend.database.models import TaxRateHistory
     from datetime import date
-    
+
+    from backend.database.models import TaxRateHistory
+
     target_date = date(year, month, 1)
-    
+
     # 1. Търси в историческа таблица
     result = await db.execute(
         select(TaxRateHistory).where(
             TaxRateHistory.effective_from <= target_date,
             or_(
-                TaxRateHistory.effective_to == None,
-                TaxRateHistory.effective_to >= target_date
-            )
-        ).order_by(TaxRateHistory.effective_from.desc())
+                TaxRateHistory.effective_to is None,
+                TaxRateHistory.effective_to >= target_date,
+            ),
+        ).order_by(TaxRateHistory.effective_from.desc()),
     )
     history_rate = result.scalars().first()
-    
+
     if history_rate:
         return {
             "rate": float(history_rate.rate),
-            "source": "history"
+            "source": "history",
         }
-    
+
     # 2. Ако нема, вземи от GlobalSettings
     rate = await get_global_setting(db, "payroll_income_tax_rate")
-    
+
     return {
         "rate": float(rate) if rate else 10.0,
-        "source": "settings"
+        "source": "settings",
     }
 
 
@@ -2564,49 +2596,49 @@ async def get_tax_deduction(
     db: AsyncSession,
     year: int,
     month: int,
-    deduction_type: str = "standard"
+    deduction_type: str = "standard",
 ) -> dict:
+    """Връща данъчното подобрения за даден период.
     """
-    Връща данъчното подобрения за даден период.
-    """
-    from backend.database.models import TaxDeductionHistory
     from datetime import date
-    
+
+    from backend.database.models import TaxDeductionHistory
+
     target_date = date(year, month, 1)
-    
+
     # 1. Търси в историческа таблица
     result = await db.execute(
         select(TaxDeductionHistory).where(
             TaxDeductionHistory.deduction_type == deduction_type,
             TaxDeductionHistory.effective_from <= target_date,
             or_(
-                TaxDeductionHistory.effective_to == None,
-                TaxDeductionHistory.effective_to >= target_date
-            )
-        ).order_by(TaxDeductionHistory.effective_from.desc())
+                TaxDeductionHistory.effective_to is None,
+                TaxDeductionHistory.effective_to >= target_date,
+            ),
+        ).order_by(TaxDeductionHistory.effective_from.desc()),
     )
     history_deduction = result.scalars().first()
-    
+
     if history_deduction:
         return {
             "amount": float(history_deduction.amount),
             "type": history_deduction.deduction_type,
-            "source": "history"
+            "source": "history",
         }
-    
+
     # 2. Ако нема, вземи от GlobalSettings
     if deduction_type == "standard":
         amount = await get_global_setting(db, "payroll_standard_deduction")
         return {
             "amount": float(amount) if amount else 500.0,
             "type": "standard",
-            "source": "settings"
+            "source": "settings",
         }
-    
+
     return {
         "amount": 0.0,
         "type": deduction_type,
-        "source": "settings"
+        "source": "settings",
     }
 
 
@@ -2616,19 +2648,19 @@ async def set_tax_rate(
     month: int,
     rate: float,
     effective_from: date,
-    effective_to: date = None
+    effective_to: date = None,
 ):
     """Записва нова данъчна ставка в историята"""
     from backend.database.models import TaxRateHistory
-    
+
     existing = await db.execute(
         select(TaxRateHistory).where(
             TaxRateHistory.year == year,
-            TaxRateHistory.month == month
-        )
+            TaxRateHistory.month == month,
+        ),
     )
     existing_rate = existing.scalars().first()
-    
+
     if existing_rate:
         existing_rate.rate = rate
         existing_rate.effective_from = effective_from
@@ -2639,10 +2671,10 @@ async def set_tax_rate(
             month=month,
             rate=rate,
             effective_from=effective_from,
-            effective_to=effective_to
+            effective_to=effective_to,
         )
         db.add(new_rate)
-    
+
     await db.commit()
 
 
@@ -2653,20 +2685,20 @@ async def set_tax_deduction(
     deduction_type: str,
     amount: float,
     effective_from: date,
-    effective_to: date = None
+    effective_to: date = None,
 ):
     """Записва ново данъчно подобрения в историята"""
     from backend.database.models import TaxDeductionHistory
-    
+
     existing = await db.execute(
         select(TaxDeductionHistory).where(
             TaxDeductionHistory.year == year,
             TaxDeductionHistory.month == month,
-            TaxDeductionHistory.deduction_type == deduction_type
-        )
+            TaxDeductionHistory.deduction_type == deduction_type,
+        ),
     )
     existing_deduction = existing.scalars().first()
-    
+
     if existing_deduction:
         existing_deduction.amount = amount
         existing_deduction.effective_from = effective_from
@@ -2678,16 +2710,16 @@ async def set_tax_deduction(
             deduction_type=deduction_type,
             amount=amount,
             effective_from=effective_from,
-            effective_to=effective_to
+            effective_to=effective_to,
         )
         db.add(new_deduction)
-    
+
     await db.commit()
 
 
 # --- Bonus & Monthly Config ---
 
-async def create_bonus(db: AsyncSession, user_id: int, amount: Decimal, date: datetime.date, description: Optional[str] = None):
+async def create_bonus(db: AsyncSession, user_id: int, amount: Decimal, date: datetime.date, description: str | None = None):
     from backend.database.models import Bonus
     bonus = Bonus(user_id=user_id, amount=amount, date=date, description=description)
     db.add(bonus)
@@ -2714,7 +2746,7 @@ async def set_monthly_work_days(db: AsyncSession, year: int, month: int, days_co
     result = await db.execute(
         select(MonthlyWorkDays)
         .where(MonthlyWorkDays.year == year)
-        .where(MonthlyWorkDays.month == month)
+        .where(MonthlyWorkDays.month == month),
     )
     obj = result.scalars().first()
 
@@ -2734,7 +2766,7 @@ async def get_monthly_work_days(db: AsyncSession, year: int, month: int):
     result = await db.execute(
         select(MonthlyWorkDays)
         .where(MonthlyWorkDays.year == year)
-        .where(MonthlyWorkDays.month == month)
+        .where(MonthlyWorkDays.month == month),
     )
     return result.scalars().first()
 
@@ -2747,7 +2779,7 @@ import uuid
 
 async def get_active_auth_key(db: AsyncSession) -> AuthKey:
     result = await db.execute(
-        select(AuthKey).where(AuthKey.state == "active").order_by(AuthKey.created_at.desc())
+        select(AuthKey).where(AuthKey.state == "active").order_by(AuthKey.created_at.desc()),
     )
     key = result.scalars().first()
     if not key:
@@ -2756,7 +2788,7 @@ async def get_active_auth_key(db: AsyncSession) -> AuthKey:
     return key
 
 
-async def get_auth_key_by_kid(db: AsyncSession, kid: str) -> Optional[AuthKey]:
+async def get_auth_key_by_kid(db: AsyncSession, kid: str) -> AuthKey | None:
     result = await db.execute(select(AuthKey).where(AuthKey.kid == kid))
     return result.scalars().first()
 
@@ -2765,7 +2797,7 @@ async def rotate_auth_key(db: AsyncSession) -> AuthKey:
     from sqlalchemy import update
     # Mark old active keys as legacy
     await db.execute(
-        update(AuthKey).where(AuthKey.state == "active").values(state="legacy")
+        update(AuthKey).where(AuthKey.state == "active").values(state="legacy"),
     )
 
     # Create new active key
@@ -2773,7 +2805,7 @@ async def rotate_auth_key(db: AsyncSession) -> AuthKey:
         kid=str(uuid.uuid4()),
         secret=secrets.token_urlsafe(64),
         algorithm="HS256",
-        state="active"
+        state="active",
     )
     db.add(new_key)
     await db.commit()
@@ -2789,7 +2821,7 @@ async def cleanup_old_auth_keys(db: AsyncSession, retention_days: int = 90):
     await db.execute(
         delete(AuthKey)
         .where(AuthKey.state == "legacy")
-        .where(AuthKey.created_at < cutoff_date)
+        .where(AuthKey.created_at < cutoff_date),
     )
     await db.commit()
     return True
@@ -2803,7 +2835,7 @@ async def create_user_session(
         refresh_token_jti: str,
         expires_at: datetime,
         ip_address: str = None,
-        user_agent: str = None
+        user_agent: str = None,
 ):
     session = UserSession(
         user_id=user_id,
@@ -2811,7 +2843,7 @@ async def create_user_session(
         expires_at=expires_at,
         ip_address=ip_address,
         user_agent=user_agent,
-        is_active=True
+        is_active=True,
     )
     db.add(session)
     await db.commit()
@@ -2819,9 +2851,9 @@ async def create_user_session(
     return session
 
 
-async def get_user_session_by_jti(db: AsyncSession, jti: str) -> Optional[UserSession]:
+async def get_user_session_by_jti(db: AsyncSession, jti: str) -> UserSession | None:
     result = await db.execute(
-        select(UserSession).where(UserSession.refresh_token_jti == jti)
+        select(UserSession).where(UserSession.refresh_token_jti == jti),
     )
     return result.scalars().first()
 
@@ -2851,14 +2883,14 @@ async def invalidate_session_by_id(db: AsyncSession, session_id: int):
     return False
 
 
-async def get_user_session_by_id(db: AsyncSession, session_id: int) -> Optional[UserSession]:
+async def get_user_session_by_id(db: AsyncSession, session_id: int) -> UserSession | None:
     stmt = select(UserSession).where(UserSession.id == session_id)
     result = await db.execute(stmt)
     return result.scalars().first()
 
 
 async def get_active_sessions(db: AsyncSession, skip: int = 0, limit: int = 100):
-    stmt = select(UserSession).where(UserSession.is_active == True).order_by(UserSession.last_used_at.desc()).offset(
+    stmt = select(UserSession).where(UserSession.is_active).order_by(UserSession.last_used_at.desc()).offset(
         skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -2867,23 +2899,23 @@ async def get_active_sessions(db: AsyncSession, skip: int = 0, limit: int = 100)
 async def invalidate_all_user_sessions(db: AsyncSession, user_id: int):
     from sqlalchemy import update
     await db.execute(
-        update(UserSession).where(UserSession.user_id == user_id).values(is_active=False)
+        update(UserSession).where(UserSession.user_id == user_id).values(is_active=False),
     )
     await db.commit()
 
 # --- Advances & Loans ---
 
-async def create_advance_payment(db: AsyncSession, user_id: int, amount: float, payment_date: date, description: Optional[str] = None):
+async def create_advance_payment(db: AsyncSession, user_id: int, amount: float, payment_date: date, description: str | None = None):
     if amount <= 0:
         raise ValueError("Сумата на аванса трябва да бъде положително число.")
     if payment_date < date.today():
         raise ValueError("Датата на авансовото плащане не може да бъде в миналото.")
-        
+
     advance = AdvancePayment(
         user_id=user_id,
         amount=amount,
         payment_date=payment_date,
-        description=description
+        description=description,
     )
     db.add(advance)
     await db.commit()
@@ -2900,9 +2932,9 @@ async def create_service_loan(db: AsyncSession, user_id: int, total_amount: floa
         raise ValueError("Сумата и броят вноски трябва да бъдат положителни числа.")
     if start_date < date.today():
         raise ValueError("Стартът на удръжките не може да бъде в миналото.")
-        
+
     installment_amount = float(total_amount) / installments_count
-    
+
     loan = ServiceLoan(
         user_id=user_id,
         total_amount=total_amount,
@@ -2912,7 +2944,7 @@ async def create_service_loan(db: AsyncSession, user_id: int, total_amount: floa
         installments_paid=0,
         start_date=start_date,
         description=description,
-        is_active=True
+        is_active=True,
     )
     db.add(loan)
     await db.commit()
@@ -2926,7 +2958,6 @@ async def get_user_loans(db: AsyncSession, user_id: int):
     return True
 
 # --- Employment Contract Management ---
-from backend.database.models import EmploymentContract
 
 async def create_employment_contract(
         db: AsyncSession,
@@ -2934,24 +2965,24 @@ async def create_employment_contract(
         company_id: int,
         contract_type: str,
         start_date: date,
-        end_date: Optional[date] = None,
-        base_salary: Optional[float] = None,
+        end_date: date | None = None,
+        base_salary: float | None = None,
         work_hours_per_week: int = 40,
         probation_months: int = 0,
         is_active: bool = True,
-        salary_calculation_type: str = 'gross',
+        salary_calculation_type: str = "gross",
         salary_installments_count: int = 1,
         monthly_advance_amount: float = 0,
         tax_resident: bool = True,
         insurance_contributor: bool = True,
         has_income_tax: bool = True,
         payment_day: int = 25,
-        experience_start_date: Optional[date] = None,
+        experience_start_date: date | None = None,
         night_work_rate: float = 0.5,
         overtime_rate: float = 1.5,
         holiday_rate: float = 2.0,
-        work_class: Optional[str] = None,
-        dangerous_work: bool = False
+        work_class: str | None = None,
+        dangerous_work: bool = False,
 ) -> EmploymentContract:
     contract = EmploymentContract(
         user_id=user_id,
@@ -2975,7 +3006,7 @@ async def create_employment_contract(
         overtime_rate=overtime_rate,
         holiday_rate=holiday_rate,
         work_class=work_class,
-        dangerous_work=dangerous_work
+        dangerous_work=dangerous_work,
     )
     db.add(contract)
     await db.commit()
@@ -2983,63 +3014,62 @@ async def create_employment_contract(
     return contract
 
 async def deactivate_expired_contracts(db: AsyncSession):
-    """
-    Търси всички потребители с изтекли договори към днешна дата и ги деактивира.
+    """Търси всички потребители с изтекли договори към днешна дата и ги деактивира.
     """
     today = date.today()
-    
+
     # 1. Намираме всички активни потребители с изтекъл договор
     stmt = (
         select(User)
         .join(EmploymentContract, User.id == EmploymentContract.user_id)
-        .where(User.is_active == True)
-        .where(EmploymentContract.is_active == True)
-        .where(EmploymentContract.end_date != None)
+        .where(User.is_active)
+        .where(EmploymentContract.is_active)
+        .where(EmploymentContract.end_date is not None)
         .where(EmploymentContract.end_date < today)
     )
-    
+
     result = await db.execute(stmt)
     users_to_deactivate = result.scalars().all()
-    
+
     count = 0
     for user in users_to_deactivate:
         user.is_active = False
         count += 1
-        
+
     if count > 0:
         await db.commit()
-    
+
     return count
 
-async def get_employment_contract(db: AsyncSession, contract_id: int) -> Optional[EmploymentContract]:
+async def get_employment_contract(db: AsyncSession, contract_id: int) -> EmploymentContract | None:
     result = await db.execute(select(EmploymentContract).where(EmploymentContract.id == contract_id))
     return result.scalars().first()
 
-async def get_employment_contracts_by_user(db: AsyncSession, user_id: int) -> List[EmploymentContract]:
+async def get_employment_contracts_by_user(db: AsyncSession, user_id: int) -> list[EmploymentContract]:
     result = await db.execute(select(EmploymentContract).where(EmploymentContract.user_id == user_id).order_by(EmploymentContract.start_date.desc()))
     return result.scalars().all()
 
-async def get_all_employment_contracts(db: AsyncSession) -> List[EmploymentContract]:
+async def get_all_employment_contracts(db: AsyncSession) -> list[EmploymentContract]:
     result = await db.execute(select(EmploymentContract).order_by(EmploymentContract.start_date.desc()))
     return result.scalars().all()
 
 async def update_employment_contract(
         db: AsyncSession,
         contract_id: int,
-        contract_type: Optional[str] = None,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
-        base_salary: Optional[float] = None,
-        work_hours_per_week: Optional[int] = None,
-        probation_months: Optional[int] = None,
-        is_active: Optional[bool] = None,
-        salary_calculation_type: Optional[str] = None,
-        salary_installments_count: Optional[int] = None,
-        monthly_advance_amount: Optional[float] = None,
-        tax_resident: Optional[bool] = None,
-        insurance_contributor: Optional[bool] = None,
-        has_income_tax: Optional[bool] = None
-) -> Optional[EmploymentContract]:
+        contract_type: str | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        base_salary: float | None = None,
+        work_hours_per_week: int | None = None,
+        probation_months: int | None = None,
+        is_active: bool | None = None,
+        salary_calculation_type: str | None = None,
+        salary_installments_count: int | None = None,
+        monthly_advance_amount: float | None = None,
+        tax_resident: bool | None = None,
+        insurance_contributor: bool | None = None,
+        has_income_tax: bool | None = None,
+) -> EmploymentContract | None:
     contract = await get_employment_contract(db, contract_id)
     if not contract:
         raise HTTPException(status_code=404, detail="Трудов договор не е намерен.")
@@ -3088,7 +3118,7 @@ async def delete_employment_contract(db: AsyncSession, contract_id: int) -> bool
 
 
 
-async def create_webhook(db: AsyncSession, url: str, description: Optional[str], events: Optional[List[str]] = None):
+async def create_webhook(db: AsyncSession, url: str, description: str | None, events: list[str] | None = None):
     from backend.database.models import Webhook
     if events is None:
         events = ["*"] # Default to all events
@@ -3096,24 +3126,22 @@ async def create_webhook(db: AsyncSession, url: str, description: Optional[str],
     webhook = Webhook(
         url=url,
         description=description,
-        events=events
+        events=events,
     )
     db.add(webhook)
     await db.commit()
     await db.refresh(webhook)
     return webhook
 
-async def get_webhooks(db: AsyncSession) -> List[Webhook]:
+async def get_webhooks(db: AsyncSession) -> list[Webhook]:
     from backend.database.models import Webhook
     result = await db.execute(select(Webhook))
     return result.scalars().all()
 
 # --- API Key Management ---
 
-import secrets
-import uuid
 
-async def create_api_key(db: AsyncSession, user_id: int, name: str, permissions: Optional[List[str]] = None):
+async def create_api_key(db: AsyncSession, user_id: int, name: str, permissions: list[str] | None = None):
     from backend.database.models import APIKey
     if permissions is None:
         permissions = ["read:all"]
@@ -3129,21 +3157,21 @@ async def create_api_key(db: AsyncSession, user_id: int, name: str, permissions:
         key_prefix=key_prefix,
         hashed_key=hashed_key,
         permissions=permissions,
-        is_active=True
+        is_active=True,
     )
     db.add(api_key)
     await db.commit()
     await db.refresh(api_key)
     return api_key, raw_key # Return raw key once
 
-async def get_api_keys(db: AsyncSession) -> List[APIKey]:
+async def get_api_keys(db: AsyncSession) -> list[APIKey]:
     from backend.database.models import APIKey
-    result = await db.execute(select(APIKey).where(APIKey.is_active == True))
+    result = await db.execute(select(APIKey).where(APIKey.is_active))
     return result.scalars().all()
 
-async def get_api_key_by_prefix(db: AsyncSession, key_prefix: str) -> Optional[APIKey]:
+async def get_api_key_by_prefix(db: AsyncSession, key_prefix: str) -> APIKey | None:
     from backend.database.models import APIKey
-    result = await db.execute(select(APIKey).where(APIKey.key_prefix == key_prefix).where(APIKey.is_active == True))
+    result = await db.execute(select(APIKey).where(APIKey.key_prefix == key_prefix).where(APIKey.is_active))
     return result.scalars().first()
 
 async def delete_api_key(db: AsyncSession, id: int) -> bool:
@@ -3186,12 +3214,11 @@ async def reset_login_attempts(db: AsyncSession, user_id: int):
     stmt = select(User).where(User.id == user_id)
     result = await db.execute(stmt)
     user = result.scalars().first()
-    if user:
-        if user.failed_login_attempts != 0 or user.locked_until is not None:
-            user.failed_login_attempts = 0
-            user.locked_until = None
-            db.add(user)
-            await db.commit()
+    if user and (user.failed_login_attempts != 0 or user.locked_until is not None):
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        db.add(user)
+        await db.commit()
     return user
 
 
@@ -3215,7 +3242,7 @@ async def update_google_calendar_sync_settings(
     sync_time_logs: bool,
     sync_leave_requests: bool,
     sync_public_holidays: bool,
-    privacy_level: str
+    privacy_level: str,
 ):
     """Update user's Google Calendar sync settings."""
     stmt = select(User).where(User.id == user_id)

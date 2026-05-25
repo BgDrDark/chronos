@@ -1,56 +1,53 @@
+
 import strawberry
-from typing import List, Optional
-from strawberry.types import Info
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from backend.database.models import User
+from backend.modules.behavioral_analysis.graphql.types import (
+    BehavioralAnomalyType,
+    BehavioralProfileType,
+    BehavioralRecommendationType,
+    BehavioralRuleType,
+    BehavioralSettingsType,
+    BehavioralSystemHealthType,
+    BiasReportType,
+    OrganizationalHealthType,
+)
 from backend.modules.behavioral_analysis.models import (
-    BehavioralProfile,
     BehavioralAnomaly,
-    BehavioralRule,
+    BehavioralProfile,
     BehavioralRecommendation,
     BehavioralRetentionSettings,
-    BehavioralStatusThresholds,
-    BehavioralComputationSettings,
-    BehavioralMetricWeights,
-    DepartmentHealthReport,
-    BiasReport,
+    BehavioralRule,
     BehavioralSystemHealth,
+    BiasReport,
+    DepartmentHealthReport,
 )
-from backend.modules.behavioral_analysis.graphql.types import (
-    BehavioralProfileType,
-    BehavioralAnomalyType,
-    BehavioralRuleType,
-    BehavioralRecommendationType,
-    BehavioralSettingsType,
-    OrganizationalHealthType,
-    BiasReportType,
-    BehavioralSystemHealthType,
-)
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from strawberry.types import Info
 
 
 @strawberry.type
 class BehavioralQuery:
     @strawberry.field
     async def behavioral_profiles(
-        self, info: Info, company_id: Optional[int] = None, user_id: Optional[int] = None
-    ) -> List[BehavioralProfileType]:
+        self, info: Info, company_id: int | None = None, user_id: int | None = None,
+    ) -> list[BehavioralProfileType]:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         stmt = select(BehavioralProfile).options(selectinload(BehavioralProfile.anomalies))
-        
+
         if current_user.role.name not in ["admin", "super_admin"]:
             stmt = stmt.where(BehavioralProfile.user_id == current_user.id)
         elif company_id:
             stmt = stmt.where(BehavioralProfile.company_id == company_id)
-            
+
         if user_id:
             stmt = stmt.where(BehavioralProfile.user_id == user_id)
-            
+
         result = await db.execute(stmt.order_by(BehavioralProfile.computed_at.desc()))
         profiles = result.scalars().all()
-        
+
         return [
             BehavioralProfileType(
                 id=p.id,
@@ -83,24 +80,24 @@ class BehavioralQuery:
 
     @strawberry.field
     async def behavioral_anomalies(
-        self, info: Info, profile_id: Optional[int] = None, user_id: Optional[int] = None
-    ) -> List[BehavioralAnomalyType]:
+        self, info: Info, profile_id: int | None = None, user_id: int | None = None,
+    ) -> list[BehavioralAnomalyType]:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         stmt = select(BehavioralAnomaly)
-        
+
         if current_user.role.name not in ["admin", "super_admin"]:
             stmt = stmt.where(BehavioralAnomaly.user_id == current_user.id)
-            
+
         if profile_id:
             stmt = stmt.where(BehavioralAnomaly.profile_id == profile_id)
         if user_id:
             stmt = stmt.where(BehavioralAnomaly.user_id == user_id)
-            
+
         result = await db.execute(stmt.order_by(BehavioralAnomaly.detected_at.desc()))
         anomalies = result.scalars().all()
-        
+
         return [
             BehavioralAnomalyType(
                 id=a.id,
@@ -123,16 +120,16 @@ class BehavioralQuery:
         ]
 
     @strawberry.field
-    async def behavioral_rules(self, info: Info) -> List[BehavioralRuleType]:
+    async def behavioral_rules(self, info: Info) -> list[BehavioralRuleType]:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         stmt = select(BehavioralRule).where(
-            BehavioralRule.company_id == current_user.company_id
+            BehavioralRule.company_id == current_user.company_id,
         )
         result = await db.execute(stmt.order_by(BehavioralRule.name))
         rules = result.scalars().all()
-        
+
         return [
             BehavioralRuleType(
                 id=r.id,
@@ -163,28 +160,28 @@ class BehavioralQuery:
 
     @strawberry.field
     async def behavioral_recommendations(
-        self, info: Info, user_id: Optional[int] = None, status: Optional[str] = None
-    ) -> List[BehavioralRecommendationType]:
+        self, info: Info, user_id: int | None = None, status: str | None = None,
+    ) -> list[BehavioralRecommendationType]:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         stmt = select(BehavioralRecommendation)
-        
+
         if current_user.role.name not in ["admin", "super_admin"]:
             stmt = stmt.where(BehavioralRecommendation.user_id == current_user.id)
         else:
             stmt = stmt.where(BehavioralRecommendation.user_id.in_(
-                select(User.id).where(User.company_id == current_user.company_id)
+                select(User.id).where(User.company_id == current_user.company_id),
             ))
-            
+
         if user_id:
             stmt = stmt.where(BehavioralRecommendation.user_id == user_id)
         if status:
             stmt = stmt.where(BehavioralRecommendation.status == status)
-            
+
         result = await db.execute(stmt.order_by(BehavioralRecommendation.created_at.desc()))
         recommendations = result.scalars().all()
-        
+
         return [
             BehavioralRecommendationType(
                 id=rec.id,
@@ -212,20 +209,20 @@ class BehavioralQuery:
         ]
 
     @strawberry.field
-    async def behavioral_settings(self, info: Info) -> Optional[BehavioralSettingsType]:
+    async def behavioral_settings(self, info: Info) -> BehavioralSettingsType | None:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         result = await db.execute(
             select(BehavioralRetentionSettings).where(
-                BehavioralRetentionSettings.company_id == current_user.company_id
-            )
+                BehavioralRetentionSettings.company_id == current_user.company_id,
+            ),
         )
         settings = result.scalar_one_or_none()
-        
+
         if not settings:
             return None
-            
+
         return BehavioralSettingsType(
             id=settings.id,
             company_id=settings.company_id,
@@ -242,21 +239,21 @@ class BehavioralQuery:
         )
 
     @strawberry.field
-    async def organizational_health(self, info: Info, period_start: Optional[str] = None, period_end: Optional[str] = None) -> List[OrganizationalHealthType]:
+    async def organizational_health(self, info: Info, period_start: str | None = None, period_end: str | None = None) -> list[OrganizationalHealthType]:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         stmt = select(DepartmentHealthReport).where(
-            DepartmentHealthReport.company_id == current_user.company_id
+            DepartmentHealthReport.company_id == current_user.company_id,
         )
         if period_start:
             stmt = stmt.where(DepartmentHealthReport.period_start >= period_start)
         if period_end:
             stmt = stmt.where(DepartmentHealthReport.period_end <= period_end)
-            
+
         result = await db.execute(stmt.order_by(DepartmentHealthReport.generated_at.desc()))
         reports = result.scalars().all()
-        
+
         return [
             OrganizationalHealthType(
                 department_id=r.department_id,
@@ -275,17 +272,17 @@ class BehavioralQuery:
         ]
 
     @strawberry.field
-    async def bias_reports(self, info: Info) -> List[BiasReportType]:
+    async def bias_reports(self, info: Info) -> list[BiasReportType]:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         result = await db.execute(
             select(BiasReport)
             .where(BiasReport.company_id == current_user.company_id)
-            .order_by(BiasReport.generated_at.desc())
+            .order_by(BiasReport.generated_at.desc()),
         )
         reports = result.scalars().all()
-        
+
         return [
             BiasReportType(
                 id=rep.id,
@@ -300,23 +297,23 @@ class BehavioralQuery:
         ]
 
     @strawberry.field
-    async def behavioral_system_health(self, info: Info, company_id: Optional[int] = None) -> Optional[BehavioralSystemHealthType]:
+    async def behavioral_system_health(self, info: Info, company_id: int | None = None) -> BehavioralSystemHealthType | None:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         if current_user.role.name not in ["admin", "super_admin"]:
             return None
-            
+
         cid = company_id or current_user.company_id
-        
+
         result = await db.execute(
-            select(BehavioralSystemHealth).where(BehavioralSystemHealth.company_id == cid)
+            select(BehavioralSystemHealth).where(BehavioralSystemHealth.company_id == cid),
         )
         health = result.scalar_one_or_none()
-        
+
         if not health:
             return None
-            
+
         return BehavioralSystemHealthType(
             id=health.id,
             company_id=health.company_id,

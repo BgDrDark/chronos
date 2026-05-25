@@ -15,7 +15,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./postgres_DB2:/var/lib/postgresql/data/
+      - ./postgres_DB1:/var/lib/postgresql/data/
       # Add performance optimization volumes
       - ./scripts/init-extensions.sql:/docker-entrypoint-initdb.d/init-extensions.sql:ro
     healthcheck:
@@ -67,6 +67,7 @@ services:
       - PERMISSION_CACHE_TTL=${PERMISSION_CACHE_TTL:-300}
       # Deployment Settings
       - UPDATE_KEY_FILE=${UPDATE_KEY_FILE:-/project/scripts/update.key}
+      - UPDATE_MANAGER_URL=${UPDATE_MANAGER_URL:-http://host.docker.internal:14241}
       - DEPLOY_LISTENER_URL=${DEPLOY_LISTENER_URL:-http://host.docker.internal:14241}
       - VERSION=${VERSION}
       # Deploy script config

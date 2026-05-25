@@ -1,15 +1,16 @@
-from typing import Optional, List
-from datetime import date, datetime
-from decimal import Decimal
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from datetime import date
 
-from backend.database.models import EmploymentContract, User, Notification
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.crud.repositories import trz_repo
+from backend.database.models import EmploymentContract, Notification, User
 
 
 class ContractService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self.repo = trz_repo
 
     async def create(
         self,
@@ -17,26 +18,25 @@ class ContractService:
         company_id: int,
         contract_type: str,
         start_date: date,
-        end_date: Optional[date] = None,
-        base_salary: Optional[float] = None,
+        end_date: date | None = None,
+        base_salary: float | None = None,
         work_hours_per_week: int = 40,
         probation_months: int = 0,
         is_active: bool = True,
-        salary_calculation_type: str = 'gross',
+        salary_calculation_type: str = "gross",
         salary_installments_count: int = 1,
         monthly_advance_amount: float = 0,
         tax_resident: bool = True,
         insurance_contributor: bool = True,
         has_income_tax: bool = True,
         payment_day: int = 25,
-        experience_start_date: Optional[date] = None,
+        experience_start_date: date | None = None,
         night_work_rate: float = 0.5,
         overtime_rate: float = 1.5,
         holiday_rate: float = 2.0,
-        work_class: Optional[str] = None,
-        dangerous_work: bool = False
+        work_class: str | None = None,
+        dangerous_work: bool = False,
     ) -> EmploymentContract:
-        """Create a new employment contract"""
         contract = EmploymentContract(
             user_id=user_id,
             company_id=company_id,
@@ -59,47 +59,32 @@ class ContractService:
             overtime_rate=overtime_rate,
             holiday_rate=holiday_rate,
             work_class=work_class,
-            dangerous_work=dangerous_work
+            dangerous_work=dangerous_work,
         )
         self.db.add(contract)
         await self.db.commit()
         await self.db.refresh(contract)
         return contract
 
-    async def get_by_id(self, contract_id: int) -> Optional[EmploymentContract]:
-        """Get contract by ID"""
-        stmt = select(EmploymentContract).where(EmploymentContract.id == contract_id)
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
+    async def get_by_id(self, contract_id: int) -> EmploymentContract | None:
+        return await self.repo.get_contract_by_id(self.db, contract_id)
 
-    async def get_active_for_user(self, user_id: int) -> Optional[EmploymentContract]:
-        """Get active contract for user"""
-        stmt = select(EmploymentContract).where(
-            EmploymentContract.user_id == user_id,
-            EmploymentContract.is_active == True
-        ).order_by(EmploymentContract.start_date.desc())
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
+    async def get_active_for_user(self, user_id: int) -> EmploymentContract | None:
+        return await self.repo.get_active_contract(self.db, user_id)
 
-    async def get_all_for_user(self, user_id: int) -> List[EmploymentContract]:
-        """Get all contracts for user"""
-        stmt = select(EmploymentContract).where(
-            EmploymentContract.user_id == user_id
-        ).order_by(EmploymentContract.start_date.desc())
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+    async def get_all_for_user(self, user_id: int) -> list[EmploymentContract]:
+        return await self.repo.get_user_contracts(self.db, user_id)
 
-    async def get_expiring_soon(self, days: int = 30) -> List[EmploymentContract]:
-        """Get contracts expiring within given days"""
+    async def get_expiring_soon(self, days: int = 30) -> list[EmploymentContract]:
         from datetime import timedelta
         today = date.today()
         end_date_limit = today + timedelta(days=days)
-        
+
         stmt = select(EmploymentContract).where(
-            EmploymentContract.is_active == True,
-            EmploymentContract.end_date != None,
+            EmploymentContract.is_active,
+            EmploymentContract.end_date is not None,
             EmploymentContract.end_date <= end_date_limit,
-            EmploymentContract.end_date >= today
+            EmploymentContract.end_date >= today,
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
@@ -108,109 +93,99 @@ class ContractService:
         self,
         contract_id: int,
         new_end_date: date,
-        reason: Optional[str] = None
+        reason: str | None = None,
     ) -> EmploymentContract:
-        """Extend contract end date"""
-        contract = await self.get_by_id(contract_id)
+        contract = await self.repo.get_contract_by_id(self.db, contract_id)
         if not contract:
             raise ValueError("Contract not found")
-        
+
         old_end_date = contract.end_date
         contract.end_date = new_end_date
         contract.is_active = True
-        
-        self.db.add(contract)
+
         await self.db.commit()
         await self.db.refresh(contract)
-        
+
         await self._notify_extension(contract, old_end_date, new_end_date, reason)
-        
+
         return contract
 
     async def terminate(
         self,
         contract_id: int,
-        termination_date: Optional[date] = None,
-        reason: Optional[str] = None
+        termination_date: date | None = None,
+        reason: str | None = None,
     ) -> EmploymentContract:
-        """Terminate a contract"""
-        contract = await self.get_by_id(contract_id)
+        term_date = termination_date or date.today()
+        contract = await self.repo.terminate_contract(
+            self.db, contract_id, end_date=term_date, termination_reason=reason,
+        )
         if not contract:
             raise ValueError("Contract not found")
-        
-        term_date = termination_date or date.today()
-        contract.end_date = term_date
-        contract.is_active = False
-        
-        self.db.add(contract)
+
+        if reason:
+            contract.termination_reason = reason
+
         await self.db.commit()
         await self.db.refresh(contract)
-        
+
         await self._notify_termination(contract, term_date, reason)
-        
+
         return contract
 
     async def deactivate_expired(self) -> int:
-        """Deactivate all expired contracts and set users to inactive. Returns count of deactivated users."""
         today = date.today()
-        
+
         stmt = (
             select(User)
             .join(EmploymentContract, User.id == EmploymentContract.user_id)
-            .where(User.is_active == True)
-            .where(EmploymentContract.is_active == True)
-            .where(EmploymentContract.end_date != None)
+            .where(User.is_active)
+            .where(EmploymentContract.is_active)
+            .where(EmploymentContract.end_date is not None)
             .where(EmploymentContract.end_date < today)
         )
-        
+
         result = await self.db.execute(stmt)
         users_to_deactivate = result.scalars().all()
-        
+
         count = 0
         for user in users_to_deactivate:
             user.is_active = False
             count += 1
-            
+
             contract = await self.get_active_for_user(user.id)
             if contract:
                 contract.is_active = False
                 self.db.add(contract)
-            
+
             await self._notify_expiration(user.id)
-        
+
         if count > 0:
             await self.db.commit()
-        
+
         return count
 
     async def get_contracts_by_company(
         self,
         company_id: int,
-        is_active: Optional[bool] = None
-    ) -> List[EmploymentContract]:
-        """Get all contracts for a company"""
-        stmt = select(EmploymentContract).where(
-            EmploymentContract.company_id == company_id
-        )
-        
+        is_active: bool | None = None,
+    ) -> list[EmploymentContract]:
+        status = None
         if is_active is not None:
-            stmt = stmt.where(EmploymentContract.is_active == is_active)
-        
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+            status = "active" if is_active else "inactive"
+        return await self.repo.get_contracts_by_company(self.db, company_id, status=status)
 
     async def _notify_extension(
         self,
         contract: EmploymentContract,
         old_end_date: date,
         new_end_date: date,
-        reason: Optional[str] = None
+        reason: str | None = None,
     ) -> None:
-        """Notify user about contract extension"""
         message = f"Вашият трудов договор беше удължен до {new_end_date}."
         if reason:
             message += f" Причина: {reason}"
-        
+
         notification = Notification(user_id=contract.user_id, message=message)
         self.db.add(notification)
         await self.db.flush()
@@ -219,22 +194,20 @@ class ContractService:
         self,
         contract: EmploymentContract,
         termination_date: date,
-        reason: Optional[str] = None
+        reason: str | None = None,
     ) -> None:
-        """Notify user about contract termination"""
         message = f"Вашият трудов договор беше прекратен на {termination_date}."
         if reason:
             message += f" Причина: {reason}"
-        
+
         notification = Notification(user_id=contract.user_id, message=message)
         self.db.add(notification)
         await self.db.flush()
 
     async def _notify_expiration(self, user_id: int) -> None:
-        """Notify user about contract expiration"""
         notification = Notification(
             user_id=user_id,
-            message="Вашият трудов договор е изтекъл. Моля, свържете се с HR."
+            message="Вашият трудов договор е изтекъл. Моля, свържете се с HR.",
         )
         self.db.add(notification)
         await self.db.flush()

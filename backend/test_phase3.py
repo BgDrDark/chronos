@@ -1,9 +1,17 @@
 import asyncio
-from backend.database.database import AsyncSessionLocal
-from backend.database.models import Ingredient, Recipe, RecipeIngredient, RecipeStep, Workstation
-from sqlalchemy.future import select
-from decimal import Decimal
 import logging
+from decimal import Decimal
+
+from sqlalchemy.future import select
+
+from backend.database.database import AsyncSessionLocal
+from backend.database.models import (
+    Ingredient,
+    Recipe,
+    RecipeIngredient,
+    RecipeStep,
+    Workstation,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -11,7 +19,7 @@ logger = logging.getLogger(__name__)
 async def test_recipe_logic():
     async with AsyncSessionLocal() as db:
         logger.info("--- СТАРТ НА ТЕСТ: ФАЗА 3 (РЕЦЕПТУРНИК) ---")
-        
+
         # 1. Намиране на съставка (от предния тест)
         result = await db.execute(select(Ingredient).filter(Ingredient.name == "Сметана 35%"))
         ingredient = result.scalars().first()
@@ -36,7 +44,7 @@ async def test_recipe_logic():
             yield_unit="br",
             shelf_life_days=2,
             instructions="1. Разбийте сметаната. 2. Гарнирайте целувчения блат.",
-            company_id=1
+            company_id=1,
         )
         db.add(recipe)
         await db.flush()
@@ -48,7 +56,7 @@ async def test_recipe_logic():
             ingredient_id=ingredient.id,
             quantity_gross=Decimal("0.500"), # вземаме 500 мл
             quantity_net=Decimal("0.450"),   # остават 450 мл след обработка
-            waste_percentage=Decimal("10.0") # 10% фира
+            waste_percentage=Decimal("10.0"), # 10% фира
         )
         db.add(recipe_ing)
 
@@ -59,16 +67,16 @@ async def test_recipe_logic():
             workstation_id=workstation.id,
             name="Разбиване на сметана и декориране",
             step_order=1,
-            estimated_duration_minutes=20
+            estimated_duration_minutes=20,
         )
         db.add(recipe_step)
-        
+
         await db.commit()
-        
+
         # Финална проверка
         logger.info(f"✅ Рецепта '{recipe.name}' е успешно създадена!")
         logger.info(f"📊 Анализ: Вложена съставка: {ingredient.name}, Фира: {recipe_ing.waste_percentage}%")
-        
+
         logger.info("--- КРАЙ НА ТЕСТА (Фаза 3) ---")
 
 if __name__ == "__main__":

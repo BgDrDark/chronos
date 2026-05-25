@@ -1,13 +1,14 @@
 import logging
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable, Any, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 class CircuitBreakerError(Exception):
     """Raised when a circuit breaker is open and execution is blocked"""
+
     def __init__(self, message: str = "Circuit breaker is open"):
         super().__init__(message)
         self.message = message
@@ -19,7 +20,7 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.failure_count = 0
-        self.last_failure_time: Optional[float] = None
+        self.last_failure_time: float | None = None
         self.state = "closed"  # closed, open, half-open
 
     def call(self, func: Callable) -> Callable:

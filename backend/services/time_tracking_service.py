@@ -1,16 +1,20 @@
-from typing import Optional, Tuple
-from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 import logging
-
-from backend.database.models import TimeLog, WorkSchedule, Shift, GlobalSetting
-from backend.database.models import sofia_now
-from backend.utils.geo import calculate_distance
-from backend.config import settings
-from backend.database.transaction_manager import atomic_transaction, with_row_lock, TransactionError
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from backend.config import settings
+from backend.crud.repositories import settings_repo, time_repo
+from backend.database.models import Shift, TimeLog, WorkSchedule, sofia_now
+from backend.database.transaction_manager import (
+    TransactionError,
+    atomic_transaction,
+    with_row_lock,
+)
+from backend.utils.geo import calculate_distance
 
 logger = logging.getLogger(__name__)
 
@@ -18,13 +22,14 @@ logger = logging.getLogger(__name__)
 class TimeTrackingService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self.repo = time_repo
+        self.settings_repo = settings_repo
 
     async def validate_geofence_entry(
         self,
-        latitude: Optional[float] = None,
-        longitude: Optional[float] = None
-    ) -> Tuple[bool, str]:
-        """Validate geofence for clock in. Returns (is_valid, error_message)"""
+        latitude: float | None = None,
+        longitude: float | None = None,
+    ) -> tuple[bool, str]:
         entry_enabled = await self._get_setting("geofencing_entry_enabled")
 
         if entry_enabled != "True":
@@ -48,10 +53,9 @@ class TimeTrackingService:
 
     async def validate_geofence_exit(
         self,
-        latitude: Optional[float] = None,
-        longitude: Optional[float] = None
-    ) -> Tuple[bool, str]:
-        """Validate geofence for clock out. Returns (is_valid, error_message)"""
+        latitude: float | None = None,
+        longitude: float | None = None,
+    ) -> tuple[bool, str]:
         exit_enabled = await self._get_setting("geofencing_exit_enabled")
 
         if exit_enabled != "True":
@@ -75,12 +79,11 @@ class TimeTrackingService:
 
     async def calculate_working_hours(
         self,
-        timelog: TimeLog
+        timelog: TimeLog,
     ) -> float:
-        """Calculate working hours from a timelog"""
         if not timelog.end_time:
             return 0.0
-        
+
         duration = timelog.end_time - timelog.start_time
         hours = duration.total_seconds() / 3600.0
         return round(hours, 2)
@@ -88,158 +91,114 @@ class TimeTrackingService:
     async def get_schedule_for_date(
         self,
         user_id: int,
-        schedule_date: date
-    ) -> Optional[WorkSchedule]:
-        """Get work schedule for a specific date"""
-        stmt = select(WorkSchedule).where(
-            WorkSchedule.user_id == user_id,
-            WorkSchedule.date == schedule_date
-        ).options(selectinload(WorkSchedule.shift))
-        
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
+        schedule_date: date,
+    ) -> WorkSchedule | None:
+        return await self.repo.get_schedule_for_date(self.db, user_id, schedule_date)
 
     async def get_matching_shift(
         self,
         user_id: int,
-        check_time: datetime
-    ) -> Optional[Shift]:
-        """Find a shift that matches the given time (within tolerance)"""
+        check_time: datetime,
+    ) -> Shift | None:
         today = check_time.date()
-        
+
         schedule = await self.get_schedule_for_date(user_id, today)
-        
-        all_shifts = await self._get_all_shifts()
-        
+
+        all_shifts = await self.repo.get_all_shifts(self.db)
+
         matched_shift = None
-        best_diff = float('inf')
-        
+        best_diff = float("inf")
+
         shifts_to_check = []
         if schedule and schedule.shift:
             shifts_to_check.append(schedule.shift)
         shifts_to_check.extend([s for s in all_shifts if s not in shifts_to_check])
-        
+
         for shift in shifts_to_check:
             shift_start_dt = datetime.combine(today, shift.start_time)
             tolerance = shift.tolerance_minutes if shift.tolerance_minutes is not None else 15
             diff_mins = abs((check_time - shift_start_dt).total_seconds()) / 60.0
-            
-            if diff_mins <= tolerance:
-                if diff_mins < best_diff:
-                    best_diff = diff_mins
-                    matched_shift = shift
-        
+
+            if diff_mins <= tolerance and diff_mins < best_diff:
+                best_diff = diff_mins
+                matched_shift = shift
+
         return matched_shift
 
     async def snap_time_to_shift(
         self,
         shift: Shift,
-        actual_time: datetime
+        actual_time: datetime,
     ) -> datetime:
-        """Snap actual time to shift start/end time within tolerance"""
         today = actual_time.date()
-        
+
         if shift.start_time:
             shift_start_dt = datetime.combine(today, shift.start_time)
             tolerance = shift.tolerance_minutes if shift.tolerance_minutes is not None else 15
             diff_mins = abs((actual_time - shift_start_dt).total_seconds()) / 60.0
-            
+
             if diff_mins <= tolerance:
                 return shift_start_dt
-        
+
         return actual_time
 
     async def check_time_overlap(
         self,
         user_id: int,
         start_time: datetime,
-        end_time: datetime
+        end_time: datetime,
     ) -> bool:
-        """Check if time range overlaps with any existing timelog"""
-        # Strip timezone info for TIMESTAMP WITHOUT TIME ZONE columns
         if start_time.tzinfo is not None:
             start_time = start_time.replace(tzinfo=None)
         if end_time.tzinfo is not None:
             end_time = end_time.replace(tzinfo=None)
-        
-        stmt = select(TimeLog).where(
-            TimeLog.user_id == user_id,
-            TimeLog.end_time.is_(None)
-        )
-        result = await self.db.execute(stmt)
-        active = result.scalars().first()
-        
+
+        active = await self.repo.get_active_timelog(self.db, user_id)
         if active:
             if start_time < active.end_time and end_time > active.start_time:
                 return True
-        
+
         stmt_overlap = select(TimeLog).where(
             TimeLog.user_id == user_id,
             TimeLog.start_time < end_time,
-            TimeLog.end_time > start_time
+            TimeLog.end_time > start_time,
         )
         result_overlap = await self.db.execute(stmt_overlap)
         return result_overlap.scalars().first() is not None
 
     async def get_active_timelog(
         self,
-        user_id: int
-    ) -> Optional[TimeLog]:
-        """Get active timelog for user"""
-        stmt = select(TimeLog).where(
-            TimeLog.user_id == user_id,
-            TimeLog.end_time.is_(None)
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
+        user_id: int,
+    ) -> TimeLog | None:
+        return await self.repo.get_active_timelog(self.db, user_id)
 
     async def get_user_timelogs(
         self,
         user_id: int,
         start_date: date = None,
         end_date: date = None,
-        limit: int = 100
+        limit: int = 100,
     ) -> list[TimeLog]:
-        """Get timelogs for user within date range"""
-        query = select(TimeLog).where(TimeLog.user_id == user_id)
-        
-        if start_date:
-            start_dt = datetime.combine(start_date, datetime.min.time())
-            query = query.where(TimeLog.start_time >= start_dt)
-        if end_date:
-            end_dt = datetime.combine(end_date, datetime.max.time())
-            query = query.where(TimeLog.start_time <= end_dt)
-        
-        query = query.order_by(TimeLog.start_time.desc()).limit(limit)
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self.repo.get_user_timelogs(self.db, user_id, start_date, end_date, limit)
 
-    async def _get_setting(self, key: str) -> Optional[str]:
-        """Get global setting value"""
-        stmt = select(GlobalSetting).where(GlobalSetting.key == key)
-        result = await self.db.execute(stmt)
-        setting = result.scalars().first()
-        return setting.value if setting else None
+    async def _get_setting(self, key: str) -> str | None:
+        return await self.settings_repo.get_setting(self.db, key)
 
     async def _get_all_shifts(self) -> list[Shift]:
-        """Get all shifts"""
-        stmt = select(Shift)
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        return await self.repo.get_all_shifts(self.db)
 
     async def clock_in(
         self,
         user_id: int,
-        latitude: Optional[float] = None,
-        longitude: Optional[float] = None,
-        custom_time: Optional[datetime] = None,
-        skip_geofence: bool = False
+        latitude: float | None = None,
+        longitude: float | None = None,
+        custom_time: datetime | None = None,
+        skip_geofence: bool = False,
     ) -> TimeLog:
-        """Clock in - creates a new time log"""
         async with atomic_transaction(self.db) as tx:
             active_log_query = select(TimeLog).where(
                 TimeLog.user_id == user_id,
-                TimeLog.end_time.is_(None)
+                TimeLog.end_time.is_(None),
             )
 
             try:
@@ -271,7 +230,7 @@ class TimeTrackingService:
 
             schedule_query = select(WorkSchedule).where(
                 WorkSchedule.user_id == user_id,
-                WorkSchedule.date == today
+                WorkSchedule.date == today,
             ).options(selectinload(WorkSchedule.shift))
 
             try:
@@ -290,7 +249,7 @@ class TimeTrackingService:
 
             if not matched_shift:
                 all_shifts = await self._get_all_shifts()
-                best_diff = float('inf')
+                best_diff = float("inf")
                 for shift in all_shifts:
                     if self._is_matching_shift(now_local, shift, today):
                         shift_start_dt = datetime.combine(today, shift.start_time)
@@ -307,7 +266,7 @@ class TimeTrackingService:
                         new_schedule = WorkSchedule(
                             user_id=user_id,
                             shift_id=matched_shift.id,
-                            date=today
+                            date=today,
                         )
                         tx.add(new_schedule)
 
@@ -320,7 +279,7 @@ class TimeTrackingService:
                 user_id=user_id,
                 start_time=snapped_start_time,
                 latitude=latitude,
-                longitude=longitude
+                longitude=longitude,
             )
             tx.add(db_log)
             await tx.flush()
@@ -331,17 +290,16 @@ class TimeTrackingService:
     async def clock_out(
         self,
         user_id: int,
-        latitude: Optional[float] = None,
-        longitude: Optional[float] = None,
-        custom_time: Optional[datetime] = None,
-        notes: Optional[str] = None,
-        skip_geofence: bool = False
+        latitude: float | None = None,
+        longitude: float | None = None,
+        custom_time: datetime | None = None,
+        notes: str | None = None,
+        skip_geofence: bool = False,
     ) -> TimeLog:
-        """Clock out - ends the active time log"""
         async with atomic_transaction(self.db) as tx:
             active_log_query = select(TimeLog).where(
                 TimeLog.user_id == user_id,
-                TimeLog.end_time.is_(None)
+                TimeLog.end_time.is_(None),
             )
 
             try:
@@ -374,7 +332,7 @@ class TimeTrackingService:
 
             schedule_query = select(WorkSchedule).where(
                 WorkSchedule.user_id == user_id,
-                WorkSchedule.date == log_date
+                WorkSchedule.date == log_date,
             ).options(selectinload(WorkSchedule.shift))
 
             try:
@@ -408,11 +366,12 @@ class TimeTrackingService:
             await tx.flush()
             await tx.refresh(active_log)
 
-            # Behavioral Analysis: Triggered Events
             try:
-                from backend.modules.behavioral_analysis.triggered_events import TriggeredEventProcessor
+                from backend.modules.behavioral_analysis.triggered_events import (
+                    TriggeredEventProcessor,
+                )
                 from backend.services.module_service import ModuleService
-                
+
                 is_enabled = await ModuleService.is_enabled(tx, "behavioral_analysis")
                 if is_enabled:
                     processor = TriggeredEventProcessor(tx)
@@ -423,7 +382,6 @@ class TimeTrackingService:
             return active_log
 
     def _is_matching_shift(self, check_time: datetime, shift: Shift, check_date: date) -> bool:
-        """Check if time matches shift within tolerance"""
         shift_start_dt = datetime.combine(check_date, shift.start_time)
         tolerance = shift.tolerance_minutes if shift.tolerance_minutes is not None else 15
         diff_mins = abs((check_time - shift_start_dt).total_seconds()) / 60.0

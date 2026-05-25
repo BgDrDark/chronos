@@ -1,19 +1,17 @@
-from passlib.context import CryptContext
-from fastapi import Request
-from cryptography.fernet import Fernet
-from backend.config import settings
-import os
-import re # For regex password validation
+import re  # For regex password validation
 
+from cryptography.fernet import Fernet
+from fastapi import Request
+from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from backend import crud # Import crud for global settings
+
+from backend import crud  # Import crud for global settings
+from backend.config import settings
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 async def validate_password_complexity(db: AsyncSession, password: str):
-    """
-    Validate password complexity based on global settings.
+    """Validate password complexity based on global settings.
     Raises ValueError with descriptive message if validation fails.
     """
     min_len = int(await crud.get_global_setting(db, "pwd_min_length") or "8")
@@ -22,12 +20,12 @@ async def validate_password_complexity(db: AsyncSession, password: str):
     req_lower = (await crud.get_global_setting(db, "pwd_require_lower") or "false") == "true"
     req_digit = (await crud.get_global_setting(db, "pwd_require_digit") or "false") == "true"
     req_special = (await crud.get_global_setting(db, "pwd_require_special") or "false") == "true"
-    
+
     if len(password) < min_len:
         raise ValueError(f"Паролата трябва да е поне {min_len} символа.")
     if len(password) > max_len:
         raise ValueError(f"Паролата не може да бъде по-дълга от {max_len} символа.")
-    
+
     if req_upper and not any(c.isupper() for c in password):
         raise ValueError("Паролата трябва да съдържа поне една главна буква.")
     if req_lower and not any(c.islower() for c in password):
@@ -41,15 +39,14 @@ async def validate_password_complexity(db: AsyncSession, password: str):
 # NO FALLBACK - key MUST be provided in .env (or auto-generated)
 
 def get_cipher_suite() -> Fernet:
-    """
-    Initialize Fernet cipher with ENCRYPTION_KEY from settings.
+    """Initialize Fernet cipher with ENCRYPTION_KEY from settings.
     Raises RuntimeError if key is not configured.
     """
     key = settings.ENCRYPTION_KEY
     if not key:
         raise RuntimeError(
             "ENCRYPTION_KEY не е дефиниран в .env! "
-            "Генерирай с: python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+            'Генерирай с: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"',
         )
     try:
         return Fernet(key.encode())
@@ -87,24 +84,23 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_client_ip(request: Request) -> str:
-    """
-    Извлича реалния IP адрес на клиента, като взема предвид прокси сървъри.
+    """Извлича реалния IP адрес на клиента, като взема предвид прокси сървъри.
     Приоритет: Cloudflare (CF-Connecting-IP) -> X-Forwarded-For -> X-Real-IP -> client.host
     """
     # 1. Cloudflare специфичен хедър (най-надежден при ползване на CF)
     cf_ip = request.headers.get("cf-connecting-ip")
     if cf_ip:
         return cf_ip
-    
+
     # 2. Стандартен Forwarded хедър (може да съдържа списък, вземаме първия)
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
-    
+
     # 3. X-Real-IP хедър (често задаван от Nginx Proxy Manager)
     real_ip = request.headers.get("x-real-ip")
     if real_ip:
         return real_ip
-        
+
     # 4. Директна връзка (ако няма прокси)
     return request.client.host if request.client else "unknown"

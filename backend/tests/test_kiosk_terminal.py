@@ -1,16 +1,18 @@
+"""Тестове за Kiosk Terminal достъп
 """
-Тестове за Kiosk Terminal достъп
-"""
-import pytest
-from httpx import AsyncClient
-from backend.main import app
-from backend.database.database import get_db
-from backend.database.models import User, Company, AccessDoor, AccessZone, AccessCode, Gateway
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.pool import StaticPool
-from unittest.mock import AsyncMock, patch
 import datetime
 
+import pytest
+from backend.database.models import (
+    AccessCode,
+    AccessDoor,
+    AccessZone,
+    Company,
+    Gateway,
+    User,
+)
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -24,18 +26,18 @@ async def db_session():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    
+
     from backend.database.models import Base
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     async_session = AsyncSession(engine)
-    
+
     yield async_session
-    
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-    
+
     await engine.dispose()
 
 
@@ -45,7 +47,7 @@ async def test_company(db_session):
     company = Company(
         name="Test Company",
         business_type="retail",
-        work_schedule_type="standard"
+        work_schedule_type="standard",
     )
     db_session.add(company)
     await db_session.commit()
@@ -62,7 +64,7 @@ async def test_user(db_session, test_company):
         last_name="User",
         company_id=test_company.id,
         is_active=True,
-        qr_secret="test_secret"
+        qr_secret="test_secret",
     )
     db_session.add(user)
     await db_session.commit()
@@ -78,7 +80,7 @@ async def test_gateway(db_session, test_company):
         hardware_uuid="test-hw-uuid-123",
         ip_address="192.168.1.100",
         terminal_port=1424,
-        company_id=test_company.id
+        company_id=test_company.id,
     )
     db_session.add(gateway)
     await db_session.commit()
@@ -94,7 +96,7 @@ async def test_zone(db_session, test_company):
         name="Test Zone",
         level=1,
         company_id=test_company.id,
-        is_active=True
+        is_active=True,
     )
     db_session.add(zone)
     await db_session.commit()
@@ -114,7 +116,7 @@ async def test_door(db_session, test_company, test_gateway, test_zone):
         relay_number=1,
         terminal_id="terminal-hw-uuid-123",
         terminal_mode="access",
-        is_active=True
+        is_active=True,
     )
     db_session.add(door)
     await db_session.commit()
@@ -132,7 +134,7 @@ async def test_access_code(db_session, test_company):
         uses_remaining=10,
         expires_at=datetime.datetime.now() + datetime.timedelta(days=1),
         is_active=True,
-        gateway_id=None
+        gateway_id=None,
     )
     db_session.add(code)
     await db_session.commit()
@@ -149,23 +151,18 @@ async def test_terminal_scan_with_qr_code():
     """Тест: QR сканиране + отваряне на врата"""
     # Този тест изисква пълен тестов сетъп с mock-ване
     # Засега е placeholder
-    
+
     # 1. Подготовка на заявката
-    scan_data = {
-        "qr_token": "1:valid_token",
-        "terminal_hardware_uuid": "terminal-hw-uuid-123",
-        "action": "access"
-    }
-    
+
     # 2. Изпълнение на заявката (с mock-ове)
     # response = await client.post("/kiosk/terminal/scan", json=scan_data)
-    
+
     # 3. Проверка на резултатите
     # assert response.status_code == 200
     # data = response.json()
     # assert data["status"] == "success"
     # assert data["door_opened"] == True
-    
+
     assert True  # Placeholder
 
 
@@ -231,18 +228,15 @@ async def test_no_door_connected():
 
 class TestKioskTerminalIntegration:
     """Интеграционни тестове - изискват база данни"""
-    
+
     @pytest.mark.skip(reason="Requires database connection")
     async def test_health_check(self):
         """Тест: Health check на kiosk endpoint"""
-        pass
-    
+
     @pytest.mark.skip(reason="Requires database connection")
     async def test_scan_without_token(self):
         """Тест: Сканиране без QR код"""
-        pass
-    
+
     @pytest.mark.skip(reason="Requires database connection")
     async def test_scan_with_invalid_secret(self):
         """Тест: Сканиране с невалидна тайна"""
-        pass

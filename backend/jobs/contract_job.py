@@ -1,6 +1,7 @@
 import logging
-from backend.database.database import AsyncSessionLocal
+
 from backend import crud
+from backend.database.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 

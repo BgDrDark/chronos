@@ -1,38 +1,41 @@
-"""
-Standalone Backend Tests for Behavioral Analysis Module
+"""Standalone Backend Tests for Behavioral Analysis Module
 Tests: Detector, RuleEngine, ContextAnalyzer, FeedbackLoop, 
        OrganizationalHealth, TriggeredEvents, Resilience
 """
-import pytest
-import pytest_asyncio
-from datetime import date, datetime, timezone, timedelta
-from zoneinfo import ZoneInfo
-from backend.config import settings
-from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
-import sys
 import os
+import sys
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+from unittest.mock import AsyncMock, MagicMock
+from zoneinfo import ZoneInfo
+
+import pytest
+from backend.config import settings
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Backend imports
-from backend.modules.behavioral_analysis.detector import BehavioralDetector
-from backend.modules.behavioral_analysis.rule_engine import RuleEngine
 from backend.modules.behavioral_analysis.context_analyzer import ContextAnalyzer
+from backend.modules.behavioral_analysis.detector import BehavioralDetector
 from backend.modules.behavioral_analysis.feedback_loop import FeedbackLoop
-from backend.modules.behavioral_analysis.organizational_health import OrganizationalHealth
-from backend.modules.behavioral_analysis.triggered_events import TriggeredEventProcessor
-from backend.modules.behavioral_analysis.resilience import CircuitBreaker, CircuitBreakerError, safe_execute, ba_circuit_breaker
 
 # Models
 from backend.modules.behavioral_analysis.models import (
-    BehavioralProfile, BehavioralAnomaly, BehavioralRule, 
-    BehavioralRecommendation, RecommendationFeedback,
-    BehavioralStatusThresholds, BehavioralMetricWeights,
-    BehavioralSystemHealth, DepartmentHealthReport, BiasReport
+    BehavioralProfile,
+    BehavioralRule,
+    BehavioralStatusThresholds,
 )
+from backend.modules.behavioral_analysis.organizational_health import (
+    OrganizationalHealth,
+)
+from backend.modules.behavioral_analysis.resilience import (
+    CircuitBreaker,
+    CircuitBreakerError,
+)
+from backend.modules.behavioral_analysis.rule_engine import RuleEngine
+from backend.modules.behavioral_analysis.triggered_events import TriggeredEventProcessor
 
 # ==========================================
 # Helpers
@@ -49,19 +52,19 @@ def create_mock_db():
 
 def create_mock_profile(**kwargs):
     defaults = {
-        'id': 1, 'user_id': 1, 'company_id': 1,
-        'period_start': date.today() - timedelta(days=30),
-        'period_end': date.today(),
-        'employee_type': 'full_time', 'tenure_days': 365,
-        'probation_mode': False, 'data_completeness': 1.0,
-        'punctuality_score': 85.0, 'efficiency_score': 90.0,
-        'overtime_score': 10.0, 'burnout_risk': 0.3,
-        'financial_stress_score': 0.1, 'engagement_score': 95.0,
-        'scrap_rate': 2.0, 'peer_group_percentile': 70.0,
-        'trend_direction': 'stable', 'status': 'stable',
-        'confidence_score': 1.0, 'contribution_factors': None,
-        'rule_engine_version': 'v1.0.0', 'computed_at': datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
-        'version': 1, 'anomalies': []
+        "id": 1, "user_id": 1, "company_id": 1,
+        "period_start": date.today() - timedelta(days=30),
+        "period_end": date.today(),
+        "employee_type": "full_time", "tenure_days": 365,
+        "probation_mode": False, "data_completeness": 1.0,
+        "punctuality_score": 85.0, "efficiency_score": 90.0,
+        "overtime_score": 10.0, "burnout_risk": 0.3,
+        "financial_stress_score": 0.1, "engagement_score": 95.0,
+        "scrap_rate": 2.0, "peer_group_percentile": 70.0,
+        "trend_direction": "stable", "status": "stable",
+        "confidence_score": 1.0, "contribution_factors": None,
+        "rule_engine_version": "v1.0.0", "computed_at": datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
+        "version": 1, "anomalies": [],
     }
     defaults.update(kwargs)
     profile = MagicMock(spec=BehavioralProfile)
@@ -71,14 +74,14 @@ def create_mock_profile(**kwargs):
 
 def create_mock_thresholds(**kwargs):
     defaults = {
-        'id': 1, 'company_id': 1,
-        'punctuality_warning': 70.0, 'punctuality_critical': 50.0,
-        'efficiency_warning': 60.0, 'efficiency_critical': 40.0,
-        'burnout_warning': 0.6, 'burnout_critical': 0.8,
-        'stress_warning': 0.5, 'stress_critical': 0.7,
-        'engagement_warning': 60.0, 'engagement_critical': 40.0,
-        'probation_multiplier': 1.5,
-        'updated_at': datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+        "id": 1, "company_id": 1,
+        "punctuality_warning": 70.0, "punctuality_critical": 50.0,
+        "efficiency_warning": 60.0, "efficiency_critical": 40.0,
+        "burnout_warning": 0.6, "burnout_critical": 0.8,
+        "stress_warning": 0.5, "stress_critical": 0.7,
+        "engagement_warning": 60.0, "engagement_critical": 40.0,
+        "probation_multiplier": 1.5,
+        "updated_at": datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
     }
     defaults.update(kwargs)
     t = MagicMock(spec=BehavioralStatusThresholds)
@@ -88,20 +91,20 @@ def create_mock_thresholds(**kwargs):
 
 def create_mock_rule(**kwargs):
     defaults = {
-        'id': 1, 'name': 'Test Rule', 'description': 'Test',
-        'rule_type': 'custom', 'is_system': False, 'is_active': True,
-        'shadow_mode': False, 'company_id': 1,
-        'condition_type': 'threshold',
-        'condition_config': {'metric': 'burnout_risk', 'operator': '>', 'threshold': 0.7},
-        'recommendation_template': {
-            'type': 'general', 'priority': 'high', 'title': 'Test Rec',
-            'description': 'Test', 'suggested_action': 'Test', 'explanation': 'Test'
+        "id": 1, "name": "Test Rule", "description": "Test",
+        "rule_type": "custom", "is_system": False, "is_active": True,
+        "shadow_mode": False, "company_id": 1,
+        "condition_type": "threshold",
+        "condition_config": {"metric": "burnout_risk", "operator": ">", "threshold": 0.7},
+        "recommendation_template": {
+            "type": "general", "priority": "high", "title": "Test Rec",
+            "description": "Test", "suggested_action": "Test", "explanation": "Test",
         },
-        'auto_execute_action': None, 'auto_execute': False,
-        'effectiveness_score': 0.0, 'false_positive_rate': 0.0,
-        'trigger_count': 0, 'accepted_count': 0, 'effective_count': 0,
-        'false_positive_count': 0, 'created_by': 1,
-        'created_at': datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None), 'updated_at': datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+        "auto_execute_action": None, "auto_execute": False,
+        "effectiveness_score": 0.0, "false_positive_rate": 0.0,
+        "trigger_count": 0, "accepted_count": 0, "effective_count": 0,
+        "false_positive_count": 0, "created_by": 1,
+        "created_at": datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None), "updated_at": datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
     }
     defaults.update(kwargs)
     rule = MagicMock(spec=BehavioralRule)
@@ -165,7 +168,7 @@ class TestBehavioralDetector:
         detector = BehavioralDetector(db)
 
         # 20 hours OT per week (max is 10h for 100%)
-        db.execute = AsyncMock(return_value=MagicMock(scalar=MagicMock(return_value=Decimal('140'))))
+        db.execute = AsyncMock(return_value=MagicMock(scalar=MagicMock(return_value=Decimal(140))))
 
         result = await detector._compute_overtime(1, 1, date.today()-timedelta(days=30), date.today())
         assert result == 100.0
@@ -200,9 +203,9 @@ class TestBehavioralDetector:
         thresholds = create_mock_thresholds()
 
         status = detector._determine_status(
-            punctuality=90.0, efficiency=90.0, burnout=0.2, 
-            financial=0.1, engagement=95.0, thresholds=thresholds, 
-            probation_mode=False
+            punctuality=90.0, efficiency=90.0, burnout=0.2,
+            financial=0.1, engagement=95.0, thresholds=thresholds,
+            probation_mode=False,
         )
         assert status == "stable"
 
@@ -213,9 +216,9 @@ class TestBehavioralDetector:
         thresholds = create_mock_thresholds(burnout_critical=0.8)
 
         status = detector._determine_status(
-            punctuality=90.0, efficiency=90.0, burnout=0.9, 
-            financial=0.1, engagement=95.0, thresholds=thresholds, 
-            probation_mode=False
+            punctuality=90.0, efficiency=90.0, burnout=0.9,
+            financial=0.1, engagement=95.0, thresholds=thresholds,
+            probation_mode=False,
         )
         assert status == "critical"
 
@@ -226,9 +229,9 @@ class TestBehavioralDetector:
         thresholds = create_mock_thresholds()
 
         status = detector._determine_status(
-            punctuality=40.0, efficiency=30.0, burnout=0.2, 
-            financial=0.1, engagement=95.0, thresholds=thresholds, 
-            probation_mode=False
+            punctuality=40.0, efficiency=30.0, burnout=0.2,
+            financial=0.1, engagement=95.0, thresholds=thresholds,
+            probation_mode=False,
         )
         assert status == "critical"
 
@@ -239,9 +242,9 @@ class TestBehavioralDetector:
         thresholds = create_mock_thresholds()
 
         status = detector._determine_status(
-            punctuality=98.0, efficiency=95.0, burnout=0.1, 
-            financial=0.0, engagement=98.0, thresholds=thresholds, 
-            probation_mode=False
+            punctuality=98.0, efficiency=95.0, burnout=0.1,
+            financial=0.0, engagement=98.0, thresholds=thresholds,
+            probation_mode=False,
         )
         assert status == "star"
 
@@ -253,9 +256,9 @@ class TestBehavioralDetector:
 
         # These would be stable normally, but critical in probation
         status = detector._determine_status(
-            punctuality=60.0, efficiency=50.0, burnout=0.2, 
-            financial=0.1, engagement=95.0, thresholds=thresholds, 
-            probation_mode=True
+            punctuality=60.0, efficiency=50.0, burnout=0.2,
+            financial=0.1, engagement=95.0, thresholds=thresholds,
+            probation_mode=True,
         )
         assert status == "critical"
 
@@ -265,7 +268,7 @@ class TestBehavioralDetector:
         detector = BehavioralDetector(db)
 
         factors = detector._compute_contribution_factors(
-            burnout=0.5, overtime=50.0, engagement=80.0, scrap=5.0
+            burnout=0.5, overtime=50.0, engagement=80.0, scrap=5.0,
         )
         assert "burnout_risk" in factors
         assert "overtime_hours" in factors
@@ -315,8 +318,8 @@ class TestRuleEngine:
             "logic": "AND",
             "conditions": [
                 {"metric": "burnout_risk", "operator": ">", "threshold": 0.7},
-                {"metric": "overtime_score", "operator": ">", "threshold": 50.0}
-            ]
+                {"metric": "overtime_score", "operator": ">", "threshold": 50.0},
+            ],
         }
 
         assert engine._evaluate_composite(config, profile) is True
@@ -333,8 +336,8 @@ class TestRuleEngine:
             "logic": "OR",
             "conditions": [
                 {"metric": "burnout_risk", "operator": ">", "threshold": 0.7},
-                {"metric": "overtime_score", "operator": ">", "threshold": 50.0}
-            ]
+                {"metric": "overtime_score", "operator": ">", "threshold": 50.0},
+            ],
         }
 
         assert engine._evaluate_composite(config, profile) is True
@@ -693,7 +696,7 @@ class TestTriggeredEvents:
             user_id=1,
             hours_worked=13.0,
             break_duration=1.0,
-            end_time=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+            end_time=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
         )
 
         anomalies = await processor.handle_clock_out(mock_log)
@@ -719,7 +722,7 @@ class TestTriggeredEvents:
             user_id=1,
             hours_worked=7.0,
             break_duration=10/60,
-            end_time=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+            end_time=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
         )
 
         anomalies = await processor.handle_clock_out(mock_log)
@@ -744,7 +747,7 @@ class TestTriggeredEvents:
             user_id=1,
             hours_worked=9.0,
             break_duration=1.0,
-            end_time=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None).replace(hour=23, minute=30)
+            end_time=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None).replace(hour=23, minute=30),
         )
 
         anomalies = await processor.handle_clock_out(mock_log)

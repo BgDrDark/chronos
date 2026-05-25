@@ -1,35 +1,33 @@
+
 import strawberry
-from typing import Optional
-from datetime import datetime
+from backend.database.models import User
+from backend.exceptions import PermissionDeniedException
+from backend.modules.behavioral_analysis.graphql.types import BehavioralSystemHealthType
+from backend.modules.behavioral_analysis.models import BehavioralSystemHealth
 from sqlalchemy import select
 from strawberry.types import Info
-
-from backend.modules.behavioral_analysis.models import BehavioralSystemHealth
-from backend.modules.behavioral_analysis.graphql.types import BehavioralSystemHealthType
-from backend.exceptions import PermissionDeniedException
-from backend.database.models import User
 
 
 @strawberry.type
 class SystemHealthQuery:
     @strawberry.field
-    async def behavioral_system_health(self, info: Info, company_id: Optional[int] = None) -> Optional[BehavioralSystemHealthType]:
+    async def behavioral_system_health(self, info: Info, company_id: int | None = None) -> BehavioralSystemHealthType | None:
         db = info.context["db"]
         current_user: User = info.context["current_user"]
-        
+
         if current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view system health")
-            
+
         cid = company_id or current_user.company_id
-        
+
         result = await db.execute(
-            select(BehavioralSystemHealth).where(BehavioralSystemHealth.company_id == cid)
+            select(BehavioralSystemHealth).where(BehavioralSystemHealth.company_id == cid),
         )
         health = result.scalar_one_or_none()
-        
+
         if not health:
             return None
-            
+
         return BehavioralSystemHealthType(
             id=health.id,
             company_id=health.company_id,

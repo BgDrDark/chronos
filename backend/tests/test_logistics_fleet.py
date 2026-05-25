@@ -1,46 +1,31 @@
+"""Tests for Logistics and Fleet Management modules
 """
-Tests for Logistics and Fleet Management modules
-"""
+
+import contextlib
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+from unittest.mock import AsyncMock, patch
 
 import pytest
-import asyncio
-from decimal import Decimal
-from datetime import datetime, date, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
-
 from backend.database.models import (
-    Supplier,
-    RequestTemplate,
-    PurchaseRequest,
-    PurchaseRequestItem,
-    PurchaseRequestApproval,
-    PurchaseRequestHistory,
-    PurchaseOrder,
-    PurchaseOrderItem,
     Delivery,
-    VehicleType,
-    Vehicle,
-    VehicleDocument,
-    VehicleFuelCard,
-    VehicleVignette,
-    VehicleToll,
-    VehicleMileage,
-    VehicleFuel,
-    VehicleService,
-    VehicleRepair,
-    VehicleSchedule,
-    VehicleInsurance,
-    VehicleInspection,
-    VehiclePreTripInspection,
-    VehicleDriver,
-    VehicleTrip,
-    VehicleExpense,
-    VehicleCostCenter,
-    PurchaseRequestStatus,
-    PurchaseRequestPriority,
-    VehicleStatus,
-    FuelType,
     ExpenseType,
+    FuelType,
+    PurchaseOrder,
+    PurchaseRequest,
+    PurchaseRequestApproval,
+    PurchaseRequestPriority,
+    PurchaseRequestStatus,
+    Supplier,
+    Vehicle,
+    VehicleDriver,
+    VehicleExpense,
+    VehicleFuel,
+    VehicleInspection,
+    VehicleInsurance,
+    VehicleMileage,
+    VehiclePreTripInspection,
+    VehicleStatus,
 )
 
 
@@ -430,13 +415,11 @@ class TestInventoryCheckJob:
     @pytest.mark.asyncio
     async def test_check_inventory_levels_empty(self):
         """Test inventory check with no ingredients"""
-        pass
 
     @pytest.mark.skip(reason="Requires database connection")
     @pytest.mark.asyncio
     async def test_generate_request_number(self):
         """Test request number generation"""
-        pass
 
 
 class TestFleetNotificationsJob:
@@ -446,18 +429,16 @@ class TestFleetNotificationsJob:
     async def test_check_fleet_notifications(self):
         """Test fleet notifications check"""
         from backend.jobs.fleet_notifications_job import check_fleet_notifications
-        
+
         mock_db = AsyncMock()
         mock_result = AsyncMock()
         mock_result.scalars.return_value.all.return_value = []
         mock_db.execute = AsyncMock(return_value=mock_result)
         mock_db.commit = AsyncMock()
-        
-        with patch('backend.jobs.fleet_notifications_job.AsyncSessionLocal', return_value=mock_db):
-            try:
+
+        with patch("backend.jobs.fleet_notifications_job.AsyncSessionLocal", return_value=mock_db):
+            with contextlib.suppress(Exception):
                 await check_fleet_notifications()
-            except Exception:
-                pass
 
 
 class TestRBACPermissions:
@@ -466,7 +447,7 @@ class TestRBACPermissions:
     def test_logistics_permissions_exist(self):
         """Test that all logistics permissions are defined"""
         from backend.auth.rbac_service import DEFAULT_PERMISSIONS
-        
+
         logistics_perms = [
             "logistics:suppliers:read",
             "logistics:suppliers:create",
@@ -476,14 +457,14 @@ class TestRBACPermissions:
             "logistics:orders:read",
             "logistics:deliveries:read",
         ]
-        
+
         for perm in logistics_perms:
             assert perm in DEFAULT_PERMISSIONS, f"Missing permission: {perm}"
 
     def test_fleet_permissions_exist(self):
         """Test that all fleet permissions are defined"""
         from backend.auth.rbac_service import DEFAULT_PERMISSIONS
-        
+
         fleet_perms = [
             "fleet:vehicles:read",
             "fleet:vehicles:create",
@@ -495,7 +476,7 @@ class TestRBACPermissions:
             "fleet:trips:read",
             "fleet:expenses:read",
         ]
-        
+
         for perm in fleet_perms:
             assert perm in DEFAULT_PERMISSIONS, f"Missing permission: {perm}"
 
@@ -506,7 +487,7 @@ class TestGraphQLTypes:
     def test_supplier_extended_type(self):
         """Test SupplierExtended GraphQL type"""
         from backend.graphql.types import SupplierExtended
-        
+
         supplier_data = {
             "id": 1,
             "name": "Тест ООД",
@@ -523,15 +504,15 @@ class TestGraphQLTypes:
             "created_at": datetime.now(),
             "updated_at": None,
         }
-        
+
         supplier = SupplierExtended(**supplier_data)
         assert supplier.name == "Тест ООД"
         assert supplier.is_active is True
 
     def test_vehicle_type(self):
         """Test Vehicle GraphQL type"""
-        from backend.graphql.types import Vehicle, FuelType, VehicleStatus
-        
+        from backend.graphql.types import FuelType, Vehicle, VehicleStatus
+
         vehicle_data = {
             "id": 1,
             "registration_number": "E1234AB",
@@ -553,7 +534,7 @@ class TestGraphQLTypes:
             "created_at": datetime.now(),
             "updated_at": None,
         }
-        
+
         vehicle = Vehicle(**vehicle_data)
         assert vehicle.registration_number == "E1234AB"
         assert vehicle.fuel_type == FuelType.DIZEL
@@ -574,7 +555,7 @@ class TestLogisticsIntegration:
             company_id=1,
         )
         assert pr.status == "approved"
-        
+
         # Create a purchase order from the request
         order = PurchaseOrder(
             order_number="PO-2026-00001",
@@ -583,7 +564,7 @@ class TestLogisticsIntegration:
             company_id=1,
         )
         assert order.purchase_request_id == 1
-        
+
         # Create a delivery from the order
         delivery = Delivery(
             delivery_number="D-2026-00001",
@@ -601,23 +582,23 @@ class TestFleetIntegration:
     def test_vehicle_lifecycle(self):
         """Test the full vehicle lifecycle"""
         # Create vehicle
-        vehicle = Vehicle(
+        Vehicle(
             registration_number="E1234AB",
             make="Toyota",
             model="Corolla",
             company_id=1,
         )
-        
+
         # Add mileage record
-        mileage = VehicleMileage(
+        VehicleMileage(
             vehicle_id=1,
             date=date.today(),
             mileage=50000,
             source="manual",
         )
-        
+
         # Add fuel record
-        fuel = VehicleFuel(
+        VehicleFuel(
             vehicle_id=1,
             date=datetime.now(),
             quantity=Decimal("50.00"),
@@ -625,7 +606,7 @@ class TestFleetIntegration:
             total_amount=Decimal("105.00"),
             mileage=50000,
         )
-        
+
         # Create expense from fuel
         expense = VehicleExpense(
             vehicle_id=1,
@@ -638,7 +619,7 @@ class TestFleetIntegration:
             reference_type="fuel",
             company_id=1,
         )
-        
+
         assert expense.reference_type == "fuel"
         assert expense.total_amount == Decimal("120.00")
 

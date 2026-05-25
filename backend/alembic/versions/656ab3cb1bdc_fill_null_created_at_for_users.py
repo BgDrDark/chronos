@@ -5,17 +5,15 @@ Revises: 441de29ab3f5
 Create Date: 2026-01-06 23:40:01.992185
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
-revision: str = '656ab3cb1bdc'
-down_revision: Union[str, Sequence[str], None] = '441de29ab3f5'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "656ab3cb1bdc"
+down_revision: str | Sequence[str] | None = "441de29ab3f5"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -25,4 +23,3 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    pass

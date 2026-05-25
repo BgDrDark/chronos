@@ -1,14 +1,15 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
-from backend.config import settings
-from typing import Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
+from backend.config import settings
 from backend.modules.behavioral_analysis.models import (
-    RecommendationFeedback, BehavioralRecommendation, BehavioralRule
+    BehavioralRecommendation,
+    BehavioralRule,
+    RecommendationFeedback,
 )
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +20,15 @@ class FeedbackLoop:
         self.db = db
 
     async def record_feedback(
-        self, 
-        recommendation_id: int, 
-        manager_id: int, 
-        action: str, 
-        notes: Optional[str] = None,
-        outcome: Optional[str] = None
+        self,
+        recommendation_id: int,
+        manager_id: int,
+        action: str,
+        notes: str | None = None,
+        outcome: str | None = None,
     ) -> RecommendationFeedback:
         rec_result = await self.db.execute(
-            select(BehavioralRecommendation).where(BehavioralRecommendation.id == recommendation_id)
+            select(BehavioralRecommendation).where(BehavioralRecommendation.id == recommendation_id),
         )
         rec = rec_result.scalar_one_or_none()
         if not rec:
@@ -43,10 +44,10 @@ class FeedbackLoop:
             outcome=outcome or "unknown",
             outcome_measured_at=now,
             days_to_outcome=0,
-            improvement_delta=0.0
+            improvement_delta=0.0,
         )
         self.db.add(feedback)
-        
+
         if action == "accepted":
             rec.status = "accepted"
             rule_result = await self.db.execute(select(BehavioralRule).where(BehavioralRule.id == rec.rule_id))
@@ -61,6 +62,6 @@ class FeedbackLoop:
             if rule:
                 rule.false_positive_count += 1
                 rule.effectiveness_score = max(0.0, rule.effectiveness_score - 0.05)
-                
+
         await self.db.commit()
         return feedback

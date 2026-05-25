@@ -1,20 +1,18 @@
+import asyncio
+import logging
 import os
 import subprocess
-import logging
-import threading
-import httpx
-from typing import Optional
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Request, status, Depends
-from fastapi.responses import JSONResponse
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.auth.limiter import limiter
 from backend.config import settings
 from backend.database.database import get_db
-from backend.auth.limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +20,7 @@ router = APIRouter(prefix="/webhook", tags=["deploy"])
 
 
 class DeployRequest(BaseModel):
-    version: Optional[str] = None
+    version: str | None = None
 
 
 class DeployResponse(BaseModel):
@@ -31,7 +29,7 @@ class DeployResponse(BaseModel):
     branch: str = "main"
     message: str
     timestamp: str
-    output: Optional[str] = None
+    output: str | None = None
 
 
 class HealthCheckResponse(BaseModel):
@@ -45,9 +43,9 @@ class DeployStatusResponse(BaseModel):
     is_deploying: bool
     status: str
     progress: str
-    version: Optional[str] = None
-    output: Optional[str] = None
-    timestamp: Optional[str] = None
+    version: str | None = None
+    output: str | None = None
+    timestamp: str | None = None
 
 
 class MaintenanceModeResponse(BaseModel):
@@ -64,7 +62,7 @@ _deploy_status = {
     "timestamp": None,
 }
 
-_deploy_lock = threading.Lock()
+_deploy_lock = asyncio.Lock()
 
 PROJECT_DIR = os.environ.get("PROJECT_DIR", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -73,20 +71,20 @@ async def _set_maintenance_mode(db: AsyncSession, enabled: bool, reason: str = "
     """Set maintenance mode using pg_advisory_lock"""
     lock_id = 1234567890
     if enabled:
-        await db.execute(text(f"SELECT pg_advisory_lock({lock_id})"))
-        await db.execute(text(f"SELECT set_config('app.maintenance_reason', '{reason}', false)"))
+        await db.execute(text("SELECT pg_advisory_lock(:lock_id)"), {"lock_id": lock_id})
+        await db.execute(text("SELECT set_config('app.maintenance_reason', :reason, false)"), {"reason": reason})
     else:
-        await db.execute(text(f"SELECT pg_advisory_unlock({lock_id})"))
+        await db.execute(text("SELECT pg_advisory_unlock(:lock_id)"), {"lock_id": lock_id})
     await db.commit()
 
 
 async def _is_maintenance_mode(db: AsyncSession) -> bool:
     """Check if maintenance mode is active"""
     lock_id = 1234567890
-    result = await db.execute(text(f"SELECT pg_try_advisory_lock({lock_id})"))
+    result = await db.execute(text("SELECT pg_try_advisory_lock(:lock_id)"), {"lock_id": lock_id})
     locked = result.scalar()
     if locked:
-        await db.execute(text(f"SELECT pg_advisory_unlock({lock_id})"))
+        await db.execute(text("SELECT pg_advisory_unlock(:lock_id)"), {"lock_id": lock_id})
         await db.commit()
         return False
     return True
@@ -121,7 +119,6 @@ async def _get_db_health(db: AsyncSession) -> dict:
 
 async def _wait_for_active_queries(db: AsyncSession, timeout: int = 30):
     """Wait for active queries to finish before shutdown"""
-    import asyncio
     start = datetime.now()
     while (datetime.now() - start).seconds < timeout:
         health = await _get_db_health(db)
@@ -131,8 +128,8 @@ async def _wait_for_active_queries(db: AsyncSession, timeout: int = 30):
     return False
 
 
-def _update_deploy_status(status: str, progress: str, output: str = "", version: str = None):
-    with _deploy_lock:
+async def _update_deploy_status(status: str, progress: str, output: str = "", version: str = None):
+    async with _deploy_lock:
         _deploy_status["status"] = status
         _deploy_status["progress"] = progress
         _deploy_status["version"] = version
@@ -141,45 +138,39 @@ def _update_deploy_status(status: str, progress: str, output: str = "", version:
         _deploy_status["timestamp"] = datetime.now().isoformat()
 
 
-def _poll_listener_status(listener_url: str, version: Optional[str]):
+async def _poll_listener_status(listener_url: str, version: str | None):
     """Poll deploy listener for status updates and sync to local status"""
-    import time
     max_polls = 300  # 5 minutes at 1s intervals
     for _ in range(max_polls):
         try:
-            with httpx.Client(timeout=5.0) as client:
-                response = client.get(f"{listener_url}/deploy-status")
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{listener_url}/deploy-status")
                 if response.status_code == 200:
                     data = response.json()
-                    _update_deploy_status(
+                    await _update_deploy_status(
                         status=data.get("status", "running"),
                         progress=data.get("progress", ""),
                         output=data.get("output", ""),
-                        version=version
+                        version=version,
                     )
-                    with _deploy_lock:
+                    async with _deploy_lock:
                         _deploy_status["is_deploying"] = data.get("is_deploying", False)
                     if not data.get("is_deploying", False):
                         break
         except Exception as e:
             logger.debug(f"Poll error: {e}")
-        time.sleep(1)
+        await asyncio.sleep(1)
 
 
-def _start_listener_polling(listener_url: str, version: Optional[str]):
-    """Start background thread to poll listener for status"""
-    thread = threading.Thread(
-        target=_poll_listener_status,
-        args=(listener_url, version),
-        daemon=True
-    )
-    thread.start()
+def _start_listener_polling(listener_url: str, version: str | None):
+    """Start background task to poll listener for status"""
+    asyncio.create_task(_poll_listener_status(listener_url, version))
 
 
 async def _verify_super_admin(db: AsyncSession, token: str):
     """Verify token and check super_admin role"""
     from backend.auth.jwt_utils import verify_and_decode_token
-    from backend.database.models import User, Role
+    from backend.database.models import Role, User
 
     payload = await verify_and_decode_token(db, token)
     if not payload:
@@ -201,7 +192,7 @@ async def _verify_super_admin(db: AsyncSession, token: str):
     if not role or role.name != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only super_admins can deploy"
+            detail="Only super_admins can deploy",
         )
 
 
@@ -219,7 +210,7 @@ async def deploy_health(db: AsyncSession = Depends(get_db)):
 
 @router.get("/deploy-status", response_model=DeployStatusResponse)
 async def get_deploy_status():
-    with _deploy_lock:
+    async with _deploy_lock:
         return DeployStatusResponse(**_deploy_status)
 
 
@@ -261,14 +252,14 @@ async def deploy_update(
         logger.warning("Deploy attempt without API key configured")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Deploy API not configured on server"
+            detail="Deploy API not configured on server",
         )
 
-    with _deploy_lock:
+    async with _deploy_lock:
         if _deploy_status["is_deploying"]:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Deployment already in progress"
+                detail="Deployment already in progress",
             )
 
     # Deploy via host manager (required - no fallback to local execution)
@@ -282,7 +273,7 @@ async def deploy_update(
             response = await client.post(
                 f"{deploy_manager_url}/deploy",
                 json={"version": deploy_req.version},
-                headers={"Authorization": f"UpdateKey {deploy_key}"}
+                headers={"Authorization": f"UpdateKey {deploy_key}"},
             )
             if response.status_code == 200:
                 result = response.json()
@@ -293,16 +284,15 @@ async def deploy_update(
                     status="started",
                     commit="pending",
                     branch=deploy_req.version or "main",
-                    message=f"Deployment started via host manager. Poll /webhook/deploy-status for progress.",
+                    message="Deployment started via host manager. Poll /webhook/deploy-status for progress.",
                     timestamp=datetime.now().isoformat(),
-                    output=""
+                    output="",
                 )
-            else:
-                logger.error(f"Deploy manager returned {response.status_code}: {response.text}")
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Deploy manager error: {response.text}"
-                )
+            logger.error(f"Deploy manager returned {response.status_code}: {response.text}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Deploy manager error: {response.text}",
+            )
     except HTTPException:
         raise
     except Exception as e:
@@ -311,7 +301,7 @@ async def deploy_update(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Deploy manager unavailable at {deploy_manager_url}. "
                    f"Error: {e}. "
-                   f"Please ensure chronos-update-manager is running on the host machine."
+                   f"Please ensure chronos-update-manager is running on the host machine.",
         )
 
 
@@ -320,7 +310,7 @@ async def deploy_update(
 async def deploy_rollback(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    timestamp: Optional[str] = None,
+    timestamp: str | None = None,
 ):
     auth_header = request.headers.get("Authorization", "")
     token = None
@@ -335,7 +325,7 @@ async def deploy_rollback(
         await _verify_super_admin(db, token)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         raise HTTPException(401, "Invalid token")
 
     deploy_key = settings.DEPLOY_API_KEY
@@ -358,7 +348,7 @@ async def deploy_rollback(
             capture_output=True,
             text=True,
             cwd=app_dir,
-            timeout=600
+            timeout=600,
         )
 
         output = result.stdout + result.stderr
@@ -370,20 +360,19 @@ async def deploy_rollback(
                 branch="main",
                 message=f"Rolled back to {timestamp or 'latest'}",
                 timestamp=datetime.now().isoformat(),
-                output=output[-2000:] if len(output) > 2000 else output
+                output=output[-2000:] if len(output) > 2000 else output,
             )
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Rollback failed: {output[-500:]}"
-            )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Rollback failed: {output[-500:]}",
+        )
 
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Rollback timed out")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Rollback error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Rollback error: {e!s}")
 
 
 @router.get("/deploy-log")
@@ -403,7 +392,7 @@ async def get_deploy_log(
 
     try:
         from backend.auth.jwt_utils import verify_and_decode_token
-        from backend.database.models import User, Role
+        from backend.database.models import Role, User
 
         payload = await verify_and_decode_token(db, token)
         if not payload:
@@ -423,7 +412,7 @@ async def get_deploy_log(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         raise HTTPException(401, "Invalid token")
 
     app_dir = PROJECT_DIR
@@ -433,16 +422,16 @@ async def get_deploy_log(
         return {"status": "ok", "log": [], "message": "No deploy log found"}
 
     try:
-        with open(log_path, "r") as f:
+        with open(log_path) as f:
             all_lines = f.readlines()
             last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
             return {
                 "status": "ok",
                 "log": [line.strip() for line in last_lines],
-                "total_lines": len(all_lines)
+                "total_lines": len(all_lines),
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading log: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reading log: {e!s}")
 
 
 @router.get("/db-health")
@@ -464,9 +453,10 @@ async def set_maintenance(
     db: AsyncSession = Depends(get_db),
 ):
     """Toggle maintenance mode using pg_advisory_lock"""
-    from backend.auth.jwt_utils import verify_and_decode_token
-    from backend.database.models import User, Role
     from pydantic import BaseModel
+
+    from backend.auth.jwt_utils import verify_and_decode_token
+    from backend.database.models import Role, User
 
     class MaintenanceRequest(BaseModel):
         enabled: bool
@@ -500,7 +490,7 @@ async def set_maintenance(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         raise HTTPException(401, "Invalid token")
 
     body = await request.json()

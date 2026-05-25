@@ -1,11 +1,9 @@
 """Geographic utility functions."""
 import math
-from typing import Tuple
 
 
 def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Calculate distance between two coordinates using Haversine formula.
+    """Calculate distance between two coordinates using Haversine formula.
     
     Args:
         lat1: Latitude of first point
@@ -15,6 +13,7 @@ def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     
     Returns:
         Distance in meters
+
     """
     r = 6371000  # Earth radius in meters
     phi1 = math.radians(lat1)

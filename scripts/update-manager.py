@@ -145,7 +145,7 @@ class UpdateHandler(BaseHTTPRequestHandler):
         """Verify UpdateKey header"""
         auth = self.headers.get("Authorization", "")
         if auth.startswith("UpdateKey "):
-            provided_key = auth[9:]
+            provided_key = auth[len("UpdateKey "):]
             expected_key = self._load_api_key()
             if expected_key and hmac.compare_digest(provided_key, expected_key):
                 return True

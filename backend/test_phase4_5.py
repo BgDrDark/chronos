@@ -1,10 +1,19 @@
 import asyncio
-from backend.database.database import AsyncSessionLocal
-from backend.database.models import Ingredient, Recipe, ProductionOrder, ProductionTask, Batch, sofia_now
-from sqlalchemy.future import select
-from decimal import Decimal
 import datetime
 import logging
+from decimal import Decimal
+
+from sqlalchemy.future import select
+
+from backend.database.database import AsyncSessionLocal
+from backend.database.models import (
+    Batch,
+    Ingredient,
+    ProductionOrder,
+    ProductionTask,
+    Recipe,
+    sofia_now,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,7 +21,7 @@ logger = logging.getLogger(__name__)
 async def test_production_cycle():
     async with AsyncSessionLocal() as db:
         logger.info("--- СТАРТ НА ТЕСТ: ФАЗА 4 & 5 (ПРОИЗВОДСТВО) ---")
-        
+
         # 1. Намиране на Рецепта и Съставка
         res_recipe = await db.execute(select(Recipe).filter(Recipe.name == "Торта Павлова"))
         recipe = res_recipe.scalars().first()
@@ -21,7 +30,7 @@ async def test_production_cycle():
 
         # Проверка на начална наличност
         res_batch = await db.execute(select(Batch).where(Batch.ingredient_id == ingredient.id, Batch.status == "active"))
-        initial_stock = sum((b.quantity for b in res_batch.scalars().all()), Decimal("0"))
+        initial_stock = sum((b.quantity for b in res_batch.scalars().all()), Decimal(0))
         logger.info(f"Начална наличност на {ingredient.name}: {initial_stock} l")
 
         # 2. Създаване на Поръчка (за 2 торти)
@@ -31,7 +40,7 @@ async def test_production_cycle():
             quantity=Decimal("2.0"),
             due_date=sofia_now() + datetime.timedelta(hours=5),
             company_id=1,
-            status="awaiting_stock"
+            status="awaiting_stock",
         )
         db.add(order)
         await db.flush()
@@ -41,13 +50,13 @@ async def test_production_cycle():
         if initial_stock >= needed:
             order.status = "ready"
             logger.info("✅ Складът е наличен. Статус на поръчката: READY")
-        
+
         # Създаваме задача към поръчката
         task = ProductionTask(
             order_id=order.id,
             workstation_id=1, # Декорация
             name="Декориране на Павлова",
-            status="pending"
+            status="pending",
         )
         db.add(task)
         await db.flush()
@@ -56,7 +65,7 @@ async def test_production_cycle():
         logger.info("3. Започване и завършване на задачата...")
         task.status = "in_progress"
         task.started_at = sofia_now()
-        
+
         # Завършване и автоматично изписване на стока (Симулация на логиката в мутацията)
         task.status = "completed"
         task.completed_at = sofia_now()
@@ -65,10 +74,10 @@ async def test_production_cycle():
         # FEFO изписване на стока
         needed_to_deduct = needed
         res_batches = await db.execute(
-            select(Batch).where(Batch.ingredient_id == ingredient.id, Batch.status == "active").order_by(Batch.expiry_date.asc())
+            select(Batch).where(Batch.ingredient_id == ingredient.id, Batch.status == "active").order_by(Batch.expiry_date.asc()),
         )
         batches = res_batches.scalars().all()
-        
+
         for b in batches:
             if needed_to_deduct <= 0: break
             if b.quantity >= needed_to_deduct:
@@ -84,8 +93,8 @@ async def test_production_cycle():
 
         # 4. Финална проверка на склада
         res_final_stock = await db.execute(select(Batch).where(Batch.ingredient_id == ingredient.id, Batch.status == "active"))
-        final_stock = sum((b.quantity for b in res_final_stock.scalars().all()), Decimal("0"))
-        
+        final_stock = sum((b.quantity for b in res_final_stock.scalars().all()), Decimal(0))
+
         expected_stock = initial_stock - needed
         if final_stock == expected_stock:
             logger.info(f"✅ УСПЕХ! Финална наличност: {final_stock} l (Изписани точно {needed} l)")

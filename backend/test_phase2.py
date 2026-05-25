@@ -1,10 +1,12 @@
 import asyncio
-from backend.database.database import AsyncSessionLocal
-from backend.database.models import Supplier, StorageZone, Ingredient, Batch
-from sqlalchemy.future import select
-from decimal import Decimal
 import datetime
 import logging
+from decimal import Decimal
+
+from sqlalchemy.future import select
+
+from backend.database.database import AsyncSessionLocal
+from backend.database.models import Batch, Ingredient, StorageZone, Supplier
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,7 +14,7 @@ logger = logging.getLogger(__name__)
 async def test_warehouse_operations():
     async with AsyncSessionLocal() as db:
         logger.info("--- СТАРТ НА ТЕСТ: ФАЗА 2 (СКЛАД) ---")
-        
+
         # 1. Създаване на Доставчик
         logger.info("1. Създаване на тестов доставчик...")
         supplier = Supplier(name="Млечна Дирекция ООД", eik="123456789", company_id=1)
@@ -30,12 +32,12 @@ async def test_warehouse_operations():
         # 3. Създаване на Съставка
         logger.info("3. Създаване на съставка 'Сметана 35%'...")
         ingredient = Ingredient(
-            name="Сметана 35%", 
-            unit="l", 
-            barcode="3800012345678", 
+            name="Сметана 35%",
+            unit="l",
+            barcode="3800012345678",
             baseline_min_stock=Decimal("5.0"),
             storage_zone_id=zone.id,
-            company_id=1
+            company_id=1,
         )
         db.add(ingredient)
         await db.flush()
@@ -50,7 +52,7 @@ async def test_warehouse_operations():
             quantity=Decimal("10.0"),
             expiry_date=expiry,
             supplier_id=supplier.id,
-            status="active"
+            status="active",
         )
         db.add(batch)
         await db.flush()
@@ -61,8 +63,8 @@ async def test_warehouse_operations():
         stmt = select(Batch).where(Batch.ingredient_id == ingredient.id, Batch.status == "active")
         res = await db.execute(stmt)
         active_batches = res.scalars().all()
-        total_stock = sum((b.quantity for b in active_batches), Decimal("0"))
-        
+        total_stock = sum((b.quantity for b in active_batches), Decimal(0))
+
         if total_stock == Decimal("10.0"):
             logger.info(f"✅ Тестът е успешен! Наличност: {total_stock} l")
         else:

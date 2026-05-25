@@ -1,21 +1,27 @@
+import datetime
+import io
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from backend.database.database import get_db
-from backend.database.models import (
-    User, Company, EmploymentContract, ContractAnnex, ContractTemplate, 
-    ContractTemplateVersion, ContractTemplateSection,
-    AnnexTemplate, AnnexTemplateVersion, AnnexTemplateSection
-)
-from backend.auth import jwt_utils
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-import io
-import datetime
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.auth import jwt_utils
+from backend.database.database import get_db
+from backend.database.models import (
+    AnnexTemplateSection,
+    AnnexTemplateVersion,
+    Company,
+    ContractAnnex,
+    ContractTemplateSection,
+    ContractTemplateVersion,
+    EmploymentContract,
+    User,
+)
 
 router = APIRouter(
     prefix="/export",
@@ -23,13 +29,13 @@ router = APIRouter(
 )
 
 try:
-    pdfmetrics.registerFont(TTFont('DejaVuSans', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
-    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
-    DEFAULT_FONT = 'DejaVuSans'
-    BOLD_FONT = 'DejaVuSans-Bold'
+    pdfmetrics.registerFont(TTFont("DejaVuSans", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
+    pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"))
+    DEFAULT_FONT = "DejaVuSans"
+    BOLD_FONT = "DejaVuSans-Bold"
 except Exception:
-    DEFAULT_FONT = 'Helvetica'
-    BOLD_FONT = 'Helvetica-Bold'
+    DEFAULT_FONT = "Helvetica"
+    BOLD_FONT = "Helvetica-Bold"
 
 
 def get_company_header(company: Company) -> str:
@@ -45,7 +51,7 @@ def get_company_header(company: Company) -> str:
 async def export_contract_pdf(
     contract_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(jwt_utils.get_current_user)
+    current_user: User = Depends(jwt_utils.get_current_user),
 ):
     if current_user.role.name not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -70,15 +76,15 @@ async def export_contract_pdf(
         version_result = await db.execute(
             select(ContractTemplateVersion).where(
                 ContractTemplateVersion.template_id == contract.template_id,
-                ContractTemplateVersion.is_current == True
-            )
+                ContractTemplateVersion.is_current,
+            ),
         )
         version = version_result.scalar_one_or_none()
         if version:
             sections_result = await db.execute(
                 select(ContractTemplateSection).where(
-                    ContractTemplateSection.version_id == version.id
-                ).order_by(ContractTemplateSection.order_index)
+                    ContractTemplateSection.version_id == version.id,
+                ).order_by(ContractTemplateSection.order_index),
             )
             sections = sections_result.scalars().all()
 
@@ -86,23 +92,23 @@ async def export_contract_pdf(
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=50, rightMargin=50, topMargin=50, bottomMargin=50)
     elements = []
     styles = getSampleStyleSheet()
-    
+
     for style_name in styles.byName:
         style = styles[style_name]
-        if hasattr(style, 'fontName'):
+        if hasattr(style, "fontName"):
             style.fontName = DEFAULT_FONT
-        if hasattr(style, 'headingFontName'):
+        if hasattr(style, "headingFontName"):
             style.headingFontName = BOLD_FONT
 
-    title_style = styles['Title']
+    title_style = styles["Title"]
     title_style.fontName = BOLD_FONT
     title_style.fontSize = 16
-    
-    heading_style = styles['Heading2']
+
+    heading_style = styles["Heading2"]
     heading_style.fontName = BOLD_FONT
     heading_style.fontSize = 12
 
-    normal_style = styles['Normal']
+    normal_style = styles["Normal"]
     normal_style.fontName = DEFAULT_FONT
     normal_style.fontSize = 10
     normal_style.leading = 14
@@ -114,7 +120,7 @@ async def export_contract_pdf(
         "full_time": "ТРУДОВ ДОГОВОР - ПЪЛНО РАБОТНО ВРЕМЕ",
         "part_time": "ТРУДОВ ДОГОВОР - НЕПЪЛНО РАБОТНО ВРЕМЕ",
         "contractor": "ГРАЖДАНСКИ ДОГОВОР",
-        "internship": "ДОГОВОР ЗА СТАЖ"
+        "internship": "ДОГОВОР ЗА СТАЖ",
     }.get(contract.contract_type, "ТРУДОВ ДОГОВОР")
 
     elements.append(Paragraph(contract_type_label, title_style))
@@ -133,7 +139,7 @@ async def export_contract_pdf(
     if company.mol_name:
         elements.append(Paragraph(f"МОЛ: {company.mol_name}", normal_style))
     elements.append(Spacer(1, 10))
-    
+
     full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
     elements.append(Paragraph(f"<b>РАБОТНИК:</b> {full_name}", normal_style))
     if user.egn:
@@ -148,23 +154,23 @@ async def export_contract_pdf(
     elements.append(Paragraph(f"Вид договор: {contract_type_label.split(' - ')[-1]}", normal_style))
     elements.append(Paragraph(f"Работни часове: {contract.work_hours_per_week or 40} часа седмично", normal_style))
     elements.append(Paragraph(f"Пробен период: {contract.probation_months or 0} месеца", normal_style))
-    
+
     if contract.base_salary:
         elements.append(Paragraph(f"Основна заплата: {float(contract.base_salary):.2f} €", normal_style))
-    
+
     elements.append(Paragraph(f"Начин на изчисляване: {'Брутно' if contract.salary_calculation_type == 'gross' else 'Нетно'}", normal_style))
     elements.append(Paragraph(f"Ден за плащане: {contract.payment_day or 25}-то число на месеца", normal_style))
-    
+
     if contract.night_work_rate:
         elements.append(Paragraph(f"Надбавка нощен труд: {float(contract.night_work_rate) * 100:.0f}%", normal_style))
     if contract.overtime_rate:
         elements.append(Paragraph(f"Множител извънреден труд: {float(contract.overtime_rate):.1f}", normal_style))
     if contract.holiday_rate:
         elements.append(Paragraph(f"Множител празничен труд: {float(contract.holiday_rate):.1f}", normal_style))
-    
+
     if contract.work_class:
         elements.append(Paragraph(f"Трудов клас: {contract.work_class}", normal_style))
-    
+
     elements.append(Spacer(1, 15))
 
     if sections:
@@ -178,12 +184,12 @@ async def export_contract_pdf(
     elements.append(Spacer(1, 30))
     elements.append(Paragraph("<b>ПОДПИСИ:</b>", heading_style))
     elements.append(Spacer(1, 20))
-    
+
     elements.append(Paragraph("_______________________", normal_style))
     elements.append(Paragraph("За Работодателя", normal_style))
     if company.mol_name:
         elements.append(Paragraph(company.mol_name, normal_style))
-    
+
     elements.append(Spacer(1, 20))
     elements.append(Paragraph("_______________________", normal_style))
     elements.append(Paragraph("Работник", normal_style))
@@ -197,7 +203,7 @@ async def export_contract_pdf(
     return Response(
         content=buffer.getvalue(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
@@ -205,7 +211,7 @@ async def export_contract_pdf(
 async def export_annex_pdf(
     annex_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(jwt_utils.get_current_user)
+    current_user: User = Depends(jwt_utils.get_current_user),
 ):
     if current_user.role.name not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -235,15 +241,15 @@ async def export_annex_pdf(
         version_result = await db.execute(
             select(AnnexTemplateVersion).where(
                 AnnexTemplateVersion.template_id == annex.template_id,
-                AnnexTemplateVersion.is_current == True
-            )
+                AnnexTemplateVersion.is_current,
+            ),
         )
         version = version_result.scalar_one_or_none()
         if version:
             sections_result = await db.execute(
                 select(AnnexTemplateSection).where(
-                    AnnexTemplateSection.version_id == version.id
-                ).order_by(AnnexTemplateSection.order_index)
+                    AnnexTemplateSection.version_id == version.id,
+                ).order_by(AnnexTemplateSection.order_index),
             )
             sections = sections_result.scalars().all()
 
@@ -251,23 +257,23 @@ async def export_annex_pdf(
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=50, rightMargin=50, topMargin=50, bottomMargin=50)
     elements = []
     styles = getSampleStyleSheet()
-    
+
     for style_name in styles.byName:
         style = styles[style_name]
-        if hasattr(style, 'fontName'):
+        if hasattr(style, "fontName"):
             style.fontName = DEFAULT_FONT
-        if hasattr(style, 'headingFontName'):
+        if hasattr(style, "headingFontName"):
             style.headingFontName = BOLD_FONT
 
-    title_style = styles['Title']
+    title_style = styles["Title"]
     title_style.fontName = BOLD_FONT
     title_style.fontSize = 16
-    
-    heading_style = styles['Heading2']
+
+    heading_style = styles["Heading2"]
     heading_style.fontName = BOLD_FONT
     heading_style.fontSize = 12
 
-    normal_style = styles['Normal']
+    normal_style = styles["Normal"]
     normal_style.fontName = DEFAULT_FONT
     normal_style.fontSize = 10
     normal_style.leading = 14
@@ -276,7 +282,7 @@ async def export_annex_pdf(
     elements.append(Spacer(1, 20))
 
     elements.append(Paragraph("ДОПЪЛНИТЕЛНО СПОРАЗУМЕНИЕ", title_style))
-    
+
     annex_number = annex.annex_number or str(annex.id)
     elements.append(Paragraph(f"№ {annex_number}/{annex.effective_date.year}", normal_style))
     elements.append(Spacer(1, 5))
@@ -290,7 +296,7 @@ async def export_annex_pdf(
     if company.eik:
         elements.append(Paragraph(f"ЕИК: {company.eik}", normal_style))
     elements.append(Spacer(1, 10))
-    
+
     full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
     elements.append(Paragraph(f"<b>РАБОТНИК:</b> {full_name}", normal_style))
     if user.egn:
@@ -307,7 +313,7 @@ async def export_annex_pdf(
             "position": "Длъжност",
             "hours": "Работно време",
             "rate": "Надбавки",
-            "other": "Други условия"
+            "other": "Други условия",
         }.get(annex.change_type, annex.change_type)
         elements.append(Paragraph(f"<b>Вид промяна:</b> {change_type_label}", normal_style))
 
@@ -321,10 +327,10 @@ async def export_annex_pdf(
         elements.append(Paragraph(f"Множител извънреден труд: {float(annex.overtime_rate):.1f}", normal_style))
     if annex.holiday_rate:
         elements.append(Paragraph(f"Множител празничен труд: {float(annex.holiday_rate):.1f}", normal_style))
-    
+
     if annex.change_description:
         elements.append(Paragraph(f"<br/>{annex.change_description}", normal_style))
-    
+
     elements.append(Spacer(1, 15))
 
     if sections:
@@ -340,12 +346,12 @@ async def export_annex_pdf(
 
     elements.append(Paragraph("<b>ПОДПИСИ:</b>", heading_style))
     elements.append(Spacer(1, 20))
-    
+
     elements.append(Paragraph("_______________________", normal_style))
     elements.append(Paragraph("За Работодателя", normal_style))
     if company.mol_name:
         elements.append(Paragraph(company.mol_name, normal_style))
-    
+
     elements.append(Spacer(1, 20))
     elements.append(Paragraph("_______________________", normal_style))
     elements.append(Paragraph("Работник", normal_style))
@@ -365,5 +371,5 @@ async def export_annex_pdf(
     return Response(
         content=buffer.getvalue(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

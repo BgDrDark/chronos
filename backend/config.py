@@ -1,20 +1,20 @@
+import json
 import os
 import secrets
 from pathlib import Path
-from typing import Optional, List, Any, Union
-from pydantic import computed_field, AnyHttpUrl, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Any
+
 from cryptography.fernet import Fernet
-import json
+from pydantic import computed_field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Get the directory where config.py is located
 BASE_DIR = Path(__file__).resolve().parent.parent
 env_path = BASE_DIR / ".env"
 
 
-def _ensure_env_key(key_name: str, value: Optional[str] = None, generate: bool = True, key_type: str = "hex") -> Optional[str]:
-    """
-    Ensures a key exists in .env file.
+def _ensure_env_key(key_name: str, value: str | None = None, generate: bool = True, key_type: str = "hex") -> str | None:
+    """Ensures a key exists in .env file.
     If value is None and generate=True, generates and saves a new key.
     
     Args:
@@ -24,35 +24,36 @@ def _ensure_env_key(key_name: str, value: Optional[str] = None, generate: bool =
         key_type: "hex" for regular secrets, "fernet" for Fernet keys
     Returns:
         The key value
+
     """
     if value:
         return value
-    
+
     # Try to read from .env file directly
     if env_path.exists():
-        with open(env_path, 'r') as f:
+        with open(env_path) as f:
             content = f.read()
-            for line in content.split('\n'):
-                if line.startswith(f'{key_name}=') and not line.strip().startswith('#'):
-                    return line.split('=', 1)[1].strip()
-    
+            for line in content.split("\n"):
+                if line.startswith(f"{key_name}=") and not line.strip().startswith("#"):
+                    return line.split("=", 1)[1].strip()
+
     # Generate new key if not found
     if generate:
         if key_type == "fernet":
             new_value = Fernet.generate_key().decode()
         else:
             new_value = secrets.token_hex(32)
-        
+
         # Append to .env file
-        with open(env_path, 'a') as f:
-            f.write(f'\n# Auto-generated {key_name}\n{key_name}={new_value}\n')
+        with open(env_path, "a") as f:
+            f.write(f"\n# Auto-generated {key_name}\n{key_name}={new_value}\n")
         print(f"Auto-generated {key_name} and saved to .env")
         return new_value
-    
+
     return None
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=env_path, env_file_encoding='utf-8', extra='ignore')
+    model_config = SettingsConfigDict(env_file=env_path, env_file_encoding="utf-8", extra="ignore")
     DEBUG: bool = False
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
@@ -60,18 +61,18 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "db"
     POSTGRES_PORT: int = 5432
     # Chronos-specific overrides for backward compatibility
-    CHRONOS_DB_USER: Optional[str] = None
-    CHRONOS_DB_PASSWORD: Optional[str] = None
-    CHRONOS_DB_NAME: Optional[str] = None
-    CHRONOS_DB_HOST: Optional[str] = None
-    CHRONOS_DB_PORT: Optional[int] = None
-    
+    CHRONOS_DB_USER: str | None = None
+    CHRONOS_DB_PASSWORD: str | None = None
+    CHRONOS_DB_NAME: str | None = None
+    CHRONOS_DB_HOST: str | None = None
+    CHRONOS_DB_PORT: int | None = None
+
     # Secrets - will be loaded from environment if set, otherwise from .env file
-    JWT_SECRET_KEY: Optional[str] = None
-    ENCRYPTION_KEY: Optional[str] = None
-    CSRF_SECRET_KEY: Optional[str] = None
-    DEPLOY_API_KEY: Optional[str] = None
-    
+    JWT_SECRET_KEY: str | None = None
+    ENCRYPTION_KEY: str | None = None
+    CSRF_SECRET_KEY: str | None = None
+    DEPLOY_API_KEY: str | None = None
+
     # Application Version
     VERSION: str = "unknown"
 
@@ -91,8 +92,8 @@ class Settings(BaseSettings):
     def DATABASE_URL(self) -> str:
         return self.database_url_computed
 
-    @model_validator(mode='after')
-    def ensure_secrets(self) -> 'Settings':
+    @model_validator(mode="after")
+    def ensure_secrets(self) -> "Settings":
         """Ensure all secrets are present, generating them if necessary."""
         if not self.JWT_SECRET_KEY:
             self.JWT_SECRET_KEY = _ensure_env_key("JWT_SECRET_KEY")
@@ -108,19 +109,19 @@ class Settings(BaseSettings):
         key = os.environ.get("DEPLOY_API_KEY")
         if key:
             return key.strip()
-        
+
         # 2. Shared file (production - path from env var)
         key_file = os.environ.get("UPDATE_KEY_FILE", "/project/scripts/update.key")
         if os.path.exists(key_file):
-            with open(key_file, "r") as f:
+            with open(key_file) as f:
                 return f.read().strip()
-        
+
         # 3. Fallback: generate temporary key
         new_key = secrets.token_hex(32)
         import logging
         logging.getLogger(__name__).warning(
             f"DEPLOY_API_KEY not configured and no update.key found at {key_file}. "
-            f"Generated temporary key: {new_key[:8]}..."
+            f"Generated temporary key: {new_key[:8]}...",
         )
         return new_key
 
@@ -129,46 +130,46 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = True  # Set to False for HTTP development
     AUTH_KEY_ROTATION_DAYS: int = 30
     AUTH_KEY_RETENTION_DAYS: int = 90
-    BACKEND_CORS_ORIGINS: Union[List[str], str] = []
+    BACKEND_CORS_ORIGINS: list[str] | str = []
     TIMEZONE: str = "Europe/Sofia"
 
     # SMTP Settings
-    MAIL_USERNAME: Optional[str] = "thewall@abv.bg"
-    MAIL_PASSWORD: Optional[str] = "POcboRFw55"
+    MAIL_USERNAME: str | None = "thewall@abv.bg"
+    MAIL_PASSWORD: str | None = "POcboRFw55"
     MAIL_FROM: str = "thewall@abv.bg"
     MAIL_PORT: int = 465
     MAIL_SERVER: str = "smtp.abv.bg"
     MAIL_FROM_NAME: str = "Chronos Working Time"
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False
-    USE_CREDENTIALS: bool = True 
+    USE_CREDENTIALS: bool = True
     FRONTEND_URL: str = "http://localhost:5173"
     API_URL: str = "http://localhost:8000"
     # QR Code Settings
     QR_TOKEN_REGEN_MINUTES: int = 15
-    
+
     # Google Calendar Integration
-    GOOGLE_CLIENT_ID: Optional[str] = None
-    GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_REDIRECT_URI: Optional[str] = None
-    GOOGLE_CALENDAR_WEBHOOK_SECRET: Optional[str] = None
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    GOOGLE_REDIRECT_URI: str | None = None
+    GOOGLE_CALENDAR_WEBHOOK_SECRET: str | None = None
     GOOGLE_SYNC_ENABLED: bool = True
     GOOGLE_SYNC_BATCH_SIZE: int = 50
     GOOGLE_SYNC_RETRY_ATTEMPTS: int = 3
     GOOGLE_SYNC_TIMEOUT_SECONDS: int = 30
 
-    @model_validator(mode='after')
-    def set_derived_urls(self) -> 'Settings':
+    @model_validator(mode="after")
+    def set_derived_urls(self) -> "Settings":
         if not self.GOOGLE_REDIRECT_URI:
             self.GOOGLE_REDIRECT_URI = f"{self.FRONTEND_URL}/auth/google/callback"
         return self
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
-    def assemble_cors_origins(cls, v: Any) -> List[str]:
+    def assemble_cors_origins(cls, v: Any) -> list[str]:
         if isinstance(v, str) and not v.startswith("["):
             return [i.strip() for i in v.split(",")]
-        elif isinstance(v, str) and v.startswith("["):
+        if isinstance(v, str) and v.startswith("["):
             try:
                 return json.loads(v)
             except json.JSONDecodeError:
