@@ -2422,11 +2422,13 @@ async def set_global_setting(db: AsyncSession, key: str, value: str):
 
 
 async def is_smtp_configured(db: AsyncSession) -> bool:
-    server = await get_global_setting(db, "smtp_server")
-    port = await get_global_setting(db, "smtp_port")
-    sender = await get_global_setting(db, "sender_email")
+    from backend.config import settings
+
+    server = await get_global_setting(db, "smtp_server") or settings.MAIL_SERVER
+    username = await get_global_setting(db, "smtp_username") or settings.MAIL_USERNAME
+    password = await get_global_setting(db, "smtp_password") or settings.MAIL_PASSWORD
     # If any of these are missing, SMTP is not considered configured
-    return bool(server and port and sender)
+    return bool(server and username and password)
 
 
 # --- Insurance Rates (Фаза 1: Осигуровки) ---

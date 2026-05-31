@@ -74,10 +74,12 @@ class SettingsRepository(BaseRepository):
         return list(result.scalars().all())
 
     async def is_smtp_configured(self, db: AsyncSession) -> bool:
-        """Проверява дали SMTP е конфигуриран"""
-        smtp_server = await self.get_setting(db, "smtp_server")
-        smtp_username = await self.get_setting(db, "smtp_username")
-        smtp_password = await self.get_setting(db, "smtp_password")
+        """Проверява дали SMTP е конфигуриран (DB + fallback към config.py)"""
+        from backend.config import settings
+
+        smtp_server = await self.get_setting(db, "smtp_server") or settings.MAIL_SERVER
+        smtp_username = await self.get_setting(db, "smtp_username") or settings.MAIL_USERNAME
+        smtp_password = await self.get_setting(db, "smtp_password") or settings.MAIL_PASSWORD
 
         return bool(smtp_server and smtp_username and smtp_password)
 

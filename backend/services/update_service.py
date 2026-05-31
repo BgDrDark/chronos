@@ -179,11 +179,12 @@ class UpdateService:
 
             smtp_server = await settings_repo.get_setting(self.db, "smtp_server")
             smtp_port = await settings_repo.get_setting(self.db, "smtp_port")
-            smtp_user = await settings_repo.get_setting(self.db, "smtp_user")
+            smtp_username = await settings_repo.get_setting(self.db, "smtp_username")
             smtp_password = await settings_repo.get_setting(self.db, "smtp_password")
-            smtp_from = await settings_repo.get_setting(self.db, "smtp_from")
+            sender_email = await settings_repo.get_setting(self.db, "sender_email")
+            use_tls = await settings_repo.get_setting(self.db, "use_tls")
 
-            if not all([smtp_server, smtp_port, smtp_user, smtp_password]):
+            if not all([smtp_server, smtp_port, smtp_username, smtp_password]):
                 logger.warning("SMTP not configured, skipping email")
                 return
 
@@ -199,7 +200,7 @@ class UpdateService:
             }.get(status, status)
 
             msg = MIMEMultipart()
-            msg["From"] = smtp_from or smtp_user
+            msg["From"] = sender_email or smtp_username
             msg["To"] = schedule.notify_email
             msg["Subject"] = f"Chronos ERP Auto-Update: {status_text} (v{version})"
 
@@ -219,8 +220,9 @@ Chronos ERP Auto-Update System
             msg.attach(MIMEText(body, "plain", "utf-8"))
 
             with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
-                server.starttls()
-                server.login(smtp_user, smtp_password)
+                if (use_tls or "True") == "True":
+                    server.starttls()
+                server.login(smtp_username, smtp_password)
                 server.send_message(msg)
 
             logger.info(f"Update email sent to {schedule.notify_email}")
