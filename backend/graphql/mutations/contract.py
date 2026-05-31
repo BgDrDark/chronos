@@ -4,6 +4,7 @@ import logging
 import strawberry
 from sqlalchemy import select
 
+from backend import schemas
 from backend.database import models
 from backend.exceptions import (
     NotFoundException,
@@ -53,7 +54,7 @@ class ContractMutation:
         await db.commit()
         await db.refresh(new_section)
 
-        return types.AnnexTemplateSection.from_instance(new_section)
+        return types.AnnexTemplateSection.from_pydantic(schemas.AnnexTemplateSection.model_validate(new_section))
 
     @strawberry.mutation
     async def add_section_to_contract_template(
@@ -91,7 +92,7 @@ class ContractMutation:
         await db.commit()
         await db.refresh(new_section)
 
-        return types.ContractTemplateSection.from_instance(new_section)
+        return types.ContractTemplateSection.from_pydantic(schemas.ContractTemplateSection.model_validate(new_section))
 
     @strawberry.mutation
     async def sign_contract_annex(
@@ -141,7 +142,7 @@ class ContractMutation:
 
         await db.commit()
         await db.refresh(annex)
-        return types.ContractAnnex.from_instance(annex)
+        return types.ContractAnnex.from_pydantic(schemas.ContractAnnex.model_validate(annex))
 
     @strawberry.mutation
     async def sign_employment_contract(
@@ -165,7 +166,7 @@ class ContractMutation:
         await db.commit()
         await db.refresh(contract, ["company", "position", "department"])
 
-        return types.EmploymentContract.from_instance(contract)
+        return types.EmploymentContract.from_pydantic(schemas.EmploymentContract.model_validate(contract))
 
     @strawberry.mutation
     async def reject_contract_annex(
@@ -186,7 +187,7 @@ class ContractMutation:
 
         await db.commit()
         await db.refresh(annex)
-        return types.ContractAnnex.from_instance(annex)
+        return types.ContractAnnex.from_pydantic(schemas.ContractAnnex.model_validate(annex))
 
     @strawberry.mutation
     async def restore_contract_template_version(
@@ -228,7 +229,7 @@ class ContractMutation:
 
         await db.commit()
         await db.refresh(template)
-        return types.ContractTemplate.from_instance(template)
+        return types.ContractTemplate.from_pydantic(schemas.ContractTemplate.model_validate(template))
 
     @strawberry.mutation
     async def link_employment_contract_to_user(
@@ -257,4 +258,4 @@ class ContractMutation:
         await db.commit()
         await db.refresh(contract, ["company", "position", "department"])
 
-        return types.EmploymentContract.from_instance(contract)
+        return types.EmploymentContract.from_pydantic(schemas.EmploymentContract.model_validate(contract))

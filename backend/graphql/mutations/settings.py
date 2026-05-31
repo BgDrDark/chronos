@@ -3,6 +3,7 @@ import logging
 import strawberry
 from sqlalchemy import update
 
+from backend import schemas
 from backend.crud import repositories as crud
 from backend.crud.repositories import settings_repo
 from backend.database import models
@@ -29,7 +30,7 @@ class SettingsMutation:
 
         setting = await settings_repo.set_setting(db, key, value)
         await db.commit()
-        return types.GlobalSetting.from_instance(setting)
+        return types.GlobalSetting.from_pydantic(schemas.GlobalSetting.model_validate(setting))
 
     @strawberry.mutation
     async def update_password_settings(

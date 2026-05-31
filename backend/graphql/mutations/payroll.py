@@ -5,6 +5,7 @@ from decimal import Decimal
 import strawberry
 from sqlalchemy import select
 
+from backend import schemas
 from backend.database import models
 from backend.exceptions import NotFoundException, ValidationException
 from backend.graphql import types
@@ -394,7 +395,7 @@ class PayrollMutation:
         await db.commit()
         await db.refresh(bonus)
 
-        return types.Bonus.from_instance(bonus)
+        return types.Bonus.from_pydantic(schemas.Bonus.model_validate(bonus))
 
     @strawberry.mutation
     async def remove_bonus(
@@ -435,7 +436,7 @@ class PayrollMutation:
             db, user_id, start_date, end_date, current_user.id
         )
 
-        return types.Payslip.from_instance(payslip)
+        return types.Payslip.from_pydantic(schemas.Payslip.model_validate(payslip))
 
     @strawberry.mutation
     async def generate_my_payslip(
@@ -455,7 +456,7 @@ class PayrollMutation:
             db, current_user.id, start_date, end_date, current_user.id
         )
 
-        return types.Payslip.from_instance(payslip)
+        return types.Payslip.from_pydantic(schemas.Payslip.model_validate(payslip))
 
     @strawberry.mutation
     async def mark_payslip_as_paid(
@@ -479,7 +480,7 @@ class PayrollMutation:
         await db.commit()
         await db.refresh(payslip)
 
-        return types.Payslip.from_instance(payslip)
+        return types.Payslip.from_pydantic(schemas.Payslip.model_validate(payslip))
 
     @strawberry.mutation
     async def bulk_mark_payslips_as_paid(
@@ -505,7 +506,7 @@ class PayrollMutation:
         for p in payslips:
             await db.refresh(p)
 
-        return [types.Payslip.from_instance(p) for p in payslips]
+        return [types.Payslip.from_pydantic(schemas.Payslip.model_validate(p)) for p in payslips]
 
     @strawberry.mutation
     async def generate_sepa_xml(

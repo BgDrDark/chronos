@@ -1,5 +1,6 @@
 import strawberry
 
+from backend import schemas
 from backend.database.transaction_manager import atomic_with_savepoint
 from backend.graphql import types
 from backend.graphql.utils.permission_checker import (
@@ -28,7 +29,7 @@ class ShiftSwapMutation:
             res = await service.create_request(current_user.id, requestor_schedule_id, target_user_id, target_schedule_id)
         await db.commit()
         await db.refresh(res)
-        return types.ShiftSwapRequest.from_instance(res)
+        return types.ShiftSwapRequest.from_pydantic(schemas.ShiftSwapRequest.model_validate(res))
 
     @strawberry.mutation
     async def approve_swap(self, swap_id: int, approve: bool, info: strawberry.Info) -> types.ShiftSwapRequest:
@@ -42,7 +43,7 @@ class ShiftSwapMutation:
             res = await service.update_status(swap_id, new_status, admin_user_id=current_user.id)
         await db.commit()
         await db.refresh(res)
-        return types.ShiftSwapRequest.from_instance(res)
+        return types.ShiftSwapRequest.from_pydantic(schemas.ShiftSwapRequest.model_validate(res))
 
     @strawberry.mutation
     async def respond_to_swap(self, swap_id: int, accept: bool, info: strawberry.Info) -> types.ShiftSwapRequest:
@@ -55,4 +56,4 @@ class ShiftSwapMutation:
         res = await service.update_status(swap_id, new_status)
         await db.commit()
         await db.refresh(res)
-        return types.ShiftSwapRequest.from_instance(res)
+        return types.ShiftSwapRequest.from_pydantic(schemas.ShiftSwapRequest.model_validate(res))

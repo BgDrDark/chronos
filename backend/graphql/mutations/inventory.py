@@ -5,6 +5,7 @@ from decimal import Decimal
 import strawberry
 from sqlalchemy import func, select
 
+from backend import schemas
 from backend.exceptions import (
     NotFoundException,
     ValidationException,
@@ -50,7 +51,7 @@ class InventoryMutation:
         db.add(ingredient)
         await db.commit()
         await db.refresh(ingredient)
-        return types.Ingredient.from_instance(ingredient)
+        return types.Ingredient.from_pydantic(schemas.Ingredient.model_validate(ingredient))
 
     @strawberry.mutation
     async def update_ingredient(self, input: inputs.IngredientInput, info: strawberry.Info) -> types.Ingredient:
@@ -77,7 +78,7 @@ class InventoryMutation:
 
         await db.commit()
         await db.refresh(ingredient)
-        return types.Ingredient.from_instance(ingredient)
+        return types.Ingredient.from_pydantic(schemas.Ingredient.model_validate(ingredient))
 
     @strawberry.mutation
     async def create_storage_zone(self, input: inputs.StorageZoneInput, info: strawberry.Info) -> types.StorageZone:
@@ -108,7 +109,7 @@ class InventoryMutation:
         db.add(zone)
         await db.commit()
         await db.refresh(zone)
-        return types.StorageZone.from_instance(zone)
+        return types.StorageZone.from_pydantic(schemas.StorageZone.model_validate(zone))
 
     @strawberry.mutation
     async def update_storage_zone(self, input: inputs.UpdateStorageZoneInput,
@@ -131,7 +132,7 @@ class InventoryMutation:
         zone.zone_type = input.zone_type or "food"
         await db.commit()
         await db.refresh(zone)
-        return types.StorageZone.from_instance(zone)
+        return types.StorageZone.from_pydantic(schemas.StorageZone.model_validate(zone))
 
     @strawberry.mutation
     async def add_batch(self, input: inputs.BatchInput, info: strawberry.Info) -> types.Batch:
@@ -157,7 +158,7 @@ class InventoryMutation:
         db.add(batch)
         await db.commit()
         await db.refresh(batch)
-        return types.Batch.from_instance(batch)
+        return types.Batch.from_pydantic(schemas.Batch.model_validate(batch))
 
     @strawberry.mutation
     async def update_batch(self, input: inputs.BatchInput, info: strawberry.Info) -> types.Batch:
@@ -181,7 +182,7 @@ class InventoryMutation:
 
         await db.commit()
         await db.refresh(batch)
-        return types.Batch.from_instance(batch)
+        return types.Batch.from_pydantic(schemas.Batch.model_validate(batch))
 
     @strawberry.mutation
     async def update_batch_status(self, id: int, status: str, info: strawberry.Info) -> types.Batch:
@@ -198,7 +199,7 @@ class InventoryMutation:
         batch.status = status
         await db.commit()
         await db.refresh(batch)
-        return types.Batch.from_instance(batch)
+        return types.Batch.from_pydantic(schemas.Batch.model_validate(batch))
 
     @strawberry.mutation
     async def start_inventory_session(self, info: strawberry.Info) -> types.InventorySession:
@@ -395,7 +396,7 @@ class InventoryMutation:
         try:
             await db.commit()
             await db.refresh(batch)
-            return types.Batch.from_instance(batch)
+            return types.Batch.from_pydantic(schemas.Batch.model_validate(batch))
         except Exception as e:
             await db.rollback()
             raise handle_db_error(e) from None
@@ -515,4 +516,4 @@ class InventoryMutation:
         for b in batches:
             await db.refresh(b)
 
-        return [types.Batch.from_instance(b) for b in batches]
+        return [types.Batch.from_pydantic(schemas.Batch.model_validate(b)) for b in batches]

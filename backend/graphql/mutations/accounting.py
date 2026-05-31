@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import strawberry
 from sqlalchemy import select
 
+from backend import schemas
 from backend.config import settings
 from backend.database import models
 from backend.database.transaction_manager import atomic_transaction
@@ -64,56 +65,26 @@ class AccountingMutation:
         db.add(account)
         await db.commit()
         await db.refresh(account)
-        return types.BankAccount.from_instance(account)
+        return types.BankAccount.from_pydantic(schemas.BankAccount.model_validate(account))
 
     @strawberry.mutation
-    async def update_bank_account(
-            self,
-            id: int,
-            input: inputs.BankAccountUpdateInput,
-            info: strawberry.Info
-    ) -> types.BankAccount | None:
+    async def update_bank_account(self, input: inputs.BankAccountInput, info: strawberry.Info) -> types.BankAccount:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
-
-        account = await db.get(models.BankAccount, id)
+        current_user = get_current_user(info)
+        account = await db.get(models.BankAccount, input.id)
         if not account:
-            raise NotFoundException.record("Bank Account")
-
-        if account.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage")
-
-        if input.is_default and not account.is_default:
-            existing = await db.execute(
-                select(models.BankAccount).where(
-                    models.BankAccount.company_id == account.company_id,
-                    models.BankAccount.is_default,
-                    models.BankAccount.id != id
-                )
-            )
-            for acc in existing.scalars():
-                acc.is_default = False
-
-        if input.iban is not None:
-            account.iban = input.iban
-        if input.bic is not None:
-            account.bic = input.bic
-        if input.bank_name is not None:
-            account.bank_name = input.bank_name
-        if input.account_type is not None:
-            account.account_type = input.account_type
-        if input.is_default is not None:
-            account.is_default = input.is_default
-        if input.currency is not None:
-            account.currency = input.currency
-        if input.is_active is not None:
-            account.is_active = input.is_active
-
+            raise NotFoundException.resource("Банкова сметка")
+        await check_company_access(db, current_user, "BankAccount", input.id)
+        account.name = input.name
+        account.iban = input.iban
+        account.bank_name = input.bank_name
+        account.bic = input.bic
+        account.currency = input.currency
+        account.is_active = input.is_active
+        account.account_type = input.account_type
         await db.commit()
         await db.refresh(account)
-        return types.BankAccount.from_instance(account)
+        return types.BankAccount.from_pydantic(schemas.BankAccount.model_validate(account))
 
     @strawberry.mutation
     async def delete_bank_account(
@@ -180,7 +151,7 @@ class AccountingMutation:
 
         await db.commit()
         await db.refresh(transaction)
-        return types.BankTransaction.from_instance(transaction)
+        return types.BankTransaction.from_pydantic(schemas.BankTransaction.model_validate(transaction))
 
     @strawberry.mutation
     async def update_bank_transaction(
@@ -236,7 +207,7 @@ class AccountingMutation:
 
         await db.commit()
         await db.refresh(transaction)
-        return types.BankTransaction.from_instance(transaction)
+        return types.BankTransaction.from_pydantic(schemas.BankTransaction.model_validate(transaction))
 
     @strawberry.mutation
     async def delete_bank_transaction(
@@ -308,7 +279,7 @@ class AccountingMutation:
 
         await db.commit()
         await db.refresh(transaction)
-        return types.BankTransaction.from_instance(transaction)
+        return types.BankTransaction.from_pydantic(schemas.BankTransaction.model_validate(transaction))
 
     @strawberry.mutation
     async def unmatch_bank_transaction(
@@ -333,7 +304,7 @@ class AccountingMutation:
 
         await db.commit()
         await db.refresh(transaction)
-        return types.BankTransaction.from_instance(transaction)
+        return types.BankTransaction.from_pydantic(schemas.BankTransaction.model_validate(transaction))
 
     @strawberry.mutation
     async def create_proforma_invoice(
@@ -499,7 +470,7 @@ class AccountingMutation:
 
         await db.commit()
         await db.refresh(invoice)
-        return types.Invoice.from_instance(invoice)
+        return types.Invoice.from_pydantic(schemas.Invoice.model_validate(invoice))
 
     @strawberry.mutation
     async def create_credit_note(
@@ -535,7 +506,7 @@ class AccountingMutation:
 
         await db.commit()
         await db.refresh(correction, ["original_invoice"])
-        return types.InvoiceCorrection.from_instance(correction)
+        return types.InvoiceCorrection.from_pydantic(schemas.InvoiceCorrection.model_validate(correction))
 
     @strawberry.mutation
     async def delete_account(
@@ -591,7 +562,7 @@ class AccountingMutation:
 
         await db.commit()
         await db.refresh(account)
-        return types.Account.from_instance(account)
+        return types.Account.from_pydantic(schemas.Account.model_validate(account))
 
     @strawberry.mutation
     async def delete_cash_journal_entry(
@@ -712,7 +683,7 @@ class AccountingMutation:
         )
         await db.commit()
         await db.refresh(company)
-        return types.Company.from_instance(company)
+        return types.Company.from_pydantic(schemas.Company.model_validate(company))
 
     @strawberry.mutation
     async def auto_match_bank_transactions(
@@ -790,7 +761,7 @@ class AccountingMutation:
         db.add(account)
         await db.commit()
         await db.refresh(account)
-        return types.Account.from_instance(account)
+        return types.Account.from_pydantic(schemas.Account.model_validate(account))
 
     @strawberry.mutation
     async def create_accounting_entry(
@@ -844,7 +815,7 @@ class AccountingMutation:
         log_entry.entity_id = entry.id
         await db.commit()
 
-        return types.AccountingEntry.from_instance(entry)
+        return types.AccountingEntry.from_pydantic(schemas.AccountingEntry.model_validate(entry))
 
     @strawberry.mutation
     async def create_advance_payment(
@@ -868,7 +839,7 @@ class AccountingMutation:
         advance = await payroll_repo.create_advance_payment(
             db, user_id=user_id, amount=amount, request_date=payment_date
         )
-        return types.AdvancePayment.from_instance(advance)
+        return types.AdvancePayment.from_pydantic(schemas.AdvancePayment.model_validate(advance))
 
     @strawberry.mutation
     async def create_cash_journal_entry(
@@ -909,7 +880,7 @@ class AccountingMutation:
         log_entry.entity_id = entry.id
         await db.commit()
 
-        return types.CashJournalEntryType.from_instance(entry)
+        return types.CashJournalEntryType.from_pydantic(schemas.CashJournalEntryType.model_validate(entry))
 
     @strawberry.mutation
     async def create_cash_receipt(
@@ -937,7 +908,7 @@ class AccountingMutation:
         db.add(receipt)
         await db.commit()
         await db.refresh(receipt)
-        return types.CashReceipt.from_instance(receipt)
+        return types.CashReceipt.from_pydantic(schemas.CashReceipt.model_validate(receipt))
 
     @strawberry.mutation
     async def create_invoice(
@@ -1071,7 +1042,7 @@ class AccountingMutation:
                         tx.add(entry)
 
         await db.refresh(invoice)
-        return types.Invoice.from_instance(invoice)
+        return types.Invoice.from_pydantic(schemas.Invoice.model_validate(invoice))
 
     @strawberry.mutation
     async def create_invoice_correction(
@@ -1228,7 +1199,7 @@ class AccountingMutation:
         log_entry.entity_id = correction.id
         await db.commit()
 
-        return types.InvoiceCorrection.from_instance(correction)
+        return types.InvoiceCorrection.from_pydantic(schemas.InvoiceCorrection.model_validate(correction))
 
     @strawberry.mutation
     async def create_invoice_from_batch(
@@ -1315,7 +1286,7 @@ class AccountingMutation:
 
         await db.commit()
         await db.refresh(invoice)
-        return types.Invoice.from_instance(invoice)
+        return types.Invoice.from_pydantic(schemas.Invoice.model_validate(invoice))
 
     @strawberry.mutation
     async def delete_accounting_entry(
@@ -1487,7 +1458,7 @@ class AccountingMutation:
         db.add(vat_register)
         await db.commit()
         await db.refresh(vat_register)
-        return types.VATRegister.from_instance(vat_register)
+        return types.VATRegister.from_pydantic(schemas.VATRegister.model_validate(vat_register))
 
     @strawberry.mutation
     async def get_invoice_pdf_url(
@@ -1549,7 +1520,7 @@ class AccountingMutation:
 
         await db.commit()
         await db.refresh(receipt)
-        return types.CashReceipt.from_instance(receipt)
+        return types.CashReceipt.from_pydantic(schemas.CashReceipt.model_validate(receipt))
 
     @strawberry.mutation
     async def update_invoice(
@@ -1729,4 +1700,4 @@ class AccountingMutation:
                             tx.add(entry)
 
         await db.refresh(invoice)
-        return types.Invoice.from_instance(invoice)
+        return types.Invoice.from_pydantic(schemas.Invoice.model_validate(invoice))

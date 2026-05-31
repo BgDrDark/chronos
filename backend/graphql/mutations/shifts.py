@@ -366,7 +366,7 @@ class ShiftMutation:
         
         payroll_svc = payroll_service(db)
         res = await payroll_svc.set_monthly_work_days(input.year, input.month, input.days_count)
-        return types.MonthlyWorkDays.from_instance(res)
+        return types.MonthlyWorkDays.from_pydantic(schemas.MonthlyWorkDays.model_validate(res))
 
     @strawberry.mutation
     async def create_shift(
@@ -395,7 +395,7 @@ class ShiftMutation:
         )
         await db.commit()
         await db.refresh(s)
-        return types.Shift.from_instance(s)
+        return types.Shift.from_pydantic(schemas.Shift.model_validate(s))
 
     @strawberry.mutation
     async def update_shift(
@@ -418,7 +418,7 @@ class ShiftMutation:
         )
         await db.commit()
         await db.refresh(s)
-        return types.Shift.from_instance(s)
+        return types.Shift.from_pydantic(schemas.Shift.model_validate(s))
 
     @strawberry.mutation
     async def delete_shift(self, id: int, info: strawberry.Info) -> bool:
@@ -444,7 +444,7 @@ class ShiftMutation:
         res = await time_repo.create_or_update_schedule(db, user_id, shift_id, date)
         await db.commit()
         await db.refresh(res)
-        return types.WorkSchedule.from_instance(res)
+        return types.WorkSchedule.from_pydantic(schemas.WorkSchedule.model_validate(res))
 
     @strawberry.mutation
     async def delete_work_schedule(self, id: int, info: strawberry.Info) -> bool:
@@ -536,7 +536,7 @@ class ShiftMutation:
         template = await time_repo.create_schedule_template(db, name, current_user.company_id, description, items_dicts)
         await db.commit()
         await db.refresh(template)
-        return types.ScheduleTemplate.from_instance(template)
+        return types.ScheduleTemplate.from_pydantic(schemas.ScheduleTemplate.model_validate(template))
 
     @strawberry.mutation
     async def update_schedule_template(
@@ -572,7 +572,7 @@ class ShiftMutation:
         )
         await db.commit()
         await db.refresh(template)
-        return types.ScheduleTemplate.from_instance(template)
+        return types.ScheduleTemplate.from_pydantic(schemas.ScheduleTemplate.model_validate(template))
 
     @strawberry.mutation
     async def delete_schedule_template(self, id: int, info: strawberry.Info) -> bool:

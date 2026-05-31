@@ -5,6 +5,7 @@ import secrets
 import strawberry
 from sqlalchemy import delete, insert, select, update
 
+from backend import schemas
 from backend.database import models
 from backend.exceptions import (
     NotFoundException,
@@ -44,7 +45,7 @@ class AccessControlMutation:
         db.add(new_code)
         await db.commit()
         await db.refresh(new_code)
-        return types.AccessCode.from_instance(new_code)
+        return types.AccessCode.from_pydantic(schemas.AccessCode.model_validate(new_code))
 
     @strawberry.mutation
     async def delete_access_code(self, id: int, info: strawberry.Info) -> bool:
@@ -158,7 +159,7 @@ class AccessControlMutation:
         db.add(new_door)
         await db.commit()
         await db.refresh(new_door)
-        return types.AccessDoor.from_instance(new_door)
+        return types.AccessDoor.from_pydantic(schemas.AccessDoor.model_validate(new_door))
 
     @strawberry.mutation
     async def delete_access_door(self, id: int, info: strawberry.Info) -> bool:
@@ -206,7 +207,7 @@ class AccessControlMutation:
         
         await db.commit()
         await db.refresh(door)
-        return types.AccessDoor.from_instance(door)
+        return types.AccessDoor.from_pydantic(schemas.AccessDoor.model_validate(door))
 
     @strawberry.mutation
     async def create_access_zone(self, input: inputs.AccessZoneInput, info: strawberry.Info) -> types.AccessZone:
@@ -229,7 +230,7 @@ class AccessControlMutation:
         db.add(new_zone)
         await db.commit()
         await db.refresh(new_zone)
-        return types.AccessZone.from_instance(new_zone)
+        return types.AccessZone.from_pydantic(schemas.AccessZone.model_validate(new_zone))
 
     @strawberry.mutation
     async def delete_access_zone(self, id: int, info: strawberry.Info) -> bool:
@@ -265,4 +266,4 @@ class AccessControlMutation:
         
         await db.commit()
         await db.refresh(zone)
-        return types.AccessZone.from_instance(zone)
+        return types.AccessZone.from_pydantic(schemas.AccessZone.model_validate(zone))

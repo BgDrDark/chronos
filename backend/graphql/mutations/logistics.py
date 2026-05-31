@@ -4,6 +4,7 @@ import logging
 import strawberry
 from sqlalchemy import select
 
+from backend import schemas
 from backend.crud.repositories import payroll_repo
 from backend.exceptions import (
     InvalidOperationException,
@@ -49,7 +50,7 @@ class LogisticsMutation:
 
         await db.commit()
         await db.refresh(trip)
-        return types.BusinessTrip.from_instance(trip)
+        return types.BusinessTrip.from_pydantic(schemas.BusinessTrip.model_validate(trip))
 
     @strawberry.mutation
     async def create_supplier(self, input: inputs.SupplierInput, info: strawberry.Info) -> types.Supplier:
@@ -78,7 +79,7 @@ class LogisticsMutation:
         db.add(supplier)
         await db.commit()
         await db.refresh(supplier)
-        return types.Supplier.from_instance(supplier)
+        return types.Supplier.from_pydantic(schemas.Supplier.model_validate(supplier))
 
     @strawberry.mutation
     async def update_supplier(self, input: inputs.UpdateSupplierInput, info: strawberry.Info) -> types.Supplier:
@@ -100,7 +101,7 @@ class LogisticsMutation:
         supplier.email = input.email
         await db.commit()
         await db.refresh(supplier)
-        return types.Supplier.from_instance(supplier)
+        return types.Supplier.from_pydantic(schemas.Supplier.model_validate(supplier))
 
     @strawberry.mutation
     async def create_service_loan(
@@ -121,4 +122,4 @@ class LogisticsMutation:
         loan = await payroll_repo.create_service_loan(
             db, user_id=user_id, amount=total_amount, months=installments_count
         )
-        return types.ServiceLoan.from_instance(loan)
+        return types.ServiceLoan.from_pydantic(schemas.ServiceLoan.model_validate(loan))

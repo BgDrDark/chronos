@@ -5,6 +5,7 @@ from decimal import Decimal
 import strawberry
 from sqlalchemy import select
 
+from backend import schemas
 from backend.exceptions import (
     InvalidOperationException,
     NotFoundException,
@@ -83,7 +84,7 @@ class HRMutation:
         await db.commit()
         await db.refresh(contract, ["company", "position", "department"])
         
-        return types.EmploymentContract.from_instance(contract)
+        return types.EmploymentContract.from_pydantic(schemas.EmploymentContract.model_validate(contract))
 
     @strawberry.mutation
     async def generate_contract_number(
@@ -687,7 +688,7 @@ class HRMutation:
         db.add(annex)
         await db.commit()
         await db.refresh(annex)
-        return types.ContractAnnex.from_instance(annex)
+        return types.ContractAnnex.from_pydantic(schemas.ContractAnnex.model_validate(annex))
 
     @strawberry.mutation
     async def update_section_in_contract_template(

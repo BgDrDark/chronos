@@ -47,7 +47,7 @@ class UserMutation:
         db_user = await user_repo.create_user(db=db, user_data=user_data, role_id=userInput.role_id)
         await db.commit()
         await db.refresh(db_user)
-        return types.User.from_instance(db_user)
+        return types.User.from_pydantic(schemas.User.model_validate(db_user))
 
     @strawberry.mutation
     async def update_user(self, userInput: UpdateUserInput, info: strawberry.Info) -> types.User:
@@ -207,7 +207,7 @@ class UserMutation:
             
             await db.commit()
         
-        return types.User.from_instance(db_user)
+        return types.User.from_pydantic(schemas.User.model_validate(db_user))
 
     @strawberry.mutation
     async def delete_user(self, id: int, info: strawberry.Info) -> bool:

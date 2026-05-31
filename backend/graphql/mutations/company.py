@@ -36,7 +36,7 @@ class CompanyMutation:
         )
         await db.commit()
         await db.refresh(company)
-        return types.Company.from_instance(company)
+        return types.Company.from_pydantic(schemas.Company.model_validate(company))
 
     @strawberry.mutation
     async def update_company(self, input: CompanyUpdateInput, info: strawberry.Info) -> types.Company:
@@ -62,7 +62,7 @@ class CompanyMutation:
         )
         await db.commit()
         await db.refresh(company)
-        return types.Company.from_instance(company)
+        return types.Company.from_pydantic(schemas.Company.model_validate(company))
 
     @strawberry.mutation
     async def create_department(self, input: DepartmentCreateInput, info: strawberry.Info) -> types.Department:
@@ -73,7 +73,7 @@ class CompanyMutation:
                                             manager_id=input.manager_id)
         await db.commit()
         await db.refresh(dept)
-        return types.Department.from_instance(dept)
+        return types.Department.from_pydantic(schemas.Department.model_validate(dept))
 
     @strawberry.mutation
     async def update_department(self, input: DepartmentUpdateInput, info: strawberry.Info) -> types.Department:
@@ -83,7 +83,7 @@ class CompanyMutation:
         dept = await company_repo.update_department(db, department_id=input.id, name=input.name, manager_id=input.manager_id)
         await db.commit()
         await db.refresh(dept)
-        return types.Department.from_instance(dept)
+        return types.Department.from_pydantic(schemas.Department.model_validate(dept))
 
     @strawberry.mutation
     async def create_position(self, title: str, department_id: int | None = None, info: strawberry.Info | None = None) -> types.Position:
@@ -95,7 +95,7 @@ class CompanyMutation:
         pos = await company_repo.create_position(db, title, department_id)
         await db.commit()
         await db.refresh(pos)
-        return types.Position.from_instance(pos)
+        return types.Position.from_pydantic(schemas.Position.model_validate(pos))
 
     @strawberry.mutation
     async def update_position(self, id: int, title: str, department_id: int, info: strawberry.Info) -> types.Position:
@@ -105,7 +105,7 @@ class CompanyMutation:
         pos = await company_repo.update_position(db, position_id=id, title=title, department_id=department_id)
         await db.commit()
         await db.refresh(pos)
-        return types.Position.from_instance(pos)
+        return types.Position.from_pydantic(schemas.Position.model_validate(pos))
 
     @strawberry.mutation
     async def delete_position(self, id: int, info: strawberry.Info) -> bool:
@@ -123,7 +123,7 @@ class CompanyMutation:
         role = await time_repo.create_role(db, schemas.RoleCreate(name=input.name, description=input.description))
         await db.commit()
         await db.refresh(role)
-        return types.Role.from_instance(role)
+        return types.Role.from_pydantic(schemas.Role.model_validate(role))
 
     @strawberry.mutation
     async def update_role(self, id: int, name: str | None = None, description: str | None = None,
@@ -136,7 +136,7 @@ class CompanyMutation:
         role = await time_repo.update_role(db, role_id=id, name=name, description=description)
         await db.commit()
         await db.refresh(role)
-        return types.Role.from_instance(role)
+        return types.Role.from_pydantic(schemas.Role.model_validate(role))
 
     @strawberry.mutation
     async def delete_role(self, id: int, info: strawberry.Info) -> bool:
