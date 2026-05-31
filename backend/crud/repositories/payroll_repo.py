@@ -35,12 +35,7 @@ class PayrollRepository(BaseRepository):
         """Връща Payroll записи за потребител"""
         query = select(Payroll).where(Payroll.user_id == user_id)
 
-        if year:
-            query = query.where(Payroll.year == year)
-        if month:
-            query = query.where(Payroll.month == month)
-
-        query = query.order_by(Payroll.year.desc(), Payroll.month.desc())
+        query = query.order_by(Payroll.id.desc())
         result = await db.execute(query)
         return list(result.scalars().all())
 
