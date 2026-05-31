@@ -1,164 +1,188 @@
+from backend.schemas.access_control import (
+    AccessCode,
+    AccessDoor,
+    AccessLog,
+    AccessZone,
+)
+from backend.schemas.accounting import (
+    Account,
+    AccountingEntry,
+    BankAccount,
+    BankTransaction,
+    CashJournalEntry,
+    CashReceipt,
+    DailySummary,
+    Invoice,
+    InvoiceCorrection,
+    InvoiceItem,
+    MonthlySummary,
+    OperationLog,
+    VATRegister,
+    YearlySummary,
+)
+from backend.schemas.auth import LoginResponse, Token, TokenData
 from backend.schemas.base import CustomBaseModel
-
-from backend.schemas.auth import Token, LoginResponse, TokenData
-
-from backend.schemas.user import (
-    RoleBase, RoleCreate, Role,
-    UserBase, UserCreate, UserUpdate, User,
+from backend.schemas.calendar import (
+    OrthodoxHoliday,
+    OrthodoxHolidayBase,
+    PublicHoliday,
+    PublicHolidayBase,
 )
-
 from backend.schemas.company import (
-    CompanyBase, CompanyCreate, CompanyUpdate, Company,
-    DepartmentBase, DepartmentCreate, DepartmentUpdate, Department,
-    PositionBase, PositionCreate, Position,
+    Company,
+    CompanyBase,
+    CompanyCreate,
+    CompanyUpdate,
+    Department,
+    DepartmentBase,
+    DepartmentCreate,
+    DepartmentUpdate,
     GlobalSetting,
+    Position,
+    PositionBase,
+    PositionCreate,
 )
-
-from backend.schemas.system import (
-    ModuleBase, ModuleUpdate, Module,
-    PasswordSettings, PasswordSettingsUpdate,
-    ForgotPasswordRequest, ResetPasswordRequest,
-    WorkplaceLocationBase, WorkplaceLocationCreate,
-    AuditLog,
-    APIKey,
-    Webhook,
-    GoogleCalendarSyncSettings,
-    GoogleCalendarAccount,
+from backend.schemas.contract import (
+    AnnexTemplate,
+    AnnexTemplateSection,
+    AnnexTemplateVersion,
+    ClauseTemplate,
+    ContractAnnex,
+    ContractTemplate,
+    ContractTemplateSection,
+    ContractTemplateVersion,
+    EmploymentContract,
 )
-
+from backend.schemas.cost_center import (
+    VehicleCostCenter,
+    VehicleCostCenterBase,
+)
+from backend.schemas.hardware import (
+    Gateway,
+    GatewayBase,
+    Printer,
+    PrinterBase,
+    Terminal,
+    TerminalBase,
+)
+from backend.schemas.leave import (
+    LeaveBalance,
+    LeaveBalanceBase,
+    LeaveRequest,
+    LeaveRequestBase,
+)
+from backend.schemas.logistics import (
+    Batch,
+    BatchBase,
+    BatchCreate,
+    Ingredient,
+    IngredientBase,
+    IngredientCreate,
+    StorageZone,
+    StorageZoneBase,
+    StorageZoneCreate,
+    Supplier,
+    SupplierBase,
+)
+from backend.schemas.notification import (
+    Notification,
+    NotificationSetting,
+    SmtpSettings,
+)
+from backend.schemas.payroll import (
+    AdvancePayment,
+    Bonus,
+    Payroll,
+    Payslip,
+    ServiceLoan,
+)
 from backend.schemas.production import (
-    RecipeBase, RecipeCreate, Recipe,
-    RecipeIngredient,
-    RecipeSection,
-    RecipeStep,
     PriceHistory,
-    Workstation,
-    ProductionTask,
-    ProductionScrapLog,
+    ProductionOrder,
+    ProductionOrderBase,
+    ProductionOrderCreate,
+    ProductionOrderUpdate,
     ProductionRecord,
     ProductionRecordIngredient,
     ProductionRecordWorker,
-    ProductionOrderBase, ProductionOrderCreate, ProductionOrderUpdate, ProductionOrder,
+    ProductionScrapLog,
+    ProductionTask,
+    Recipe,
+    RecipeBase,
+    RecipeCreate,
+    RecipeIngredient,
+    RecipeSection,
+    RecipeStep,
+    Workstation,
 )
-
-from backend.schemas.notification import (
-    SmtpSettings,
-    Notification,
-    NotificationSetting,
-)
-
-from backend.schemas.logistics import (
-    StorageZoneBase, StorageZoneCreate, StorageZone,
-    IngredientBase, IngredientCreate, Ingredient,
-    BatchBase, BatchCreate, Batch,
-    SupplierBase, Supplier,
-)
-
 from backend.schemas.shifts import (
-    ShiftBase, Shift,
-    WorkScheduleBase, WorkSchedule,
-    ShiftSwapRequestBase, ShiftSwapRequest,
-    ScheduleTemplateBase, ScheduleTemplate,
-    ScheduleTemplateItemBase, ScheduleTemplateItem,
+    ScheduleTemplate,
+    ScheduleTemplateBase,
+    ScheduleTemplateItem,
+    ScheduleTemplateItemBase,
+    Shift,
+    ShiftBase,
+    ShiftSwapRequest,
+    ShiftSwapRequestBase,
+    WorkSchedule,
+    WorkScheduleBase,
 )
-
-from backend.schemas.hardware import (
-    GatewayBase, Gateway,
-    TerminalBase, Terminal,
-    PrinterBase, Printer,
-)
-
-from backend.schemas.time_tracking import (
-    TimeLogBase, TimeLog,
-)
-
-from backend.schemas.cost_center import (
-    VehicleCostCenterBase, VehicleCostCenter,
-)
-
-from backend.schemas.calendar import (
-    PublicHolidayBase, PublicHoliday,
-    OrthodoxHolidayBase, OrthodoxHoliday,
-)
-
-from backend.schemas.leave import (
-    LeaveRequestBase, LeaveRequest,
-    LeaveBalanceBase, LeaveBalance,
-)
-
-from backend.schemas.vehicle import (
-    VehicleType,
-    Vehicle,
-    VehicleDocument,
-    VehicleFuelCard,
-    VehicleVignette,
-    VehicleToll,
-    VehicleMileage,
-    VehicleFuel,
-    VehicleService,
-    VehicleRepair,
-    VehicleSchedule,
-    VehicleInsurance,
-    VehicleInspection,
-    VehiclePreTripInspection,
-    VehicleDriver,
-    VehicleTrip,
-    VehicleExpense,
-)
-
-from backend.schemas.user import UserSessionBase, UserSession
-
-from backend.schemas.accounting import (
-    InvoiceItem,
-    Invoice,
-    CashJournalEntry,
-    OperationLog,
-    DailySummary,
-    MonthlySummary,
-    YearlySummary,
-    InvoiceCorrection,
-    CashReceipt,
-    BankAccount,
-    BankTransaction,
-    Account,
-    AccountingEntry,
-    VATRegister,
-)
-
-from backend.schemas.access_control import (
-    AccessZone,
-    AccessDoor,
-    AccessCode,
-    AccessLog,
-)
-
-from backend.schemas.trz import (
-    NightWorkBonus,
-    OvertimeWork,
-    BusinessTrip,
-    WorkExperience,
-)
-
-from backend.schemas.payroll import (
-    Payroll,
-    Payslip,
-    Bonus,
-    AdvancePayment,
-    ServiceLoan,
-)
-
 from backend.schemas.stats import (
     MonthlyWorkDays,
 )
-
-from backend.schemas.contract import (
-    EmploymentContract,
-    ContractAnnex,
-    ContractTemplateSection,
-    ContractTemplateVersion,
-    ContractTemplate,
-    AnnexTemplateSection,
-    AnnexTemplateVersion,
-    AnnexTemplate,
-    ClauseTemplate,
+from backend.schemas.system import (
+    APIKey,
+    AuditLog,
+    ForgotPasswordRequest,
+    GoogleCalendarAccount,
+    GoogleCalendarSyncSettings,
+    Module,
+    ModuleBase,
+    ModuleUpdate,
+    PasswordSettings,
+    PasswordSettingsUpdate,
+    ResetPasswordRequest,
+    Webhook,
+    WorkplaceLocationBase,
+    WorkplaceLocationCreate,
+)
+from backend.schemas.time_tracking import (
+    TimeLog,
+    TimeLogBase,
+)
+from backend.schemas.trz import (
+    BusinessTrip,
+    NightWorkBonus,
+    OvertimeWork,
+    WorkExperience,
+)
+from backend.schemas.user import (
+    Role,
+    RoleBase,
+    RoleCreate,
+    User,
+    UserBase,
+    UserCreate,
+    UserSession,
+    UserSessionBase,
+    UserUpdate,
+)
+from backend.schemas.vehicle import (
+    Vehicle,
+    VehicleDocument,
+    VehicleDriver,
+    VehicleExpense,
+    VehicleFuel,
+    VehicleFuelCard,
+    VehicleInspection,
+    VehicleInsurance,
+    VehicleMileage,
+    VehiclePreTripInspection,
+    VehicleRepair,
+    VehicleSchedule,
+    VehicleService,
+    VehicleToll,
+    VehicleTrip,
+    VehicleType,
+    VehicleVignette,
 )

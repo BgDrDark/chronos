@@ -10,14 +10,12 @@ from backend.config import settings
 from backend.crud.repositories import settings_repo
 from backend.database.models import NotificationSetting
 from backend.exceptions import (
-    AuthenticationException,
-    PermissionDeniedException,
     ValidationException,
 )
 from backend.graphql import inputs, types
+from backend.graphql.utils.permission_checker import get_current_user
 
 logger = logging.getLogger(__name__)
-authenticate_msg = "Трябва да се автентикирате"
 
 
 @strawberry.type
@@ -29,10 +27,7 @@ class NotificationsMutation:
         id: int,
     ) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.services.notification_service import notification_service
         service = notification_service(db)
@@ -47,17 +42,13 @@ class NotificationsMutation:
         preferences_json: str,
     ) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
-
+        current_user = get_current_user(info)
 
         try:
             sub_data = json.loads(subscription_json)
             prefs = json.loads(preferences_json)
         except json.JSONDecodeError as e:
-            raise ValidationException.field("subscription_json", f"Invalid JSON: {e}")
+            raise ValidationException.field("subscription_json", f"Invalid JSON: {e}") from e
 
         endpoint = sub_data.get("endpoint")
         keys = sub_data.get("keys", {})
@@ -85,16 +76,14 @@ class NotificationsMutation:
         except Exception as e:
             logger.error(f"Failed to subscribe to push notifications: {e}")
             await db.rollback()
-            raise ValidationException.field("subscription", f"Failed to save subscription: {e}")
+            raise ValidationException.field("subscription", f"Failed to save subscription: {e}") from e
 
     @strawberry.mutation
     async def schedule_maintenance(self, info: strawberry.Info, input: inputs.MaintenanceInput) -> bool:
         from backend.database.models import MaintenanceSettings
 
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage maintenance mode")
+        current_user = get_current_user(info)
 
         now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         scheduled_at = None
@@ -128,9 +117,7 @@ class NotificationsMutation:
         from backend.database.models import MaintenanceSettings
 
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage maintenance mode")
+        current_user = get_current_user(info)
 
         now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         result = await db.execute(select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1))
@@ -150,9 +137,7 @@ class NotificationsMutation:
         from backend.database.models import UpdateSchedule
 
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name != "super_admin":
-            raise PermissionDeniedException.for_action("manage update schedule")
+        get_current_user(info)
 
         now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
 
@@ -194,9 +179,7 @@ class NotificationsMutation:
         from backend.services.update_service import update_service
 
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name != "super_admin":
-            raise PermissionDeniedException.for_action("run update")
+        get_current_user(info)
 
         service = update_service(db)
 
@@ -245,9 +228,7 @@ class NotificationsMutation:
             info: strawberry.Info,
     ) -> types.SmtpSettings:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         if not settings.smtp_server or not settings.sender_email:
             raise ValidationException.required_field("Server and Sender Email")
@@ -276,9 +257,7 @@ class NotificationsMutation:
             info: strawberry.Info,
     ) -> types.NotificationSetting:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         # Check if setting exists
         stmt = select(NotificationSetting).where(
@@ -292,7 +271,7 @@ class NotificationsMutation:
         if setting_data.recipients:
             try:
                 recipients = json.loads(setting_data.recipients)
-            except:
+            except Exception:
                 recipients = []
 
         if existing:
@@ -329,9 +308,7 @@ class NotificationsMutation:
     ) -> bool:
         """Send a test notification email"""
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
 
         from backend.services.email_service import is_smtp_configured, send_email
 
@@ -361,4 +338,4 @@ class NotificationsMutation:
             return True
         except Exception as e:
             logger.error(f"Failed to send test notification: {e}")
-            raise ValidationException.field("email", f"Failed to send test email: {e}")
+            raise ValidationException.field("email", f"Failed to send test email: {e}") from e

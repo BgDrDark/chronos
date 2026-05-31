@@ -154,9 +154,8 @@ class TimeTrackingService:
             end_time = end_time.replace(tzinfo=None)
 
         active = await self.repo.get_active_timelog(self.db, user_id)
-        if active:
-            if start_time < active.end_time and end_time > active.start_time:
-                return True
+        if active and start_time < active.end_time and end_time > active.start_time:
+            return True
 
         stmt_overlap = select(TimeLog).where(
             TimeLog.user_id == user_id,
@@ -243,9 +242,8 @@ class TimeTrackingService:
 
             matched_shift = None
 
-            if current_schedule and current_schedule.shift:
-                if self._is_matching_shift(now_local, current_schedule.shift, today):
-                    matched_shift = current_schedule.shift
+            if current_schedule and current_schedule.shift and self._is_matching_shift(now_local, current_schedule.shift, today):
+                matched_shift = current_schedule.shift
 
             if not matched_shift:
                 all_shifts = await self._get_all_shifts()
@@ -258,17 +256,16 @@ class TimeTrackingService:
                             best_diff = diff_mins
                             matched_shift = shift
 
-                if matched_shift:
-                    if current_schedule:
-                        current_schedule.shift_id = matched_shift.id
-                        tx.add(current_schedule)
-                    else:
-                        new_schedule = WorkSchedule(
-                            user_id=user_id,
-                            shift_id=matched_shift.id,
-                            date=today,
-                        )
-                        tx.add(new_schedule)
+                if matched_shift and current_schedule:
+                    current_schedule.shift_id = matched_shift.id
+                    tx.add(current_schedule)
+                elif matched_shift:
+                    new_schedule = WorkSchedule(
+                        user_id=user_id,
+                        shift_id=matched_shift.id,
+                        date=today,
+                    )
+                    tx.add(new_schedule)
 
             snapped_start_time = now_local
             if matched_shift:

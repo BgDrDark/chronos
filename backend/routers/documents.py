@@ -31,7 +31,7 @@ try:
     pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"))
     DEFAULT_FONT = "DejaVuSans"
     BOLD_FONT = "DejaVuSans-Bold"
-except:
+except Exception:
     DEFAULT_FONT = "Helvetica"
     BOLD_FONT = "Helvetica-Bold"
 
@@ -174,7 +174,7 @@ async def download_document(
         # LOCKED check for regular users
         if doc.is_locked:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+                status_code=403,
                 detail="Този документ е заключен от администратор и не може да бъде свалян.",
             )
 

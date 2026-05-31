@@ -6,8 +6,13 @@ import strawberry
 from sqlalchemy import select
 
 from backend.database import models
-from backend.exceptions import AuthenticationException
-from backend.graphql import inputs, types
+from backend.exceptions import NotFoundException, ValidationException
+from backend.graphql import types
+from backend.graphql.inputs.payroll import BonusCreateInput
+from backend.graphql.utils.permission_checker import (
+    get_current_user,
+    require_permission,
+)
 
 logger = logging.getLogger(__name__)
 authenticate_msg = "Трябва да се автентикирате"
@@ -22,16 +27,12 @@ class PayrollMutation:
         info: strawberry.Info,
     ) -> types.DailySummaryType:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
+        
+        await require_permission(info, "payroll:read")
 
         target_date = datetime.date.fromisoformat(date)
-
-        if current_user.role.name != "super_admin":
-            company_id = current_user.company_id
-        else:
-            raise AuthenticationException(detail=authenticate_msg)
+        company_id = current_user.company_id
 
         invoices_stmt = select(models.Invoice).where(
             models.Invoice.date == target_date,
@@ -136,14 +137,11 @@ class PayrollMutation:
         info: strawberry.Info,
     ) -> types.MonthlySummaryType:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
+        
+        await require_permission(info, "payroll:read")
 
-        if current_user.role.name != "super_admin":
-            company_id = current_user.company_id
-        else:
-            raise AuthenticationException(detail=authenticate_msg)
+        company_id = current_user.company_id
 
         start_date = datetime.date(year, month, 1)
         if month == 12:
@@ -257,14 +255,11 @@ class PayrollMutation:
         info: strawberry.Info,
     ) -> types.YearlySummaryType:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
+        
+        await require_permission(info, "payroll:read")
 
-        if current_user.role.name != "super_admin":
-            company_id = current_user.company_id
-        else:
-            raise AuthenticationException(detail=authenticate_msg)
+        company_id = current_user.company_id
 
         start_date = datetime.date(year, 1, 1)
         end_date = datetime.date(year, 12, 31)
@@ -369,22 +364,31 @@ class PayrollMutation:
     @strawberry.mutation
     async def add_bonus(
             self,
-            employee_id: int,
-            amount: Decimal,
-            description: str,
-            info: strawberry.Info
+            info: strawberry.Info,
+            input: BonusCreateInput | None = None,
+            user_id: int | None = None,
+            amount: Decimal | None = None,
+            date: datetime.date | None = None,
+            description: str | None = None,
     ) -> types.Bonus:
-        """Add a bonus to an employee"""
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        get_current_user(info)
+
+        await require_permission(info, "payroll:update")
+
+        if input:
+            uid, amt, dt, desc = input.user_id, input.amount, input.date, input.description
+        else:
+            uid, amt, dt, desc = user_id, amount, date, description
+
+        if uid is None or amt is None or dt is None:
+            raise ValidationException.field("input", "Липсват задължителни полета")
 
         bonus = models.Bonus(
-            employee_id=employee_id,
-            amount=amount,
-            description=description,
-            created_by=current_user.id
+            user_id=uid,
+            amount=amt,
+            date=dt,
+            description=desc,
         )
         db.add(bonus)
         await db.commit()
@@ -395,18 +399,17 @@ class PayrollMutation:
     @strawberry.mutation
     async def remove_bonus(
             self,
-            bonus_id: int,
+            id: int,
             info: strawberry.Info
     ) -> bool:
-        """Remove a bonus"""
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        get_current_user(info)
 
-        bonus = await db.get(models.Bonus, bonus_id)
+        await require_permission(info, "payroll:update")
+
+        bonus = await db.get(models.Bonus, id)
         if not bonus:
-            raise Exception(f"Bonus {bonus_id} not found")
+            raise NotFoundException(f"Бонус {id} не е намерен")
 
         await db.delete(bonus)
         await db.commit()
@@ -416,21 +419,20 @@ class PayrollMutation:
     @strawberry.mutation
     async def generate_payslip(
             self,
-            employee_id: int,
-            period_start: datetime.date,
-            period_end: datetime.date,
+            user_id: int,
+            start_date: datetime.date,
+            end_date: datetime.date,
             info: strawberry.Info
     ) -> types.Payslip:
-        """Generate a payslip for an employee"""
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
+
+        await require_permission(info, "payroll:create")
 
         from backend.services import payroll_service
 
         payslip = await payroll_service.generate_payslip(
-            db, employee_id, period_start, period_end, current_user.id
+            db, user_id, start_date, end_date, current_user.id
         )
 
         return types.Payslip.from_instance(payslip)
@@ -438,20 +440,19 @@ class PayrollMutation:
     @strawberry.mutation
     async def generate_my_payslip(
             self,
-            period_start: datetime.date,
-            period_end: datetime.date,
+            start_date: datetime.date,
+            end_date: datetime.date,
             info: strawberry.Info
     ) -> types.Payslip:
-        """Generate payslip for current user"""
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
+
+        await require_permission(info, "payroll:create_own")
 
         from backend.services import payroll_service
 
         payslip = await payroll_service.generate_payslip(
-            db, current_user.id, period_start, period_end, current_user.id
+            db, current_user.id, start_date, end_date, current_user.id
         )
 
         return types.Payslip.from_instance(payslip)
@@ -464,9 +465,9 @@ class PayrollMutation:
     ) -> types.Payslip:
         """Mark a payslip as paid"""
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        get_current_user(info)
+        
+        await require_permission(info, "payroll:update")
 
         payslip = await db.get(models.Payslip, payslip_id)
         if not payslip:
@@ -488,9 +489,9 @@ class PayrollMutation:
     ) -> list[types.Payslip]:
         """Mark multiple payslips as paid"""
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        get_current_user(info)
+        
+        await require_permission(info, "payroll:update")
 
         payslips = []
         for payslip_id in payslip_ids:
@@ -514,9 +515,9 @@ class PayrollMutation:
     ) -> str:
         """Generate SEPA XML file for payslips"""
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        get_current_user(info)
+        
+        await require_permission(info, "payroll:export")
 
         from backend.services import payroll_service
 

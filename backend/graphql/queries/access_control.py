@@ -79,4 +79,4 @@ class AccessControlQuery:
         if gateway_id:
             query = query.where(models.AccessLog.gateway_id == gateway_id)
         result = await db.execute(query)
-        return [types.AccessLog.from_pydantic(l) for l in result.scalars().all()]
+        return [types.AccessLog.from_pydantic(item) for item in result.scalars().all()]

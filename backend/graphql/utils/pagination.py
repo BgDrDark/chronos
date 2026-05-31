@@ -1,5 +1,4 @@
 import base64
-from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
 import strawberry

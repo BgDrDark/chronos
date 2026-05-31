@@ -141,7 +141,7 @@ class ContractService:
             .join(EmploymentContract, User.id == EmploymentContract.user_id)
             .where(User.is_active)
             .where(EmploymentContract.is_active)
-            .where(EmploymentContract.end_date is not None)
+            .where(EmploymentContract.end_date.isnot(None))
             .where(EmploymentContract.end_date < today)
         )
 

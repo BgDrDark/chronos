@@ -3,8 +3,8 @@ import datetime
 from decimal import Decimal
 
 import strawberry
-from strawberry.experimental import pydantic as sp
 from sqlalchemy import select
+from strawberry.experimental import pydantic as sp
 
 from backend import schemas
 from backend.database import models

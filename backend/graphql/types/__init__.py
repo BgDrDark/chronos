@@ -4,7 +4,7 @@ import json
 import os
 import sys
 from decimal import Decimal
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 import strawberry
 from sqlalchemy import select

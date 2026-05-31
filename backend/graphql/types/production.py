@@ -1,10 +1,8 @@
 import datetime
 from decimal import Decimal
-from typing import Optional
 
 import strawberry
 from strawberry.experimental import pydantic as sp
-from sqlalchemy import select
 
 from backend import schemas
 from backend.database import models
@@ -37,7 +35,7 @@ class RecipeIngredient:
         return Ingredient.from_pydantic(result)
 
     @strawberry.field
-    async def workstation(self, info: strawberry.Info) -> Optional[Workstation]:
+    async def workstation(self, info: strawberry.Info) -> Workstation | None:
         if not self.workstation_id:
             return None
         result = await info.context["dataloaders"]["workstation_by_id"].load(self.workstation_id)

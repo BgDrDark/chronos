@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from backend.config import settings
 from backend.crud.repositories import settings_repo
+from backend.exceptions import PermissionDeniedException
 from backend.graphql import types
 
 

@@ -1,15 +1,19 @@
-import strawberry
 import datetime
 import json
 from decimal import Decimal
-from typing import Optional
 
-from backend.graphql import types, inputs
+import strawberry
+from sqlalchemy import select
+
 from backend.exceptions import (
+    InvalidOperationException,
     NotFoundException,
     ValidationException,
-    PermissionDeniedException,
-    InvalidOperationException,
+)
+from backend.graphql import inputs, types
+from backend.graphql.utils.permission_checker import (
+    check_company_access,
+    get_current_user,
 )
 
 
@@ -24,12 +28,9 @@ class HRMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
+        current_user = get_current_user(info)
         
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-        
-        from backend.database.models import EmploymentContract, ContractTemplate
+        from backend.database.models import ContractTemplate, EmploymentContract
         
         company_id = input.company_id
         if not company_id and current_user.company_id:
@@ -91,12 +92,8 @@ class HRMutation:
         info: strawberry.Info
     ) -> str:
         db = info.context["db"]
-        current_user = info.context["current_user"]
         
-        if current_user is None or current_user.role is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-        
-        from backend.database.models import EmploymentContract, Company
+        from backend.database.models import Company, EmploymentContract
         
         company = await db.get(Company, company_id)
         if not company:
@@ -128,10 +125,8 @@ class HRMutation:
         from backend.config import settings
         
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        check_company_access(db, current_user, "EmploymentContract", contract_id)
         
         from backend.database.models import EmploymentContract
         
@@ -146,7 +141,7 @@ class HRMutation:
     async def create_contract_template(
         self,
         name: str,
-        description: Optional[str],
+        description: str | None,
         contract_type: str,
         work_hours_per_week: int,
         probation_months: int,
@@ -155,22 +150,24 @@ class HRMutation:
         night_work_rate: float,
         overtime_rate: float,
         holiday_rate: float,
-        work_class: Optional[str],
-        position_id: Optional[int] = None,
-        department_id: Optional[int] = None,
-        base_salary: Optional[float] = None,
-        clause_ids: Optional[str] = None,
-        info: Optional[strawberry.Info] = None
+        work_class: str | None,
+        position_id: int | None = None,
+        department_id: int | None = None,
+        base_salary: float | None = None,
+        clause_ids: str | None = None,
+        info: strawberry.Info | None = None
     ) -> types.ContractTemplate:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        current_user = get_current_user(info)
 
-        from backend.database.models import ContractTemplate, ContractTemplateVersion, ContractTemplateSection, ContractTemplateClause
-        from backend.database.models import sofia_now
+        from backend.database.models import (
+            ContractTemplate,
+            ContractTemplateClause,
+            ContractTemplateSection,
+            ContractTemplateVersion,
+        )
 
         template = ContractTemplate(
             company_id=current_user.company_id,
@@ -203,7 +200,7 @@ class HRMutation:
                         order_index=idx
                     )
                     db.add(clause_assoc)
-            except:
+            except Exception:
                 pass
 
         version = ContractTemplateVersion(
@@ -273,7 +270,7 @@ class HRMutation:
         self,
         id: int,
         name: str,
-        description: Optional[str],
+        description: str | None,
         contract_type: str,
         work_hours_per_week: int,
         probation_months: int,
@@ -282,16 +279,14 @@ class HRMutation:
         night_work_rate: float,
         overtime_rate: float,
         holiday_rate: float,
-        work_class: Optional[str],
+        work_class: str | None,
         change_note: str,
-        info: Optional[strawberry.Info] = None
+        info: strawberry.Info | None = None
     ) -> types.ContractTemplate:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        current_user = get_current_user(info)
 
         from backend.database.models import ContractTemplate, ContractTemplateVersion
 
@@ -313,7 +308,7 @@ class HRMutation:
 
         stmt = select(ContractTemplateVersion).where(
             ContractTemplateVersion.template_id == id,
-            ContractTemplateVersion.is_current == True
+            ContractTemplateVersion.is_current
         )
         result = await db.execute(stmt)
         current_version = result.scalar_one_or_none()
@@ -363,14 +358,11 @@ class HRMutation:
     async def delete_contract_template(
         self,
         id: int,
-        info: Optional[strawberry.Info] = None
+        info: strawberry.Info | None = None
     ) -> bool:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractTemplate
 
@@ -388,14 +380,12 @@ class HRMutation:
         title: str,
         content: str,
         category: str,
-        info: Optional[strawberry.Info] = None
+        info: strawberry.Info | None = None
     ) -> types.ClauseTemplate:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        current_user = get_current_user(info)
 
         from backend.database.models import ClauseTemplate
 
@@ -426,14 +416,11 @@ class HRMutation:
         title: str,
         content: str,
         category: str,
-        info: Optional[strawberry.Info] = None
+        info: strawberry.Info | None = None
     ) -> types.ClauseTemplate:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ClauseTemplate
 
@@ -461,14 +448,11 @@ class HRMutation:
     async def delete_clause_template(
         self,
         id: int,
-        info: Optional[strawberry.Info] = None
+        info: strawberry.Info | None = None
     ) -> bool:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ClauseTemplate
 
@@ -484,23 +468,25 @@ class HRMutation:
     async def create_annex_template(
         self,
         name: str,
-        description: Optional[str],
+        description: str | None,
         change_type: str,
-        new_base_salary: Optional[float],
-        new_work_hours_per_week: Optional[int],
-        new_night_work_rate: Optional[float],
-        new_overtime_rate: Optional[float],
-        new_holiday_rate: Optional[float],
-        info: Optional[strawberry.Info] = None
+        new_base_salary: float | None,
+        new_work_hours_per_week: int | None,
+        new_night_work_rate: float | None,
+        new_overtime_rate: float | None,
+        new_holiday_rate: float | None,
+        info: strawberry.Info | None = None
     ) -> types.AnnexTemplate:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        current_user = get_current_user(info)
 
-        from backend.database.models import AnnexTemplate, AnnexTemplateVersion, AnnexTemplateSection
+        from backend.database.models import (
+            AnnexTemplate,
+            AnnexTemplateSection,
+            AnnexTemplateVersion,
+        )
 
         template = AnnexTemplate(
             company_id=current_user.company_id,
@@ -571,14 +557,11 @@ class HRMutation:
         self,
         section_id: int,
         section: inputs.AnnexTemplateSectionUpdateInput,
-        info: Optional[strawberry.Info] = None
+        info: strawberry.Info | None = None
     ) -> types.AnnexTemplateSection:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import AnnexTemplateSection
         
@@ -612,14 +595,11 @@ class HRMutation:
     async def delete_section_from_annex_template(
         self,
         section_id: int,
-        info: Optional[strawberry.Info] = None
+        info: strawberry.Info | None = None
     ) -> bool:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import AnnexTemplateSection
         
@@ -635,14 +615,11 @@ class HRMutation:
     async def delete_annex_template(
         self,
         id: int,
-        info: Optional[strawberry.Info] = None
+        info: strawberry.Info | None = None
     ) -> bool:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import AnnexTemplate
 
@@ -661,12 +638,10 @@ class HRMutation:
         info: strawberry.Info
     ) -> str:
         from backend.config import settings
-        
+         
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        check_company_access(db, current_user, "ContractAnnex", annex_id)
         
         from backend.database.models import ContractAnnex
         
@@ -682,21 +657,18 @@ class HRMutation:
         self,
         contract_id: int,
         effective_date: datetime.date,
-        annex_number: Optional[str] = None,
-        base_salary: Optional[Decimal] = None,
-        position_id: Optional[int] = None,
-        work_hours_per_week: Optional[int] = None,
-        night_work_rate: Optional[float] = None,
-        overtime_rate: Optional[float] = None,
-        holiday_rate: Optional[float] = None,
-        info: Optional[strawberry.Info] = None
+        annex_number: str | None = None,
+        base_salary: Decimal | None = None,
+        position_id: int | None = None,
+        work_hours_per_week: int | None = None,
+        night_work_rate: float | None = None,
+        overtime_rate: float | None = None,
+        holiday_rate: float | None = None,
+        info: strawberry.Info | None = None
     ) -> types.ContractAnnex:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractAnnex
         
@@ -722,14 +694,11 @@ class HRMutation:
         self,
         section_id: int,
         section: inputs.ContractTemplateSectionUpdateInput,
-        info: Optional[strawberry.Info] = None
+        info: strawberry.Info | None = None
     ) -> types.ContractTemplateSection:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractTemplateSection
         
@@ -763,14 +732,11 @@ class HRMutation:
     async def delete_section_from_contract_template(
         self,
         section_id: int,
-        info: Optional[strawberry.Info] = None
+        info: strawberry.Info | None = None
     ) -> bool:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
 
         from backend.database.models import ContractTemplateSection
         

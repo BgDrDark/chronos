@@ -31,8 +31,8 @@ def setup_swap_db():
 @pytest.fixture(name="db")
 def db_fixture():
     engine = setup_swap_db()
-    SessionLocal = sessionmaker(bind=engine)
-    db = SessionLocal()
+    session_local = sessionmaker(bind=engine)
+    db = session_local()
     try:
         yield db
     finally:

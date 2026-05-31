@@ -8,7 +8,7 @@
     from backend.crud import user_repo, company_repo
 """
 
-from typing import List, Optional
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

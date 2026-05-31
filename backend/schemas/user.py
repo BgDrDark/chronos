@@ -179,3 +179,6 @@ class UserSessionBase(CustomBaseModel):
 
 class UserSession(UserSessionBase):
     id: int
+    created_at: datetime | None = None
+    expires_at: datetime | None = None
+    last_used_at: datetime | None = None

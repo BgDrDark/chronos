@@ -103,10 +103,9 @@ async def identify_terminal(
             user_id_str, token = request.qr_token.split(":")
             user_id = int(user_id_str)
             user = await db.get(User, user_id)
-            if user and user.qr_secret:
-                if not verify_dynamic_qr_token(user.qr_secret, token):
-                    user = None
-        except:
+            if user and user.qr_secret and not verify_dynamic_qr_token(user.qr_secret, token):
+                user = None
+        except Exception:
             user = None
 
     if not user:
@@ -209,7 +208,7 @@ async def end_session(
     result = await db.execute(
         select(TerminalSession)
         .where(TerminalSession.terminal_id == session.terminal_id)
-        .where(TerminalSession.ended_at is None),
+        .where(TerminalSession.ended_at.is_(None)),
     )
     current_session = result.scalar_one_or_none()
 
@@ -231,7 +230,7 @@ async def get_session_status(
     result = await db.execute(
         select(TerminalSession)
         .where(TerminalSession.terminal_id == terminal_id)
-        .where(TerminalSession.ended_at is None),
+        .where(TerminalSession.ended_at.is_(None)),
     )
     session = result.scalar_one_or_none()
 
@@ -256,7 +255,7 @@ async def start_task(
     result = await db.execute(
         select(TerminalSession)
         .where(TerminalSession.terminal_id == task_start.terminal_id)
-        .where(TerminalSession.ended_at is None),
+        .where(TerminalSession.ended_at.is_(None)),
     )
     session = result.scalar_one_or_none()
 

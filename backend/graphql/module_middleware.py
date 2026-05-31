@@ -203,8 +203,8 @@ THROTTLE_CONFIG = {
     "updateLeaveRequestStatus": 5,
 
     # Time Tracking
-    "clockIn": 30,
-    "clockOut": 30,
+    "clockIn": 5,
+    "clockOut": 5,
     "adminClockIn": 10,
     "adminClockOut": 10,
     "createManualTimeLog": 10,

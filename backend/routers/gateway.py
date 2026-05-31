@@ -4,6 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,99 +89,7 @@ class TerminalResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class GatewayUpdate(BaseModel):
-    alias: str | None = None
-    is_active: bool | None = None
 
-class GatewayResponse(BaseModel):
-    id: int
-    name: str
-    hardware_uuid: str
-    alias: str | None
-    ip_address: str | None
-    local_hostname: str | None
-    terminal_port: int
-    web_port: int
-    is_active: bool
-    system_mode: str
-    last_heartbeat: datetime | None
-    registered_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class TerminalResponse(BaseModel):
-    id: int
-    hardware_uuid: str
-    device_name: str | None
-    device_type: str
-    gateway_id: int | None
-    is_active: bool
-    last_seen: datetime | None
-    total_scans: int
-    alias: str | None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PrinterCreate(BaseModel):
-    name: str
-    printer_type: str
-    ip_address: str | None = None
-    port: int = 9100
-    protocol: str = "raw"
-    windows_share_name: str | None = None
-    manufacturer: str | None = None
-    model: str | None = None
-    is_default: bool = False
-
-
-class PrinterResponse(BaseModel):
-    id: int
-    name: str
-    printer_type: str
-    ip_address: str | None
-    port: int
-    protocol: str
-    gateway_id: int
-    is_active: bool
-    is_default: bool
-    last_test: datetime | None
-
-    model_config = ConfigDict(from_attributes=True)
-
-class TerminalResponse(BaseModel):
-    id: int
-    hardware_uuid: str
-    device_name: str | None
-    device_type: str
-    gateway_id: int | None
-    is_active: bool
-    last_seen: datetime | None
-    total_scans: int
-    alias: str | None
-    model_config = ConfigDict(from_attributes=True)
-
-class PrinterCreate(BaseModel):
-    name: str
-    printer_type: str
-    ip_address: str | None = None
-    port: int = 9100
-    protocol: str = "raw"
-    windows_share_name: str | None = None
-    manufacturer: str | None = None
-    model: str | None = None
-    is_default: bool = False
-
-class PrinterResponse(BaseModel):
-    id: int
-    name: str
-    printer_type: str
-    ip_address: str | None
-    port: int
-    protocol: str
-    gateway_id: int
-    is_active: bool
     is_default: bool
     last_test: datetime | None
     model_config = ConfigDict(from_attributes=True)
@@ -425,7 +334,7 @@ async def trigger_door(door_id: int, db: AsyncSession = Depends(get_db)):
             async with session.post(url, timeout=5) as r:
                 if r.status == 200: return await r.json()
                 raise HTTPException(status_code=500, detail="Грешка от gateway")
-    except: raise HTTPException(status_code=503, detail="Няма връзка")
+    except Exception: raise HTTPException(status_code=503, detail="Няма връзка") from None
 
 class GatewayConfigPush(BaseModel):
     zones: list[dict] = []
@@ -446,7 +355,7 @@ from slowapi.util import get_remote_address
 
 from backend.auth.gateway_hmac import require_gateway_auth
 
-limiter = Limiter(key_func=get_remote_address)
+gateway_limiter = Limiter(key_func=get_remote_address)
 
 # Rate limit: 10 requests per minute for gateway endpoints
 GATEWAY_RATE_LIMIT = "10/minute"
@@ -634,7 +543,7 @@ async def trigger_gateway_push(gateway_id: int, db: AsyncSession = Depends(get_d
                 return JSONResponse(status_code=r.status, content=await r.json())
     except Exception as e:
         logger.error(f"Sync push error: {e}")
-        raise HTTPException(status_code=503, detail="Няма връзка с Gateway")
+        raise HTTPException(status_code=503, detail="Няма връзка с Gateway") from e
 
 @router.post("/{gateway_id}/sync-pull")
 @require_module("kiosk")
@@ -651,7 +560,7 @@ async def trigger_gateway_pull(gateway_id: int, db: AsyncSession = Depends(get_d
                 return JSONResponse(status_code=r.status, content=await r.json())
     except Exception as e:
         logger.error(f"Sync pull error: {e}")
-        raise HTTPException(status_code=503, detail="Няма връзка с Gateway")
+        raise HTTPException(status_code=503, detail="Няма връзка с Gateway") from e
 
 @router.post("/{gateway_id}/access/sync-logs")
 @limiter.limit("5/minute")  # Stricter limit for log sync
@@ -670,7 +579,7 @@ async def sync_logs(
     if gateway.id != gateway_id:
         raise HTTPException(status_code=403, detail="Gateway ID mismatch")
 
-    for l in logs:
-        db.add(AccessLog(**l.model_dump(), gateway_id=gateway_id))
+    for item in logs:
+        db.add(AccessLog(**item.model_dump(), gateway_id=gateway_id))
     await db.commit()
     return {"status": "synced", "count": len(logs)}

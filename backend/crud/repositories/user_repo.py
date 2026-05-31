@@ -2,7 +2,7 @@ import secrets
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -174,7 +174,7 @@ class UserRepository(BaseRepository):
         )
         return result.scalar_one_or_none()
 
-    async def get_active_sessions(
+    async def get_all_active_sessions(
         self,
         db: AsyncSession,
         skip: int = 0,

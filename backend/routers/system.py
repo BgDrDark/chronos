@@ -204,7 +204,7 @@ def download_backup(
         )
     except Exception as e:
         logging.exception(f"Backup failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 @router.post("/restore")
 async def restore_backup(
@@ -219,10 +219,10 @@ async def restore_backup(
         BackupService.restore_backup(sync_db, data)
         return {"message": "Database restored successfully"}
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON file")
+        raise HTTPException(status_code=400, detail="Invalid JSON file") from None
     except Exception as e:
         logging.exception(f"Restore failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Restore failed: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Restore failed: {e!s}") from e
 
 @router.post("/archive")
 def archive_data(
@@ -241,4 +241,4 @@ def archive_data(
         )
     except Exception as e:
         logging.exception(f"Archive failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

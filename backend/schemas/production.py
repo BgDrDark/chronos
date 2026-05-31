@@ -1,8 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import model_validator
-
 from backend.schemas.base import CustomBaseModel
 
 

@@ -1,12 +1,9 @@
-import datetime
-from decimal import Decimal
 
 import strawberry
-from strawberry.experimental import pydantic as sp
 from sqlalchemy import select
+from strawberry.experimental import pydantic as sp
 
 from backend import schemas
-from backend.database import models
 from backend.graphql.types import Company, Department, Position
 
 
@@ -111,16 +108,16 @@ class EmploymentContract:
         result = await info.context["dataloaders"]["position_by_id"].load(self.position_id)
         return result.title if result else None
 
-    # @strawberry.field
-    # async def annexes(self, info: strawberry.Info) -> list["ContractAnnex"]:
-    #     from backend.database.models import ContractAnnex as ModelContractAnnex
-    #     db = info.context["db"]
-    #     stmt = select(ModelContractAnnex).where(
-    #         ModelContractAnnex.contract_id == self.id,
-    #     ).order_by(ModelContractAnnex.effective_date.desc())
-    #     result = await db.execute(stmt)
-    #     annexes = result.scalars().all()
-    #     return [ContractAnnex.from_pydantic(a) for a in annexes]
+    @strawberry.field
+    async def annexes(self, info: strawberry.Info) -> list["ContractAnnex"]:
+        from backend.database.models import ContractAnnex as ModelContractAnnex
+        db = info.context["db"]
+        stmt = select(ModelContractAnnex).where(
+            ModelContractAnnex.contract_id == self.id,
+        ).order_by(ModelContractAnnex.effective_date.desc())
+        result = await db.execute(stmt)
+        annexes = result.scalars().all()
+        return [ContractAnnex.from_pydantic(schemas.ContractAnnex.model_validate(a)) for a in annexes]
 
 
 @sp.type(schemas.ContractTemplateSection)
@@ -166,6 +163,25 @@ class ContractTemplateVersion:
         return [ContractTemplateSection.from_pydantic(s) for s in sections]
 
 
+@strawberry.type
+class ContractTemplateClauseGQL:
+    id: int
+    template_id: int
+    clause_id: int
+    order_index: int
+
+    @strawberry.field
+    async def clause(self, info: strawberry.Info) -> "ClauseTemplate | None":
+        from backend.database.models import ClauseTemplate as ModelClauseTemplate
+        db = info.context["db"]
+        stmt = select(ModelClauseTemplate).where(ModelClauseTemplate.id == self.clause_id)
+        result = await db.execute(stmt)
+        obj = result.scalar_one_or_none()
+        if not obj:
+            return None
+        return ClauseTemplate.from_pydantic(schemas.ClauseTemplate.model_validate(obj))
+
+
 @sp.type(schemas.ContractTemplate)
 class ContractTemplate:
     id: strawberry.auto
@@ -187,6 +203,31 @@ class ContractTemplate:
     is_active: strawberry.auto
     created_at: strawberry.auto
     updated_at: strawberry.auto
+
+    @strawberry.field
+    async def position(self, info: strawberry.Info) -> Position | None:
+        if not self.position_id:
+            return None
+        result = await info.context["dataloaders"]["position_by_id"].load(self.position_id)
+        return Position.from_pydantic(result) if result else None
+
+    @strawberry.field
+    async def department(self, info: strawberry.Info) -> Department | None:
+        if not self.department_id:
+            return None
+        result = await info.context["dataloaders"]["department_by_id"].load(self.department_id)
+        return Department.from_pydantic(result) if result else None
+
+    @strawberry.field
+    async def clauses(self, info: strawberry.Info) -> list[ContractTemplateClauseGQL]:
+        from backend.database.models import ContractTemplateClause as ModelClause
+        db = info.context["db"]
+        stmt = select(ModelClause).where(
+            ModelClause.template_id == self.id,
+        ).order_by(ModelClause.order_index)
+        result = await db.execute(stmt)
+        items = result.scalars().all()
+        return [ContractTemplateClauseGQL(id=c.id, template_id=c.template_id, clause_id=c.clause_id, order_index=c.order_index) for c in items]
 
     @strawberry.field
     async def current_version(self, info: strawberry.Info) -> ContractTemplateVersion | None:

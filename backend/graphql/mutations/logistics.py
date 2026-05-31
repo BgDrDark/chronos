@@ -8,10 +8,13 @@ from backend.crud.repositories import payroll_repo
 from backend.exceptions import (
     InvalidOperationException,
     NotFoundException,
-    PermissionDeniedException,
     ValidationException,
 )
-from backend.graphql import types, inputs
+from backend.graphql import inputs, types
+from backend.graphql.utils.permission_checker import (
+    check_company_access,
+    get_current_user,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +32,15 @@ class LogisticsMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        current_user = get_current_user(info)
 
         from backend.database.models import BusinessTrip, sofia_now
 
         trip = await db.get(BusinessTrip, trip_id)
         if not trip:
             raise NotFoundException.resource("Business Trip")
+
+        check_company_access(db, current_user, "BusinessTrip", trip_id)
 
         trip.status = "approved" if approved else "rejected"
         trip.approved_by_id = current_user.id
@@ -51,9 +54,7 @@ class LogisticsMutation:
     @strawberry.mutation
     async def create_supplier(self, input: inputs.SupplierInput, info: strawberry.Info) -> types.Supplier:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
             raise ValidationException.required_field("Company ID")
@@ -62,6 +63,7 @@ class LogisticsMutation:
         res = await db.execute(stmt)
         if not res.scalar_one_or_none():
             raise NotFoundException.resource("Фирма", target_company_id)
+        check_company_access(db, current_user, "Company", target_company_id)
         from backend.database.models import Supplier
         supplier = Supplier(
             name=input.name,
@@ -81,17 +83,14 @@ class LogisticsMutation:
     @strawberry.mutation
     async def update_supplier(self, input: inputs.UpdateSupplierInput, info: strawberry.Info) -> types.Supplier:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
         from backend.database.models import Supplier
         stmt = select(Supplier).where(Supplier.id == input.id)
         res = await db.execute(stmt)
         supplier = res.scalar_one_or_none()
         if not supplier:
             raise NotFoundException.resource("Доставчик")
-        if current_user.role.name not in ["super_admin"] and supplier.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_resource("доставчик", "access")
+        check_company_access(db, current_user, "Supplier", input.id)
         supplier.name = input.name
         supplier.eik = input.eik
         supplier.vat_number = input.vat_number
@@ -116,9 +115,8 @@ class LogisticsMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        check_company_access(db, current_user, "User", user_id)
 
         loan = await payroll_repo.create_service_loan(
             db, user_id=user_id, amount=total_amount, months=installments_count

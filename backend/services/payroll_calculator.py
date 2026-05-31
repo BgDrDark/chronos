@@ -218,14 +218,14 @@ class PayrollCalculator:
 
             if shift_type == ShiftType.REGULAR.value and break_hours > 0 and day_logs:
                 # 1. Calculate Total Span (First In to Last Out)
-                first_in = min(l.start_time for l in day_logs)
-                last_out = max(l.end_time for l in day_logs)
+                first_in = min(log_item.start_time for log_item in day_logs)
+                last_out = max(log_item.end_time for log_item in day_logs)
                 total_span_hours = (last_out - first_in).total_seconds() / 3600.0
 
                 # 2. Calculate Actual Work Sum (Net of manual breaks stored in DB)
                 total_worked_net = sum([
-                    max(0, ((l.end_time - l.start_time).total_seconds()/3600.0) - ((getattr(l, "break_duration_minutes", 0) or 0)/60.0))
-                    for l in day_logs
+max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((getattr(log_item, "break_duration_minutes", 0) or 0)/60.0))
+        for log_item in day_logs
                 ])
 
                 # 3. Check for Mandatory Break Deduction
@@ -403,6 +403,7 @@ class PayrollCalculator:
             "generated_at": sofia_now(),
         }
 
+        crud = _get_crud()
         payslip = await crud.create_payslip(self.db, payslip_data)
         return payslip
 
@@ -514,7 +515,7 @@ class PayrollCalculator:
             arrival = None
             departure = None
             if logs:
-                sorted_logs = sorted(logs, key=lambda l: l.start_time)
+                sorted_logs = sorted(logs, key=lambda log_item: log_item.start_time)
                 arrival = sorted_logs[0].start_time
                 # Only show departure if last log is closed
                 if sorted_logs[-1].end_time:
@@ -570,6 +571,7 @@ class PayrollCalculator:
             # Just look at schedule, assume perfect attendance
             fs_date = future_start if isinstance(future_start, date) else future_start.date()
             ed_date_forecast = end_date if isinstance(end_date, date) else end_date.date()
+            crud = _get_crud()
             schedules = await crud.get_user_schedules(self.db, user_id, fs_date, ed_date_forecast)
             config = await crud.get_payroll_config(self.db, user_id)
 
@@ -613,6 +615,7 @@ class PayrollCalculator:
         gross = forecast_regular_pay + forecast_ot_pay + actual_stats["bonus_amount"]
 
         # Deductions (re-using logic)
+        crud = _get_crud()
         config = await crud.get_payroll_config(self.db, user_id)
         if not config: return 0.0
 

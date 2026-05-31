@@ -3,17 +3,13 @@ Payroll compliance tests for Bulgarian financial standards and Labor Law
 Тестове за финансови изчисления и съответствие с Българския Кодекс на труда
 """
 
-import pytest
+from datetime import date, timedelta
 from decimal import Decimal
-from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from unittest.mock import AsyncMock, patch
 
+import pytest
 from backend import crud, schemas
 from backend.database.models import sofia_now
-
-
-
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Bulgarian Labor Law Constants
 BULGARIAN_LABOR_CONSTANTS = {
@@ -86,12 +82,13 @@ async def test_overtime_calculation_150_percent(test_db: AsyncSession):
         working_hours_per_day=8
     ))
     
-print(f"DEBUG: Created payroll config for user {test_user.id} with hourly_rate: {payroll_config.hourly_rate}")
+    print(f"DEBUG: Created payroll config for user {test_user.id} with hourly_rate: {payroll_config.hourly_rate}")
     
     # Verify hourly rate meets minimum wage requirements
     assert float(payroll_config.hourly_rate) >= 4.39, "Часовата ставка не отговаря на минимална работна заплата"
     
     # Create regular work for the day (9 AM - 5 PM)
+    workday = sofia_now().date()
     regular_start = sofia_now().replace(year=workday.year, month=workday.month, day=workday.day, hour=9, minute=0, second=0)
     regular_end = regular_start.replace(hour=17, minute=0, second=0)
     
@@ -127,7 +124,7 @@ print(f"DEBUG: Created payroll config for user {test_user.id} with hourly_rate: 
         notes='Weekday overtime work - 150% rate'
     ))
 
-      # Verify time logs were created before calculating payroll
+    # Verify time logs were created before calculating payroll
     created_logs = await crud.get_time_logs_by_user(test_db, test_user.id)
     print(f"DEBUG: Total logs for user {test_user.id}: {len(created_logs)}")
     for log in created_logs:
@@ -192,7 +189,7 @@ async def test_tax_deduction_calculation(test_db: AsyncSession, test_user):
     # Create payroll with known salary
     gross_salary = Decimal('1500.00')
     
-    payroll_calc = schemas.PayrollCalculation(
+    schemas.PayrollCalculation(
         user_id=test_user.id,
         period_start=date(2024, 1, 1),
         period_end=date(2024, 1, 31),
@@ -261,7 +258,7 @@ async def test_payroll_audit_trail(test_db: AsyncSession, test_user):
     """Тест за complete audit trail на финансови операции"""
     
     # Create payroll record
-    payroll = await crud.create_payroll_record(test_db, schemas.PayrollRecordCreate(
+    await crud.create_payroll_record(test_db, schemas.PayrollRecordCreate(
         user_id=test_user.id,
         month=sofia_now().month,
         year=sofia_now().year,
@@ -296,7 +293,7 @@ async def test_payroll_data_consistency(test_db: AsyncSession, test_user):
     hourly_rate = base_salary / BULGARIAN_LABOR_CONSTANTS['average_monthly_hours']
     
     # Create payroll config
-    payroll_config = await crud.create_payroll_config(test_db, schemas.PayrollConfigCreate(
+    await crud.create_payroll_config(test_db, schemas.PayrollConfigCreate(
         user_id=test_user.id,
         base_salary=base_salary,
         hourly_rate=hourly_rate,

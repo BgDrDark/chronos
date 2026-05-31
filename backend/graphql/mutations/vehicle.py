@@ -3,10 +3,7 @@ from __future__ import annotations
 import strawberry
 
 from backend.crud.repositories import vehicle_repo
-from backend.exceptions import (
-    NotFoundException,
-    PermissionDeniedException,
-)
+from backend.exceptions import NotFoundException
 from backend.graphql import types
 from backend.graphql.inputs.vehicle import (
     VehicleCreateInput,
@@ -26,8 +23,7 @@ from backend.graphql.inputs.vehicle import (
     VehicleTripUpdateInput,
     VehicleUpdateInput,
 )
-
-authenticate_msg = "Трябва да се автентикирате"
+from backend.graphql.utils.permission_checker import check_company_access
 
 
 @strawberry.type
@@ -36,8 +32,6 @@ class VehicleMutation:
     async def create_vehicle(self, input: VehicleCreateInput, info: strawberry.Info) -> types.Vehicle:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
 
         company_id = input.company_id or current_user.company_id
 
@@ -73,8 +67,7 @@ class VehicleMutation:
     async def update_vehicle(self, id: int, input: VehicleUpdateInput, info: strawberry.Info) -> types.Vehicle:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        check_company_access(db, current_user, "Vehicle", id)
 
         update_data = {
             "registration_number": input.registration_number,
@@ -109,8 +102,7 @@ class VehicleMutation:
     async def delete_vehicle(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        check_company_access(db, current_user, "Vehicle", id)
 
         success = await vehicle_repo.delete_vehicle(db, vehicle_id=id)
         if not success:
@@ -122,8 +114,7 @@ class VehicleMutation:
     async def create_vehicle_mileage(self, input: VehicleMileageInput, info: strawberry.Info) -> types.VehicleMileage:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
-            raise PermissionDeniedException.for_action("manage")
+        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_mileage(
             db,
@@ -140,8 +131,7 @@ class VehicleMutation:
     async def create_vehicle_fuel(self, input: VehicleFuelInput, info: strawberry.Info) -> types.VehicleFuel:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
-            raise PermissionDeniedException.for_action("manage")
+        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_fuel(
             db,
@@ -161,8 +151,7 @@ class VehicleMutation:
     async def create_vehicle_repair(self, input: VehicleRepairInput, info: strawberry.Info) -> types.VehicleRepair:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_repair(
             db,
@@ -180,8 +169,7 @@ class VehicleMutation:
     async def create_vehicle_insurance(self, input: VehicleInsuranceInput, info: strawberry.Info) -> types.VehicleInsurance:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_insurance(
             db,
@@ -201,8 +189,7 @@ class VehicleMutation:
     async def create_vehicle_inspection(self, input: VehicleInspectionInput, info: strawberry.Info) -> types.VehicleInspection:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_inspection(
             db,
@@ -222,8 +209,7 @@ class VehicleMutation:
     async def create_vehicle_driver(self, input: VehicleDriverInput, info: strawberry.Info) -> types.VehicleDriver:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_driver(
             db,
@@ -242,8 +228,7 @@ class VehicleMutation:
     async def create_vehicle_trip(self, input: VehicleTripInput, info: strawberry.Info) -> types.VehicleTrip:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
-            raise PermissionDeniedException.for_action("manage")
+        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_trip(
             db,
@@ -264,9 +249,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def delete_vehicle_mileage(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         success = await vehicle_repo.delete_vehicle_mileage(db, id)
         if not success:
             raise NotFoundException.record("Запис")
@@ -276,9 +258,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def delete_vehicle_fuel(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         success = await vehicle_repo.delete_vehicle_fuel(db, id)
         if not success:
             raise NotFoundException.record("Запис")
@@ -288,9 +267,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def delete_vehicle_repair(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         success = await vehicle_repo.delete_vehicle_repair(db, id)
         if not success:
             raise NotFoundException.record("Запис")
@@ -300,9 +276,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def delete_vehicle_insurance(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         success = await vehicle_repo.delete_vehicle_insurance(db, id)
         if not success:
             raise NotFoundException.record("Запис")
@@ -312,9 +285,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def delete_vehicle_inspection(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         success = await vehicle_repo.delete_vehicle_inspection(db, id)
         if not success:
             raise NotFoundException.record("Запис")
@@ -324,9 +294,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def delete_vehicle_driver(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         success = await vehicle_repo.delete_vehicle_driver(db, id)
         if not success:
             raise NotFoundException.record("Запис")
@@ -336,9 +303,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def delete_vehicle_trip(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         success = await vehicle_repo.delete_vehicle_trip(db, id)
         if not success:
             raise NotFoundException.record("Запис")
@@ -348,9 +312,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def update_vehicle_mileage(self, id: int, input: VehicleMileageUpdateInput, info: strawberry.Info) -> types.VehicleMileage:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
-            raise PermissionDeniedException.for_action("manage")
         record = await vehicle_repo.update_vehicle_mileage(
             db, id,
             date=input.date.date() if input.date else None,
@@ -366,9 +327,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def update_vehicle_fuel(self, id: int, input: VehicleFuelUpdateInput, info: strawberry.Info) -> types.VehicleFuel:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
-            raise PermissionDeniedException.for_action("manage")
         record = await vehicle_repo.update_vehicle_fuel(
             db, id,
             date=input.date.date() if input.date else None,
@@ -387,9 +345,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def update_vehicle_repair(self, id: int, input: VehicleRepairUpdateInput, info: strawberry.Info) -> types.VehicleRepair:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         record = await vehicle_repo.update_vehicle_repair(
             db, id,
             date=input.date.date() if input.date else None,
@@ -407,9 +362,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def update_vehicle_insurance(self, id: int, input: VehicleInsuranceUpdateInput, info: strawberry.Info) -> types.VehicleInsurance:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         record = await vehicle_repo.update_vehicle_insurance(
             db, id,
             provider=input.provider,
@@ -429,9 +381,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def update_vehicle_inspection(self, id: int, input: VehicleInspectionUpdateInput, info: strawberry.Info) -> types.VehicleInspection:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         record = await vehicle_repo.update_vehicle_inspection(
             db, id,
             date=input.date.date() if input.date else None,
@@ -450,9 +399,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def update_vehicle_driver(self, id: int, input: VehicleDriverUpdateInput, info: strawberry.Info) -> types.VehicleDriver:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager"]:
-            raise PermissionDeniedException.for_action("manage")
         record = await vehicle_repo.update_vehicle_driver(
             db, id,
             license_number=input.license_number,
@@ -471,9 +417,6 @@ class VehicleMutation:
     @strawberry.mutation
     async def update_vehicle_trip(self, id: int, input: VehicleTripUpdateInput, info: strawberry.Info) -> types.VehicleTrip:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin", "fleet_manager", "driver"]:
-            raise PermissionDeniedException.for_action("manage")
         record = await vehicle_repo.update_vehicle_trip(
             db, id,
             start_time=input.start_date,

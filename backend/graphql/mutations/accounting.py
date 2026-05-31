@@ -1,7 +1,6 @@
 import datetime
 import logging
 from decimal import Decimal
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 import strawberry
@@ -12,13 +11,16 @@ from backend.database import models
 from backend.database.transaction_manager import atomic_transaction
 from backend.exceptions import (
     AuthenticationException,
-    InvalidOperationException,
     NotFoundException,
     PermissionDeniedException,
     ValidationException,
     internal_server_error,
 )
 from backend.graphql import inputs, types
+from backend.graphql.utils.permission_checker import (
+    check_company_access,
+    require_permission,
+)
 
 logger = logging.getLogger(__name__)
 authenticate_msg = "Трябва да се автентикирате"
@@ -606,8 +608,7 @@ class AccountingMutation:
         if not entry:
             raise NotFoundException.record("Entry")
 
-        if current_user.role.name != "super_admin" and entry.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage")
+        await check_company_access(db, current_user, "CashJournalEntry", id)
 
         age_in_days = (datetime.datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None) - entry.created_at).days
         if age_in_days < MIN_RETENTION_YEARS * 365:
@@ -691,8 +692,10 @@ class AccountingMutation:
     ) -> types.Company:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        await check_company_access(db, current_user, "Company", input.company_id)
 
         from backend.crud.repositories import company_repo
 
@@ -733,7 +736,7 @@ class AccountingMutation:
         unmatched_transactions = await db.execute(
             select(models.BankTransaction).where(
                 models.BankTransaction.bank_account_id == bank_account_id,
-                models.BankTransaction.matched == False,
+                not models.BankTransaction.matched,
                 models.BankTransaction.invoice_id.is_(None)
             )
         )
@@ -750,13 +753,13 @@ class AccountingMutation:
         matched_count = 0
         for tx in transactions:
             for inv in invoices:
-                if (tx.type == "credit" and Decimal(tx.amount) == Decimal(inv.total)) or \
-                   (tx.type == "debit" and Decimal(tx.amount) == Decimal(inv.total)):
-                    if not inv.bank_transactions:
-                        tx.invoice_id = inv.id
-                        tx.matched = True
-                        matched_count += 1
-                        break
+                if ((tx.type == "credit" and Decimal(tx.amount) == Decimal(inv.total)) or \
+                   (tx.type == "debit" and Decimal(tx.amount) == Decimal(inv.total))) and \
+                   not inv.bank_transactions:
+                    tx.invoice_id = inv.id
+                    tx.matched = True
+                    matched_count += 1
+                    break
 
         await db.commit()
 
@@ -850,13 +853,15 @@ class AccountingMutation:
             amount: float,
             payment_date: datetime.date,
             info: strawberry.Info,
-            description: Optional[str] = None,
+            description: str | None = None,
     ) -> types.AdvancePayment:
         """Create an advance payment for an employee"""
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        await check_company_access(db, current_user, "UserPayroll", user_id)
 
         from backend.crud.repositories import payroll_repo
 
@@ -1084,11 +1089,7 @@ class AccountingMutation:
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
 
-        allowed_roles = ["super_admin", "head_accountant", "accountant"]
-        if current_user.role.name not in allowed_roles:
-            raise PermissionDeniedException(
-                detail="Нямате права да създавате корекции. За това действие са необходими права на счетоводител или по-високи."
-            )
+        await check_company_access(db, current_user, "Invoice", original_invoice_id)
 
         from sqlalchemy import func
 
@@ -1246,8 +1247,7 @@ class AccountingMutation:
             raise NotFoundException.record("Batch")
 
         ingredient = await db.get(models.Ingredient, batch.ingredient_id)
-        if current_user.role.name != "super_admin" and ingredient.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage")
+        await check_company_access(db, current_user, "Ingredient", batch.ingredient_id)
 
         unit_price = ingredient.current_price or Decimal("0")
 
@@ -1361,7 +1361,7 @@ class AccountingMutation:
             company_id: int,
             year: int,
             month: int,
-            saft_type: Optional[str] = "monthly"
+            saft_type: str | None = "monthly"
     ) -> types.SAFTFileResult:
         """Generate SAF-T XML file for Bulgarian NRA"""
         db = info.context["db"]
@@ -1394,7 +1394,7 @@ class AccountingMutation:
                 file_name=result['file_name']
             )
         except Exception as e:
-            raise internal_server_error(f"Error generating SAF-T file: {str(e)}")
+            raise internal_server_error(f"Error generating SAF-T file: {str(e)}") from e
 
     @strawberry.mutation
     async def generate_vat_register(
@@ -1518,7 +1518,7 @@ class AccountingMutation:
             id: int,
             input: inputs.CashReceiptUpdateInput,
             info: strawberry.Info
-    ) -> Optional[types.CashReceipt]:
+    ) -> types.CashReceipt | None:
         """Update a cash receipt"""
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -1568,8 +1568,7 @@ class AccountingMutation:
         if not invoice:
             raise NotFoundException.record("Invoice")
 
-        if current_user.role.name != "super_admin" and invoice.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage")
+        await check_company_access(db, current_user, "Invoice", id)
 
         readonly_statuses = ['paid', 'cancelled', 'corrected']
         if invoice.status in readonly_statuses:
@@ -1580,7 +1579,7 @@ class AccountingMutation:
         current_status = invoice.status
         new_status = invoice_data.status
 
-        ALLOWED_TRANSITIONS = {
+        allowed_transitions = {
             'draft': ['sent', 'paid', 'cancelled'],
             'sent': ['paid', 'cancelled'],
             'overdue': ['paid', 'cancelled'],
@@ -1588,7 +1587,7 @@ class AccountingMutation:
         }
 
         if new_status != current_status:
-            allowed = ALLOWED_TRANSITIONS.get(current_status, [])
+            allowed = allowed_transitions.get(current_status, [])
             if new_status not in allowed:
                 allowed_text = ', '.join([f"'{s}'" for s in allowed]) if allowed else 'няма'
                 raise ValidationException.field(
@@ -1600,10 +1599,7 @@ class AccountingMutation:
             invoice = await tx.get(models.Invoice, id)
 
             if current_status == 'paid' and new_status == 'cancelled':
-                if current_user.role.name not in ["super_admin", "head_accountant", "accountant"]:
-                    raise PermissionDeniedException(
-                        detail="Нямате права да анулирате платена фактура. За това действие са необходими права на счетоводител или по-високи."
-                    )
+                await require_permission(db, current_user, "accounting:cancel_paid")
                 log_entry = models.OperationLog(
                     operation="cancel_paid",
                     entity_type="invoice",
@@ -1615,7 +1611,7 @@ class AccountingMutation:
                         "previous_status": "paid",
                         "new_status": "cancelled",
                         "amount": str(invoice.total),
-                        "role": current_user.role.name
+                        "user_role": current_user.role.name if current_user.role else "unknown"
                     }
                 )
                 tx.add(log_entry)

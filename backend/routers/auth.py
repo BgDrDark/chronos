@@ -14,6 +14,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from itsdangerous import URLSafeTimedSerializer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend import crud, schemas
@@ -258,7 +259,7 @@ async def verify_reset_token(token: str):
         pwd_reset_serializer.loads(token, salt="password-reset-salt", max_age=1800)
         return {"message": "Token is valid"}
     except Exception:
-        raise HTTPException(status_code=400, detail="Невалиден или изтекъл линк за смяна на парола")
+        raise HTTPException(status_code=400, detail="Невалиден или изтекъл линк за смяна на парола") from None
 
 @router.post("/reset-password")
 @limiter.limit("5/hour")
@@ -271,7 +272,7 @@ async def reset_password(
         # Token expires in 30 minutes
         email = pwd_reset_serializer.loads(request_data.token, salt="password-reset-salt", max_age=1800)
     except Exception:
-        raise HTTPException(status_code=400, detail="Невалиден или изтекъл токен")
+        raise HTTPException(status_code=400, detail="Невалиден или изтекъл токен") from None
 
     user = await crud.get_user_by_email(db, email)
     if not user:

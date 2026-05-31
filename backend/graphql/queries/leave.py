@@ -19,7 +19,7 @@ class LeaveQuery:
         from backend.database.models import LeaveRequest as DbLeaveRequest
         stmt = select(DbLeaveRequest).where(DbLeaveRequest.user_id == current_user.id).order_by(DbLeaveRequest.created_at.desc())
         result = await db.execute(stmt)
-        return [types.LeaveRequest.from_pydantic(l) for l in result.scalars().all()]
+        return [types.LeaveRequest.from_pydantic(item) for item in result.scalars().all()]
 
     @strawberry.field
     async def pending_leave_requests(self, info: strawberry.Info) -> list[types.LeaveRequest]:
@@ -34,7 +34,7 @@ class LeaveQuery:
         if current_user.role.name != "super_admin":
             stmt = stmt.join(User, DbLeaveRequest.user_id == User.id).where(User.company_id == current_user.company_id)
         result = await db.execute(stmt)
-        return [types.LeaveRequest.from_pydantic(l) for l in result.scalars().all()]
+        return [types.LeaveRequest.from_pydantic(item) for item in result.scalars().all()]
 
     @strawberry.field
     async def all_leave_requests(self, info: strawberry.Info, status: str | None = None) -> list[types.LeaveRequest]:
@@ -52,7 +52,7 @@ class LeaveQuery:
             stmt = stmt.where(DbLeaveRequest.status == status)
         stmt = stmt.order_by(DbLeaveRequest.created_at.desc())
         result = await db.execute(stmt)
-        return [types.LeaveRequest.from_pydantic(l) for l in result.scalars().all()]
+        return [types.LeaveRequest.from_pydantic(item) for item in result.scalars().all()]
 
     @strawberry.field
     async def leave_balance(self, user_id: int, year: int, info: strawberry.Info) -> types.LeaveBalance:

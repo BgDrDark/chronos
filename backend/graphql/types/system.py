@@ -1,4 +1,4 @@
-import datetime
+from typing import Annotated
 
 import strawberry
 from strawberry.experimental import pydantic as sp
@@ -33,9 +33,10 @@ class GoogleCalendarAccount:
     @strawberry.field
     async def sync_settings(self, info: strawberry.Info) -> GoogleCalendarSyncSettings | None:
         db = info.context["db"]
-        from backend.database.models import GoogleCalendarAccount as DbAccount
-        from sqlalchemy.orm import selectinload
         from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from backend.database.models import GoogleCalendarAccount as DbAccount
         stmt = select(DbAccount).where(DbAccount.id == self.id).options(selectinload(DbAccount.sync_settings))
         res = await db.execute(stmt)
         account = res.scalar_one_or_none()
@@ -50,6 +51,12 @@ class AuditLog:
     target_id: strawberry.auto
     details: strawberry.auto
     created_at: strawberry.auto
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> Annotated["User", strawberry.lazy("backend.graphql.types.user")] | None:  # noqa: F821
+        if not self.user_id:
+            return None
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
 
 
 @strawberry.type

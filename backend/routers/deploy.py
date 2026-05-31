@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import subprocess
 from datetime import datetime
 
 import httpx
@@ -246,7 +245,7 @@ async def deploy_update(
             await _verify_super_admin(db, token)
         except Exception as e:
             logger.error(f"Deploy auth error: {e}")
-            raise HTTPException(401, "Invalid or expired token. Please refresh the page.")
+            raise HTTPException(401, "Invalid or expired token. Please refresh the page.") from e
 
     if not deploy_key:
         logger.warning("Deploy attempt without API key configured")
@@ -302,7 +301,7 @@ async def deploy_update(
             detail=f"Deploy manager unavailable at {deploy_manager_url}. "
                    f"Error: {e}. "
                    f"Please ensure chronos-update-manager is running on the host machine.",
-        )
+        ) from e
 
 
 @router.post("/rollback", response_model=DeployResponse)
@@ -326,7 +325,7 @@ async def deploy_rollback(
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(401, "Invalid token")
+        raise HTTPException(401, "Invalid token") from None
 
     deploy_key = settings.DEPLOY_API_KEY
     if not deploy_key:
@@ -343,17 +342,23 @@ async def deploy_rollback(
 
         cmd = ["bash", "-c", f"echo 'yes' | {script_path}{' ' + timestamp if timestamp else ''}"]
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
             cwd=app_dir,
-            timeout=600,
         )
 
-        output = result.stdout + result.stderr
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=600)
+            output = stdout.decode() + stderr.decode()
+            returncode = process.returncode
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+            raise HTTPException(status_code=504, detail="Rollback timed out") from None
 
-        if result.returncode == 0:
+        if returncode == 0:
             return DeployResponse(
                 status="success",
                 commit=f"rollback-{timestamp or 'latest'}",
@@ -367,12 +372,10 @@ async def deploy_rollback(
             detail=f"Rollback failed: {output[-500:]}",
         )
 
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Rollback timed out")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Rollback error: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Rollback error: {e!s}") from e
 
 
 @router.get("/deploy-log")
@@ -413,25 +416,7 @@ async def get_deploy_log(
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(401, "Invalid token")
-
-    app_dir = PROJECT_DIR
-    log_path = os.path.join(app_dir, "backups", "chronos", "deploy.log")
-
-    if not os.path.exists(log_path):
-        return {"status": "ok", "log": [], "message": "No deploy log found"}
-
-    try:
-        with open(log_path) as f:
-            all_lines = f.readlines()
-            last_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
-            return {
-                "status": "ok",
-                "log": [line.strip() for line in last_lines],
-                "total_lines": len(all_lines),
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading log: {e!s}")
+        raise HTTPException(401, "Invalid token") from None
 
 
 @router.get("/db-health")
@@ -491,7 +476,7 @@ async def set_maintenance(
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(401, "Invalid token")
+        raise HTTPException(401, "Invalid token") from None
 
     body = await request.json()
     req = MaintenanceRequest(**body)

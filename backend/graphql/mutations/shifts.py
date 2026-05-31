@@ -6,6 +6,7 @@ from decimal import Decimal
 import strawberry
 from sqlalchemy import select
 
+from backend import schemas
 from backend.auth.module_guard import verify_module_enabled
 from backend.crud.repositories import settings_repo, time_repo
 from backend.database.models import (
@@ -22,14 +23,21 @@ from backend.exceptions import (
     AuthenticationException,
     InvalidOperationException,
     NotFoundException,
-    PermissionDeniedException,
     ValidationException,
 )
 from backend.graphql import inputs, types
+from backend.graphql.utils.permission_checker import (
+    check_company_access,
+    get_current_user,
+)
 from backend.services.payroll_service import payroll_service
 from backend.services.time_tracking_service import time_tracking_service
 
 logger = logging.getLogger(__name__)
+
+
+def _timelog_to_gql(log) -> types.TimeLog:
+    return types.TimeLog.from_pydantic(schemas.TimeLog.model_validate(log))
 
 
 async def create_trz_records_on_clock_out(
@@ -161,11 +169,10 @@ class ShiftMutation:
         await verify_module_enabled("shifts", db)
 
         service = time_tracking_service(db)
-        async with atomic_transaction(db):
-            log = await service.clock_in(current_user.id, latitude, longitude)
-            async with atomic_with_savepoint(db, "clock_in_complete"):
-                pass
-            return types.TimeLog.from_instance(log)
+        log = await service.clock_in(current_user.id, latitude, longitude)
+        await db.commit()
+        await db.refresh(log)
+        return _timelog_to_gql(log)
 
     @strawberry.mutation
     async def clock_out(
@@ -188,18 +195,19 @@ class ShiftMutation:
         if not active_log:
             raise InvalidOperationException.cannot_complete("No active time log found")
 
-        async with atomic_transaction(db):
-            log = await service.clock_out(current_user.id, latitude, longitude, notes=notes)
+        log = await service.clock_out(current_user.id, latitude, longitude, notes=notes)
 
-            await create_trz_records_on_clock_out(
-                db=db,
-                user_id=current_user.id,
-                clock_in=active_log.start_time,
-                clock_out=log.end_time
-            )
+        await create_trz_records_on_clock_out(
+            db=db,
+            user_id=current_user.id,
+            clock_in=active_log.start_time,
+            clock_out=log.end_time
+        )
 
+        await db.commit()
         await db.refresh(log)
-        return types.TimeLog.from_instance(log)
+
+        return _timelog_to_gql(log)
 
     @strawberry.mutation(name="adminClockIn")
     async def admin_clock_in(
@@ -209,11 +217,9 @@ class ShiftMutation:
             custom_time: datetime.datetime | None = None
     ) -> types.TimeLog:
         db = info.context["db"]
-        current_user = info.context["current_user"]
+        current_user = get_current_user(info)
 
-        if current_user is None or current_user.role is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
+        await check_company_access(db, current_user, "User", user_id)
         await verify_module_enabled("shifts", db)
 
         service = time_tracking_service(db)
@@ -223,9 +229,9 @@ class ShiftMutation:
 
         async with atomic_transaction(db):
             log = await service.clock_in(user_id, custom_time=custom_time, skip_geofence=True)
+            await db.refresh(log)
 
-        await db.refresh(log)
-        return types.TimeLog.from_instance(log)
+        return _timelog_to_gql(log)
 
     @strawberry.mutation(name="adminClockOut")
     async def admin_clock_out(
@@ -236,11 +242,9 @@ class ShiftMutation:
             custom_time: datetime.datetime | None = None
     ) -> types.TimeLog:
         db = info.context["db"]
-        current_user = info.context["current_user"]
+        current_user = get_current_user(info)
 
-        if current_user is None or current_user.role is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
+        await check_company_access(db, current_user, "User", user_id)
         await verify_module_enabled("shifts", db)
 
         service = time_tracking_service(db)
@@ -249,18 +253,19 @@ class ShiftMutation:
         if not active_log:
             raise InvalidOperationException.cannot_complete("No active time log found")
 
-        async with atomic_transaction(db):
-            log = await service.clock_out(user_id, custom_time=custom_time, notes=notes, skip_geofence=True)
+        log = await service.clock_out(user_id, custom_time=custom_time, notes=notes, skip_geofence=True)
 
-            await create_trz_records_on_clock_out(
-                db=db,
-                user_id=user_id,
-                clock_in=active_log.start_time,
-                clock_out=log.end_time,
-            )
+        await create_trz_records_on_clock_out(
+            db=db,
+            user_id=user_id,
+            clock_in=active_log.start_time,
+            clock_out=log.end_time,
+        )
 
+        await db.commit()
         await db.refresh(log)
-        return types.TimeLog.from_instance(log)
+
+        return _timelog_to_gql(log)
 
     @strawberry.mutation
     async def create_time_log(
@@ -276,10 +281,9 @@ class ShiftMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
+        current_user = get_current_user(info)
 
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        await check_company_access(db, current_user, "User", user_id)
 
         if not end_time:
             raise ValidationException(detail="Краен час е задължителен за ръчно въвеждане")
@@ -294,7 +298,7 @@ class ShiftMutation:
         )
         await db.commit()
         await db.refresh(log)
-        return types.TimeLog.from_instance(log)
+        return _timelog_to_gql(log)
 
     @strawberry.mutation
     async def update_time_log(
@@ -305,26 +309,24 @@ class ShiftMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
+        current_user = get_current_user(info)
 
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        await check_company_access(db, current_user, "TimeLog", id)
 
         log = await time_repo.update_time_log(
             db, log_id=id, start_time=start_time, end_time=end_time, is_manual=is_manual, break_duration_minutes=break_duration_minutes, notes=notes
         )
         await db.commit()
         await db.refresh(log)
-        return types.TimeLog.from_instance(log)
+        return _timelog_to_gql(log)
 
     @strawberry.mutation
     async def delete_time_log(self, id: int, info: strawberry.Info | None) -> bool:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "TimeLog", id)
         result = await time_repo.delete_time_log(db, log_id=id)
         await db.commit()
         return result
@@ -342,9 +344,8 @@ class ShiftMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "User", user_id)
 
         time_svc = time_tracking_service(db)
         has_overlap = await time_svc.check_time_overlap(user_id, start_time, end_time)
@@ -356,15 +357,13 @@ class ShiftMutation:
         )
         async with atomic_with_savepoint(db, "manual_timelog_created"):
             pass
-        return types.TimeLog.from_instance(log)
+        return _timelog_to_gql(log)
 
     @strawberry.mutation
     async def set_monthly_work_days(self, input: inputs.MonthlyWorkDaysInput, info: strawberry.Info) -> types.MonthlyWorkDays:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
+        get_current_user(info)
+        
         payroll_svc = payroll_service(db)
         res = await payroll_svc.set_monthly_work_days(input.year, input.month, input.days_count)
         return types.MonthlyWorkDays.from_instance(res)
@@ -383,9 +382,7 @@ class ShiftMutation:
             overnight: bool | None = False,
     ) -> types.Shift:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
 
         s = await time_repo.create_shift(
             db, name, start_time, end_time,
@@ -411,9 +408,8 @@ class ShiftMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "Shift", id)
 
         s = await time_repo.update_shift(
             db, shift_id=id, name=name, start_time=start_time, end_time=end_time,
@@ -427,9 +423,8 @@ class ShiftMutation:
     @strawberry.mutation
     async def delete_shift(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "Shift", id)
         result = await time_repo.delete_shift(db, id)
         await db.commit()
         return result
@@ -438,9 +433,8 @@ class ShiftMutation:
     async def set_work_schedule(self, user_id: int, shift_id: int, date: datetime.date,
                                 info: strawberry.Info) -> types.WorkSchedule | None:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "User", user_id)
 
         if not shift_id:
             await time_repo.delete_schedule_by_user_date(db, user_id, date)
@@ -455,9 +449,8 @@ class ShiftMutation:
     @strawberry.mutation
     async def delete_work_schedule(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "WorkSchedule", id)
 
         result = await time_repo.delete_schedule(db, id)
         await db.commit()
@@ -467,9 +460,10 @@ class ShiftMutation:
     async def bulk_set_schedule(self, user_ids: list[int], shift_id: int, start_date: datetime.date,
                                 end_date: datetime.date, days_of_week: list[int], info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        
+        for user_id in user_ids:
+            await check_company_access(db, current_user, "User", user_id)
 
         result = await time_repo.create_bulk_schedules(db, user_ids, shift_id, start_date, end_date, days_of_week)
         await db.commit()
@@ -484,9 +478,10 @@ class ShiftMutation:
             info: strawberry.Info,
     ) -> int:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        
+        for user_id in user_ids:
+            await check_company_access(db, current_user, "User", user_id)
 
         count = await time_repo.bulk_delete_schedules(
             db,
@@ -509,9 +504,8 @@ class ShiftMutation:
             info: strawberry.Info,
     ) -> int:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage schedules")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "User", user_id)
 
         count = await time_repo.copy_schedules_from_month(
             db,
@@ -529,10 +523,8 @@ class ShiftMutation:
                                        items: list[inputs.ScheduleTemplateItemInput],
                                        info: strawberry.Info) -> types.ScheduleTemplate:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
+        current_user = get_current_user(info)
+        
         await verify_module_enabled("shifts", db)
 
         items_dicts = []
@@ -558,10 +550,9 @@ class ShiftMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "ScheduleTemplate", id)
+        
         await verify_module_enabled("shifts", db)
 
         template_items = None
@@ -586,10 +577,9 @@ class ShiftMutation:
     @strawberry.mutation
     async def delete_schedule_template(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "ScheduleTemplate", id)
+        
         await verify_module_enabled("shifts", db)
         result = await time_repo.delete_schedule_template(db, id, company_id=current_user.company_id)
         if not result:
@@ -607,10 +597,12 @@ class ShiftMutation:
             info: strawberry.Info
     ) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-
+        current_user = get_current_user(info)
+        
+        await check_company_access(db, current_user, "ScheduleTemplate", template_id)
+        for user_id in user_ids:
+            await check_company_access(db, current_user, "User", user_id)
+        
         await verify_module_enabled("shifts", db)
 
         for user_id in user_ids:

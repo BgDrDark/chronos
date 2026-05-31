@@ -1,19 +1,17 @@
 import datetime
 import logging
 import secrets
-from typing import Optional
 
 import strawberry
 from sqlalchemy import delete, insert, select, update
 
 from backend.database import models
 from backend.exceptions import (
-    AuthenticationException,
     NotFoundException,
-    PermissionDeniedException,
     ValidationException,
 )
 from backend.graphql import inputs, types
+from backend.graphql.utils.permission_checker import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +23,7 @@ class AccessControlMutation:
         self, input: inputs.AccessCodeInput, info: strawberry.Info
     ) -> types.AccessCode:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        current_user = get_current_user(info)
 
         code = input.code or secrets.token_hex(4).upper()
         expires_at = None
@@ -53,9 +49,7 @@ class AccessControlMutation:
     @strawberry.mutation
     async def delete_access_code(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         code = await db.get(models.AccessCode, id)
         if code:
@@ -67,9 +61,7 @@ class AccessControlMutation:
     @strawberry.mutation
     async def revoke_access_code(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         code = await db.get(models.AccessCode, id)
         if code:
@@ -83,9 +75,7 @@ class AccessControlMutation:
         self, user_id: int, zone_id: int, info: strawberry.Info
     ) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         stmt = select(models.user_access_zones).where(
             models.user_access_zones.c.user_id == user_id,
@@ -106,9 +96,7 @@ class AccessControlMutation:
         self, user_id: int, zone_id: int, info: strawberry.Info
     ) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         await db.execute(
             delete(models.user_access_zones).where(
@@ -122,9 +110,7 @@ class AccessControlMutation:
     @strawberry.mutation
     async def open_door(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         door = await db.get(models.AccessDoor, id)
         if not door:
@@ -138,88 +124,26 @@ class AccessControlMutation:
 
         url = f"http://{gw.ip_address}:{gw.web_port}/access/doors/{door.door_id}/trigger"
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    url, timeout=aiohttp.ClientTimeout(total=5)
-                ) as r:
-                    if r.status == 200:
-                        return True
-                    try:
-                        data = await r.json()
-                        msg = data.get("message", "Gateway error")
-                    except:
-                        msg = f"Gateway returned {r.status}"
-                    raise ValidationException(detail=msg)
+            async with aiohttp.ClientSession() as session, session.post(
+                url, timeout=aiohttp.ClientTimeout(total=5)
+            ) as r:
+                if r.status == 200:
+                    return True
+                try:
+                    data = await r.json()
+                    msg = data.get("message", "Gateway error")
+                except Exception:
+                    msg = f"Gateway returned {r.status}"
+                raise ValidationException(detail=msg)
         except Exception as e:
-            raise ValidationException(detail=f"Connection error: {str(e)}")
-
-    @strawberry.mutation
-    async def trigger_door_remote(self, id: int, info: strawberry.Info) -> bool:
-        db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
-
-        door = await db.get(models.AccessDoor, id)
-        if not door:
-            raise NotFoundException.record("Door")
-
-        gateway = await db.get(models.Gateway, door.gateway_id)
-        if not gateway or not gateway.ip_address:
-            raise ValidationException(detail="Gateway offline or unreachable")
-
-        import aiohttp
-
-        url = f"http://{gateway.ip_address}:{gateway.terminal_port}/access/doors/{door.door_id}/trigger"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    url, timeout=aiohttp.ClientTimeout(total=5)
-                ) as response:
-                    return response.status == 200
-        except:
-            return False
-
-    @strawberry.mutation
-    async def sync_gateway_config(
-        self, id: int, direction: str, info: strawberry.Info
-    ) -> bool:
-        db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail="Not authenticated")
-
-        gw = await db.get(models.Gateway, id)
-        if not gw:
-            raise NotFoundException.record("Gateway")
-        if not gw.ip_address:
-            raise ValidationException(detail="Gateway offline or no IP")
-
-        import aiohttp
-
-        url = f"http://{gw.ip_address}:{gw.web_port}/sync/{direction}"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    url, timeout=aiohttp.ClientTimeout(total=10)
-                ) as r:
-                    if r.status == 200:
-                        return True
-                    try:
-                        data = await r.json()
-                        msg = data.get("message", "Gateway error")
-                    except:
-                        msg = f"Gateway returned {r.status}"
-                    raise ValidationException(detail=msg)
+            raise ValidationException(detail=f"Connection error: {str(e)}") from e
         except Exception as e:
-            raise ValidationException(detail=f"Connection error: {str(e)}")
+            raise ValidationException(detail=f"Connection error: {str(e)}") from e
 
     @strawberry.mutation
     async def create_access_door(self, input: inputs.AccessDoorInput, info: strawberry.Info) -> types.AccessDoor:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
         
         new_door = models.AccessDoor(
             door_id=input.door_id,
@@ -239,9 +163,7 @@ class AccessControlMutation:
     @strawberry.mutation
     async def delete_access_door(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
         
         door = await db.get(models.AccessDoor, id)
         if door:
@@ -254,14 +176,12 @@ class AccessControlMutation:
     async def update_door_terminal(
         self,
         id: int,
-        terminal_id: Optional[str],
-        terminal_mode: Optional[str],
+        terminal_id: str | None,
+        terminal_mode: str | None,
         info: strawberry.Info
     ) -> types.AccessDoor:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
         
         door = await db.get(models.AccessDoor, id)
         if not door:
@@ -291,9 +211,7 @@ class AccessControlMutation:
     @strawberry.mutation
     async def create_access_zone(self, input: inputs.AccessZoneInput, info: strawberry.Info) -> types.AccessZone:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        current_user = get_current_user(info)
         
         new_zone = models.AccessZone(
             zone_id=input.zone_id,
@@ -316,9 +234,7 @@ class AccessControlMutation:
     @strawberry.mutation
     async def delete_access_zone(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
         
         zone = await db.get(models.AccessZone, id)
         if zone:
@@ -330,9 +246,7 @@ class AccessControlMutation:
     @strawberry.mutation
     async def update_access_zone(self, id: int, input: inputs.AccessZoneInput, info: strawberry.Info) -> types.AccessZone:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
             
         zone = await db.get(models.AccessZone, id)
         if not zone:

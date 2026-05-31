@@ -53,10 +53,9 @@ async def kiosk_scan(
             user_id_str, token = scan.qr_token.split(":")
             user_id = int(user_id_str)
             user = await crud.get_user_by_id(db, user_id)
-            if user and user.qr_secret:
-                if not verify_dynamic_qr_token(user.qr_secret, token):
-                    user = None # Невалиден динамичен токен
-        except:
+            if user and user.qr_secret and not verify_dynamic_qr_token(user.qr_secret, token):
+                user = None # Невалиден динамичен токен
+        except Exception:
             user = None
 
     # Fallback към статичен токен (за съвместимост, докато всички минат на динамични)
@@ -79,9 +78,8 @@ async def kiosk_scan(
 
     # 3. Execute
     try:
-        if action == "in":
-            if active_log:
-                raise ValueError("Вече сте влезли.")
+        if action == "in" and active_log:
+            raise ValueError("Вече сте влезли.")
             await crud.start_time_log(db, user.id)
             message = f"Добре дошли, {user.first_name}!"
             action_code = "IN"
@@ -105,7 +103,7 @@ async def kiosk_scan(
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 class TerminalScanRequest(BaseModel):
@@ -151,10 +149,9 @@ async def terminal_scan(
                 user_id_str, token = scan.qr_token.split(":")
                 user_id = int(user_id_str)
                 user = await crud.get_user_by_id(db, user_id)
-                if user and user.qr_secret:
-                    if not verify_dynamic_qr_token(user.qr_secret, token):
-                        user = None
-            except:
+                if user and user.qr_secret and not verify_dynamic_qr_token(user.qr_secret, token):
+                    user = None
+            except Exception:
                 user = None
 
         if not user:
@@ -313,9 +310,8 @@ async def handle_clock_in_out(db: AsyncSession, user, action: str) -> dict:
         action = "out" if active_log else "in"
 
     try:
-        if action == "in":
-            if active_log:
-                raise ValueError("Вече сте влезли.")
+        if action == "in" and active_log:
+            raise ValueError("Вече сте влезли.")
             await start_time_log(db, user.id)
             message = f"Добре дошли, {user.first_name}!"
         else:
@@ -460,10 +456,9 @@ async def unified_terminal_scan(
             user_id_str, token = scan.qr_token.split(":")
             user_id = int(user_id_str)
             user = await crud.get_user_by_id(db, user_id)
-            if user and user.qr_secret:
-                if not verify_dynamic_qr_token(user.qr_secret, token):
-                    user = None
-        except:
+            if user and user.qr_secret and not verify_dynamic_qr_token(user.qr_secret, token):
+                user = None
+        except Exception:
             user = None
 
     if not user:
@@ -482,112 +477,108 @@ async def unified_terminal_scan(
     }
 
     # 3. Handle Clock In/Out
-    if mode in ["clock", "both"]:
-        if scan.action in ["auto", "in", "out"]:
-            from backend.crud import end_time_log, get_active_time_log, start_time_log
+    if mode in ["clock", "both"] and scan.action in ["auto", "in", "out"]:
+        from backend.crud import end_time_log, get_active_time_log, start_time_log
 
-            active_log = await get_active_time_log(db, user.id)
-            action = scan.action if scan.action != "auto" else ("out" if active_log else "in")
+        active_log = await get_active_time_log(db, user.id)
+        action = scan.action if scan.action != "auto" else ("out" if active_log else "in")
 
-            if action == "in":
-                if not active_log:
-                    await start_time_log(db, user.id)
-                response["clock_action"] = "in"
-                response["message"] = f"Добър ден, {user.first_name}!"
-            else:
-                if active_log:
-                    await end_time_log(db, user.id)
-                response["clock_action"] = "out"
-                response["message"] = f"Довиждане, {user.first_name}!"
+        if action == "in" and not active_log:
+            await start_time_log(db, user.id)
+            response["clock_action"] = "in"
+            response["message"] = f"Добър ден, {user.first_name}!"
+        else:
+            if active_log:
+                await end_time_log(db, user.id)
+            response["clock_action"] = "out"
+            response["message"] = f"Довиждане, {user.first_name}!"
 
     # 4. Handle Access (Door)
-    if mode in ["access", "both"]:
-        if scan.action == "access" or scan.action == "auto":
-            # Find doors associated with this terminal
-            from sqlalchemy.orm import joinedload
+    if mode in ["access", "both"] and scan.action == "access" or scan.action == "auto":
+        # Find doors associated with this terminal
+        from sqlalchemy.orm import joinedload
+        from backend.database.models import AccessDoor
 
-            from backend.database.models import AccessDoor
+        stmt = select(AccessDoor).where(
+            AccessDoor.terminal_id == hwid,
+            AccessDoor.is_active,
+        ).options(joinedload(AccessDoor.zone))
+        result = await db.execute(stmt)
+        doors = result.scalars().all()
 
-            stmt = select(AccessDoor).where(
-                AccessDoor.terminal_id == hwid,
-                AccessDoor.is_active,
-            ).options(joinedload(AccessDoor.zone))
-            result = await db.execute(stmt)
-            doors = result.scalars().all()
+        if doors:
+            door = doors[0]  # Use first door
 
-            if doors:
-                door = doors[0]  # Use first door
+            # Check access rights directly via association table
+            from datetime import datetime
 
-                # Check access rights directly via association table
-                from datetime import datetime
+            from sqlalchemy import and_
 
-                from sqlalchemy import and_
+            from backend.database.models import AccessLog, user_access_zones
 
-                from backend.database.models import AccessLog, user_access_zones
+            stmt = select(user_access_zones).where(
+                and_(
+                    user_access_zones.c.user_id == user.id,
+                    user_access_zones.c.zone_id == door.zone_db_id,
+                ),
+            )
+            res = await db.execute(stmt)
+            has_access = res.first() is not None or user.role.name == "super_admin"
 
-                stmt = select(user_access_zones).where(
-                    and_(
-                        user_access_zones.c.user_id == user.id,
-                        user_access_zones.c.zone_id == door.zone_db_id,
-                    ),
-                )
-                res = await db.execute(stmt)
-                has_access = res.first() is not None or user.role.name == "super_admin"
+            log_entry = AccessLog(
+                timestamp=datetime.now(),
+                user_id=str(user.id),
+                user_name=f"{user.first_name} {user.last_name}",
+                zone_id=door.zone.zone_id if door.zone else "unknown",
+                zone_name=door.zone.name if door.zone else "Unknown Zone",
+                door_id=door.door_id,
+                door_name=door.name,
+                action="entry",
+                method="qr" if scan.qr_token else "code",
+                terminal_id=hwid,
+                gateway_id=door.gateway_id,
+            )
 
-                log_entry = AccessLog(
-                    timestamp=datetime.now(),
-                    user_id=str(user.id),
-                    user_name=f"{user.first_name} {user.last_name}",
-                    zone_id=door.zone.zone_id if door.zone else "unknown",
-                    zone_name=door.zone.name if door.zone else "Unknown Zone",
-                    door_id=door.door_id,
-                    door_name=door.name,
-                    action="entry",
-                    method="qr" if scan.qr_token else "code",
-                    terminal_id=hwid,
-                    gateway_id=door.gateway_id,
-                )
+            if has_access:
+                # ... (trigger door logic)
+                try:
+                    import aiohttp
 
-                if has_access:
-                    # ... (trigger door logic)
-                    try:
-                        import aiohttp
+                    from backend.database.models import Gateway
 
-                        from backend.database.models import Gateway
-
-                        gw = await db.get(Gateway, door.gateway_id)
-                        if gw and gw.ip_address:
-                            url = f"http://{gw.ip_address}:{gw.web_port}/access/doors/{door.door_id}/trigger"
-                            async with aiohttp.ClientSession() as session:
-                                async with session.post(url, timeout=3) as r:
-                                    if r.status == 200:
-                                        response["door_opened"] = True
-                                    else:
-                                        response["door_opened"] = False
-                        else:
-                            response["door_opened"] = False
-                    except Exception:
+                    gw = await db.get(Gateway, door.gateway_id)
+                    if gw and gw.ip_address:
+                        url = f"http://{gw.ip_address}:{gw.web_port}/access/doors/{door.door_id}/trigger"
+                        async with aiohttp.ClientSession() as session:
+                            async with session.post(url, timeout=3) as r:
+                                if r.status == 200:
+                                    response["door_opened"] = True
+                                else:
+                                    response["door_opened"] = False
+                    else:
                         response["door_opened"] = False
-
-                    response["door_name"] = door.name
-                    response["access_granted"] = True
-
-                    log_entry.result = "granted"
-                    log_entry.reason = "Authorized"
-                else:
+                except Exception:
                     response["door_opened"] = False
-                    response["access_granted"] = False
-                    response["message"] = "Нямате достъп до тази зона"
 
-                    log_entry.result = "denied"
-                    log_entry.reason = "No Zone Permission"
+                response["door_name"] = door.name
+                response["access_granted"] = True
 
-                db.add(log_entry)
-                await db.commit()
+                log_entry.result = "granted"
+                log_entry.reason = "Authorized"
             else:
                 response["door_opened"] = False
-                response["access_granted"] = None
-                response["message"] = "Няма конфигурирана врата за този терминал"
+                response["access_granted"] = False
+                response["message"] = "Нямате достъп до тази зона"
+
+                log_entry.result = "denied"
+                log_entry.reason = "No Zone Permission"
+
+            db.add(log_entry)
+            await db.commit()
+        else:
+            response["door_opened"] = False
+            response["access_granted"] = None
+            response["message"] = "Няма конфигурирана врата за този терминал"
 
     # 5. Update terminal last_seen
     if terminal:

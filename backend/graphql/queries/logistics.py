@@ -146,7 +146,7 @@ class LogisticsQuery:
         stmt = stmt.order_by(StockConsumptionLog.created_at.desc())
         result = await db.execute(stmt)
         logs = result.scalars().all()
-        return [types.StockConsumptionLog.from_instance(l) for l in logs]
+        return [types.StockConsumptionLog.from_instance(item) for item in logs]
 
     @strawberry.field
     async def ingredient_batches_with_stock(

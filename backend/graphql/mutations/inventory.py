@@ -6,15 +6,15 @@ import strawberry
 from sqlalchemy import func, select
 
 from backend.exceptions import (
-    AuthenticationException,
     NotFoundException,
-    PermissionDeniedException,
     ValidationException,
 )
 from backend.graphql import inputs, types
+from backend.graphql.utils.permission_checker import (
+    check_company_access,
+    get_current_user,
+)
 from backend.utils.error_handling import handle_db_error
-
-authenticate_msg = "Трябва да се автентикирате"
 
 
 @strawberry.type
@@ -22,17 +22,18 @@ class InventoryMutation:
     @strawberry.mutation
     async def create_ingredient(self, input: inputs.IngredientInput, info: strawberry.Info) -> types.Ingredient:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
             raise ValidationException.required_field("Company ID")
+        
         from backend.database.models import Company
         stmt = select(Company).where(Company.id == target_company_id)
         res = await db.execute(stmt)
         if not res.scalar_one_or_none():
             raise NotFoundException.resource("Фирма", target_company_id)
+        
         from backend.database.models import Ingredient
         ingredient = Ingredient(
             name=input.name,
@@ -54,17 +55,14 @@ class InventoryMutation:
     @strawberry.mutation
     async def update_ingredient(self, input: inputs.IngredientInput, info: strawberry.Info) -> types.Ingredient:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
 
         from backend.database.models import Ingredient
         ingredient = await db.get(Ingredient, input.id)
         if not ingredient:
             raise NotFoundException.ingredient()
 
-        if current_user.role.name != "super_admin" and ingredient.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage")
+        await check_company_access(db, current_user, "Ingredient", input.id)
 
         ingredient.name = input.name
         ingredient.unit = input.unit
@@ -84,9 +82,7 @@ class InventoryMutation:
     @strawberry.mutation
     async def create_storage_zone(self, input: inputs.StorageZoneInput, info: strawberry.Info) -> types.StorageZone:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
 
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
@@ -118,17 +114,14 @@ class InventoryMutation:
     async def update_storage_zone(self, input: inputs.UpdateStorageZoneInput,
                                 info: strawberry.Info) -> types.StorageZone:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
         from backend.database.models import StorageZone
         stmt = select(StorageZone).where(StorageZone.id == input.id)
         res = await db.execute(stmt)
         zone = res.scalar_one_or_none()
         if not zone:
             raise NotFoundException.resource("Зона")
-        if current_user.role.name not in ["super_admin"] and zone.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_resource("zone", "access")
+        await check_company_access(db, current_user, "StorageZone", input.id)
         zone.name = input.name
         zone.temp_min = input.temp_min
         zone.temp_max = input.temp_max
@@ -143,14 +136,13 @@ class InventoryMutation:
     @strawberry.mutation
     async def add_batch(self, input: inputs.BatchInput, info: strawberry.Info) -> types.Batch:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
 
         from backend.database.models import Batch, Ingredient
         res = await db.get(Ingredient, input.ingredient_id)
-        if not res or (current_user.role.name != "super_admin" and res.company_id != current_user.company_id):
-            raise PermissionDeniedException.for_resource("ingredient", "manage")
+        if not res:
+            raise NotFoundException.ingredient()
+        await check_company_access(db, current_user, "Ingredient", input.ingredient_id)
 
         batch = Batch(
             ingredient_id=input.ingredient_id,
@@ -170,18 +162,14 @@ class InventoryMutation:
     @strawberry.mutation
     async def update_batch(self, input: inputs.BatchInput, info: strawberry.Info) -> types.Batch:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
 
-        from backend.database.models import Batch, Ingredient
+        from backend.database.models import Batch
         batch = await db.get(Batch, input.id)
         if not batch:
             raise NotFoundException.record("Batch")
 
-        ingredient = await db.get(Ingredient, batch.ingredient_id)
-        if current_user.role.name != "super_admin" and ingredient.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage")
+        await check_company_access(db, current_user, "Batch", input.id)
 
         batch.ingredient_id = input.ingredient_id
         batch.batch_number = input.batch_number
@@ -198,18 +186,14 @@ class InventoryMutation:
     @strawberry.mutation
     async def update_batch_status(self, id: int, status: str, info: strawberry.Info) -> types.Batch:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin", "Warehouse_Manager"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
 
-        from backend.database.models import Batch, Ingredient
+        from backend.database.models import Batch
         batch = await db.get(Batch, id)
         if not batch:
             raise NotFoundException.record("Batch")
 
-        ingredient = await db.get(Ingredient, batch.ingredient_id)
-        if current_user.role.name != "super_admin" and ingredient.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage")
+        await check_company_access(db, current_user, "Batch", id)
 
         batch.status = status
         await db.commit()
@@ -219,9 +203,7 @@ class InventoryMutation:
     @strawberry.mutation
     async def start_inventory_session(self, info: strawberry.Info) -> types.InventorySession:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import InventorySession, sofia_now
 
@@ -239,9 +221,7 @@ class InventoryMutation:
     @strawberry.mutation
     async def complete_inventory_session(self, session_id: int, info: strawberry.Info) -> types.InventorySession:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import (
             Batch,
@@ -253,8 +233,7 @@ class InventoryMutation:
         session = await db.get(InventorySession, session_id)
         if not session:
             raise NotFoundException.session()
-        if session.company_id != current_user.company_id and current_user.role.name != "super_admin":
-            raise PermissionDeniedException.for_action("manage")
+        await check_company_access(db, current_user, "InventorySession", session_id)
         if session.status != "active":
             raise ValidationException.field("Session", "Не е активна")
 
@@ -324,9 +303,7 @@ class InventoryMutation:
             info: strawberry.Info
     ) -> types.InventoryItem:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import (
             Batch,
@@ -338,8 +315,7 @@ class InventoryMutation:
         session = await db.get(InventorySession, session_id)
         if not session:
             raise NotFoundException.session()
-        if session.company_id != current_user.company_id and current_user.role.name != "super_admin":
-            raise PermissionDeniedException.for_action("manage")
+        await check_company_access(db, current_user, "InventorySession", session_id)
         if session.status != "active":
             raise ValidationException.field("Session", "Не е активна")
 
@@ -391,9 +367,7 @@ class InventoryMutation:
         notes: str | None = None,
     ) -> types.Batch:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException()
+        current_user = get_current_user(info)
 
         from backend.database.models import Batch, StockConsumptionLog
         
@@ -438,9 +412,7 @@ class InventoryMutation:
     ) -> list[types.Batch]:
         """Bulk add batches from a single delivery and optionally create an invoice"""
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database import models
 

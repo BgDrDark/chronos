@@ -162,16 +162,38 @@ const DashboardPage: React.FC = () => {
   })) || [];
 
   const handleClockToggle = async () => {
-    if (isClocking) return;
+    console.log('=== handleClockToggle called ===');
+    console.log('isClocking:', isClocking);
+    console.log('isActive:', isActive);
+    console.log('data?.activeTimeLog:', data?.activeTimeLog);
+    
+    if (isClocking) {
+      console.log('Already clocking, returning');
+      return;
+    }
+    
     setIsClocking(true);
     try {
       if (data?.activeTimeLog) {
-        await clockOut();
+        console.log('>>> Calling clockOut mutation...');
+        const result = await clockOut();
+        console.log('>>> Clock out result:', result);
+        if (result.errors) {
+          throw new Error(result.errors[0]?.message || 'Грешка при clock out');
+        }
       } else {
-        await clockIn();
+        console.log('>>> Calling clockIn mutation...');
+        const result = await clockIn();
+        console.log('>>> Clock in result:', result);
+        if (result.errors) {
+          throw new Error(result.errors[0]?.message || 'Грешка при clock in');
+        }
       }
+      console.log('>>> Refetching data...');
       await refetch();
+      console.log('>>> Refetch complete');
     } catch (err: unknown) {
+      console.error('Clock toggle error:', err);
       const error = err as { message?: string; graphQLErrors?: Array<{ message?: string }> };
       alert(error.graphQLErrors?.[0]?.message || error.message || 'Грешка');
     } finally {

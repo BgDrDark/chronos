@@ -4,11 +4,11 @@ from sqlalchemy import select
 from backend.database.models import Company, VehicleCostCenter
 from backend.exceptions import (
     NotFoundException,
-    PermissionDeniedException,
     ValidationException,
 )
 from backend.graphql import types
 from backend.graphql.inputs.cost_center import CostCenterInput, UpdateCostCenterInput
+from backend.graphql.utils.permission_checker import get_current_user
 
 
 @strawberry.type
@@ -16,9 +16,7 @@ class CostCenterMutation:
     @strawberry.mutation
     async def create_cost_center(self, input: CostCenterInput, info: strawberry.Info) -> types.VehicleCostCenter:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
 
         target_company_id = input.company_id if current_user.role.name == "super_admin" else current_user.company_id
         if not target_company_id:
@@ -43,9 +41,7 @@ class CostCenterMutation:
     @strawberry.mutation
     async def update_cost_center(self, input: UpdateCostCenterInput, info: strawberry.Info) -> types.VehicleCostCenter:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         cost_center = await db.get(VehicleCostCenter, input.id)
         if not cost_center:
@@ -65,9 +61,7 @@ class CostCenterMutation:
     @strawberry.mutation
     async def delete_cost_center(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         cost_center = await db.get(VehicleCostCenter, id)
         if not cost_center:

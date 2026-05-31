@@ -32,11 +32,10 @@ class AuthService:
 
     async def reset_login_attempts(self, user_id: int) -> User | None:
         user = await self.repo.get_by_id(self.db, user_id)
-        if user:
-            if user.failed_login_attempts != 0 or user.locked_until is not None:
-                user.failed_login_attempts = 0
-                user.locked_until = None
-                await self.db.flush()
+        if user and user.failed_login_attempts != 0 or user.locked_until is not None:
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            await self.db.flush()
         return user
 
     async def check_account_locked(self, user_id: int) -> bool:

@@ -1,16 +1,17 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Annotated
+
 import strawberry
-from strawberry.experimental import pydantic as sp
 from sqlalchemy import select
+from strawberry.experimental import pydantic as sp
 
 from backend import schemas
-from backend.database import models
 
 if TYPE_CHECKING:
-    from backend.graphql.types.user import User
     from backend.graphql.types.accounting import Account
     from backend.graphql.types.payroll import Payroll
+    from backend.graphql.types.user import User
 
 
 
@@ -39,7 +40,7 @@ class Company:
     default_bank_account_id: strawberry.auto
 
     @strawberry.field
-    async def default_sales_account(self, info: strawberry.Info) -> Annotated["Account", strawberry.lazy("backend.graphql.types.accounting")] | None:
+    async def default_sales_account(self, info: strawberry.Info) -> Annotated[Account, strawberry.lazy("backend.graphql.types.accounting")] | None:
         if not self.default_sales_account_id:
             return None
         result = await info.context["dataloaders"]["account_by_id"].load(self.default_sales_account_id)
@@ -47,7 +48,7 @@ class Company:
         return Account.from_pydantic(result) if result else None
 
     @strawberry.field
-    async def default_expense_account(self, info: strawberry.Info) -> Annotated["Account", strawberry.lazy("backend.graphql.types.accounting")] | None:
+    async def default_expense_account(self, info: strawberry.Info) -> Annotated[Account, strawberry.lazy("backend.graphql.types.accounting")] | None:
         if not self.default_expense_account_id:
             return None
         result = await info.context["dataloaders"]["account_by_id"].load(self.default_expense_account_id)
@@ -55,7 +56,7 @@ class Company:
         return Account.from_pydantic(result) if result else None
 
     @strawberry.field
-    async def default_vat_account(self, info: strawberry.Info) -> Annotated["Account", strawberry.lazy("backend.graphql.types.accounting")] | None:
+    async def default_vat_account(self, info: strawberry.Info) -> Annotated[Account, strawberry.lazy("backend.graphql.types.accounting")] | None:
         if not self.default_vat_account_id:
             return None
         result = await info.context["dataloaders"]["account_by_id"].load(self.default_vat_account_id)
@@ -63,7 +64,7 @@ class Company:
         return Account.from_pydantic(result) if result else None
 
     @strawberry.field
-    async def default_customer_account(self, info: strawberry.Info) -> Annotated["Account", strawberry.lazy("backend.graphql.types.accounting")] | None:
+    async def default_customer_account(self, info: strawberry.Info) -> Annotated[Account, strawberry.lazy("backend.graphql.types.accounting")] | None:
         if not self.default_customer_account_id:
             return None
         result = await info.context["dataloaders"]["account_by_id"].load(self.default_customer_account_id)
@@ -71,7 +72,7 @@ class Company:
         return Account.from_pydantic(result) if result else None
 
     @strawberry.field
-    async def default_supplier_account(self, info: strawberry.Info) -> Annotated["Account", strawberry.lazy("backend.graphql.types.accounting")] | None:
+    async def default_supplier_account(self, info: strawberry.Info) -> Annotated[Account, strawberry.lazy("backend.graphql.types.accounting")] | None:
         if not self.default_supplier_account_id:
             return None
         result = await info.context["dataloaders"]["account_by_id"].load(self.default_supplier_account_id)
@@ -79,7 +80,7 @@ class Company:
         return Account.from_pydantic(result) if result else None
 
     @strawberry.field
-    async def default_cash_account(self, info: strawberry.Info) -> Annotated["Account", strawberry.lazy("backend.graphql.types.accounting")] | None:
+    async def default_cash_account(self, info: strawberry.Info) -> Annotated[Account, strawberry.lazy("backend.graphql.types.accounting")] | None:
         if not self.default_cash_account_id:
             return None
         result = await info.context["dataloaders"]["account_by_id"].load(self.default_cash_account_id)
@@ -87,7 +88,7 @@ class Company:
         return Account.from_pydantic(result) if result else None
 
     @strawberry.field
-    async def default_bank_account(self, info: strawberry.Info) -> Annotated["Account", strawberry.lazy("backend.graphql.types.accounting")] | None:
+    async def default_bank_account(self, info: strawberry.Info) -> Annotated[Account, strawberry.lazy("backend.graphql.types.accounting")] | None:
         if not self.default_bank_account_id:
             return None
         result = await info.context["dataloaders"]["account_by_id"].load(self.default_bank_account_id)
@@ -111,7 +112,7 @@ class Department:
         return Company.from_pydantic(res) if res else None
 
     @strawberry.field
-    async def manager(self, info: strawberry.Info) -> Annotated["User", strawberry.lazy("backend.graphql.types.user")] | None:
+    async def manager(self, info: strawberry.Info) -> Annotated[User, strawberry.lazy("backend.graphql.types.user")] | None:
         if not self.manager_id: return None
         return await info.context["dataloaders"]["user_by_id"].load(self.manager_id)
 
@@ -131,7 +132,7 @@ class Position:
         return Department.from_pydantic(res) if res else None
 
     @strawberry.field
-    async def payrolls(self, info: strawberry.Info) -> list[Annotated["Payroll", strawberry.lazy("backend.graphql.types.payroll")]]:
+    async def payrolls(self, info: strawberry.Info) -> list[Annotated[Payroll, strawberry.lazy("backend.graphql.types.payroll")]]:
         db = info.context["db"]
         from backend.database.models import Payroll as DbPayroll
         result = await db.execute(

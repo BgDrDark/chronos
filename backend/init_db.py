@@ -14,6 +14,7 @@ from backend.database.models import (
     Base,
     ClauseTemplate,
     Company,
+    CompanyRoleAssignment,
     ContractTemplate,
     ContractTemplateSection,
     ContractTemplateVersion,
@@ -33,6 +34,7 @@ async def init_db():
     logger.info("Стартиране на пълна инициализация на базата данни...")
 
     # 1. Създаване на таблиците (ако не съществуват)
+    import backend.modules.behavioral_analysis.models  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -129,7 +131,7 @@ async def init_db():
     async with AsyncSessionLocal() as session:
         from backend.database.models import Module
         # 0. Инициализация на модули (Enabled by default)
-        MODULES_TO_SEED = [
+        modules_to_seed = [
             {"code": "shifts", "name": "Смени и работно време", "desc": "Управление на работно време, смени и присъствие"},
             {"code": "salaries", "name": "Заплати", "desc": "Изчисляване на заплати, ТРЗ и договори"},
             {"code": "kiosk", "name": "Kiosk терминал", "desc": "Управление на физически терминали и QR чекиране"},
@@ -142,7 +144,7 @@ async def init_db():
             {"code": "inventory", "name": "Инвентаризация", "desc": "Инвентаризационни сесии и баркод сканиране"},
         ]
 
-        for m_data in MODULES_TO_SEED:
+        for m_data in modules_to_seed:
             res = await session.execute(select(Module).where(Module.code == m_data["code"]))
             if not res.scalar_one_or_none():
                 new_mod = Module(
@@ -513,13 +515,13 @@ async def init_db():
         # 3.6 Създаване на работни станции (за сладкарско производство)
         logger.info("Проверка на работни станции...")
 
-        DEFAULT_WORKSTATIONS = [
+        default_workstations = [
             {"name": "Пекарна", "description": "Изпичане на блатове и основи"},
             {"name": "Кремове", "description": "Приготвяне на кремове и пълнежи"},
             {"name": "Декорация", "description": "Украса на готовите изделия"},
         ]
 
-        for ws_data in DEFAULT_WORKSTATIONS:
+        for ws_data in default_workstations:
             result = await session.execute(
                 select(Workstation).filter(
                     Workstation.name == ws_data["name"],
@@ -567,6 +569,32 @@ async def init_db():
                 session.add(db_admin)
                 logger.info(f"Администраторът е зачислен към фирма: {default_company.name}")
             logger.info("Администраторът вече съществува.")
+
+        # Ensure CompanyRoleAssignment exists for the admin (new RBAC system)
+        admin_role = await session.execute(select(Role).where(Role.name == admin_role_name))
+        admin_role = admin_role.scalar_one_or_none()
+        db_admin = await crud.get_user_by_email(session, admin_email)
+        if db_admin and admin_role:
+            existing_assignment = await session.execute(
+                select(CompanyRoleAssignment).where(
+                    CompanyRoleAssignment.user_id == db_admin.id,
+                    CompanyRoleAssignment.company_id == default_company.id,
+                    CompanyRoleAssignment.is_active,
+                ),
+            )
+            if not existing_assignment.scalar_one_or_none():
+                assignment = CompanyRoleAssignment(
+                    user_id=db_admin.id,
+                    company_id=default_company.id,
+                    role_id=admin_role.id,
+                    assigned_at=datetime.now(),
+                    assigned_by=db_admin.id,
+                    is_active=True,
+                )
+                session.add(assignment)
+                logger.info(f"Създадена CompanyRoleAssignment за admin (user_id={db_admin.id}, role_id={admin_role.id})")
+
+        await session.commit()
 
         # 5. Създаване на системни типове смени
         logger.info("Проверка на системните смени...")
@@ -630,7 +658,7 @@ async def ensure_workstations_for_company(company_id: int, session=None):
         session: AsyncSession (ако не е подаден, създава нова връзка)
 
     """
-    DEFAULT_WORKSTATIONS = [
+    default_workstations_list = [
         {"name": "Пекарна", "description": "Изпичане на блатове и основи"},
         {"name": "Кремове", "description": "Приготвяне на кремове и пълнежи"},
         {"name": "Декорация", "description": "Украса на готовите изделия"},
@@ -642,7 +670,7 @@ async def ensure_workstations_for_company(company_id: int, session=None):
         close_session = True
 
     try:
-        for ws_data in DEFAULT_WORKSTATIONS:
+        for ws_data in default_workstations_list:
             result = await session.execute(
                 select(Workstation).filter(
                     Workstation.name == ws_data["name"],

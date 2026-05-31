@@ -50,9 +50,8 @@ class VehicleQuery:
 
         vehicle = await db.get(Vehicle, id)
 
-        if vehicle and current_user.role.name != "super_admin":
-            if vehicle.company_id != current_user.company_id:
-                return None
+        if vehicle and current_user.role.name != "super_admin" and vehicle.company_id != current_user.company_id:
+            return None
 
         return types.Vehicle.from_pydantic(vehicle) if vehicle else None
 

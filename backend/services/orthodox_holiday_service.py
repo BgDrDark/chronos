@@ -137,7 +137,7 @@ class OrthodoxHolidayService:
             try:
                 fast_date = date(year, 8, day)
                 holidays.append((fast_date, "Dormition Fast", "Голямa Богородица", False))
-            except:
+            except Exception:
                 pass
 
         # Nativity Fast (November 25 - December 24)
@@ -147,7 +147,7 @@ class OrthodoxHolidayService:
                 nativity_date = fast_date + timedelta(days=13)
                 if nativity_date.month == 12:  # Only add if still in December
                     holidays.append((nativity_date, "Nativity Fast", "Коледни пости", False))
-            except:
+            except Exception:
                 pass
 
         try:
@@ -155,7 +155,7 @@ class OrthodoxHolidayService:
             christmas_eve_date = fast_date + timedelta(days=13)
             if christmas_eve_date.month == 12 and christmas_eve_date.year == year:
                 holidays.append((christmas_eve_date, "Christmas Eve Fast", "Бъднивечерски пост", False))
-        except:
+        except Exception:
             pass
 
         # Sort by date

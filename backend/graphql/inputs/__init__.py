@@ -1,6 +1,6 @@
 import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import Optional
 
 import strawberry
 

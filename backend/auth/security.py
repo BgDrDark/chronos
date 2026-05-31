@@ -51,7 +51,7 @@ def get_cipher_suite() -> Fernet:
     try:
         return Fernet(key.encode())
     except Exception as e:
-        raise RuntimeError(f"Невалиден ENCRYPTION_KEY: {e}")
+        raise RuntimeError(f"Невалиден ENCRYPTION_KEY: {e}") from e
 
 # Initialize cipher suite at module load time
 try:

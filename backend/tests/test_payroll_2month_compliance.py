@@ -3,16 +3,14 @@ Payroll compliance tests for 2-MONTH WORKING PERIOD
 Тестове за финансови изчисления при 2 месеца работа според Българския Кодекс на труда
 """
 
-import pytest
+from datetime import timedelta
 from decimal import Decimal
-from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from unittest.mock import patch, AsyncMock
 
+import pytest
 from backend import crud, schemas
-from backend.database.models import sofia_now
 from backend.crud import BULGARIAN_LABOR_CONSTANTS
-
+from backend.database.models import sofia_now
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Test scenarios for 2-month working period
 TWO_MONTH_WORK_SCENARIOS = {
@@ -72,7 +70,7 @@ async def test_2_month_fulltime_work(test_db: AsyncSession, test_user_2_months):
     scenario = TWO_MONTH_WORK_SCENARIOS['fulltime_employee']
     
     # Create payroll configuration
-    payroll_config = await crud.create_payroll_config(test_db, schemas.PayrollConfigCreate(
+    await crud.create_payroll_config(test_db, schemas.PayrollConfigCreate(
         user_id=test_user_2_months.id,
         base_salary=scenario['base_salary'],
         hourly_rate=scenario['hourly_rate'],
@@ -133,7 +131,7 @@ async def test_2_month_fulltime_work(test_db: AsyncSession, test_user_2_months):
     
     expected_total_regular_hours = scenario['expected_regular_hours'] * 2
     expected_total_overtime_hours = scenario['expected_overtime_hours_150'] * 2
-    expected_total_base_plus_overtime = scenario['expected_base_plus_overtime'] * 2
+    scenario['expected_base_plus_overtime'] * 2
     
     assert total_regular_hours == expected_total_regular_hours, \
         f"2-month regular hours should be {expected_total_regular_hours}, got {total_regular_hours}"
@@ -173,11 +171,12 @@ async def test_minimum_wage_2_months(test_db: AsyncSession, test_user_2_months):
     await crud.create_time_log_2_month_batch(test_db, test_user_2_months.id)
     
     # Calculate payroll
+    now = sofia_now()
     payroll_total = await crud.calculate_monthly_payroll(
         test_db,
         test_user_2_months.id,
-        current_date.year,
-        current_date.month
+        now.year,
+        now.month
     )
     
     # Verify compliance with minimum wage over 2 months
@@ -245,7 +244,7 @@ async def test_bulgarian_labor_law_compliance(test_db: AsyncSession, test_user_2
             end_date=week_end
         )
         
-        week_hours += sum(
+        weekly_hours += sum(
             (log.end_time - log.start_time).total_seconds() / 3600 
             for log in week_logs
             if log.type == 'work'
@@ -267,14 +266,14 @@ async def test_bulgarian_labor_law_compliance(test_db: AsyncSession, test_user_2
     actual_hourly_rate = (await crud.get_payroll_config(test_db, test_user_2_months.id)).hourly_rate
     
     assert actual_hourly_rate >= expected_minimum_hourly_rate, \
-        f"Hourly rate should be >= {expected_minimum_hourly_rate}, got {actual_hourly_rate_rate}"
+        f"Hourly rate should be >= {expected_minimum_hourly_rate}, got {actual_hourly_rate}"
     
     # Check if gross salary meets minimum wage requirement
     minimum_2_month_wage = BULGARIAN_LABOR_CONSTANTS['minimum_wage_2024'] * 2
     assert payroll_total.gross_salary >= minimum_2_month_wage, \
         f"2-month gross salary should be >= {minimum_2_month_wage}, got {payroll_total.gross_salary}"
     
-    print(f"✅ BULGARIAN LABOR LAW COMPLIANCE TEST PASSED")
+    print("✅ BULGARIAN LABOR LAW COMPLIANCE TEST PASSED")
 
 
 @pytest.mark.asyncio
@@ -325,7 +324,7 @@ async def test_overtime_multipliers(test_db: AsyncSession, test_user_2_months):
     )
     
     # Verify overtime calculations
-    expected_weekday_overtime = Decimal('13.59')  # 1 * 9.059 * 1.5
+    Decimal('13.59')  # 1 * 9.059 * 1.5
     expected_weekend_overtime = Decimal('50.90')  # 5 * 10.18 * 2.0
     
     # The implementation should properly categorize and calculate
@@ -340,7 +339,7 @@ async def test_overtime_multipliers(test_db: AsyncSession, test_user_2_months):
 
 
 @pytest.mark.asyncio
-async def test_detailed_payroll_calculation_breakdown(test_db: RESTful):
+async def test_detailed_payroll_calculation_breakdown(test_db: AsyncSession):
     """Детайлен тест на payroll изчисления за 2 месеца"""
     
     # Calculate payroll
@@ -357,22 +356,22 @@ async def test_detailed_payroll_calculation_breakdown(test_db: RESTful):
     assert payroll_total.deductions > Decimal('0'), "Deductions should be positive"
     
     # Verify calculation transparency
-    regular_pay = payroll_total.gross_salary - (total_overtime_pay + payroll_total.weekend_holiday_pay + payroll_total.bonus)
+    regular_pay = payroll_total.gross_salary - (payroll_total.overtime_pay + payroll_total.weekend_holiday_pay + payroll_total.bonus)
     calculated_net = regular_pay - Decimal('0.10') * regular_pay - Decimal('0.098') * regular_pay - Decimal('0.032') * regular_pay
     
     assert abs(payroll_total.net_salary - calculated_net - payroll_total.deductions) < Decimal('0.01'), \
         "Net salary calculation should be accurate"
     
     # Create payroll record for audit trail
-    payroll_record = await crud.create_payroll_record(test_db, schemas.PayrollRecordCreate(
+    await crud.create_payroll_record(test_db, schemas.PayrollRecordCreate(
         user_id=test_user_2_months.id,
         month=sofia_now().month,
         year=sofia_now().year,
         gross_salary=payroll_total.gross_salary,
         net_salary=payroll_total.net_salary,
-        taxes=Decimal(str(float(payroll_total.taxes)),
-        social_security=Decimal(str(float(payroll_total.social_security)),
-        health_insurance=Decimal(str(float(payroll_total.health_insurance)),
+        taxes=Decimal(str(float(payroll_total.taxes))),
+        social_security=Decimal(str(float(payroll_total.social_security))),
+        health_insurance=Decimal(str(float(payroll_total.health_insurance))),
         status='calculated'
     ))
     
@@ -382,7 +381,7 @@ async def test_detailed_payroll_calculation_breakdown(test_db: RESTful):
     
     assert len(payroll_logs) >= 1, "Should have audit logs for payroll operations"
     
-    print(f"✅ DETAILED PAYROLL BREAKDOWN TEST PASSED")
+    print("✅ DETAILED PAYROLL BREAKDOWN TEST PASSED")
     print(f"  📊 Gross Salary: {payroll_total.gross_salary}")
     print(f"  💰 Net Salary: {payroll_total.net_salary}")
     print(f"  🏛️ Deductions: {payroll_total.deductions}")

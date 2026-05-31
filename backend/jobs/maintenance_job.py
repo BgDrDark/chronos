@@ -23,7 +23,7 @@ async def check_scheduled_maintenance():
             result = await db.execute(
                 select(MaintenanceSettings)
                 .where(not MaintenanceSettings.enabled)
-                .where(MaintenanceSettings.scheduled_at is not None)
+                .where(MaintenanceSettings.scheduled_at.isnot(None))
                 .where(MaintenanceSettings.scheduled_at <= now)
                 .order_by(MaintenanceSettings.id.desc())
                 .limit(1),

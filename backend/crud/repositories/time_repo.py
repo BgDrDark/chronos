@@ -35,7 +35,7 @@ class TimeTrackingRepository(BaseRepository):
         result = await db.execute(
             select(TimeLog)
             .where(TimeLog.user_id == user_id)
-            .where(TimeLog.end_time is None),
+            .where(TimeLog.end_time.is_(None)),
         )
         return result.scalar_one_or_none()
 
@@ -816,13 +816,13 @@ class TimeTrackingRepository(BaseRepository):
         res = await db.execute(stmt)
         return res.scalars().first()
 
-    async def get_leave_balance(
+    async def get_or_create_leave_balance(
         self,
         db: AsyncSession,
         user_id: int,
         year: int,
     ) -> LeaveBalance:
-        """Връща баланс на отпуски"""
+        """Връща баланс на отпуски (създава нов ако не съществува)"""
         stmt = select(LeaveBalance).where(
             LeaveBalance.user_id == user_id,
             LeaveBalance.year == year,
@@ -837,11 +837,6 @@ class TimeTrackingRepository(BaseRepository):
             await db.refresh(balance)
 
         return balance
-
-    async def get_shift_by_id(self, db: AsyncSession, shift_id: int) -> Shift | None:
-        """Връща смяна по ID"""
-        result = await db.execute(select(Shift).where(Shift.id == shift_id))
-        return result.scalars().first()
 
     async def apply_schedule_template(
         self,

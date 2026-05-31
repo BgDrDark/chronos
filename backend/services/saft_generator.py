@@ -583,9 +583,8 @@ class SAFTValidator:
         # Validate dates
         start_date = header.find("sa:StartDate", ns)
         end_date = header.find("sa:EndDate", ns)
-        if start_date is not None and end_date is not None:
-            if start_date.text and end_date.text and start_date.text > end_date.text:
-                self.errors.append("StartDate cannot be after EndDate")
+        if start_date is not None and end_date is not None and start_date.text and end_date.text and start_date.text > end_date.text:
+            self.errors.append("StartDate cannot be after EndDate")
 
     def _validate_balances(self, root: etree.Element, ns: dict):
         """Validate general ledger balances"""

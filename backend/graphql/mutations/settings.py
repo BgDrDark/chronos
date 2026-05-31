@@ -6,14 +6,10 @@ from sqlalchemy import update
 from backend.crud import repositories as crud
 from backend.crud.repositories import settings_repo
 from backend.database import models
-from backend.exceptions import (
-    AuthenticationException,
-    PermissionDeniedException,
-)
 from backend.graphql import inputs, types
+from backend.graphql.utils.permission_checker import get_current_user
 
 logger = logging.getLogger(__name__)
-authenticate_msg = "Трябва да се автентикирате"
 
 
 async def force_password_change_for_all_users(db):
@@ -29,9 +25,7 @@ class SettingsMutation:
         self, key: str, value: str, info: strawberry.Info
     ) -> types.GlobalSetting:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name != "super_admin":
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         setting = await settings_repo.set_setting(db, key, value)
         await db.commit()
@@ -44,9 +38,7 @@ class SettingsMutation:
         info: strawberry.Info,
     ) -> types.PasswordSettings:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name != "super_admin":
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         await settings_repo.set_setting(db, "pwd_min_length", str(settings.min_length))
         await settings_repo.set_setting(db, "pwd_max_length", str(settings.max_length))
@@ -90,12 +82,7 @@ class SettingsMutation:
         info: strawberry.Info,
     ) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in [
-            "admin",
-            "super_admin",
-        ]:
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         await settings_repo.set_setting(
             db, "max_login_attempts", str(max_login_attempts)
@@ -112,12 +99,7 @@ class SettingsMutation:
         info: strawberry.Info,
     ) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in [
-            "admin",
-            "super_admin",
-        ]:
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         await settings_repo.set_setting(
             db, "kiosk_require_gps", "true" if require_gps else "false"
@@ -141,9 +123,7 @@ class SettingsMutation:
         info: strawberry.Info,
     ) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         await crud.update_google_calendar_sync_settings(
             db,
@@ -159,9 +139,7 @@ class SettingsMutation:
     @strawberry.mutation
     async def disconnect_google_calendar(self, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         await crud.disconnect_google_calendar(db, current_user.id)
         return True
@@ -171,9 +149,7 @@ class SettingsMutation:
         self, action: str, info: strawberry.Info
     ) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        current_user = get_current_user(info)
 
         await db.execute(
             update(models.Gateway)

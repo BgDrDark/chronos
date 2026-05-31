@@ -453,7 +453,7 @@ class AccessRepository(BaseRepository):
         db: AsyncSession,
         terminal_id: int = None,
     ) -> list[TerminalSession]:
-        query = select(TerminalSession).where(TerminalSession.end_time is None)
+        query = select(TerminalSession).where(TerminalSession.end_time.is_(None))
 
         if terminal_id:
             query = query.where(TerminalSession.terminal_id == terminal_id)

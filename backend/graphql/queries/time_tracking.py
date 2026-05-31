@@ -54,4 +54,4 @@ class TimeTrackingQuery:
 
         stmt = stmt.order_by(DbTimeLog.start_time.desc()).limit(limit)
         result = await db.execute(stmt)
-        return [types.TimeLog.from_pydantic(l) for l in result.scalars().all()]
+        return [types.TimeLog.from_pydantic(item) for item in result.scalars().all()]

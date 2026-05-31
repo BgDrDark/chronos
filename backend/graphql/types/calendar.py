@@ -1,4 +1,3 @@
-import datetime
 
 import strawberry
 from strawberry.experimental import pydantic as sp

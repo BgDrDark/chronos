@@ -1,11 +1,9 @@
 from typing import Annotated
 
-import datetime
-
 import strawberry
-from strawberry.experimental import pydantic as sp
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from strawberry.experimental import pydantic as sp
 
 from backend import schemas
 from backend.database import models
@@ -27,7 +25,7 @@ class AccessZone:
     is_active: strawberry.auto
 
     @strawberry.field
-    async def authorized_users(self, info: strawberry.Info) -> list[Annotated["User", strawberry.lazy("backend.graphql.types.user")]]:
+    async def authorized_users(self, info: strawberry.Info) -> list[Annotated["User", strawberry.lazy("backend.graphql.types.user")]]:  # noqa: F821
         from backend.graphql.types.user import User
         db = info.context["db"]
         from backend.database.models import AccessZone as DbZone
@@ -60,7 +58,7 @@ class AccessDoor:
         return AccessZone.from_pydantic(res) if res else None
 
     @strawberry.field
-    async def gateway(self, info: strawberry.Info) -> Annotated["Gateway", strawberry.lazy("backend.graphql.types.hardware")] | None:
+    async def gateway(self, info: strawberry.Info) -> Annotated["Gateway", strawberry.lazy("backend.graphql.types.hardware")] | None:  # noqa: F821
         from backend.graphql.types.hardware import Gateway
         db = info.context["db"]
         res = await db.get(models.Gateway, self.gateway_id)

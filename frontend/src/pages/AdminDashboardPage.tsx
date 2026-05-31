@@ -224,19 +224,27 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
   };
 
   const handleClockAction = async (customTime: string | null) => {
+      console.log('=== handleClockAction called ===');
+      console.log('actionUserId:', actionUserId);
+      console.log('clockDialogMode:', clockDialogMode);
+      console.log('customTime:', customTime);
+      
       if (!actionUserId) {
           alert('Грешка: няма избран потребител');
           return;
       }
       try {
           if (clockDialogMode === 'IN') {
+              console.log('>>> Calling adminClockIn...');
               await adminClockIn({ variables: { userId: actionUserId, customTime } });
           } else {
+              console.log('>>> Calling adminClockOut...');
               await adminClockOut({ variables: { userId: actionUserId, customTime } });
           }
           setClockDialogOpen(false);
           await refetch();
       } catch (err: unknown) {
+        console.error('Clock action error:', err);
         const error = err as { message?: string; graphQLErrors?: Array<{ message?: string }> };
         const msg = error.graphQLErrors?.[0]?.message || error.message || 'Неуспешна операция';
         alert(msg);
@@ -310,6 +318,19 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
                                     variant="contained" 
                                     color="success" 
                                     startIcon={<PlayArrowIcon />}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenClockDialog(e, presence.user.id, `${presence.user.firstName} ${presence.user.lastName}`, 'IN');
+                                    }}
+                                    disabled={presence.status === 'ON_DUTY'}
+                                >
+                                    СТАРТ
+                                </Button>
+                                <Button 
+                                    size="small" 
+                                    variant="contained" 
+                                    color="error" 
+                                    startIcon={<StopIcon />}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         handleOpenClockDialog(e, presence.user.id, `${presence.user.firstName} ${presence.user.lastName}`, 'IN');

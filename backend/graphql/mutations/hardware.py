@@ -5,12 +5,11 @@ import strawberry
 from backend.exceptions import (
     InvalidOperationException,
     NotFoundException,
-    PermissionDeniedException,
 )
 from backend.graphql import types
+from backend.graphql.utils.permission_checker import get_current_user
 
 logger = logging.getLogger(__name__)
-authenticate_msg = "Трябва да се автентикирате"
 
 
 @strawberry.type
@@ -28,9 +27,7 @@ class HardwareMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         from backend.database.models import Terminal
         terminal = await db.get(Terminal, id)
@@ -50,9 +47,7 @@ class HardwareMutation:
     @strawberry.mutation
     async def delete_terminal(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         from backend.database.models import Terminal
         terminal = await db.get(Terminal, id)
@@ -73,9 +68,7 @@ class HardwareMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         from backend.database.models import Gateway
         gateway = await db.get(Gateway, id)

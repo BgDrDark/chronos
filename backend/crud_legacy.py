@@ -1235,7 +1235,7 @@ async def get_active_time_log(db: AsyncSession, user_id: int):
     result = await db.execute(
         select(TimeLog)
         .where(TimeLog.user_id == user_id)
-        .where(TimeLog.end_time is None),
+        .where(TimeLog.end_time.is_(None)),
     )
     return result.scalars().first()
 
@@ -1320,9 +1320,8 @@ async def start_time_log(db: AsyncSession, user_id: int, latitude: float | None 
         matched_shift = None
 
         # A) Check assigned shift
-        if current_schedule and current_schedule.shift:
-            if is_matching_shift(now_local, current_schedule.shift):
-                matched_shift = current_schedule.shift
+        if current_schedule and current_schedule.shift and is_matching_shift(now_local, current_schedule.shift):
+            matched_shift = current_schedule.shift
 
         # B) If no match with assigned, check all others (Auto-Rotation)
         if not matched_shift:
@@ -3024,7 +3023,7 @@ async def deactivate_expired_contracts(db: AsyncSession):
         .join(EmploymentContract, User.id == EmploymentContract.user_id)
         .where(User.is_active)
         .where(EmploymentContract.is_active)
-        .where(EmploymentContract.end_date is not None)
+        .where(EmploymentContract.end_date.isnot(None))
         .where(EmploymentContract.end_date < today)
     )
 

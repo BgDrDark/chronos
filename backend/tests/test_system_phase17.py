@@ -35,8 +35,8 @@ def setup_sync_db():
 @pytest.fixture(name="sync_db")
 def sync_db_fixture():
     engine = setup_sync_db()
-    SessionLocal = sessionmaker(bind=engine)
-    db = SessionLocal()
+    session_local = sessionmaker(bind=engine)
+    db = session_local()
     try:
         yield db
     finally:
@@ -96,7 +96,7 @@ def test_archive_old_data_logic(sync_db):
 
     assert len(archive["data"]["timelogs"]) >= 1
     remaining_logs = sync_db.query(TimeLog).all()
-    assert all(l.start_time >= datetime.combine(cutoff, datetime.min.time()) for l in remaining_logs)
+    assert all(remaining.start_time >= datetime.combine(cutoff, datetime.min.time()) for remaining in remaining_logs)
 
 # --- API Integration Tests (Async) ---
 

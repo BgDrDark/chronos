@@ -163,7 +163,7 @@ async def verify_registration(
             require_user_verification=True,
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     new_cred = WebAuthnCredential(
         user_id=current_user.id,
@@ -190,7 +190,7 @@ async def get_login_options(
     if body is None:
         try:
             body = await request.json()
-        except:
+        except Exception:
             body = {}
 
     email = body.get("email")
@@ -268,7 +268,7 @@ async def verify_login(
             require_user_verification=True,
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Verification failed: {e!s}")
+        raise HTTPException(status_code=400, detail=f"Verification failed: {e!s}") from e
 
     # 3. Обновяване на брояча и дата на ползване
     db_credential.sign_count = verification.new_sign_count

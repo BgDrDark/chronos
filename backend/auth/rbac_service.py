@@ -13,7 +13,6 @@ from backend.database.models import (
     PermissionAuditLog,
     Role,
     RolePermission,
-    User,
 )
 
 logger = logging.getLogger(__name__)
@@ -158,6 +157,7 @@ class PermissionService:
         try:
             audit_entry = PermissionAuditLog(
                 user_id=user_id,
+                action="GRANTED" if decision else "DENIED",
                 permission=permission,
                 decision="GRANTED" if decision else "DENIED",
                 resource_type=resource_type,
@@ -241,24 +241,6 @@ class PermissionService:
         for key in keys_to_remove:
             del self._permission_cache[key]
 
-    async def verify_company_access(self, current_user: User, target_company_id: int | None):
-        """Verify that the user has access to the target company.
-        Super admins can access all companies.
-        Others can only access their own company.
-        """
-        if not current_user:
-            raise HTTPException(status_code=401, detail="Authentication required")
-
-        if current_user.role.name == "super_admin":
-            return None # Full access
-
-        if target_company_id and current_user.company_id != target_company_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Нямате достъп до данни на друга компания",
-            )
-        return current_user.company_id
-
 
 def require_permission(permission: str, company_scoped: bool = False):
     """Decorator to require specific permission"""
@@ -322,6 +304,8 @@ DEFAULT_PERMISSIONS = {
     "users:update_own": {"resource": "users", "action": "update_own", "description": "Update own profile"},
     "users:delete": {"resource": "users", "action": "delete", "description": "Delete users"},
     "users:manage_roles": {"resource": "users", "action": "manage_roles", "description": "Assign user roles"},
+    "users:manage_sessions": {"resource": "users", "action": "manage_sessions", "description": "Invalidate user sessions"},
+    "users:manage_access": {"resource": "users", "action": "manage_access", "description": "Manage user access zones"},
 
     # Time Management
     "timelogs:read": {"resource": "timelogs", "action": "read", "description": "View time logs"},
@@ -339,6 +323,13 @@ DEFAULT_PERMISSIONS = {
     "schedules:update": {"resource": "schedules", "action": "update", "description": "Update schedules"},
     "schedules:delete": {"resource": "schedules", "action": "delete", "description": "Delete schedules"},
     "schedules:approve_swaps": {"resource": "schedules", "action": "approve_swaps", "description": "Approve shift swaps"},
+    "schedules:manage": {"resource": "schedules", "action": "manage", "description": "Manage schedule templates and bulk operations"},
+
+    # Shift Management
+    "shifts:manage": {"resource": "shifts", "action": "manage", "description": "Create, update, delete shifts"},
+
+    # Time Tracking Management
+    "time_tracking:manage": {"resource": "time_tracking", "action": "manage", "description": "Admin clock in/out and time log management"},
 
     # Payroll Management
     "payroll:read": {"resource": "payroll", "action": "read", "description": "View payroll information"},
@@ -348,6 +339,14 @@ DEFAULT_PERMISSIONS = {
     "payroll:delete": {"resource": "payroll", "action": "delete", "description": "Delete payroll records"},
     "payroll:export": {"resource": "payroll", "action": "export", "description": "Export payroll data"},
 
+    # Accounting Management
+    "accounting:read": {"resource": "accounting", "action": "read", "description": "View accounting records"},
+    "accounting:create": {"resource": "accounting", "action": "create", "description": "Create accounting records"},
+    "accounting:update": {"resource": "accounting", "action": "update", "description": "Update accounting records"},
+    "accounting:delete": {"resource": "accounting", "action": "delete", "description": "Delete accounting records"},
+    "accounting:cancel_paid": {"resource": "accounting", "action": "cancel_paid", "description": "Cancel paid invoices"},
+    "accounting:export": {"resource": "accounting", "action": "export", "description": "Export accounting data"},
+
     # Leave Management
     "leaves:read": {"resource": "leaves", "action": "read", "description": "View leave requests"},
     "leaves:read_own": {"resource": "leaves", "action": "read_own", "description": "View own leave requests"},
@@ -356,6 +355,22 @@ DEFAULT_PERMISSIONS = {
     "leaves:approve": {"resource": "leaves", "action": "approve", "description": "Approve/reject leave requests"},
     "leaves:update": {"resource": "leaves", "action": "update", "description": "Update leave requests"},
     "leaves:delete": {"resource": "leaves", "action": "delete", "description": "Delete leave requests"},
+
+    # Production & Recipes
+    "production:recipes:read": {"resource": "production_recipes", "action": "read", "description": "View recipes"},
+    "production:recipes:create": {"resource": "production_recipes", "action": "create", "description": "Create recipes"},
+    "production:recipes:update": {"resource": "production_recipes", "action": "update", "description": "Update recipes"},
+    "production:recipes:delete": {"resource": "production_recipes", "action": "delete", "description": "Delete recipes"},
+    "production:orders:read": {"resource": "production_orders", "action": "read", "description": "View production orders"},
+    "production:orders:create": {"resource": "production_orders", "action": "create", "description": "Create production orders"},
+    "production:orders:update": {"resource": "production_orders", "action": "update", "description": "Update production orders"},
+    "production:orders:confirm": {"resource": "production_orders", "action": "confirm", "description": "Confirm production orders"},
+    "production:tasks:read": {"resource": "production_tasks", "action": "read", "description": "View production tasks"},
+    "production:tasks:update": {"resource": "production_tasks", "action": "update", "description": "Update production tasks"},
+    "production:tasks:scrap": {"resource": "production_tasks", "action": "scrap", "description": "Mark tasks as scrapped"},
+    "production:workstations:read": {"resource": "production_workstations", "action": "read", "description": "View workstations"},
+    "production:workstations:create": {"resource": "production_workstations", "action": "create", "description": "Create workstations"},
+    "production:sales:create": {"resource": "production_sales", "action": "create", "description": "Create quick sales"},
 
     # Company Management
     "companies:read": {"resource": "companies", "action": "read", "description": "View company information"},
@@ -371,6 +386,7 @@ DEFAULT_PERMISSIONS = {
     "system:manage_settings": {"resource": "system", "action": "manage_settings", "description": "Manage global settings"},
     "system:manage_roles": {"resource": "system", "action": "manage_roles", "description": "Manage roles and permissions"},
     "system:manage_modules": {"resource": "system", "action": "manage_modules", "description": "Enable or disable system modules"},
+    "system:emergency_action": {"resource": "system", "action": "emergency_action", "description": "Execute emergency system actions"},
 
     # Reports & Analytics
     "reports:read": {"resource": "reports", "action": "read", "description": "View reports"},

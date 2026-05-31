@@ -13,14 +13,11 @@ from backend.database.models import (
     PublicHoliday,
     WorkOnHoliday,
 )
-from backend.exceptions import (
-    InvalidOperationException,
-    PermissionDeniedException,
-)
+from backend.exceptions import InvalidOperationException
 from backend.graphql import types
+from backend.graphql.utils.permission_checker import get_current_user
 
 logger = logging.getLogger(__name__)
-authenticate_msg = "Трябва да се автентикирате"
 
 
 async def create_trz_records_on_clock_out(
@@ -161,9 +158,7 @@ class TrzMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         from decimal import Decimal
 
@@ -201,9 +196,7 @@ class TrzMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         from decimal import Decimal
 
@@ -246,9 +239,7 @@ class TrzMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         from decimal import Decimal
 
@@ -296,9 +287,7 @@ class TrzMutation:
         if not info:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        current_user = get_current_user(info)
 
         from backend.database.models import WorkExperience
 

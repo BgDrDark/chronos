@@ -84,27 +84,19 @@ async def atomic_transaction(
         # Yield session for operations
         yield session
 
-        # Commit only if we started the transaction
         if should_commit and transaction:
             logger.info("Attempting to commit transaction...")
             await transaction.commit()
             logger.info(f"Transaction committed: {transaction}")
-        elif in_transaction and not transaction:
-            # Transaction was started implicitly by a query, commit it
-            logger.info("Committing implicit transaction...")
-            await session.commit()
-            logger.info("Implicit transaction committed")
 
     except IntegrityError as e:
-        # Handle integrity constraint violations
-        if should_commit and transaction:
+        if should_commit and transaction and transaction.is_active:
             await transaction.rollback()
         logger.error(f"Integrity error in transaction: {e}")
         raise TransactionError(f"Data integrity violation: {e!s}") from e
 
     except OperationalError as e:
-        # Handle deadlocks and other operational errors
-        if should_commit and transaction:
+        if should_commit and transaction and transaction.is_active:
             await transaction.rollback()
 
         error_str = str(e).lower()
@@ -116,15 +108,13 @@ async def atomic_transaction(
             raise TransactionError(f"Database operational error: {e!s}") from e
 
     except SQLAlchemyError as e:
-        # Handle other SQLAlchemy errors
-        if should_commit and transaction:
+        if should_commit and transaction and transaction.is_active:
             await transaction.rollback()
         logger.error(f"SQLAlchemy error in transaction: {e}")
         raise TransactionError(f"Database error: {e!s}") from e
 
     except Exception as e:
-        # Handle any other errors
-        if should_commit and transaction:
+        if should_commit and transaction and transaction.is_active:
             await transaction.rollback()
         logger.error(f"Unexpected error in transaction: {e}, should_commit={should_commit}")
         raise TransactionError(f"Transaction failed: {e!s}") from e

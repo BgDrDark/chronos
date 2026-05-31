@@ -9,16 +9,15 @@ from sqlalchemy import select
 from backend.database import models
 from backend.database.models import sofia_now
 from backend.database.transaction_manager import atomic_transaction
-from backend.exceptions import (
-    AuthenticationException,
-    PermissionDeniedException,
-    ValidationException,
-)
+from backend.exceptions import ValidationException
 from backend.graphql import inputs, types
+from backend.graphql.utils.permission_checker import (
+    check_company_access,
+    get_current_user,
+)
 from backend.services.recipe_cost_calculator import RecipeCostCalculator
 
 logger = logging.getLogger(__name__)
-authenticate_msg = "Трябва да се автентикирате"
 
 
 @strawberry.type
@@ -27,9 +26,7 @@ class ProductionMutation:
     @strawberry.mutation
     async def create_recipe(self, input: inputs.RecipeInput, info: strawberry.Info) -> types.Recipe:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import (
             Company,
@@ -41,9 +38,8 @@ class ProductionMutation:
 
         company = await db.get(Company, input.company_id)
         if not company:
-            raise PermissionDeniedException.for_action("manage recipes")
-        if current_user.role.name not in ["admin", "super_admin"] and company.id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage recipes")
+            raise ValidationException(detail="Компанията не съществува")
+        await check_company_access(db, current_user, "Company", input.company_id)
 
         recipe = Recipe(
             name=input.name, description=input.description,
@@ -113,17 +109,14 @@ class ProductionMutation:
     @strawberry.mutation
     async def delete_recipe(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import Recipe
 
         recipe = await db.get(Recipe, id)
         if not recipe:
             raise ValidationException(detail="Рецептата не съществува")
-        if current_user.role.name not in ["admin", "super_admin"] and recipe.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage recipes")
+        await check_company_access(db, current_user, "Recipe", id)
 
         await db.delete(recipe)
         await db.commit()
@@ -135,17 +128,14 @@ class ProductionMutation:
             info: strawberry.Info,
     ) -> types.Recipe:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import Recipe
 
         recipe = await db.get(Recipe, recipe_id)
         if not recipe:
             raise ValidationException(detail="Рецептата не съществува")
-        if current_user.role.name not in ["admin", "super_admin"] and recipe.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage recipes")
+        await check_company_access(db, current_user, "Recipe", recipe_id)
 
         calculator = RecipeCostCalculator(db)
         await calculator.update_price(recipe, input)
@@ -156,9 +146,7 @@ class ProductionMutation:
     @strawberry.mutation
     async def calculate_recipe_cost(self, recipe_id: int, info: strawberry.Info) -> types.RecipeCostResult:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        get_current_user(info)
 
         calculator = RecipeCostCalculator(db)
         result = await calculator.calculate_cost(recipe_id)
@@ -175,9 +163,7 @@ class ProductionMutation:
     @strawberry.mutation
     async def recalculate_all_recipe_costs(self, info: strawberry.Info) -> list[types.RecalculateResult]:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        get_current_user(info)
 
         calculator = RecipeCostCalculator(db)
         results = await calculator.recalculate_all()
@@ -199,17 +185,14 @@ class ProductionMutation:
             info: strawberry.Info,
     ) -> types.Workstation:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import Company, Workstation
 
         company = await db.get(Company, company_id)
         if not company:
-            raise PermissionDeniedException.for_action("manage workstations")
-        if current_user.role.name not in ["admin", "super_admin"] and company.id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage workstations")
+            raise ValidationException(detail="Компанията не съществува")
+        await check_company_access(db, current_user, "Company", company_id)
 
         ws = Workstation(name=name, description=description, company_id=company_id)
         db.add(ws)
@@ -223,9 +206,7 @@ class ProductionMutation:
             info: strawberry.Info,
     ) -> types.ProductionOrder:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import (
             Company,
@@ -236,9 +217,8 @@ class ProductionMutation:
 
         company = await db.get(Company, input.company_id)
         if not company:
-            raise PermissionDeniedException.for_action("manage production orders")
-        if current_user.role.name not in ["admin", "super_admin"] and company.id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage production orders")
+            raise ValidationException(detail="Компанията не съществува")
+        await check_company_access(db, current_user, "Company", input.company_id)
 
         recipe = await db.get(Recipe, input.recipe_id)
         if not recipe:
@@ -291,17 +271,14 @@ class ProductionMutation:
             self, id: int, status: str, info: strawberry.Info,
     ) -> types.ProductionOrder:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import ProductionOrder
 
         order = await db.get(ProductionOrder, id)
         if not order:
             raise ValidationException(detail="Поръчката не съществува")
-        if current_user.role.name not in ["admin", "super_admin"] and order.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage production orders")
+        await check_company_access(db, current_user, "ProductionOrder", id)
 
         order.status = status
         await db.commit()
@@ -311,9 +288,7 @@ class ProductionMutation:
     @strawberry.mutation
     async def confirm_production_order(self, id: int, info: strawberry.Info) -> types.ProductionOrder:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import (
             ProductionOrder,
@@ -327,8 +302,7 @@ class ProductionMutation:
         order = await db.get(ProductionOrder, id)
         if not order:
             raise ValidationException(detail="Поръчката не съществува")
-        if current_user.role.name not in ["admin", "super_admin"] and order.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("confirm production orders")
+        await check_company_access(db, current_user, "ProductionOrder", id)
 
         recipe = await db.get(Recipe, order.recipe_id)
         now = sofia_now()
@@ -373,9 +347,7 @@ class ProductionMutation:
     @strawberry.mutation
     async def mark_task_scrap(self, id: int, info: strawberry.Info) -> types.ProductionTask:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import (
             Batch,
@@ -390,8 +362,7 @@ class ProductionMutation:
             raise ValidationException(detail="Задачата не съществува")
 
         order = await db.get(ProductionOrder, task.order_id)
-        if current_user.role.name not in ["admin", "super_admin"] and order.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage tasks")
+        await check_company_access(db, current_user, "ProductionOrder", task.order_id)
 
         async with atomic_transaction(db):
             task.status = "scrapped"
@@ -421,9 +392,7 @@ class ProductionMutation:
             self, input: inputs.ScrapTaskInput, info: strawberry.Info,
     ) -> types.ProductionTask:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import (
             ProductionOrder,
@@ -435,9 +404,8 @@ class ProductionMutation:
         if not task:
             raise ValidationException(detail="Задачата не съществува")
 
-        order = await db.get(ProductionOrder, task.order_id)
-        if current_user.role.name not in ["admin", "super_admin"] and order.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage tasks")
+        await db.get(ProductionOrder, task.order_id)
+        await check_company_access(db, current_user, "ProductionOrder", task.order_id)
 
         log = ProductionScrapLog(
             task_id=task.id, user_id=current_user.id,
@@ -452,9 +420,7 @@ class ProductionMutation:
     @strawberry.mutation
     async def get_scrap_logs(self, task_id: int, info: strawberry.Info) -> list[types.ProductionScrapLog]:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import (
             ProductionOrder,
@@ -465,22 +431,22 @@ class ProductionMutation:
         task = await db.get(ProductionTask, task_id)
         if not task:
             return []
-        order = await db.get(ProductionOrder, task.order_id)
-        if current_user.role.name not in ["admin", "super_admin"] and order.company_id != current_user.company_id:
+        await db.get(ProductionOrder, task.order_id)
+        try:
+            await check_company_access(db, current_user, "ProductionOrder", task.order_id)
+        except Exception:
             return []
 
         stmt = select(ProductionScrapLog).where(ProductionScrapLog.task_id == task_id)
         res = await db.execute(stmt)
-        return [types.ProductionScrapLog.from_pydantic(l) for l in res.scalars().all()]
+        return [types.ProductionScrapLog.from_pydantic(item) for item in res.scalars().all()]
 
     @strawberry.mutation
     async def update_production_task_status(
             self, id: int, status: str, info: strawberry.Info,
     ) -> types.ProductionTask:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import (
             ProductionOrder,
@@ -491,9 +457,8 @@ class ProductionMutation:
         task = await db.get(ProductionTask, id)
         if not task:
             raise ValidationException(detail="Задачата не съществува")
-        order = await db.get(ProductionOrder, task.order_id)
-        if current_user.role.name not in ["admin", "super_admin"] and order.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage tasks")
+        await db.get(ProductionOrder, task.order_id)
+        await check_company_access(db, current_user, "ProductionOrder", task.order_id)
 
         now = sofia_now()
         if status == "in_progress" and task.status == "pending":
@@ -513,18 +478,15 @@ class ProductionMutation:
             info: strawberry.Info,
     ) -> types.ProductionTask:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import ProductionOrder, ProductionTask
 
         task = await db.get(ProductionTask, task_id)
         if not task:
             raise ValidationException(detail="Задачата не съществува")
-        order = await db.get(ProductionOrder, task.order_id)
-        if current_user.role.name not in ["admin", "super_admin"] and order.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage tasks")
+        await db.get(ProductionOrder, task.order_id)
+        await check_company_access(db, current_user, "ProductionOrder", task.order_id)
 
         task.workstation_id = new_workstation_id
         await db.commit()
@@ -536,17 +498,14 @@ class ProductionMutation:
             self, order_id: int, info: strawberry.Info,
     ) -> types.ProductionOrder:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import ProductionOrder, Recipe
 
         order = await db.get(ProductionOrder, order_id)
         if not order:
             raise ValidationException(detail="Поръчката не съществува")
-        if current_user.role.name not in ["admin", "super_admin"] and order.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage production orders")
+        await check_company_access(db, current_user, "ProductionOrder", order_id)
 
         recipe = await db.get(Recipe, order.recipe_id)
         if recipe and recipe.production_time_days:
@@ -561,17 +520,14 @@ class ProductionMutation:
             self, order_id: int, quantity: float, info: strawberry.Info,
     ) -> types.ProductionOrder:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import ProductionOrder
 
         order = await db.get(ProductionOrder, order_id)
         if not order:
             raise ValidationException(detail="Поръчката не съществува")
-        if current_user.role.name not in ["admin", "super_admin"] and order.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("manage production orders")
+        await check_company_access(db, current_user, "ProductionOrder", order_id)
 
         order.quantity = Decimal(str(quantity))
         await db.commit()
@@ -581,9 +537,7 @@ class ProductionMutation:
     @strawberry.mutation
     async def generate_label(self, order_id: int, info: strawberry.Info) -> types.LabelData:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        get_current_user(info)
 
         from backend.database.models import (
             Ingredient,
@@ -624,9 +578,7 @@ class ProductionMutation:
             self, input: inputs.QuickSaleInput, info: strawberry.Info,
     ) -> types.ProductionOrder:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import (
             CashJournalEntry,
@@ -637,8 +589,7 @@ class ProductionMutation:
         recipe = await db.get(Recipe, input.recipe_id)
         if not recipe:
             raise ValidationException(detail="Рецептата не съществува")
-        if current_user.role.name not in ["admin", "super_admin"] and recipe.company_id != current_user.company_id:
-            raise PermissionDeniedException.for_action("create sales")
+        await check_company_access(db, current_user, "Recipe", input.recipe_id)
 
         async with atomic_transaction(db):
             order = ProductionOrder(

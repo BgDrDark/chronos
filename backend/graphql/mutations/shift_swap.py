@@ -1,12 +1,12 @@
 import strawberry
 
-from backend.exceptions import (
-    AuthenticationException,
-    PermissionDeniedException,
-)
 from backend.database.transaction_manager import atomic_with_savepoint
-from backend.services.shift_swap_service import shift_swap_service
 from backend.graphql import types
+from backend.graphql.utils.permission_checker import (
+    check_company_access,
+    get_current_user,
+)
+from backend.services.shift_swap_service import shift_swap_service
 
 authenticate_msg = "Трябва да се автентикирате"
 
@@ -17,9 +17,11 @@ class ShiftSwapMutation:
     async def create_swap_request(self, requestor_schedule_id: int, target_user_id: int, target_schedule_id: int,
                                   info: strawberry.Info) -> types.ShiftSwapRequest:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
+        
+        await check_company_access(db, current_user, "WorkSchedule", requestor_schedule_id)
+        await check_company_access(db, current_user, "User", target_user_id)
+        await check_company_access(db, current_user, "WorkSchedule", target_schedule_id)
 
         service = shift_swap_service(db)
         async with atomic_with_savepoint(db, "swap_created"):
@@ -31,9 +33,8 @@ class ShiftSwapMutation:
     @strawberry.mutation
     async def approve_swap(self, swap_id: int, approve: bool, info: strawberry.Info) -> types.ShiftSwapRequest:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "ShiftSwapRequest", swap_id)
 
         new_status = "approved" if approve else "rejected"
         service = shift_swap_service(db)
@@ -46,9 +47,8 @@ class ShiftSwapMutation:
     @strawberry.mutation
     async def respond_to_swap(self, swap_id: int, accept: bool, info: strawberry.Info) -> types.ShiftSwapRequest:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "ShiftSwapRequest", swap_id)
 
         new_status = "accepted" if accept else "rejected"
         service = shift_swap_service(db)

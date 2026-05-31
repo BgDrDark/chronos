@@ -12,6 +12,8 @@ def get_permission_error_message(permission: str) -> str:
         "users:delete": "Нямате права да изтривате потребители",
         "users:read": "Нямате права да прегледждате потребители",
         "users:manage_roles": "Нямате права да управлявате роли",
+        "users:manage_sessions": "Нямате права да управлявате сесии",
+        "users:manage_access": "Нямате права да управлявате достъп",
         "timelogs:create": "Нямате права да създавате часове",
         "timelogs:create_own": "Нямате права да отбелязвате часове",
         "timelogs:read": "Нямате права да преглеждате часове",

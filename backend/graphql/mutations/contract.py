@@ -1,6 +1,5 @@
 import datetime
 import logging
-from typing import Optional
 
 import strawberry
 from sqlalchemy import select
@@ -8,10 +7,10 @@ from sqlalchemy import select
 from backend.database import models
 from backend.exceptions import (
     NotFoundException,
-    PermissionDeniedException,
     ValidationException,
 )
 from backend.graphql import inputs, types
+from backend.graphql.utils.permission_checker import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +25,7 @@ class ContractMutation:
         info: strawberry.Info,
     ) -> types.AnnexTemplateSection:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         template = await db.get(models.AnnexTemplate, template_id)
         if not template:
@@ -36,7 +33,7 @@ class ContractMutation:
 
         stmt = select(models.AnnexTemplateVersion).where(
             models.AnnexTemplateVersion.template_id == template_id,
-            models.AnnexTemplateVersion.is_current == True,
+            models.AnnexTemplateVersion.is_current,
         )
         result = await db.execute(stmt)
         current_version = result.scalar_one_or_none()
@@ -66,9 +63,7 @@ class ContractMutation:
         info: strawberry.Info,
     ) -> types.ContractTemplateSection:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         template = await db.get(models.ContractTemplate, template_id)
         if not template:
@@ -76,7 +71,7 @@ class ContractMutation:
 
         stmt = select(models.ContractTemplateVersion).where(
             models.ContractTemplateVersion.template_id == template_id,
-            models.ContractTemplateVersion.is_current == True,
+            models.ContractTemplateVersion.is_current,
         )
         result = await db.execute(stmt)
         current_version = result.scalar_one_or_none()
@@ -106,9 +101,7 @@ class ContractMutation:
         info: strawberry.Info,
     ) -> types.ContractAnnex:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         annex = await db.get(models.ContractAnnex, annex_id)
         if not annex:
@@ -157,10 +150,7 @@ class ContractMutation:
         info: strawberry.Info,
     ) -> types.EmploymentContract:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         contract = await db.get(models.EmploymentContract, id)
         if not contract:
@@ -185,13 +175,7 @@ class ContractMutation:
         info: strawberry.Info,
     ) -> types.ContractAnnex:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in [
-            "admin",
-            "super_admin",
-            "employee",
-        ]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         annex = await db.get(models.ContractAnnex, annex_id)
         if not annex:
@@ -211,9 +195,7 @@ class ContractMutation:
         info: strawberry.Info,
     ) -> types.ContractTemplate:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        get_current_user(info)
 
         version = await db.get(models.ContractTemplateVersion, version_id)
         if not version:
@@ -225,7 +207,7 @@ class ContractMutation:
 
         stmt = select(models.ContractTemplateVersion).where(
             models.ContractTemplateVersion.template_id == template.id,
-            models.ContractTemplateVersion.is_current == True,
+            models.ContractTemplateVersion.is_current,
         )
         result = await db.execute(stmt)
         current = result.scalar_one_or_none()
@@ -256,10 +238,7 @@ class ContractMutation:
         info: strawberry.Info,
     ) -> types.EmploymentContract:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         contract = await db.get(models.EmploymentContract, contract_id)
         if not contract:

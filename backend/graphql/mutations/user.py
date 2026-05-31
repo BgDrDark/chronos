@@ -1,25 +1,30 @@
 import datetime
 import logging
-from typing import List
 
 import strawberry
-from sqlalchemy import select, insert, delete, and_
+from sqlalchemy import and_, delete, insert, select
 
 from backend import schemas
-from backend.auth.permission_helper import require_permission_or_role
-from backend.auth.security import verify_password, hash_password, validate_password_complexity
 from backend.auth.rbac_service import PermissionService
-from backend.auth.module_guard import verify_module_enabled
+from backend.auth.security import (
+    hash_password,
+    validate_password_complexity,
+    verify_password,
+)
 from backend.crud.repositories import user_repo
-from backend.database.models import User as DbUser, EmploymentContract, user_access_zones
+from backend.database.models import EmploymentContract, user_access_zones
+from backend.database.models import User as DbUser
 from backend.exceptions import (
     AuthenticationException,
     NotFoundException,
     ValidationException,
-    PermissionDeniedException,
 )
 from backend.graphql import types
-from backend.graphql.inputs import UserCreateInput, UpdateUserInput
+from backend.graphql.inputs import UpdateUserInput, UserCreateInput
+from backend.graphql.utils.permission_checker import (
+    check_company_access,
+    require_permission,
+)
 from backend.services.auth_service import regenerate_user_qr_token
 
 logger = logging.getLogger(__name__)
@@ -31,14 +36,9 @@ class UserMutation:
     @strawberry.mutation
     async def create_user(self, userInput: UserCreateInput, info: strawberry.Info) -> types.User:
         db = info.context["db"]
-        current_user = info.context["current_user"]
+        info.context["current_user"]
         
-        await require_permission_or_role(
-            current_user,
-            "users:create",
-            db,
-            ["admin", "super_admin"]
-        )
+        await check_company_access(info, userInput.company_id)
 
         import dataclasses
         user_input_dict = dataclasses.asdict(userInput)
@@ -57,12 +57,9 @@ class UserMutation:
             raise AuthenticationException(detail=authenticate_msg)
 
         if current_user.id != userInput.id:
-            await require_permission_or_role(
-                current_user,
-                "users:update",
-                db,
-                ["admin", "super_admin"]
-            )
+            await require_permission(info, "users:update", company_id=userInput.company_id)
+        else:
+            await require_permission(info, "users:update_own")
 
         update_data = {}
         if userInput.first_name is not None:
@@ -138,7 +135,7 @@ class UserMutation:
         if userInput.contract_type or userInput.base_salary:
             stmt = select(EmploymentContract).where(
                 EmploymentContract.user_id == userInput.id,
-                EmploymentContract.is_active == True
+                EmploymentContract.is_active
             )
             result = await db.execute(stmt)
             contract = result.scalar_one_or_none()
@@ -215,14 +212,6 @@ class UserMutation:
     @strawberry.mutation
     async def delete_user(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        
-        await require_permission_or_role(
-            current_user,
-            "users:delete",
-            db,
-            ["admin", "super_admin"]
-        )
         
         result = await user_repo.delete_user(db, id)
         await db.commit()
@@ -271,15 +260,15 @@ class UserMutation:
     async def invalidate_user_session(self, sessionId: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        
+        await require_permission(info, "users:manage_sessions")
 
         session_to_invalidate = await user_repo.get_user_session_by_id(db, sessionId)
         if not session_to_invalidate:
             raise NotFoundException.session()
 
-        if session_to_invalidate.user_id != current_user.id and current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("invalidate session")
+        if session_to_invalidate.user_id != current_user.id:
+            await check_company_access(info, None)
 
         return await user_repo.invalidate_user_session(db, session_to_invalidate.refresh_token_jti)
 
@@ -287,8 +276,9 @@ class UserMutation:
     async def assign_role_to_user(self, user_id: int, company_id: int, role_id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        
+        await require_permission(info, "users:manage_roles", company_id=company_id)
+        await check_company_access(info, company_id)
 
         perm_service = PermissionService(db)
         await perm_service.assign_role_to_user(user_id, company_id, role_id, current_user.id)
@@ -296,11 +286,10 @@ class UserMutation:
         return True
 
     @strawberry.mutation
-    async def bulk_update_user_access(self, user_ids: List[int], zone_ids: List[int], action: str, info: strawberry.Info) -> bool:
+    async def bulk_update_user_access(self, user_ids: list[int], zone_ids: list[int], action: str, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("access")
+        
+        await require_permission(info, "users:manage_access")
         
         if action == "add":
             for uid in user_ids:

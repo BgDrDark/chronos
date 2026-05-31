@@ -2,24 +2,25 @@ import datetime
 import logging
 
 import strawberry
-from strawberry.file_uploads import Upload
 from sqlalchemy import select
+from strawberry.file_uploads import Upload
 
+from backend.auth.module_guard import verify_module_enabled
 from backend.crud.repositories import time_repo
 from backend.database.transaction_manager import atomic_with_savepoint
 from backend.exceptions import (
-    AuthenticationException,
     NotFoundException,
-    PermissionDeniedException,
     ValidationException,
 )
 from backend.graphql import types
 from backend.graphql.inputs import LeaveRequestInput, UpdateLeaveRequestStatusInput
-from backend.auth.module_guard import verify_module_enabled
+from backend.graphql.utils.permission_checker import (
+    check_company_access,
+    get_current_user,
+)
 from backend.services.leave_service import leave_service
 
 logger = logging.getLogger(__name__)
-authenticate_msg = "Трябва да се автентикирате"
 
 
 @strawberry.type
@@ -27,9 +28,7 @@ class LeaveMutation:
     @strawberry.mutation(name="requestLeave")
     async def create_leave_request(self, leave_input: LeaveRequestInput, info: strawberry.Info) -> types.LeaveRequest:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
 
         from backend.database.models import LeaveRequest
         leave_request = LeaveRequest(
@@ -48,10 +47,9 @@ class LeaveMutation:
     @strawberry.mutation
     async def delete_leave_request(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
-        is_admin = current_user.role.name in ["admin", "super_admin"]
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "LeaveRequest", id)
+        is_admin = True
         result = await time_repo.delete_leave_request(db, id, current_user.id, is_admin)
         await db.commit()
         return result
@@ -59,14 +57,11 @@ class LeaveMutation:
     @strawberry.mutation(name="cancelLeaveRequest")
     async def cancel_leave_request(self, request_id: int, info: strawberry.Info) -> types.LeaveRequest:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "LeaveRequest", request_id)
         req = await time_repo.get_leave_request_by_id(db, request_id)
         if not req:
             raise NotFoundException.leave_request(request_id=request_id)
-        if req.user_id != current_user.id and current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("cancel")
         if req.status not in ["pending", "approved"]:
             raise ValidationException.field("status", "Може да отмените само чакащи или одобрени отпуски")
         req.status = "cancelled"
@@ -77,9 +72,8 @@ class LeaveMutation:
     @strawberry.mutation(name="approveLeave")
     async def approve_leave(self, info: strawberry.Info, request_id: int, admin_comment: str = None, employer_top_up: bool = False) -> types.LeaveRequest:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "LeaveRequest", request_id)
 
         service = leave_service(db)
         async with atomic_with_savepoint(db, "leave_approved"):
@@ -96,9 +90,8 @@ class LeaveMutation:
     @strawberry.mutation(name="rejectLeave")
     async def reject_leave(self, info: strawberry.Info, request_id: int, admin_comment: str = None) -> types.LeaveRequest:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "LeaveRequest", request_id)
 
         service = leave_service(db)
         async with atomic_with_savepoint(db, "leave_rejected"):
@@ -112,12 +105,48 @@ class LeaveMutation:
         return types.LeaveRequest.from_instance(req)
 
     @strawberry.mutation
+    async def update_leave_request(
+            self,
+            request_id: int,
+            info: strawberry.Info,
+            start_date: datetime.date | None = None,
+            end_date: datetime.date | None = None,
+            leave_type: str | None = None,
+            reason: str | None = None,
+    ) -> types.LeaveRequest:
+        db = info.context["db"]
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "LeaveRequest", request_id)
+
+        from backend.database.models import LeaveRequest as DbLeaveRequest
+        stmt = select(DbLeaveRequest).where(DbLeaveRequest.id == request_id)
+        res = await db.execute(stmt)
+        req = res.scalars().first()
+        if not req:
+            raise NotFoundException.leave_request(request_id=request_id)
+        if req.status not in ["pending"]:
+            raise ValidationException.field("status", "Може да редактирате само чакащи отпуски")
+
+        if start_date is not None:
+            req.start_date = start_date
+        if end_date is not None:
+            req.end_date = end_date
+        if leave_type is not None:
+            req.leave_type = leave_type
+        if reason is not None:
+            req.reason = reason
+
+        db.add(req)
+        await db.commit()
+        await db.refresh(req)
+        return types.LeaveRequest.from_instance(req)
+
+    @strawberry.mutation
     async def update_leave_request_status(self, input: UpdateLeaveRequestStatusInput,
                                           info: strawberry.Info) -> types.LeaveRequest:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "LeaveRequest", input.request_id)
 
         service = leave_service(db)
         if input.status == "approved":
@@ -145,9 +174,8 @@ class LeaveMutation:
             info: strawberry.Info
     ) -> types.LeaveRequest:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if not current_user:
-            raise AuthenticationException(detail=authenticate_msg)
+        current_user = get_current_user(info)
+        await check_company_access(db, current_user, "LeaveRequest", request_id)
 
         await verify_module_enabled("integrations", db)
 
@@ -164,9 +192,6 @@ class LeaveMutation:
 
         if not req:
             raise NotFoundException.request()
-
-        if req.user_id != current_user.id and current_user.role.name not in ["admin", "super_admin"]:
-            raise AuthenticationException(detail="Нямате права за това действие")
 
         original_reason = req.reason or ""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")

@@ -354,14 +354,13 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         total_deduction = Decimal(0)
 
         for deduction in self.additional_deductions:
-            if bool(deduction.apply_to_all) is True or (deduction.employee_ids is not None and self.user_id in deduction.employee_ids):
-                if str(deduction.deduction_type) == "fixed":
-                    total_deduction += Decimal(str(deduction.amount))
-                elif str(deduction.deduction_type) == "percentage":
-                    base_salary = await self._get_base_salary()
-                    if base_salary:
-                        percentage_amount = base_salary * (Decimal(str(deduction.percentage)) / Decimal(100))
-                        total_deduction += percentage_amount
+            if bool(deduction.apply_to_all) is True or (deduction.employee_ids is not None and self.user_id in deduction.employee_ids) and str(deduction.deduction_type) == "fixed":
+                total_deduction += Decimal(str(deduction.amount))
+            elif str(deduction.deduction_type) == "percentage":
+                base_salary = await self._get_base_salary()
+                if base_salary:
+                    percentage_amount = base_salary * (Decimal(str(deduction.percentage)) / Decimal(100))
+                    total_deduction += percentage_amount
 
         return total_deduction
 
@@ -385,8 +384,8 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         noi_perc_str = await crud.get_global_setting(self.db, "payroll_noi_compensation_percent")
         emp_days_str = await crud.get_global_setting(self.db, "payroll_employer_paid_sick_days")
 
-        NOI_PERCENT = (Decimal(noi_perc_str) if noi_perc_str else Decimal("80.0")) / Decimal(100)
-        EMPLOYER_DAYS = int(emp_days_str) if emp_days_str else 3
+        NOI_PERCENT = (Decimal(noi_perc_str) if noi_perc_str else Decimal("80.0")) / Decimal(100)  # noqa: N806
+        EMPLOYER_DAYS = int(emp_days_str) if emp_days_str else 3  # noqa: N806
 
         total_payment = Decimal(0)
 
@@ -463,9 +462,8 @@ class EnhancedPayrollCalculator(PayrollCalculator):
 
         # Вземи годината на раждане от employment contract
         birth_year = None
-        if self.employment_contract and self.employment_contract.user:
-            if hasattr(self.employment_contract.user, "birth_date") and self.employment_contract.user.birth_date:
-                birth_year = self.employment_contract.user.birth_date.year
+        if self.employment_contract and self.employment_contract.user and hasattr(self.employment_contract.user, "birth_date") and self.employment_contract.user.birth_date:
+            birth_year = self.employment_contract.user.birth_date.year
 
         # Ако е роден преди 1960 - по-висока ставка
         if birth_year and birth_year < 1960:
@@ -527,9 +525,8 @@ class EnhancedPayrollCalculator(PayrollCalculator):
 
         # ДЗПО е само за родени след 1959
         birth_year = None
-        if self.employment_contract and self.employment_contract.user:
-            if hasattr(self.employment_contract.user, "birth_date") and self.employment_contract.user.birth_date:
-                birth_year = self.employment_contract.user.birth_date.year
+        if self.employment_contract and self.employment_contract.user and hasattr(self.employment_contract.user, "birth_date") and self.employment_contract.user.birth_date:
+            birth_year = self.employment_contract.user.birth_date.year
 
         if birth_year and birth_year >= 1960:
             insurance_base = await self._get_insurance_base(gross_amount)
@@ -617,9 +614,8 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         payroll_result = await self.db.execute(payroll_query)
         payroll = payroll_result.scalar_one_or_none()
 
-        if payroll:
-            if payroll.monthly_salary is not None:
-                return Decimal(str(payroll.monthly_salary))
+        if payroll and payroll.monthly_salary is not None:
+            return Decimal(str(payroll.monthly_salary))
             if payroll.hourly_rate is not None:
                 monthly_hours = Decimal(160)
                 return Decimal(str(payroll.hourly_rate)) * monthly_hours

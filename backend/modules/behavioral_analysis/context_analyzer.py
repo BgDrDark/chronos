@@ -66,10 +66,10 @@ class ContextAnalyzer:
             ),
         )
         leaves = result.scalars().all()
-        total_days = sum((l.end_date - l.start_date).days for l in leaves)
+        total_days = sum((leaf.end_date - leaf.start_date).days for leaf in leaves)
         types = {}
-        for l in leaves:
-            types[l.leave_type] = types.get(l.leave_type, 0) + 1
+        for leaf in leaves:
+            types[leaf.leave_type] = types.get(leaf.leave_type, 0) + 1
 
         return {
             "total_days": total_days,

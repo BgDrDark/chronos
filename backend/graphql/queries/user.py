@@ -145,7 +145,7 @@ class UserQuery:
             .where(LeaveRequest.start_date <= date)
             .where(LeaveRequest.end_date >= date),
         )
-        leaves_map = {l.user_id: l for l in leaves_result.scalars().all()}
+        leaves_map = {item.user_id: item for item in leaves_result.scalars().all()}
 
         results = []
         now = sofia_now()
@@ -230,5 +230,5 @@ class UserQuery:
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view active sessions")
 
-        sessions = await user_repo.get_active_sessions(db, skip=skip, limit=limit)
+        sessions = await user_repo.get_all_active_sessions(db, skip=skip, limit=limit)
         return [types.UserSession.from_pydantic(s) for s in sessions]

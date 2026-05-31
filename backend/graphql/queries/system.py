@@ -1,10 +1,10 @@
 import strawberry
-from sqlalchemy import desc, select
+from sqlalchemy import desc, extract, select
 
+from backend import schemas
 from backend.crud.repositories import settings_repo
 from backend.exceptions import PermissionDeniedException
 from backend.graphql import types
-from backend.graphql.utils.pagination import encode_cursor, decode_cursor
 
 authenticate_msg = "Трябва да се автентикирате"
 
@@ -62,74 +62,29 @@ class SystemQuery:
     async def audit_logs(
         self,
         info: strawberry.Info,
-        first: int = 20,
-        after: str | None = None,
+        skip: int = 0,
+        limit: int = 100,
         action: str | None = None,
-    ) -> types.AuditLogConnection:
+    ) -> list[types.AuditLog]:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view audit logs")
 
-        from sqlalchemy import func
-
         from backend.database.models import AuditLog as DbAuditLog
         from backend.database.models import User
 
-        base_stmt = select(DbAuditLog).join(User, DbAuditLog.user_id == User.id).where(
+        stmt = select(DbAuditLog).join(User, DbAuditLog.user_id == User.id).where(
             User.company_id == current_user.company_id
         )
         if action:
-            base_stmt = base_stmt.where(DbAuditLog.action == action)
+            stmt = stmt.where(DbAuditLog.action == action)
 
-        count_stmt = select(func.count()).select_from(base_stmt.subquery())
-        total_count_result = await db.execute(count_stmt)
-        total_count = total_count_result.scalar() or 0
-
-        stmt = base_stmt.order_by(desc(DbAuditLog.created_at), desc(DbAuditLog.id))
-
-        if after:
-            after_id = decode_cursor(after)
-            after_stmt = select(DbAuditLog.created_at, DbAuditLog.id).where(DbAuditLog.id == after_id)
-            after_result = await db.execute(after_stmt)
-            after_row = after_result.one_or_none()
-            if after_row:
-                after_created_at, after_id_val = after_row
-                stmt = stmt.where(
-                    (DbAuditLog.created_at < after_created_at) |
-                    ((DbAuditLog.created_at == after_created_at) & (DbAuditLog.id < after_id_val))
-                )
-
-        stmt = stmt.limit(first + 1)
+        stmt = stmt.order_by(desc(DbAuditLog.created_at), desc(DbAuditLog.id)).offset(skip).limit(limit)
         result = await db.execute(stmt)
         logs = result.scalars().all()
 
-        has_next_page = len(logs) > first
-        if has_next_page:
-            logs = logs[:first]
-
-        edges = [
-            types.AuditLogEdge(
-                node=types.AuditLog.from_pydantic(log),
-                cursor=encode_cursor(log.id)
-            )
-            for log in logs
-        ]
-
-        has_previous_page = after is not None
-        start_cursor = edges[0].cursor if edges else None
-        end_cursor = edges[-1].cursor if edges else None
-
-        return types.AuditLogConnection(
-            edges=edges,
-            page_info=types.PageInfo(
-                has_next_page=has_next_page,
-                has_previous_page=has_previous_page,
-                start_cursor=start_cursor,
-                end_cursor=end_cursor,
-            ),
-            total_count=total_count,
-        )
+        return [types.AuditLog.from_pydantic(schemas.AuditLog.model_validate(log)) for log in logs]
 
     @strawberry.field
     async def api_keys(self, info: strawberry.Info) -> list[types.APIKey]:
@@ -211,3 +166,29 @@ class SystemQuery:
             entry_enabled=(entry_enabled == "True"),
             exit_enabled=(exit_enabled == "True"),
         )
+
+    @strawberry.field
+    async def public_holidays(self, info: strawberry.Info, year: int | None = None) -> list[types.PublicHoliday]:
+        db = info.context["db"]
+
+        from backend.database.models import PublicHoliday
+
+        stmt = select(PublicHoliday)
+        if year:
+            stmt = stmt.where(extract("year", PublicHoliday.date) == year)
+
+        result = await db.execute(stmt)
+        return [types.PublicHoliday.from_pydantic(h) for h in result.scalars().all()]
+
+    @strawberry.field
+    async def orthodox_holidays(self, info: strawberry.Info, year: int | None = None) -> list[types.OrthodoxHoliday]:
+        db = info.context["db"]
+
+        from backend.database.models import OrthodoxHoliday
+
+        stmt = select(OrthodoxHoliday)
+        if year:
+            stmt = stmt.where(extract("year", OrthodoxHoliday.date) == year)
+
+        result = await db.execute(stmt)
+        return [types.OrthodoxHoliday.from_pydantic(h) for h in result.scalars().all()]

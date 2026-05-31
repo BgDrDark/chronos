@@ -39,20 +39,17 @@ async def check_scheduled_update():
             now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
             should_run = False
 
-            if schedule.schedule_type == "once":
-                if schedule.scheduled_at and schedule.scheduled_at <= now:
-                    should_run = True
-            elif schedule.schedule_type == "weekly":
-                if schedule.day_of_week is not None:
+            if schedule.schedule_type == "once" and schedule.scheduled_at and schedule.scheduled_at <= now:
+                should_run = True
+            elif schedule.schedule_type == "weekly" and schedule.day_of_week is not None:
                     current_day = now.weekday()
                     if (current_day == schedule.day_of_week and
                             now.hour == schedule.hour and
                             now.minute == schedule.minute):
                         should_run = True
 
-            if not should_run:
-                if _update_check_count % 120 == 0:
-                    logger.debug("Update scheduler check OK (not yet time)")
+            if not should_run and _update_check_count % 120 == 0:
+                logger.debug("Update scheduler check OK (not yet time)")
                 return
 
             logger.warning(f"🔄 Scheduled auto-update triggered (type={schedule.schedule_type})")

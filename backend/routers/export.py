@@ -1,3 +1,4 @@
+import contextlib
 import datetime
 import io
 from io import BytesIO
@@ -140,9 +141,8 @@ async def export_payroll_xlsx(
         max_length = 0
         column = col[0].column_letter
         for cell in col:
-            try:
+            with contextlib.suppress(BaseException):
                 max_length = max(max_length, len(str(cell.value)))
-            except: pass
         ws.column_dimensions[column].width = max_length + 2
 
     # 4. Stream response
@@ -150,10 +150,12 @@ async def export_payroll_xlsx(
     wb.save(buffer)
     buffer.seek(0)
 
+    safe_filename = f"payroll_{start_date}_{end_date}.xlsx"
+    encoded_filename = quote(safe_filename)
 
     return Response(
         content=buffer.getvalue(),
-        media_type="application/pdf",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": f"attachment; filename=\"{safe_filename}\"; filename*=UTF-8''{encoded_filename}",
         },
@@ -404,13 +406,12 @@ async def export_payslip_pdf(
     for leave in leaves:
         curr = leave.start_date
         while curr <= leave.end_date:
-            if curr >= payslip.period_start.date() and curr <= payslip.period_end.date():
-                if curr.weekday() < 5:
-                    events.append({
-                        "date": curr,
-                        "type": "leave",
-                        "obj": leave,
-                    })
+            if curr >= payslip.period_start.date() and curr <= payslip.period_end.date() and curr.weekday() < 5:
+                events.append({
+                    "date": curr,
+                    "type": "leave",
+                    "obj": leave,
+                })
             curr += timedelta(days=1)
 
     # Sort events
@@ -964,4 +965,5 @@ async def export_invoice_pdf(
         logger.error(f"Error generating PDF for invoice {invoice_id}: {e!s}")
         import traceback
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Грешка при генериране на PDF: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Грешка при генериране на PDF: {e!s}") from e
+

@@ -2,7 +2,7 @@ import logging
 
 import strawberry
 
-from backend.exceptions import PermissionDeniedException
+from backend.graphql.utils.permission_checker import get_current_user
 from backend.services.holiday_service import fetch_and_store_holidays
 from backend.services.orthodox_holiday_service import fetch_and_store_orthodox_holidays
 
@@ -14,18 +14,14 @@ class CalendarMutation:
     @strawberry.mutation
     async def sync_holidays(self, year: int, info: strawberry.Info) -> int:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         return await fetch_and_store_holidays(db, year)
 
     @strawberry.mutation
     async def sync_orthodox_holidays(self, year: int, info: strawberry.Info) -> int:
         db = info.context["db"]
-        current_user = info.context["current_user"]
-        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
-            raise PermissionDeniedException.for_action("manage")
+        get_current_user(info)
 
         try:
             return await fetch_and_store_orthodox_holidays(db, year)

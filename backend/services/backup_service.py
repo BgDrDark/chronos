@@ -94,7 +94,7 @@ class BackupService:
             reversed_models = list(BackupService.models_map.items())
             reversed_models.reverse()
 
-            for key, model in reversed_models:
+            for _key, model in reversed_models:
                 db.execute(delete(model))
 
             db.flush() # Ensure deletions happen before insertions
