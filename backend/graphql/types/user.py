@@ -139,10 +139,16 @@ class User:
         if current_user.id != self.id and current_user.role.name not in ["admin", "super_admin"]:
             return None
         year = datetime.datetime.now().year
-        balance = await time_repo.get_leave_balance(db, self.id, year)
+        balances = await time_repo.get_leave_balance(db, self.id, year)
+        balance = balances[0] if balances else None
         if not balance:
             return None
-        return LeaveBalance.from_pydantic(schemas.LeaveBalance.model_validate(balance))
+        balance_data = schemas.LeaveBalance.model_validate(balance)
+        if balance_data.total_days is None:
+            balance_data.total_days = 20
+        if balance_data.used_days is None:
+            balance_data.used_days = 0
+        return LeaveBalance.from_pydantic(balance_data)
 
     @strawberry.field
     async def timelogs(

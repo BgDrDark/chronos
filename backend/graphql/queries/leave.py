@@ -64,5 +64,17 @@ class LeaveQuery:
         if current_user.id != user_id and current_user.role.name not in ["admin", "super_admin"]:
             raise PermissionDeniedException.for_action("view records")
 
-        balance = await time_repo.get_leave_balance(db, user_id, year)
-        return types.LeaveBalance.from_pydantic(balance)
+        balances = await time_repo.get_leave_balance(db, user_id, year)
+        balance = balances[0] if balances else None
+        if not balance:
+            from backend.database.models import LeaveBalance as DbLeaveBalance
+            balance = DbLeaveBalance(user_id=user_id, year=year, total_days=20, used_days=0)
+            db.add(balance)
+            await db.flush()
+        from backend import schemas as sch
+        balance_schema = sch.LeaveBalance.model_validate(balance)
+        if balance_schema.total_days is None:
+            balance_schema.total_days = 20
+        if balance_schema.used_days is None:
+            balance_schema.used_days = 0
+        return types.LeaveBalance.from_pydantic(balance_schema)

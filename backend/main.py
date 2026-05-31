@@ -29,6 +29,7 @@ from backend.jobs.fleet_notifications_job import check_fleet_notifications
 from backend.jobs.inventory_check_job import check_inventory_levels
 from backend.jobs.maintenance_job import check_scheduled_maintenance
 from backend.jobs.rotation_job import check_and_rotate_keys
+from backend.jobs.session_cleanup_job import terminate_stale_sessions
 from backend.jobs.update_scheduler_job import check_scheduled_update
 from backend.routers import (
     auth,
@@ -83,6 +84,8 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(check_scheduled_maintenance, "interval", minutes=1)
     # Run every 5 minutes to check for scheduled auto-update activation
     scheduler.add_job(check_scheduled_update, "interval", minutes=5)
+    # Run every 6 hours to terminate stale sessions (older than 12 hours)
+    scheduler.add_job(terminate_stale_sessions, "interval", hours=6)
     scheduler.start()
 
     # Run check with delay on startup to ensure DB is initialized
@@ -92,6 +95,7 @@ async def lifespan(app: FastAPI):
             logger.info("Starting initial background jobs check...")
             await check_and_rotate_keys()
             await check_expired_contracts()
+            await terminate_stale_sessions()
             logger.info("Initial background jobs check completed.")
         except Exception as e:
             logger.error(f"Error during initial background jobs check: {e}")

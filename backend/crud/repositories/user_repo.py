@@ -410,5 +410,17 @@ class UserRepository(BaseRepository):
         await db.flush()
         return result.rowcount
 
+    async def terminate_stale_sessions(self, db: AsyncSession, max_age_hours: int = 12) -> int:
+        """Терминира активни сесии по-стари от max_age_hours"""
+        cutoff = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None) - timedelta(hours=max_age_hours)
+        result = await db.execute(
+            update(UserSession)
+            .where(UserSession.is_active)
+            .where(UserSession.created_at < cutoff)
+            .values(is_active=False),
+        )
+        await db.flush()
+        return result.rowcount
+
 
 user_repo = UserRepository()

@@ -254,7 +254,9 @@ class UserMutation:
         if not current_user:
             raise AuthenticationException(detail=authenticate_msg)
 
-        return await regenerate_user_qr_token(db, current_user.id)
+        user = await regenerate_user_qr_token(db, current_user.id)
+        await db.commit()
+        return user.qr_token
 
     @strawberry.mutation
     async def invalidate_user_session(self, sessionId: int, info: strawberry.Info) -> bool:

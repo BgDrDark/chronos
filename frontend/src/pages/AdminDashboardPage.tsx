@@ -333,19 +333,6 @@ const AdminDashboardPage: React.FC<Props> = ({ tab }) => {
                                     startIcon={<StopIcon />}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        handleOpenClockDialog(e, presence.user.id, `${presence.user.firstName} ${presence.user.lastName}`, 'IN');
-                                    }}
-                                    disabled={presence.status === 'ON_DUTY'}
-                                >
-                                    СТАРТ
-                                </Button>
-                                <Button 
-                                    size="small" 
-                                    variant="contained" 
-                                    color="error" 
-                                    startIcon={<StopIcon />}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
                                         handleOpenClockDialog(e, presence.user.id, `${presence.user.firstName} ${presence.user.lastName}`, 'OUT');
                                     }}
                                     disabled={presence.status !== 'ON_DUTY'}

@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from strawberry.dataloader import DataLoader
 
+from backend import schemas
 from backend.database.models import (
     AccessZone,
     Account,
@@ -27,7 +28,7 @@ from backend.database.models import (
     Shift,
     StorageZone,
     Supplier,
-    User,
+    User as DbUser,
     VehicleDocument,
     VehicleDriver,
     VehicleExpense,
@@ -47,10 +48,14 @@ from backend.database.models import (
 )
 
 
-async def load_users(db: AsyncSession, keys: Sequence[int]) -> list[User]:
-    stmt = select(User).where(User.id.in_(keys))
+async def load_users(db: AsyncSession, keys: Sequence[int]) -> list:
+    from sqlalchemy.orm import joinedload
+    from backend.graphql.types.user import User as GqlUser
+    stmt = select(DbUser).where(DbUser.id.in_(keys)).options(joinedload(DbUser.role))
     res = await db.execute(stmt)
-    users = {u.id: u for u in res.scalars().all()}
+    users = {}
+    for u in res.scalars().unique().all():
+        users[u.id] = GqlUser.from_pydantic(schemas.User.model_validate(u))
     return [users.get(key) for key in keys]
 
 async def load_roles(db: AsyncSession, keys: Sequence[int]) -> list[Role]:
@@ -346,7 +351,7 @@ async def load_production_record_workers(db: AsyncSession, keys: Sequence[int]) 
 
 def create_dataloaders(db: AsyncSession):
     return {
-        "user_by_id": DataLoader[int, User](load_fn=lambda keys: load_users(db, keys)),
+        "user_by_id": DataLoader(load_fn=lambda keys: load_users(db, keys)),
         "role_by_id": DataLoader[int, Role](load_fn=lambda keys: load_roles(db, keys)),
         "position_by_id": DataLoader[int, Position](load_fn=lambda keys: load_positions(db, keys)),
         "department_by_id": DataLoader[int, Department](load_fn=lambda keys: load_departments(db, keys)),

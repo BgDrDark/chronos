@@ -22,8 +22,8 @@ class LeaveRequest(LeaveRequestBase):
 class LeaveBalanceBase(CustomBaseModel):
     user_id: int
     year: int
-    total_days: int
-    used_days: int
+    total_days: int = 20
+    used_days: int = 0
 
 
 class LeaveBalance(LeaveBalanceBase):

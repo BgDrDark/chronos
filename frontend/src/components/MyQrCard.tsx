@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Typography, Card, CardContent, Box, LinearProgress, CircularProgress
 } from '@mui/material';
@@ -36,19 +36,25 @@ const MyQrCard: React.FC<MyQrCardProps> = ({ token, refetchQuery, variables }) =
     const intervalMs = intervalMinutes * 60 * 1000;
 
     const [timeLeft, setTimeLeft] = useState(intervalMs);
+    const hasAttemptedRegen = useRef(false);
 
-    // Initial regeneration if token is missing
+    // Initial regeneration if token is missing — runs ONCE on mount
     useEffect(() => {
-        if (!token && !loading) {
+        if (!token && !hasAttemptedRegen.current) {
+            hasAttemptedRegen.current = true;
             regenerateQr().catch(e => console.error("Initial QR generation failed", e));
         }
-    }, [token, loading, regenerateQr]);
+    }, [token, regenerateQr]);
+
+    // Stable ref for regenerateQr to avoid interval re-creation
+    const regenRef = useRef(regenerateQr);
+    useEffect(() => { regenRef.current = regenerateQr; }, [regenerateQr]);
 
     useEffect(() => {
         const timer = setInterval(() => {
             setTimeLeft(prev => {
                 if (prev <= 1000) {
-                    regenerateQr().catch(e => console.error("Auto-regen failed", e));
+                    regenRef.current().catch(e => console.error("Auto-regen failed", e));
                     return intervalMs;
                 }
                 return prev - 1000;
@@ -56,7 +62,7 @@ const MyQrCard: React.FC<MyQrCardProps> = ({ token, refetchQuery, variables }) =
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [intervalMs, regenerateQr]);
+    }, [intervalMs]);
 
     const progress = (timeLeft / intervalMs) * 100;
 
