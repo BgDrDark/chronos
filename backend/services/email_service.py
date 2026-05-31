@@ -30,7 +30,15 @@ async def get_mail_config(db: AsyncSession) -> ConnectionConfig:
     username = db_settings.get("smtp_username") or settings.MAIL_USERNAME
     password = db_settings.get("smtp_password") or settings.MAIL_PASSWORD
     sender = db_settings.get("sender_email") or settings.MAIL_FROM
-    use_tls = db_settings.get("use_tls", "True").lower() == "true"
+    use_tls_str = db_settings.get("use_tls", "True")
+
+    # Port 465 = implicit SSL (SMTPS), Port 587/25 = STARTTLS
+    if port == 465:
+        use_starttls = False
+        use_ssl_tls = True
+    else:
+        use_starttls = use_tls_str.lower() == "true"
+        use_ssl_tls = not use_starttls
 
     return ConnectionConfig(
         MAIL_USERNAME=username or "",
@@ -39,8 +47,8 @@ async def get_mail_config(db: AsyncSession) -> ConnectionConfig:
         MAIL_PORT=port,
         MAIL_SERVER=server,
         MAIL_FROM_NAME=settings.MAIL_FROM_NAME,
-        MAIL_STARTTLS=use_tls,
-        MAIL_SSL_TLS=not use_tls,
+        MAIL_STARTTLS=use_starttls,
+        MAIL_SSL_TLS=use_ssl_tls,
         USE_CREDENTIALS=bool(username and password),
         VALIDATE_CERTS=True,
     )

@@ -139,7 +139,7 @@ class Settings(BaseSettings):
     MAIL_USERNAME: str | None = None
     MAIL_PASSWORD: str | None = None
     MAIL_FROM: str | None = None
-    MAIL_FROM_NAME: str = "Chronos Working Time"
+    MAIL_FROM_NAME: str = "Chronos ERP System"
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False
     USE_CREDENTIALS: bool = True

@@ -5,6 +5,7 @@ import strawberry
 from sqlalchemy import select
 from strawberry.file_uploads import Upload
 
+from backend import schemas
 from backend.auth.module_guard import verify_module_enabled
 from backend.crud.repositories import time_repo
 from backend.database.transaction_manager import atomic_with_savepoint
@@ -42,7 +43,7 @@ class LeaveMutation:
         db.add(leave_request)
         await db.commit()
         await db.refresh(leave_request)
-        return types.LeaveRequest.from_instance(leave_request)
+        return types.LeaveRequest.from_pydantic(schemas.LeaveRequest.model_validate(leave_request))
 
     @strawberry.mutation
     async def delete_leave_request(self, id: int, info: strawberry.Info) -> bool:
@@ -67,10 +68,10 @@ class LeaveMutation:
         req.status = "cancelled"
         await db.commit()
         await db.refresh(req)
-        return types.LeaveRequest.from_instance(req)
+        return types.LeaveRequest.from_pydantic(schemas.LeaveRequest.model_validate(req))
 
     @strawberry.mutation(name="approveLeave")
-    async def approve_leave(self, info: strawberry.Info, request_id: int, admin_comment: str = None, employer_top_up: bool = False) -> types.LeaveRequest:
+    async def approve_leave(self, info: strawberry.Info, request_id: int, admin_comment: str | None = None, employer_top_up: bool = False) -> types.LeaveRequest:
         db = info.context["db"]
         current_user = get_current_user(info)
         await check_company_access(db, current_user, "LeaveRequest", request_id)
@@ -85,10 +86,10 @@ class LeaveMutation:
             )
         await db.commit()
         await db.refresh(req)
-        return types.LeaveRequest.from_instance(req)
+        return types.LeaveRequest.from_pydantic(schemas.LeaveRequest.model_validate(req))
 
     @strawberry.mutation(name="rejectLeave")
-    async def reject_leave(self, info: strawberry.Info, request_id: int, admin_comment: str = None) -> types.LeaveRequest:
+    async def reject_leave(self, info: strawberry.Info, request_id: int, admin_comment: str | None = None) -> types.LeaveRequest:
         db = info.context["db"]
         current_user = get_current_user(info)
         await check_company_access(db, current_user, "LeaveRequest", request_id)
@@ -102,7 +103,7 @@ class LeaveMutation:
             )
         await db.commit()
         await db.refresh(req)
-        return types.LeaveRequest.from_instance(req)
+        return types.LeaveRequest.from_pydantic(schemas.LeaveRequest.model_validate(req))
 
     @strawberry.mutation
     async def update_leave_request(
@@ -139,7 +140,7 @@ class LeaveMutation:
         db.add(req)
         await db.commit()
         await db.refresh(req)
-        return types.LeaveRequest.from_instance(req)
+        return types.LeaveRequest.from_pydantic(schemas.LeaveRequest.model_validate(req))
 
     @strawberry.mutation
     async def update_leave_request_status(self, input: UpdateLeaveRequestStatusInput,
@@ -164,7 +165,7 @@ class LeaveMutation:
             )
         await db.commit()
         await db.refresh(req)
-        return types.LeaveRequest.from_instance(req)
+        return types.LeaveRequest.from_pydantic(schemas.LeaveRequest.model_validate(req))
 
     @strawberry.mutation
     async def attach_leave_document(
@@ -202,4 +203,4 @@ class LeaveMutation:
         await db.commit()
         await db.refresh(req)
 
-        return types.LeaveRequest.from_instance(req)
+        return types.LeaveRequest.from_pydantic(schemas.LeaveRequest.model_validate(req))

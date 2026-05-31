@@ -219,11 +219,17 @@ Chronos ERP Auto-Update System
 """
             msg.attach(MIMEText(body, "plain", "utf-8"))
 
-            with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
-                if (use_tls or "True") == "True":
-                    server.starttls()
-                server.login(smtp_username, smtp_password)
-                server.send_message(msg)
+            smtp_port_int = int(smtp_port)
+            if smtp_port_int == 465:
+                with smtplib.SMTP_SSL(smtp_server, smtp_port_int) as server:
+                    server.login(smtp_username, smtp_password)
+                    server.send_message(msg)
+            else:
+                with smtplib.SMTP(smtp_server, smtp_port_int) as server:
+                    if (use_tls or "True") == "True":
+                        server.starttls()
+                    server.login(smtp_username, smtp_password)
+                    server.send_message(msg)
 
             logger.info(f"Update email sent to {schedule.notify_email}")
 
