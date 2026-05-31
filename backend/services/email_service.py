@@ -4,6 +4,7 @@ Provides SMTP configuration from DB GlobalSettings with fallback to config.py,
 and email sending functionality used across the application.
 """
 
+import asyncio
 import logging
 
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
@@ -75,12 +76,15 @@ async def send_email(
             body=html or body,
             subtype=MessageType.html if html else MessageType.plain,
         )
-        await fm.send_message(message)
+        await asyncio.wait_for(fm.send_message(message), timeout=15.0)
         logger.info(f"Email sent to {recipients}: {subject}")
         return True
+    except asyncio.TimeoutError:
+        logger.error(f"Email send timed out for {recipients}")
+        raise
     except Exception as e:
         logger.error(f"Failed to send email to {recipients}: {e}")
-        return False
+        raise
 
 
 async def is_smtp_configured(db: AsyncSession) -> bool:
