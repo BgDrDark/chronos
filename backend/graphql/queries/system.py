@@ -192,3 +192,19 @@ class SystemQuery:
 
         result = await db.execute(stmt)
         return [types.OrthodoxHoliday.from_pydantic(h) for h in result.scalars().all()]
+
+    @strawberry.field
+    async def session_settings(self, info: strawberry.Info) -> types.SessionSettings:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("view session settings")
+
+        from backend.config import settings
+
+        max_age_str = await settings_repo.get_setting(db, "session_max_age_hours")
+        max_age_hours = int(max_age_str) if max_age_str else settings.SESSION_MAX_AGE_HOURS
+
+        return types.SessionSettings(
+            max_age_hours=max_age_hours,
+        )

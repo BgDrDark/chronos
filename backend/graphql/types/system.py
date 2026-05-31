@@ -152,6 +152,11 @@ class OfficeLocation:
     exit_enabled: bool
 
 
+@strawberry.type
+class SessionSettings:
+    max_age_hours: int
+
+
 @sp.type(schemas.GlobalSetting)
 class GlobalSetting:
     key: strawberry.auto

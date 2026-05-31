@@ -148,6 +148,9 @@ class Settings(BaseSettings):
     # QR Code Settings
     QR_TOKEN_REGEN_MINUTES: int = 15
 
+    # Session Settings
+    SESSION_MAX_AGE_HOURS: int = 12
+
     # Google Calendar Integration
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None

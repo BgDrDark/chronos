@@ -67,7 +67,8 @@ async def create_tokens(db: AsyncSession, user_id: int, email: str, ip_address: 
     return access_token, refresh_token
 
 # Simple in-memory cache for auth keys to reduce DB load and avoid session conflicts
-_AUTH_KEYS_CACHE = {}
+# Cache stores dicts: {"kid": ..., "secret": ..., "algorithm": ...}
+_AUTH_KEYS_CACHE: dict[str, dict] = {}
 
 ALLOWED_ALGORITHMS = {"HS256", "HS384", "HS512", "RS256", "ES256"}
 
@@ -97,24 +98,29 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> dict | None:
             return None
 
         # Try cache first
-        key_obj = _AUTH_KEYS_CACHE.get(kid)
+        key_data = _AUTH_KEYS_CACHE.get(kid)
 
-        if not key_obj:
+        if not key_data:
             # Retrieve the specific key from DB
             key_obj = await crud.get_auth_key_by_kid(db, kid)
             if not key_obj:
                 logging.error(f"Auth key not found for kid: {kid}")
                 return None
-            # Store in cache
-            _AUTH_KEYS_CACHE[kid] = key_obj
+            # Cache the values directly to avoid DetachedInstanceError
+            key_data = {
+                "kid": key_obj.kid,
+                "secret": key_obj.secret,
+                "algorithm": key_obj.algorithm,
+            }
+            _AUTH_KEYS_CACHE[kid] = key_data
 
         # Verify algorithm matches the key's algorithm
-        if token_alg != key_obj.algorithm:
-            logging.error(f"Algorithm mismatch: expected {key_obj.algorithm}, got {token_alg}")
+        if token_alg != key_data["algorithm"]:
+            logging.error(f"Algorithm mismatch: expected {key_data['algorithm']}, got {token_alg}")
             return None
 
         # Decode and validate with strict options
-        claims = jwt.decode(token, key_obj.secret)
+        claims = jwt.decode(token, key_data["secret"])
 
         # Standard validation with 10s leeway for clock skew
         claims.validate(leeway=10)

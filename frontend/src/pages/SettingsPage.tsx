@@ -203,9 +203,47 @@ const INVALIDATE_SESSION = gql`
   }
 `;
 
+const GET_SESSION_SETTINGS = gql`
+  query GetSessionSettings {
+    sessionSettings {
+      maxAgeHours
+    }
+  }
+`;
+
+const UPDATE_SESSION_SETTINGS = gql`
+  mutation UpdateSessionSettings($maxAgeHours: Int!) {
+    updateSessionSettings(maxAgeHours: $maxAgeHours)
+  }
+`;
+
 const ActiveSessions: React.FC = () => {
     const { data, loading, refetch } = useQuery(GET_ACTIVE_SESSIONS);
     const [invalidate] = useMutation(INVALIDATE_SESSION);
+    const { data: settingsData } = useQuery(GET_SESSION_SETTINGS);
+    const [updateSettings] = useMutation(UPDATE_SESSION_SETTINGS);
+    const [maxAgeHours, setMaxAgeHours] = useState(settingsData?.sessionSettings?.maxAgeHours ?? 12);
+    const [saving, setSaving] = useState(false);
+    const [saveMsg, setSaveMsg] = useState('');
+
+    const handleSaveSettings = async () => {
+        const hours = parseInt(maxAgeHours as any, 10);
+        if (isNaN(hours) || hours < 1 || hours > 168) {
+            setSaveMsg('Стойността трябва да е между 1 и 168 часа.');
+            return;
+        }
+        setSaving(true);
+        try {
+            await updateSettings({ variables: { maxAgeHours: hours } });
+            setSaveMsg('Настройките са запазени.');
+            refetch();
+            setTimeout(() => setSaveMsg(''), 3000);
+        } catch (err) {
+            setSaveMsg(getErrorMessage(err));
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const handleInvalidate = async (id: string) => {
         if (!window.confirm("Сигурни ли сте, че искате да прекратите тази сесия?")) return;
@@ -221,6 +259,32 @@ const ActiveSessions: React.FC = () => {
         <Card sx={{ mb: 4, border: '1px solid #9c27b0' }}>
             <CardContent>
                 <Typography variant="h6" gutterBottom color="secondary.main">Активни сесии</Typography>
+                <Box sx={{ mb: 3, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                    <Typography variant="subtitle2" gutterBottom>Максимална продължителност на сесия (часове)</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <TextField
+                            type="number"
+                            size="small"
+                            value={maxAgeHours}
+                            onChange={(e) => setMaxAgeHours(e.target.value)}
+                            inputProps={{ min: 1, max: 168 }}
+                            sx={{ width: 120 }}
+                        />
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={handleSaveSettings}
+                            disabled={saving}
+                        >
+                            {saving ? 'Запазва се...' : 'Запази'}
+                        </Button>
+                    </Box>
+                    {saveMsg && (
+                        <Alert severity={saveMsg.includes('запазени') ? 'success' : 'error'} sx={{ mt: 1 }} onClose={() => setSaveMsg('')}>
+                            {saveMsg}
+                        </Alert>
+                    )}
+                </Box>
                 <Box sx={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>

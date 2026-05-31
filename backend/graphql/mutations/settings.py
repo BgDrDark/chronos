@@ -166,3 +166,16 @@ class SettingsMutation:
         db.add(log)
         await db.commit()
         return True
+
+    @strawberry.mutation
+    async def update_session_settings(
+        self,
+        max_age_hours: int,
+        info: strawberry.Info,
+    ) -> bool:
+        db = info.context["db"]
+        get_current_user(info)
+
+        await settings_repo.set_setting(db, "session_max_age_hours", str(max_age_hours))
+        await db.commit()
+        return True
