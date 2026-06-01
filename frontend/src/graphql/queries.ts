@@ -469,7 +469,7 @@ export const GET_TIME_LOGS_QUERY = gql`
 `;
 
 export const CREATE_SHIFT_MUTATION = gql`
-  mutation CreateShift($name: String!, $startTime: String!, $endTime: String!, $tolerance: Int, $breakDuration: Int, $payMultiplier: Decimal) {
+  mutation CreateShift($name: String!, $startTime: Time!, $endTime: Time!, $tolerance: Int, $breakDuration: Int, $payMultiplier: Decimal) {
     createShift(name: $name, startTime: $startTime, endTime: $endTime, toleranceMinutes: $tolerance, breakDurationMinutes: $breakDuration, payMultiplier: $payMultiplier) { id name }
   }
 `;
