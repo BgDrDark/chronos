@@ -78,7 +78,7 @@ class UserBase(CustomBaseModel):
         if v is None or v == "":
             return None
         v = v.replace(" ", "").replace("-", "")
-        if not re.match(r"^\+?359?\d{9}$", v):
+        if not re.match(r"^(\+359|0)?\d{9}$", v):
             raise ValueError("Невалиден телефонен номер (очакван формат: +359888123456 или 0888123456)")
         return v
 
