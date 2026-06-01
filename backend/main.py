@@ -360,7 +360,41 @@ async def get_context(
         "dataloaders": dataloaders,
     }
 
-graphql_app = GraphQLRouter(
+from strawberry.fastapi import GraphQLRouter
+from strawberry.types import ExecutionResult
+from graphql import GraphQLError
+
+from backend.exceptions import CHRONOSException
+
+
+class ChronosGraphQLRouter(GraphQLRouter):
+    """Custom GraphQLRouter that adds CHRONOSException context to error extensions."""
+
+    async def process_result(
+        self, request: Request, result: ExecutionResult
+    ) -> dict:
+        if result.errors:
+            new_errors = []
+            for err in result.errors:
+                orig = err.original_error
+                if isinstance(orig, CHRONOSException):
+                    new_errors.append(GraphQLError(
+                        message=str(orig),
+                        positions=err.positions,
+                        path=err.path,
+                        extensions={
+                            "errorCode": orig.error_code,
+                            "context": orig.context,
+                            "timestamp": orig.timestamp,
+                        },
+                    ))
+                else:
+                    new_errors.append(err)
+            result.errors = new_errors
+        return await super().process_result(request, result)
+
+
+graphql_app = ChronosGraphQLRouter(
     schema,
     context_getter=get_context,
 )

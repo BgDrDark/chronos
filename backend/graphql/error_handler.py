@@ -1,6 +1,8 @@
 import logging
 
+from graphql import GraphQLError
 from strawberry.extensions import Extension
+from strawberry.types import ExecutionResult
 
 from backend.exceptions import (
     AuthenticationException,
@@ -51,3 +53,32 @@ class ChronosErrorExtension(Extension):
             detail="Вътрешна грешка",
             error_code="INTERNAL_ERROR",
         )
+
+
+def process_chronos_errors(result: ExecutionResult) -> None:
+    """Add CHRONOSException context to GraphQL error extensions.
+    
+    Call this after schema.execute() to enrich error responses with
+    field-level context for frontend form validation.
+    """
+    if not result.errors:
+        return
+    
+    new_errors = []
+    for err in result.errors:
+        orig = err.original_error
+        if isinstance(orig, CHRONOSException):
+            new_errors.append(GraphQLError(
+                message=str(orig),
+                locations=err.locations,
+                path=err.path,
+                extensions={
+                    "errorCode": orig.error_code,
+                    "context": orig.context,
+                    "timestamp": orig.timestamp,
+                },
+            ))
+        else:
+            new_errors.append(err)
+    
+    result.errors = new_errors

@@ -280,6 +280,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
     handleSubmit,
     reset,
     control,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<CreateUserFormData>({
     resolver: zodResolver(createUserSchema),
@@ -454,7 +455,15 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
       reset();
       if (onCreated) onCreated();
     } catch (err) {
-      setApiError(err instanceof Error ? err.message : 'Възникна грешка');
+      const graphqlError = err as { graphQLErrors?: Array<{ message?: string; extensions?: { context?: { field?: string; reason?: string } } }> };
+      const gqlErr = graphqlError.graphQLErrors?.[0];
+      if (gqlErr?.extensions?.context?.field) {
+        const fieldName = gqlErr.extensions.context.field as keyof CreateUserFormData;
+        const reason = gqlErr.extensions.context.reason || gqlErr.message;
+        setError(fieldName, { type: 'server', message: reason });
+      } else {
+        setApiError(err instanceof Error ? err.message : 'Възникна грешка');
+      }
     }
   };
 
