@@ -141,7 +141,7 @@ const ScheduleCalendar: React.FC = () => {
   const handleApplyTemplate = async () => {
     try {
       await applyTmpl({
-        variables: { templateId: parseInt(selectedTmpl), userId: parseInt(tmplUserId), startDate: tmplStartDate, endDate: tmplEndDate }
+        variables: { templateId: parseInt(selectedTmpl), userIds: [parseInt(tmplUserId)], startDate: tmplStartDate, endDate: tmplEndDate }
       });
       setApplyTmplOpen(false);
       showSuccess('Шаблонът е приложен успешно!');

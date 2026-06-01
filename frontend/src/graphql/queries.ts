@@ -420,8 +420,8 @@ export const COPY_SCHEDULES_FROM_MONTH = gql`
 `;
 
 export const APPLY_SCHEDULE_TEMPLATE = gql`
-  mutation ApplyScheduleTemplate($templateId: Int!, $userId: Int!, $startDate: Date!, $endDate: Date!) {
-    applyScheduleTemplate(templateId: $templateId, userId: $userId, startDate: $startDate, endDate: $endDate)
+  mutation ApplyScheduleTemplate($templateId: Int!, $userIds: [Int!]!, $startDate: Date!, $endDate: Date!) {
+    applyScheduleTemplate(templateId: $templateId, userIds: $userIds, startDate: $startDate, endDate: $endDate)
   }
 `;
 

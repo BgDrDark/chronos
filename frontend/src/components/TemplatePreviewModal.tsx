@@ -44,7 +44,7 @@ const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({ open, onClo
     if (!selectedTemplate || !selectedUser) return;
     try {
       await applyTemplate({
-        variables: { templateId: parseInt(selectedTemplate), userId: parseInt(selectedUser), startDate, endDate }
+        variables: { templateId: parseInt(selectedTemplate), userIds: [parseInt(selectedUser)], startDate, endDate }
       });
       showSuccess('Шаблонът е приложен успешно!');
       onClose();
