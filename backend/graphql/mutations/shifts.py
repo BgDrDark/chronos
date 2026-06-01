@@ -606,9 +606,8 @@ class ShiftMutation:
         await verify_module_enabled("shifts", db)
 
         for user_id in user_ids:
-            await time_repo.apply_schedule_template(
-                db, template_id, user_id, start_date, end_date, current_user.id
-            )
             async with atomic_with_savepoint(db, f"schedule_applied_{user_id}"):
-                pass
+                await time_repo.apply_schedule_template(
+                    db, template_id, user_id, start_date, end_date, current_user.id
+                )
         return True
