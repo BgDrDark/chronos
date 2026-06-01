@@ -2,6 +2,7 @@ import datetime
 import logging
 
 import strawberry
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import and_, delete, insert, select
 
 from backend import schemas
@@ -31,6 +32,30 @@ logger = logging.getLogger(__name__)
 authenticate_msg = "Трябва да се автентикирате"
 
 
+def _handle_pydantic_error(e: PydanticValidationError) -> None:
+    """Convert Pydantic ValidationError to user-friendly ValidationException."""
+    for error in e.errors():
+        field = error.get("loc", ("unknown",))[-1]
+        field_name = str(field)
+        msg = error.get("msg", "Невалидна стойност")
+        # Remove Pydantic URL suffix
+        msg = msg.split(" For further information")[0]
+        field_labels = {
+            "phone_number": "Телефонен номер",
+            "email": "Имейл",
+            "egn": "ЕГН",
+            "iban": "IBAN",
+            "password": "Парола",
+            "username": "Потребителско име",
+            "first_name": "Име",
+            "surname": "Презиме",
+            "last_name": "Фамилия",
+        }
+        label = field_labels.get(field_name, field_name)
+        raise ValidationException.field(label, msg)
+    raise ValidationException.field("данни", "Невалидни входни данни")
+
+
 @strawberry.type
 class UserMutation:
     @strawberry.mutation
@@ -42,7 +67,11 @@ class UserMutation:
 
         import dataclasses
         user_input_dict = dataclasses.asdict(userInput)
-        user_data = schemas.UserCreate(**user_input_dict)
+        try:
+            user_data = schemas.UserCreate(**user_input_dict)
+        except PydanticValidationError as e:
+            _handle_pydantic_error(e)
+            raise AssertionError("unreachable")  # _handle_pydantic_error always raises
 
         db_user = await user_repo.create_user(db=db, user_data=user_data, role_id=userInput.role_id)
         await db.commit()
