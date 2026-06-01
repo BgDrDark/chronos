@@ -610,4 +610,5 @@ class ShiftMutation:
                 await time_repo.apply_schedule_template(
                     db, template_id, user_id, start_date, end_date, current_user.id
                 )
+        await db.commit()
         return True
