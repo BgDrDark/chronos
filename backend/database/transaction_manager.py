@@ -66,38 +66,42 @@ async def atomic_transaction(
     else:
         session = db
 
-    # Check if there's already a transaction in progress
-    in_transaction = session.in_transaction()
+    # Track nesting depth to handle SQLAlchemy's auto-started transactions.
+    # SQLAlchemy begins a transaction implicitly on the first query, so
+    # in_transaction() is unreliable for deciding who should commit.
+    depth = getattr(session, "_atomic_depth", 0)
+    is_outermost = (depth == 0)
+    session._atomic_depth = depth + 1
 
     transaction: AsyncTransaction | None = None
     should_commit = False
 
     try:
-        if not in_transaction:
-            # Begin new transaction only if one doesn't exist
-            transaction = await session.begin()
-            should_commit = True
-            logger.info(f"Transaction started: {transaction}")
+        if not session.in_transaction():
+            await session.begin()
+            should_commit = is_outermost
+            logger.info("Transaction started (depth=%d)", depth + 1)
         else:
-            logger.info("Using existing transaction")
+            should_commit = is_outermost
+            logger.info("Using existing transaction (depth=%d)", depth + 1)
 
         # Yield session for operations
         yield session
 
-        if should_commit and transaction:
+        if should_commit and session.in_transaction():
             logger.info("Attempting to commit transaction...")
-            await transaction.commit()
-            logger.info(f"Transaction committed: {transaction}")
+            await session.commit()
+            logger.info("Transaction committed")
 
     except IntegrityError as e:
-        if should_commit and transaction and transaction.is_active:
-            await transaction.rollback()
+        if should_commit and session.in_transaction():
+            await session.rollback()
         logger.error(f"Integrity error in transaction: {e}")
         raise TransactionError(f"Data integrity violation: {e!s}") from e
 
     except OperationalError as e:
-        if should_commit and transaction and transaction.is_active:
-            await transaction.rollback()
+        if should_commit and session.in_transaction():
+            await session.rollback()
 
         error_str = str(e).lower()
         if "deadlock" in error_str:
@@ -108,21 +112,19 @@ async def atomic_transaction(
             raise TransactionError(f"Database operational error: {e!s}") from e
 
     except SQLAlchemyError as e:
-        if should_commit and transaction and transaction.is_active:
-            await transaction.rollback()
+        if should_commit and session.in_transaction():
+            await session.rollback()
         logger.error(f"SQLAlchemy error in transaction: {e}")
         raise TransactionError(f"Database error: {e!s}") from e
 
     except Exception as e:
-        if should_commit and transaction and transaction.is_active:
-            await transaction.rollback()
+        if should_commit and session.in_transaction():
+            await session.rollback()
         logger.error(f"Unexpected error in transaction: {e}, should_commit={should_commit}")
         raise TransactionError(f"Transaction failed: {e!s}") from e
 
     finally:
-        # In SQLAlchemy 2.0 Async, transaction is closed by the context manager
-        # or when session is closed.
-        pass
+        session._atomic_depth = max(0, getattr(session, "_atomic_depth", 1) - 1)
 
 
 @asynccontextmanager
