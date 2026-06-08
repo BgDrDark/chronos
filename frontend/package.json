@@ -15,7 +15,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "codegen": "graphql-codegen"
+    "codegen": "cd .. && python backend/export_schema.py && cd frontend && graphql-codegen",
+    "codegen:local": "graphql-codegen"
   },
   "dependencies": {
     "@apollo/client": "^3.12.11",

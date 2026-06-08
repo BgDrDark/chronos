@@ -9,8 +9,11 @@ RUN npm install -g serve
 COPY package*.json ./
 RUN npm install
 
-# Копираме сорс кода
+# Копираме сорс кода (включително schema.graphql от CI/CD стъпката)
 COPY . .
+
+# Генерираме TypeScript типовете от schema файла
+RUN npm run codegen:local
 
 # Приемаме URL на API-то като аргумент и билдваме
 ARG VITE_API_URL

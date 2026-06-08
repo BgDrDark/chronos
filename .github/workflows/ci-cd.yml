@@ -71,6 +71,17 @@ jobs:
           build-args: |
             VERSION=${{ steps.version.outputs.VERSION }}
 
+      - name: Export GraphQL schema for frontend codegen
+        run: |
+          pip install -r backend/requirements.txt
+          python backend/export_schema.py
+
+      - name: Copy schema to frontend build context
+        run: |
+          mkdir -p frontend/src/generated
+          cp frontend/src/generated/schema.graphql frontend/src/generated/schema.graphql 2>/dev/null || true
+          # Schema is already in frontend/src/generated/ by export_schema.py
+
       - name: Build and push frontend
         uses: docker/build-push-action@v6
         with:
