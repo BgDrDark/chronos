@@ -967,3 +967,138 @@ async def export_invoice_pdf(
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Грешка при генериране на PDF: {e!s}") from e
 
+
+@router.get("/cash-journal/xlsx")
+async def export_cash_journal_xlsx(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    operation_type: str | None = None,
+    payment_method: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(jwt_utils.get_current_user),
+):
+    """Export cash journal entries to XLSX"""
+    from backend.database.models import CashJournalEntry
+
+    stmt = select(CashJournalEntry)
+    if current_user.role.name != "super_admin":
+        stmt = stmt.where(CashJournalEntry.company_id == current_user.company_id)
+    if start_date:
+        stmt = stmt.where(CashJournalEntry.date >= datetime.date.fromisoformat(start_date))
+    if end_date:
+        stmt = stmt.where(CashJournalEntry.date <= datetime.date.fromisoformat(end_date))
+    if operation_type:
+        stmt = stmt.where(CashJournalEntry.operation_type == operation_type)
+    if payment_method:
+        stmt = stmt.where(CashJournalEntry.payment_method == payment_method)
+
+    stmt = stmt.order_by(CashJournalEntry.date.asc(), CashJournalEntry.id.asc())
+    result = await db.execute(stmt)
+    entries = result.scalars().all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Касов дневник"
+
+    # Header style
+    header_font = Font(bold=True, size=11)
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_font_white = Font(bold=True, size=11, color="FFFFFF")
+    income_fill = PatternFill(start_color="E8F5E9", end_color="E8F5E9", fill_type="solid")
+    expense_fill = PatternFill(start_color="FFEBEE", end_color="FFEBEE", fill_type="solid")
+    date_format = "DD.MM.YYYY"
+    number_format = '#,##0.00'
+
+    # Headers
+    headers = ["Дата", "Тип", "Сума", "Платежен метод", "Описание", "Източник", "Фактура №", "Създал"]
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font_white
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    # Data rows
+    payment_method_labels = {
+        "cash": "В брой",
+        "bank_transfer": "Банков превод",
+        "card": "Карта",
+        "other": "Друго",
+    }
+
+    total_income = 0
+    total_expense = 0
+
+    for i, entry in enumerate(entries, 2):
+        ws.cell(row=i, column=1, value=entry.date).number_format = date_format
+
+        op_type = "Приход" if entry.operation_type == "income" else "Разход"
+        ws.cell(row=i, column=2, value=op_type)
+
+        ws.cell(row=i, column=3, value=float(entry.amount)).number_format = number_format
+        if entry.operation_type == "income":
+            ws.cell(row=i, column=3).fill = income_fill
+            total_income += float(entry.amount)
+        else:
+            ws.cell(row=i, column=3).fill = expense_fill
+            total_expense += float(entry.amount)
+
+        ws.cell(row=i, column=4, value=payment_method_labels.get(entry.payment_method, entry.payment_method or "-"))
+        ws.cell(row=i, column=5, value=entry.description or "-")
+
+        source = "Ръчна" if entry.reference_type != "invoice" else "Фактура"
+        ws.cell(row=i, column=6, value=source)
+
+        if entry.reference_type == "invoice" and entry.reference_id:
+            inv_stmt = select(Invoice).where(Invoice.id == entry.reference_id)
+            inv_result = await db.execute(inv_stmt)
+            inv = inv_result.scalars().first()
+            ws.cell(row=i, column=7, value=inv.number if inv else "-")
+        else:
+            ws.cell(row=i, column=7, value="-")
+
+        if entry.created_by:
+            user_stmt = select(User).where(User.id == entry.created_by)
+            user_result = await db.execute(user_stmt)
+            user = user_result.scalars().first()
+            ws.cell(row=i, column=8, value=f"{user.first_name or ''} {user.last_name or ''}".strip() if user else "-")
+        else:
+            ws.cell(row=i, column=8, value="-")
+
+    # Summary row
+    summary_row = len(entries) + 3
+    ws.cell(row=summary_row, column=1, value="ОБОБЩЕНИЕ").font = Font(bold=True, size=12)
+    ws.cell(row=summary_row + 1, column=2, value="Общо приходи:").font = Font(bold=True)
+    ws.cell(row=summary_row + 1, column=3, value=total_income).number_format = number_format
+    ws.cell(row=summary_row + 1, column=3).font = Font(bold=True, color="2E7D32")
+    ws.cell(row=summary_row + 2, column=2, value="Общо разходи:").font = Font(bold=True)
+    ws.cell(row=summary_row + 2, column=3, value=total_expense).number_format = number_format
+    ws.cell(row=summary_row + 2, column=3).font = Font(bold=True, color="C62828")
+    ws.cell(row=summary_row + 3, column=2, value="Салдо:").font = Font(bold=True, size=12)
+    ws.cell(row=summary_row + 3, column=3, value=total_income - total_expense).number_format = number_format
+    ws.cell(row=summary_row + 3, column=3).font = Font(bold=True, size=12)
+
+    # Column widths
+    ws.column_dimensions["A"].width = 14
+    ws.column_dimensions["B"].width = 10
+    ws.column_dimensions["C"].width = 16
+    ws.column_dimensions["D"].width = 18
+    ws.column_dimensions["E"].width = 30
+    ws.column_dimensions["F"].width = 12
+    ws.column_dimensions["G"].width = 16
+    ws.column_dimensions["H"].width = 20
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"kasov-dnevnik-{start_date or 'all'}-to-{end_date or 'all'}.xlsx"
+    encoded_filename = quote(filename)
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{encoded_filename}",
+        },
+    )
+
