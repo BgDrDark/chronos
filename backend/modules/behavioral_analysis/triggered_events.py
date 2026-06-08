@@ -26,7 +26,13 @@ class TriggeredEventProcessor:
         """Process a clock-out event to detect immediate risks"""
         anomalies = []
         user_id = time_log.user_id
-        duration = time_log.hours_worked or 0
+
+        # Calculate hours_worked from start_time and end_time
+        if time_log.start_time and time_log.end_time:
+            delta = time_log.end_time - time_log.start_time
+            duration = delta.total_seconds() / 3600.0
+        else:
+            duration = 0
         now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
 
         # 1. Check for excessive duration (> 12 hours)
