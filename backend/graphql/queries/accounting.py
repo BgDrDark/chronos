@@ -3,6 +3,8 @@ import datetime
 import strawberry
 from sqlalchemy import select
 
+from backend import schemas
+from backend.database import models
 from backend.exceptions import (
     AuthenticationException,
 )
@@ -115,6 +117,126 @@ class AccountingQuery:
 
         res = await db.execute(stmt)
         return [types.CashJournalEntryType.from_pydantic(i) for i in res.scalars().all()]
+
+    @strawberry.field
+    async def cash_journal_unified(
+        self,
+        info: strawberry.Info,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        operation_type: str | None = None,
+        payment_method: str | None = None,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> types.CashJournalUnifiedResult:
+        """Get unified cash journal entries (manual + invoices) with pagination"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        import datetime
+        from decimal import Decimal
+        from sqlalchemy import func
+
+        from backend.database.models import CashJournalEntry, Invoice
+
+        # Build base query for CashJournalEntry
+        entry_stmt = select(CashJournalEntry)
+        if current_user.role.name != "super_admin":
+            entry_stmt = entry_stmt.where(CashJournalEntry.company_id == current_user.company_id)
+        if start_date:
+            entry_stmt = entry_stmt.where(CashJournalEntry.date >= datetime.date.fromisoformat(start_date))
+        if end_date:
+            entry_stmt = entry_stmt.where(CashJournalEntry.date <= datetime.date.fromisoformat(end_date))
+        if operation_type:
+            entry_stmt = entry_stmt.where(CashJournalEntry.operation_type == operation_type)
+        if payment_method:
+            entry_stmt = entry_stmt.where(CashJournalEntry.payment_method == payment_method)
+
+        # Count total entries
+        count_stmt = select(func.count()).select_from(CashJournalEntry)
+        if current_user.role.name != "super_admin":
+            count_stmt = count_stmt.where(CashJournalEntry.company_id == current_user.company_id)
+        if start_date:
+            count_stmt = count_stmt.where(CashJournalEntry.date >= datetime.date.fromisoformat(start_date))
+        if end_date:
+            count_stmt = count_stmt.where(CashJournalEntry.date <= datetime.date.fromisoformat(end_date))
+        if operation_type:
+            count_stmt = count_stmt.where(CashJournalEntry.operation_type == operation_type)
+        if payment_method:
+            count_stmt = count_stmt.where(CashJournalEntry.payment_method == payment_method)
+
+        total_count = (await db.execute(count_stmt)).scalar() or 0
+
+        # Calculate totals
+        income_stmt = select(func.coalesce(func.sum(CashJournalEntry.amount), 0)).where(
+            CashJournalEntry.operation_type == "income"
+        )
+        expense_stmt = select(func.coalesce(func.sum(CashJournalEntry.amount), 0)).where(
+            CashJournalEntry.operation_type == "expense"
+        )
+        if current_user.role.name != "super_admin":
+            income_stmt = income_stmt.where(CashJournalEntry.company_id == current_user.company_id)
+            expense_stmt = expense_stmt.where(CashJournalEntry.company_id == current_user.company_id)
+        if start_date:
+            income_stmt = income_stmt.where(CashJournalEntry.date >= datetime.date.fromisoformat(start_date))
+            expense_stmt = expense_stmt.where(CashJournalEntry.date >= datetime.date.fromisoformat(start_date))
+        if end_date:
+            income_stmt = income_stmt.where(CashJournalEntry.date <= datetime.date.fromisoformat(end_date))
+            expense_stmt = expense_stmt.where(CashJournalEntry.date <= datetime.date.fromisoformat(end_date))
+
+        total_income = (await db.execute(income_stmt)).scalar() or Decimal(0)
+        total_expense = (await db.execute(expense_stmt)).scalar() or Decimal(0)
+
+        # Fetch entries with pagination
+        entry_stmt = entry_stmt.order_by(CashJournalEntry.date.desc(), CashJournalEntry.id.desc())
+        entry_stmt = entry_stmt.offset(skip).limit(limit)
+        entries_result = await db.execute(entry_stmt)
+        entries = entries_result.scalars().all()
+
+        # Build unified items from entries
+        items = []
+        for entry in entries:
+            creator = None
+            if entry.created_by:
+                user_result = await db.execute(select(models.User).where(models.User.id == entry.created_by))
+                user = user_result.scalars().first()
+                if user:
+                    creator = types.User.from_pydantic(schemas.User.model_validate(user))
+
+            invoice_number = None
+            invoice_type = None
+            source = "manual"
+            if entry.reference_type == "invoice":
+                source = "invoice"
+                inv_result = await db.execute(select(Invoice).where(Invoice.id == entry.reference_id))
+                inv = inv_result.scalars().first()
+                if inv:
+                    invoice_number = inv.number
+                    invoice_type = inv.type
+
+            items.append(types.CashJournalUnifiedItem(
+                id=entry.id,
+                date=entry.date,
+                operation_type=entry.operation_type,
+                amount=entry.amount,
+                description=entry.description or "",
+                source=source,
+                reference_id=entry.reference_id,
+                payment_method=entry.payment_method,
+                creator=creator,
+                invoice_number=invoice_number,
+                invoice_type=invoice_type,
+            ))
+
+        return types.CashJournalUnifiedResult(
+            items=items,
+            total_count=total_count,
+            total_income=Decimal(str(total_income)),
+            total_expense=Decimal(str(total_expense)),
+            balance=Decimal(str(total_income)) - Decimal(str(total_expense)),
+        )
 
     @strawberry.field
     async def operation_logs(

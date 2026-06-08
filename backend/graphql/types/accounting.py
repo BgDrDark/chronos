@@ -120,6 +120,32 @@ class CashJournalEntryType:
         return await info.context["dataloaders"]["user_by_id"].load(self.created_by)
 
 
+@strawberry.type
+class CashJournalUnifiedItem:
+    """Unified cash journal item from entries or invoices"""
+    id: int
+    date: datetime.date
+    operation_type: str
+    amount: Decimal
+    description: str
+    source: str  # 'manual' | 'invoice' | 'cash_receipt'
+    reference_id: int | None = None
+    payment_method: str | None = None
+    creator: User | None = None
+    invoice_number: str | None = None
+    invoice_type: str | None = None
+
+
+@strawberry.type
+class CashJournalUnifiedResult:
+    """Paginated unified cash journal result with totals"""
+    items: list[CashJournalUnifiedItem]
+    total_count: int
+    total_income: Decimal
+    total_expense: Decimal
+    balance: Decimal
+
+
 @sp.type(schemas.OperationLog)
 class OperationLogType:
     id: strawberry.auto
