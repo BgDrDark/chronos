@@ -1,5 +1,7 @@
 import secrets
 from datetime import datetime, timedelta
+from typing import cast
+from sqlalchemy.engine import CursorResult
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, delete, select, update
@@ -101,7 +103,7 @@ class UserRepository(BaseRepository):
         self,
         db: AsyncSession,
         user_data: UserCreate,
-        role_id: int = None,
+        role_id: int | None = None,
         **kwargs,
     ) -> User:
         """Създава нов потребител"""
@@ -134,7 +136,7 @@ class UserRepository(BaseRepository):
         self,
         db: AsyncSession,
         user_id: int,
-        user_in: UserUpdate = None,
+        user_in: UserUpdate | None = None,
         **kwargs,
     ) -> User | None:
         """Обновява потребител"""
@@ -207,8 +209,8 @@ class UserRepository(BaseRepository):
         db: AsyncSession,
         skip: int = 0,
         limit: int = 100,
-        search: str = None,
-        company_id: int = None,
+        search: str | None = None,
+        company_id: int | None = None,
         sort_by: str = "id",
         sort_order: str = "asc",
     ) -> list[User]:
@@ -240,8 +242,8 @@ class UserRepository(BaseRepository):
     async def count_users(
         self,
         db: AsyncSession,
-        search: str = None,
-        company_id: int = None,
+        search: str | None = None,
+        company_id: int | None = None,
     ) -> int:
         """Брои потребители с кеширане"""
         query = select(User.id)
@@ -371,7 +373,7 @@ class UserRepository(BaseRepository):
         if not auth_key:
             return False
         await db.delete(auth_key)
-        await db.flush()
+        await db.commit()
         return True
 
     # --- UserSession additional methods ---
@@ -380,7 +382,7 @@ class UserRepository(BaseRepository):
         """Създава нова потребителска сесия"""
         session = UserSession(**kwargs)
         db.add(session)
-        await db.flush()
+        await db.commit()
         await db.refresh(session)
         return session
 
@@ -398,8 +400,8 @@ class UserRepository(BaseRepository):
             .where(and_(UserSession.user_id == user_id, UserSession.is_active))
             .values(is_active=False),
         )
-        await db.flush()
-        return result.rowcount
+        await db.commit()
+        return cast(CursorResult, result).rowcount
 
     async def cleanup_expired_sessions(self, db: AsyncSession, retention_days: int) -> int:
         """Изтрива сесии по-стари от retention_days"""
@@ -407,8 +409,8 @@ class UserRepository(BaseRepository):
         result = await db.execute(
             delete(UserSession).where(UserSession.expires_at < cutoff),
         )
-        await db.flush()
-        return result.rowcount
+        await db.commit()
+        return cast(CursorResult, result).rowcount
 
     async def terminate_stale_sessions(self, db: AsyncSession, max_age_hours: int = 12) -> int:
         """Терминира активни сесии по-стари от max_age_hours"""
@@ -419,8 +421,8 @@ class UserRepository(BaseRepository):
             .where(UserSession.created_at < cutoff)
             .values(is_active=False),
         )
-        await db.flush()
-        return result.rowcount
+        await db.commit()
+        return cast(CursorResult, result).rowcount
 
 
 user_repo = UserRepository()
