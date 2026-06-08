@@ -144,6 +144,7 @@ class CashJournalEntry(CustomBaseModel):
     description: str | None = None
     reference_type: str | None = None
     reference_id: int | None = None
+    payment_method: str | None = None
     created_at: datetime.datetime
     created_by: int | None = None
 

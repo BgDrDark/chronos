@@ -110,6 +110,7 @@ class CashJournalEntryType:
     description: strawberry.auto
     reference_type: strawberry.auto
     reference_id: strawberry.auto
+    payment_method: strawberry.auto
     created_at: strawberry.auto
     created_by: strawberry.auto
 

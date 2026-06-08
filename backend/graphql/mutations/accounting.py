@@ -860,6 +860,7 @@ class AccountingMutation:
             description=input.description,
             reference_type=input.reference_type,
             reference_id=input.reference_id,
+            payment_method=input.payment_method,
             company_id=input.company_id,
             created_by=current_user.id
         )
@@ -1019,14 +1020,15 @@ class AccountingMutation:
             )
             tx.add(log_entry)
 
-            if invoice_data.payment_method == "cash" and invoice_data.status == "paid":
+            if invoice_data.status == "paid":
                 cash_entry = models.CashJournalEntry(
                     date=invoice_data.payment_date or invoice_data.date,
                     operation_type="expense" if invoice_data.type == "incoming" else "income",
                     amount=total,
-                    description=f"Фактура {invoice.number}",
+                    description=f"Фактура {invoice_number}",
                     reference_type="invoice",
                     reference_id=invoice.id,
+                    payment_method=invoice_data.payment_method,
                     company_id=invoice.company_id,
                     created_by=current_user.id
                 )
@@ -1541,14 +1543,14 @@ class AccountingMutation:
 
         await check_company_access(db, current_user, "Invoice", id)
 
-        readonly_statuses = ['paid', 'cancelled', 'corrected']
-        if invoice.status in readonly_statuses:
-            raise ValidationException(
-                detail=f"Фактура с статус '{invoice.status}' е в READONLY режим и не може да се редактира. Платена/анулирана/коригирана фактура не може да се променя."
-            )
-
         current_status = invoice.status
         new_status = invoice_data.status
+
+        readonly_statuses = ['cancelled', 'corrected']
+        if current_status in readonly_statuses and new_status != 'cancelled':
+            raise ValidationException(
+                detail=f"Фактура с статус '{current_status}' е в READONLY режим и не може да се редактира. Анулирана/коригирана фактура не може да се променя."
+            )
 
         allowed_transitions = {
             'draft': ['sent', 'paid', 'cancelled'],
@@ -1656,7 +1658,8 @@ class AccountingMutation:
             )
             tx.add(log_entry)
 
-            if invoice_data.payment_method == "cash" and invoice_data.status == "paid":
+            # Auto-generate CashJournalEntry for ALL payment methods when invoice is paid
+            if new_status == 'paid' and current_status != 'paid':
                 existing_entry = await tx.execute(
                     select(models.CashJournalEntry).where(
                         models.CashJournalEntry.reference_type == "invoice",
@@ -1673,6 +1676,7 @@ class AccountingMutation:
                         description=f"Фактура {invoice.number}",
                         reference_type="invoice",
                         reference_id=invoice.id,
+                        payment_method=invoice_data.payment_method,
                         company_id=invoice.company_id,
                         created_by=current_user.id
                     )
@@ -1680,7 +1684,18 @@ class AccountingMutation:
                 else:
                     existing.amount = total
                     existing.date = invoice_data.payment_date or invoice_data.date
+                    existing.payment_method = invoice_data.payment_method
                     tx.add(existing)
+
+            # Delete CashJournalEntry when paid invoice is cancelled
+            if current_status == 'paid' and new_status == 'cancelled':
+                from sqlalchemy import delete
+                await tx.execute(
+                    delete(models.CashJournalEntry).where(
+                        models.CashJournalEntry.reference_type == "invoice",
+                        models.CashJournalEntry.reference_id == invoice.id
+                    )
+                )
 
             company = await tx.get(models.Company, invoice.company_id)
             if company and invoice_data.status in ["paid", "sent"]:

@@ -50,6 +50,7 @@ class CashJournalEntryInput:
     description: str | None = None
     reference_type: str | None = None
     reference_id: int | None = None
+    payment_method: str | None = None
     company_id: int
 
 
