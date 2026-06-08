@@ -704,10 +704,36 @@ export interface CashJournalEntry {
   description?: string | null;
   personName?: string | null;
   operationType?: string | null;
+  paymentMethod?: string | null;
   creator?: {
     firstName: string;
     lastName: string;
   } | null;
+}
+
+export interface CashJournalUnifiedItem {
+  id: number;
+  date: string;
+  operationType: string;
+  amount: number;
+  description: string;
+  source: 'manual' | 'invoice' | 'cash_receipt';
+  referenceId?: number | null;
+  paymentMethod?: string | null;
+  invoiceNumber?: string | null;
+  invoiceType?: string | null;
+  creator?: {
+    firstName: string;
+    lastName: string;
+  } | null;
+}
+
+export interface CashJournalUnifiedResult {
+  items: CashJournalUnifiedItem[];
+  totalCount: number;
+  totalIncome: number;
+  totalExpense: number;
+  balance: number;
 }
 
 export interface AccountingOperation {

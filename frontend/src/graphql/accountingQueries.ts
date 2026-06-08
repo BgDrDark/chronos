@@ -149,11 +149,53 @@ export const GET_CASH_JOURNAL_ENTRIES = gql`
       description
       referenceType
       referenceId
+      paymentMethod
       createdAt
       creator {
         firstName
         lastName
       }
+    }
+  }
+`;
+
+export const GET_CASH_JOURNAL_UNIFIED = gql`
+  query GetCashJournalUnified(
+    $startDate: String,
+    $endDate: String,
+    $operationType: String,
+    $paymentMethod: String,
+    $skip: Int,
+    $limit: Int
+  ) {
+    cashJournalUnified(
+      startDate: $startDate,
+      endDate: $endDate,
+      operationType: $operationType,
+      paymentMethod: $paymentMethod,
+      skip: $skip,
+      limit: $limit
+    ) {
+      items {
+        id
+        date
+        operationType
+        amount
+        description
+        source
+        referenceId
+        paymentMethod
+        invoiceNumber
+        invoiceType
+        creator {
+          firstName
+          lastName
+        }
+      }
+      totalCount
+      totalIncome
+      totalExpense
+      balance
     }
   }
 `;
@@ -165,6 +207,7 @@ export const CREATE_CASH_JOURNAL_ENTRY = gql`
       date
       operationType
       amount
+      paymentMethod
     }
   }
 `;
