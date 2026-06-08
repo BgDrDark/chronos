@@ -36,6 +36,7 @@ import { useQuery, useMutation } from '@apollo/client';
 import { useCurrency, formatCurrencyValue } from '../../currencyContext';
 import { useError, extractErrorMessage } from '../../context/ErrorContext';
 import { ValidatedTextField } from '../ui/ValidatedTextField';
+import { getApiUrl } from '../../utils/api';
 import {
   GET_CASH_JOURNAL_UNIFIED,
   CREATE_CASH_JOURNAL_ENTRY,
@@ -146,7 +147,7 @@ export const CashJournalTab: React.FC = () => {
     if (paymentMethod) params.set('payment_method', paymentMethod);
 
     const token = localStorage.getItem('token');
-    const response = await fetch(`/api/export/cash-journal/xlsx?${params}`, {
+    const response = await fetch(`${getApiUrl('export/cash-journal/xlsx')}?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) {
