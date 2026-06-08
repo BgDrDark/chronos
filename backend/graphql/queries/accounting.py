@@ -2,6 +2,7 @@ import datetime
 
 import strawberry
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from backend import schemas
 from backend.database import models
@@ -200,7 +201,9 @@ class AccountingQuery:
         for entry in entries:
             creator = None
             if entry.created_by:
-                user_result = await db.execute(select(models.User).where(models.User.id == entry.created_by))
+                user_result = await db.execute(
+                    select(models.User).options(selectinload(models.User.role)).where(models.User.id == entry.created_by)
+                )
                 user = user_result.scalars().first()
                 if user:
                     creator = types.User.from_pydantic(schemas.User.model_validate(user))
