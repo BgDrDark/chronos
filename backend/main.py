@@ -36,6 +36,7 @@ from backend.routers import (
     deploy,
     documents,
     export,
+    fleet_export,
     gateway,
     google,
     kiosk,
@@ -340,6 +341,7 @@ import os
 from fastapi.staticfiles import StaticFiles
 
 app.include_router(documents.router)
+app.include_router(fleet_export.router)
 
 # Mount uploads for static access (avatars, documents)
 if not os.path.exists("uploads"):

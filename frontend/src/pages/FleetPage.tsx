@@ -50,6 +50,7 @@ import {
   Route as TripIcon,
   ArrowBack as BackIcon,
   Visibility as ViewIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { gql, useMutation, useQuery } from '@apollo/client';
 
@@ -637,7 +638,34 @@ const FleetPage: React.FC = () => {
         }
       });
       setTripOpen(false);
-      setTripForm({ vehicleId: '', userId: '', startDate: new Date().toISOString().split('T')[0], startLocation: '', endLocation: '', distance: 0, notes: '' });
+      setTripForm({ vehicleId: '', userId: '', startDate: new Date().toISOString().split('T')[0], endDate: '', startLocation: '', endLocation: '', distance: 0, notes: '' });
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/fleet/export/vehicles', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Грешка при експорт');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Fleet_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -764,7 +792,10 @@ const FleetPage: React.FC = () => {
             </Select>
           </FormControl>
         </Box>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2, gap: 2 }}>
+          <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport}>
+            Експорт Excel
+          </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setVehiclesOpen(true)}>
             Добави автомобил
           </Button>
