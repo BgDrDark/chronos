@@ -1708,7 +1708,7 @@ const FleetPage: React.FC = () => {
                   onChange={(e) => setMileageForm({ ...mileageForm, vehicleId: e.target.value })}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
-                  {vehiclesData?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
+                  {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
                     <MenuItem key={vehicle.id} value={vehicle.id}>
                       {vehicle.registrationNumber} - {vehicle.make} {vehicle.model}
                     </MenuItem>
@@ -1778,7 +1778,7 @@ const FleetPage: React.FC = () => {
                   onChange={(e) => setFuelForm({ ...fuelForm, vehicleId: e.target.value })}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
-                  {vehiclesData?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
+                  {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
                     <MenuItem key={vehicle.id} value={vehicle.id}>
                       {vehicle.registrationNumber} - {vehicle.make} {vehicle.model}
                     </MenuItem>
@@ -1904,7 +1904,7 @@ const FleetPage: React.FC = () => {
                   onChange={(e) => setRepairForm({ ...repairForm, vehicleId: e.target.value })}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
-                  {vehiclesData?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
+                  {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
                     <MenuItem key={vehicle.id} value={vehicle.id}>
                       {vehicle.registrationNumber} - {vehicle.make} {vehicle.model}
                     </MenuItem>
@@ -2019,7 +2019,7 @@ const FleetPage: React.FC = () => {
                   onChange={(e) => setInsuranceForm({ ...insuranceForm, vehicleId: e.target.value })}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
-                  {vehiclesData?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
+                  {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
                     <MenuItem key={vehicle.id} value={vehicle.id}>
                       {vehicle.registrationNumber} - {vehicle.make} {vehicle.model}
                     </MenuItem>
@@ -2145,7 +2145,7 @@ const FleetPage: React.FC = () => {
                   onChange={(e) => setInspectionForm({ ...inspectionForm, vehicleId: e.target.value })}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
-                  {vehiclesData?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
+                  {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
                     <MenuItem key={vehicle.id} value={vehicle.id}>
                       {vehicle.registrationNumber} - {vehicle.make} {vehicle.model}
                     </MenuItem>
@@ -2272,7 +2272,7 @@ const FleetPage: React.FC = () => {
                   onChange={(e) => setDriverForm({ ...driverForm, vehicleId: e.target.value })}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
-                  {vehiclesData?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
+                  {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
                     <MenuItem key={vehicle.id} value={vehicle.id}>
                       {vehicle.registrationNumber} - {vehicle.make} {vehicle.model}
                     </MenuItem>
@@ -2376,7 +2376,7 @@ const FleetPage: React.FC = () => {
                   onChange={(e) => setTripForm({ ...tripForm, vehicleId: e.target.value })}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
-                  {vehiclesData?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
+                  {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
                     <MenuItem key={vehicle.id} value={vehicle.id}>
                       {vehicle.registrationNumber} - {vehicle.make} {vehicle.model}
                     </MenuItem>
