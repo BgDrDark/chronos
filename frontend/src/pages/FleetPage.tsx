@@ -158,7 +158,7 @@ const GET_VEHICLES_QUERY = gql`
         initialMileage
         isCompany
         notes
-        vehicleType { name code }
+        type { name code }
       }
       totalCount
     }
