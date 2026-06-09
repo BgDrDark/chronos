@@ -256,3 +256,21 @@ class VehicleExpense(CustomBaseModel):
     cost_center_id: int | None = None
     company_id: int
     created_at: datetime | None = None
+
+
+class VehicleAccident(CustomBaseModel):
+    id: int
+    vehicle_id: int
+    date: date
+    location: str | None = None
+    description: str
+    severity: str = "minor"
+    estimated_cost: Decimal = Decimal(0)
+    actual_cost: Decimal = Decimal(0)
+    third_party_name: str | None = None
+    third_party_insurance: str | None = None
+    police_report_number: str | None = None
+    photos: dict | None = None
+    downtime_days: int = 0
+    status: str = "reported"
+    created_at: datetime | None = None

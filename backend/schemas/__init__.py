@@ -169,6 +169,7 @@ from backend.schemas.user import (
 )
 from backend.schemas.vehicle import (
     Vehicle,
+    VehicleAccident,
     VehicleDocument,
     VehicleDriver,
     VehicleExpense,
