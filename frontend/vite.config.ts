@@ -20,7 +20,13 @@ export default defineConfig({
         navigateFallback: 'index.html',
         suppressWarnings: true
       },
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: [
+        'favicon.ico',
+        'apple-touch-icon.png',
+        'mask-icon.svg',
+        'splash/**/*',
+        'fonts/**/*',
+      ],
       manifest: {
         name: 'Chronos Working Time',
         short_name: 'Chronos',

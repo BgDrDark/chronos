@@ -32,7 +32,7 @@ cleanupOutdatedCaches();
 registerRoute(
   ({ request }) => request.mode === 'navigate',
   new NetworkFirst({
-    cacheName: 'pages-cache',
+    cacheName: 'app-shell',
     plugins: [
       new CacheableResponsePlugin({ statuses: [200] }),
     ],
@@ -41,14 +41,27 @@ registerRoute(
 );
 
 registerRoute(
+  ({ request }) => request.destination === 'font',
+  new CacheFirst({
+    cacheName: 'fonts',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({ maxEntries: 20, maxAgeSeconds: 365 * 24 * 60 * 60 }),
+    ],
+  })
+);
+
+registerRoute(
   ({ request }) => request.destination === 'script' || 
                     request.destination === 'style' ||
-                    request.destination === 'image',
+                    request.destination === 'image' ||
+                    request.destination === 'worker' ||
+                    request.url.includes('/assets/'),
   new CacheFirst({
     cacheName: 'static-assets',
     plugins: [
       new CacheableResponsePlugin({ statuses: [200] }),
-      new ExpirationPlugin({ maxEntries: 60, maxAgeSeconds: 30 * 24 * 60 * 60 }),
+      new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 24 * 60 * 60 }),
     ],
   })
 );
@@ -56,10 +69,10 @@ registerRoute(
 registerRoute(
   ({ url }) => url.pathname === '/graphql',
   new StaleWhileRevalidate({
-    cacheName: 'api-cache',
+    cacheName: 'graphql-cache',
     plugins: [
       new CacheableResponsePlugin({ statuses: [200] }),
-      new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 5 * 60 }),
+      new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 5 * 60 }),
     ],
   })
 );
@@ -190,7 +203,7 @@ function openIDB(name: string, version: number): Promise<IDBDatabase> {
 }
 
 async function refreshData() {
-  const cache = await caches.open('api-cache');
+  const cache = await caches.open('graphql-cache');
   
   try {
     const response = await fetch('/graphql', {
