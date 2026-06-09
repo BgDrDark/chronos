@@ -424,6 +424,7 @@ __all__ = [
     "VehicleInspection",
     "VehicleInsurance",
     "VehicleMileage",
+    "VehiclePage",
     "VehiclePreTripInspection",
     "VehicleRepair",
     "VehicleSchedule",
@@ -434,3 +435,9 @@ __all__ = [
     "VehicleType",
     "VehicleVignette",
 ]
+
+
+@strawberry.type
+class VehiclePage:
+    vehicles: list[Vehicle]
+    total_count: int

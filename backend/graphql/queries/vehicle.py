@@ -26,7 +26,13 @@ authenticate_msg = "Трябва да се автентикирате"
 @strawberry.type
 class VehicleQuery:
     @strawberry.field
-    async def vehicles(self, info: strawberry.Info, company_id: int | None = None) -> list[types.Vehicle]:
+    async def vehicles(
+        self, 
+        info: strawberry.Info, 
+        company_id: int | None = None,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> types.VehiclePage:
         db = info.context["db"]
         current_user = info.context["current_user"]
         if not current_user:
@@ -34,9 +40,6 @@ class VehicleQuery:
 
         stmt = select(Vehicle).options(
             selectinload(Vehicle.vehicle_type),
-            selectinload(Vehicle.drivers),
-            selectinload(Vehicle.insurances),
-            selectinload(Vehicle.inspections),
         )
 
         if company_id:
@@ -44,8 +47,24 @@ class VehicleQuery:
         elif current_user.role.name != "super_admin":
             stmt = stmt.where(Vehicle.company_id == current_user.company_id)
 
+        # Count total
+        from sqlalchemy import func
+        count_stmt = select(func.count(Vehicle.id)).select_from(Vehicle)
+        if company_id:
+            count_stmt = count_stmt.where(Vehicle.company_id == company_id)
+        elif current_user.role.name != "super_admin":
+            count_stmt = count_stmt.where(Vehicle.company_id == current_user.company_id)
+        
+        total_count = (await db.execute(count_stmt)).scalar() or 0
+
+        # Apply pagination
+        stmt = stmt.offset(skip).limit(limit)
         res = await db.execute(stmt)
-        return [types.Vehicle.from_pydantic(v) for v in res.scalars().all()]
+        
+        return types.VehiclePage(
+            vehicles=[types.Vehicle.from_pydantic(v) for v in res.scalars().all()],
+            total_count=total_count
+        )
 
     @strawberry.field
     async def vehicle(self, info: strawberry.Info, id: int) -> types.Vehicle | None:
