@@ -6,6 +6,7 @@ import { DriverModeProvider } from './context/DriverModeContext';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { SWUpdateBanner } from './components/SWUpdateBanner';
 import { NetworkStatusBanner } from './components/NetworkStatusBanner';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import MainLayout from './components/MainLayout';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
@@ -110,6 +111,7 @@ function App() {
       <NetworkStatusBanner />
       <SWUpdateBanner />
       <PWAInstallBanner />
+      <OfflineIndicator />
       <ErrorProvider>
         <DriverModeProvider>
         <MainLayout>
