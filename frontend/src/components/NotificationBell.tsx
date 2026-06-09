@@ -4,6 +4,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_MY_NOTIFICATIONS, MARK_NOTIFICATION_READ } from '../graphql/notifications';
 import { formatDate } from '../utils/dateUtils';
+import { useBadge } from '../hooks/useBadge';
 
 const NotificationBell: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -14,6 +15,15 @@ const NotificationBell: React.FC = () => {
 
   const notifications = data?.myNotifications || [];
   const unreadCount = notifications.filter((n: any) => !n.isRead).length;
+  const { setBadge, clearBadge } = useBadge();
+
+  useEffect(() => {
+    if (unreadCount > 0) {
+      setBadge(unreadCount);
+    } else {
+      clearBadge();
+    }
+  }, [unreadCount, setBadge, clearBadge]);
 
   const handleClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
