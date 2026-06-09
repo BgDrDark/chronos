@@ -235,6 +235,14 @@ const GET_VEHICLE_TRIPS = gql`
   }
 `;
 
+const GET_VEHICLE_SCHEDULES = gql`
+  query GetVehicleSchedules($vehicleId: Int!) {
+    vehicleSchedules(vehicleId: $vehicleId) {
+      id scheduleType intervalKm intervalMonths lastServiceDate lastServiceKm nextServiceDate nextServiceKm notes
+    }
+  }
+`;
+
 const GET_USERS_QUERY = gql`
   query GetUsers {
     users {
@@ -362,6 +370,10 @@ const FleetPage: React.FC = () => {
     skip: !selectedVehicleId,
   });
   const { data: tripData } = useQuery(GET_VEHICLE_TRIPS, {
+    variables: { vehicleId: selectedVehicleId || 0 },
+    skip: !selectedVehicleId,
+  });
+  const { data: scheduleData } = useQuery(GET_VEHICLE_SCHEDULES, {
     variables: { vehicleId: selectedVehicleId || 0 },
     skip: !selectedVehicleId,
   });
@@ -959,6 +971,7 @@ const FleetPage: React.FC = () => {
             <Tab label="ГТП" />
             <Tab label="Водачи" />
             <Tab label="Маршрути" />
+            <Tab label="Поддръжка" />
           </Tabs>
 
           <TabPanel value={detailTab} index={0}>
@@ -1172,6 +1185,42 @@ const FleetPage: React.FC = () => {
                   ))}
                   {!tripData?.vehicleTrips?.length && (
                     <TableRow><TableCell colSpan={6} align="center">Няма записи</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={detailTab} index={7}>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Тип</TableCell>
+                    <TableCell align="right">Интервал (км)</TableCell>
+                    <TableCell align="right">Интервал (месеци)</TableCell>
+                    <TableCell>Последна поддръжка</TableCell>
+                    <TableCell align="right">Последни км</TableCell>
+                    <TableCell>Следваща дата</TableCell>
+                    <TableCell align="right">Следващи км</TableCell>
+                    <TableCell>Забележки</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {scheduleData?.vehicleSchedules?.map((s: any) => (
+                    <TableRow key={s.id}>
+                      <TableCell>{s.scheduleType}</TableCell>
+                      <TableCell align="right">{s.intervalKm || '-'}</TableCell>
+                      <TableCell align="right">{s.intervalMonths || '-'}</TableCell>
+                      <TableCell>{s.lastServiceDate ? formatDate(s.lastServiceDate) : '-'}</TableCell>
+                      <TableCell align="right">{s.lastServiceKm || '-'}</TableCell>
+                      <TableCell>{s.nextServiceDate ? formatDate(s.nextServiceDate) : '-'}</TableCell>
+                      <TableCell align="right">{s.nextServiceKm || '-'}</TableCell>
+                      <TableCell>{s.notes || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!scheduleData?.vehicleSchedules?.length && (
+                    <TableRow><TableCell colSpan={8} align="center">Няма записи</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
