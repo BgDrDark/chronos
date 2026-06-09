@@ -435,6 +435,7 @@ __all__ = [
     "VehicleType",
     "VehicleVignette",
     "VehicleAccident",
+    "VehicleCostSummary",
 ]
 
 
