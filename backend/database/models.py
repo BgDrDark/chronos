@@ -2740,6 +2740,8 @@ class VehicleFuelCard(Base):
     provider: Mapped[str | None] = mapped_column(String(255), nullable=True)
     pin: Mapped[str | None] = mapped_column(String(10), nullable=True)
     limit: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    monthly_limit_liters: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    monthly_limit_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     expiry_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)

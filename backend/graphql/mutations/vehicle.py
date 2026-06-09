@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import re
 
 import strawberry
+from sqlalchemy import func, select
 
 from backend.crud.repositories import vehicle_repo
 from backend.exceptions import NotFoundException, ValidationException
@@ -28,6 +30,8 @@ from backend.graphql.inputs.vehicle import (
     VehicleUpdateInput,
 )
 from backend.graphql.utils.permission_checker import check_company_access
+
+logger = logging.getLogger(__name__)
 
 
 @strawberry.type
@@ -211,6 +215,39 @@ class VehicleMutation:
                     
                     if avg_eff and efficiency > avg_eff * 1.25:
                         is_anomaly = True
+
+        # Fuel Card Limit Check
+        from backend.database.models import VehicleFuelCard
+        from datetime import datetime
+        card_stmt = select(VehicleFuelCard).where(
+            VehicleFuelCard.vehicle_id == input.vehicle_id,
+            VehicleFuelCard.is_active,
+        ).limit(1)
+        card_res = await db.execute(card_stmt)
+        card = card_res.scalars().first()
+        
+        if card and (card.monthly_limit_liters or card.monthly_limit_amount):
+            first_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            month_fuel_stmt = select(func.sum(VehicleFuelModel.total_amount)).where(
+                VehicleFuelModel.vehicle_id == input.vehicle_id,
+                VehicleFuelModel.date >= first_of_month,
+            )
+            month_fuel_res = await db.execute(month_fuel_stmt)
+            month_total = month_fuel_res.scalar() or 0
+            
+            if card.monthly_limit_amount and (month_total + input.total) > card.monthly_limit_amount:
+                # Just log a warning, don't block (can be enhanced to block later)
+                logger.warning(f"Fuel card limit exceeded for vehicle {input.vehicle_id}")
+            
+            month_liters_stmt = select(func.sum(VehicleFuelModel.quantity)).where(
+                VehicleFuelModel.vehicle_id == input.vehicle_id,
+                VehicleFuelModel.date >= first_of_month,
+            )
+            month_liters_res = await db.execute(month_liters_stmt)
+            month_liters = month_liters_res.scalar() or 0
+            
+            if card.monthly_limit_liters and (month_liters + input.liters) > card.monthly_limit_liters:
+                logger.warning(f"Fuel card liter limit exceeded for vehicle {input.vehicle_id}")
 
         record = await vehicle_repo.create_vehicle_fuel(
             db,
