@@ -243,6 +243,14 @@ const GET_VEHICLE_SCHEDULES = gql`
   }
 `;
 
+const GET_VEHICLE_ACCIDENTS = gql`
+  query GetVehicleAccidents($vehicleId: Int!) {
+    vehicleAccidents(vehicleId: $vehicleId) {
+      id date location description severity estimatedCost actualCost thirdPartyName policeReportNumber status
+    }
+  }
+`;
+
 const GET_USERS_QUERY = gql`
   query GetUsers {
     users {
@@ -374,6 +382,10 @@ const FleetPage: React.FC = () => {
     skip: !selectedVehicleId,
   });
   const { data: scheduleData } = useQuery(GET_VEHICLE_SCHEDULES, {
+    variables: { vehicleId: selectedVehicleId || 0 },
+    skip: !selectedVehicleId,
+  });
+  const { data: accidentData } = useQuery(GET_VEHICLE_ACCIDENTS, {
     variables: { vehicleId: selectedVehicleId || 0 },
     skip: !selectedVehicleId,
   });
@@ -972,6 +984,7 @@ const FleetPage: React.FC = () => {
             <Tab label="Водачи" />
             <Tab label="Маршрути" />
             <Tab label="Поддръжка" />
+            <Tab label="Инциденти" />
           </Tabs>
 
           <TabPanel value={detailTab} index={0}>
@@ -1220,6 +1233,44 @@ const FleetPage: React.FC = () => {
                     </TableRow>
                   ))}
                   {!scheduleData?.vehicleSchedules?.length && (
+                    <TableRow><TableCell colSpan={8} align="center">Няма записи</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={detailTab} index={8}>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Дата</TableCell>
+                    <TableCell>Място</TableCell>
+                    <TableCell>Тежест</TableCell>
+                    <TableCell>Статус</TableCell>
+                    <TableCell align="right">Очаквана щета</TableCell>
+                    <TableCell>Трета страна</TableCell>
+                    <TableCell>Протокол №</TableCell>
+                    <TableCell>Описание</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {accidentData?.vehicleAccidents?.map((a: any) => (
+                    <TableRow key={a.id}>
+                      <TableCell>{formatDate(a.date)}</TableCell>
+                      <TableCell>{a.location || '-'}</TableCell>
+                      <TableCell>
+                        <Chip label={a.severity} size="small" color={a.severity === 'severe' ? 'error' : a.severity === 'moderate' ? 'warning' : 'default'} />
+                      </TableCell>
+                      <TableCell>{a.status}</TableCell>
+                      <TableCell align="right">{formatPrice(a.estimatedCost)}</TableCell>
+                      <TableCell>{a.thirdPartyName || '-'}</TableCell>
+                      <TableCell>{a.policeReportNumber || '-'}</TableCell>
+                      <TableCell>{a.description}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!accidentData?.vehicleAccidents?.length && (
                     <TableRow><TableCell colSpan={8} align="center">Няма записи</TableCell></TableRow>
                   )}
                 </TableBody>
