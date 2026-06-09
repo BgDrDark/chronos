@@ -190,7 +190,7 @@ const GET_VEHICLE_MILEAGE = gql`
 const GET_VEHICLE_FUEL = gql`
   query GetVehicleFuel($vehicleId: Int!) {
     vehicleFuelLogs(vehicleId: $vehicleId) {
-      id date liters price total fuelType notes
+      id date liters price total fuelType notes mileage efficiencyLPer100km isAnomaly
     }
   }
 `;
@@ -507,12 +507,14 @@ const FleetPage: React.FC = () => {
             liters: fuelForm.liters,
             price: fuelForm.price,
             total: total,
-            fuelType: 'dizel',
+            fuelType: fuelForm.fuelType,
+            mileage: fuelForm.mileage > 0 ? fuelForm.mileage : undefined,
+            notes: fuelForm.notes || undefined,
           }
         }
       });
       setFuelOpen(false);
-      setFuelForm({ vehicleId: '', date: new Date().toISOString().split('T')[0], liters: 0, price: 0, total: 0, notes: '' });
+      setFuelForm({ vehicleId: '', date: new Date().toISOString().split('T')[0], mileage: 0, liters: 0, price: 0, total: 0, fuelType: 'dizel', station: '', notes: '' });
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -994,23 +996,28 @@ const FleetPage: React.FC = () => {
                     <TableCell align="right">Литри</TableCell>
                     <TableCell align="right">Цена</TableCell>
                     <TableCell align="right">Общо</TableCell>
+                    <TableCell align="right">Л/100км</TableCell>
                     <TableCell>Гориво</TableCell>
                     <TableCell>Забележки</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {fuelData?.vehicleFuelLogs?.map((f: any) => (
-                    <TableRow key={f.id}>
+                    <TableRow key={f.id} sx={{ backgroundColor: f.isAnomaly ? '#ffebee' : 'inherit' }}>
                       <TableCell>{formatDate(f.date)}</TableCell>
                       <TableCell align="right">{f.liters}</TableCell>
                       <TableCell align="right">{formatPrice(f.price)}</TableCell>
                       <TableCell align="right">{formatPrice(f.total)}</TableCell>
+                      <TableCell align="right">
+                        {f.efficiencyLPer100km ? f.efficiencyLPer100km.toFixed(1) : '-'}
+                        {f.isAnomaly && ' ⚠️'}
+                      </TableCell>
                       <TableCell>{f.fuelType}</TableCell>
                       <TableCell>{f.notes || '-'}</TableCell>
                     </TableRow>
                   ))}
                   {!fuelData?.vehicleFuelLogs?.length && (
-                    <TableRow><TableCell colSpan={6} align="center">Няма записи</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} align="center">Няма записи</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>

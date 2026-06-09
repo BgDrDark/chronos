@@ -178,6 +178,39 @@ class VehicleMutation:
         current_user = info.context["current_user"]
         check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
+        # Calculate Efficiency (L/100km)
+        efficiency = None
+        is_anomaly = False
+        
+        if input.mileage is not None:
+            # Get last fuel record to calculate distance
+            from sqlalchemy import select, func
+            from backend.database.models import VehicleFuel as VehicleFuelModel
+            
+            last_fuel_stmt = select(VehicleFuelModel).where(
+                VehicleFuelModel.vehicle_id == input.vehicle_id
+            ).order_by(VehicleFuelModel.mileage.desc()).limit(1)
+            
+            last_fuel_res = await db.execute(last_fuel_stmt)
+            last_fuel = last_fuel_res.scalars().first()
+            
+            if last_fuel and last_fuel.mileage and last_fuel.mileage < input.mileage:
+                distance = input.mileage - last_fuel.mileage
+                if distance > 0:
+                    efficiency = (input.liters / distance) * 100
+                    
+                    # Anomaly Detection: Check against average of last 5 records
+                    avg_eff_stmt = select(func.avg(VehicleFuelModel.efficiency_l_per_100km)).where(
+                        VehicleFuelModel.vehicle_id == input.vehicle_id,
+                        VehicleFuelModel.efficiency_l_per_100km.isnot(None)
+                    ).order_by(VehicleFuelModel.date.desc()).limit(5)
+                    
+                    avg_res = await db.execute(avg_eff_stmt)
+                    avg_eff = avg_res.scalar()
+                    
+                    if avg_eff and efficiency > avg_eff * 1.25:
+                        is_anomaly = True
+
         record = await vehicle_repo.create_vehicle_fuel(
             db,
             vehicle_id=input.vehicle_id,
@@ -187,6 +220,9 @@ class VehicleMutation:
             total=input.total,
             fuel_type=input.fuel_type,
             notes=input.notes,
+            mileage=input.mileage,  # Pass mileage if available
+            efficiency_l_per_100km=efficiency,
+            is_anomaly=is_anomaly,
         )
         await db.commit()
         await db.refresh(record)

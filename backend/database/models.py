@@ -2825,6 +2825,8 @@ class VehicleFuel(Base):
     price_per_liter: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     mileage: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    efficiency_l_per_100km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    is_anomaly: Mapped[bool] = mapped_column(Boolean, default=False)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     invoice_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     fuel_card_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("vehicle_fuel_cards.id"), nullable=True)
