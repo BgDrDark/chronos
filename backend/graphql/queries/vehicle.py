@@ -188,3 +188,87 @@ class VehicleQuery:
         stmt = select(VehicleTrip).where(VehicleTrip.vehicle_id == vehicle_id).order_by(VehicleTrip.start_time.desc())
         res = await db.execute(stmt)
         return [types.VehicleTrip.from_pydantic(t) for t in res.scalars().all()]
+
+    @strawberry.field
+    async def vehicle_cost_summary(
+        self,
+        info: strawberry.Info,
+        vehicle_id: int,
+        year: int | None = None,
+    ) -> types.VehicleCostSummary:
+        """Calculate cost summary for a vehicle"""
+        db = info.context["db"]
+        from sqlalchemy import func
+
+        # Base filters
+        base_filters = [VehicleFuel.vehicle_id == vehicle_id]
+        if year:
+            base_filters.append(func.extract('year', VehicleFuel.date) == year)
+
+        # Fuel costs
+        fuel_stmt = select(func.coalesce(func.sum(VehicleFuel.total), 0)).where(*base_filters)
+        total_fuel = float((await db.execute(fuel_stmt)).scalar())
+
+        # Repair costs
+        repair_filters = [VehicleRepair.vehicle_id == vehicle_id]
+        if year:
+            repair_filters.append(func.extract('year', VehicleRepair.repair_date) == year)
+        repair_stmt = select(func.coalesce(func.sum(VehicleRepair.cost), 0)).where(*repair_filters)
+        total_repairs = float((await db.execute(repair_stmt)).scalar())
+
+        # Inspection costs
+        insp_filters = [VehicleInspection.vehicle_id == vehicle_id]
+        if year:
+            insp_filters.append(func.extract('year', VehicleInspection.inspection_date) == year)
+        insp_stmt = select(func.coalesce(func.sum(VehicleInspection.cost), 0)).where(*insp_filters)
+        total_inspections = float((await db.execute(insp_stmt)).scalar())
+
+        # Insurance premiums
+        ins_filters = [VehicleInsurance.vehicle_id == vehicle_id]
+        if year:
+            ins_filters.append(func.extract('year', VehicleInsurance.start_date) == year)
+        ins_stmt = select(func.coalesce(func.sum(VehicleInsurance.premium), 0)).where(*ins_filters)
+        total_insurances = float((await db.execute(ins_stmt)).scalar())
+
+        # Vignette costs (if table exists)
+        try:
+            from backend.database.models import VehicleVignette
+            vig_filters = [VehicleVignette.vehicle_id == vehicle_id]
+            if year:
+                vig_filters.append(func.extract('year', VehicleVignette.start_date) == year)
+            vig_stmt = select(func.coalesce(func.sum(VehicleVignette.cost), 0)).where(*vig_filters)
+            total_vignettes = float((await db.execute(vig_stmt)).scalar())
+        except Exception:
+            total_vignettes = 0
+
+        # Toll costs (if table exists)
+        try:
+            from backend.database.models import VehicleToll
+            toll_filters = [VehicleToll.vehicle_id == vehicle_id]
+            if year:
+                toll_filters.append(func.extract('year', VehicleToll.date) == year)
+            toll_stmt = select(func.coalesce(func.sum(VehicleToll.cost), 0)).where(*toll_filters)
+            total_tolls = float((await db.execute(toll_stmt)).scalar())
+        except Exception:
+            total_tolls = 0
+
+        grand_total = total_fuel + total_repairs + total_inspections + total_insurances + total_vignettes + total_tolls
+
+        # Calculate cost per km
+        mileage_stmt = select(func.max(VehicleMileage.mileage)).where(VehicleMileage.vehicle_id == vehicle_id)
+        current_mileage = (await db.execute(mileage_stmt)).scalar() or 0
+        initial_mileage_stmt = select(Vehicle.initial_mileage).where(Vehicle.id == vehicle_id)
+        initial_mileage = (await db.execute(initial_mileage_stmt)).scalar() or 0
+        distance = current_mileage - initial_mileage
+        cost_per_km = (grand_total / distance) if distance > 0 and grand_total > 0 else None
+
+        return types.VehicleCostSummary(
+            total_fuel=total_fuel,
+            total_repairs=total_repairs,
+            total_inspections=total_inspections,
+            total_insurances=total_insurances,
+            total_vignettes=total_vignettes,
+            total_tolls=total_tolls,
+            grand_total=grand_total,
+            cost_per_km=cost_per_km,
+        )

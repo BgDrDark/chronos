@@ -48,6 +48,8 @@ import {
   Speed as MileageIcon,
   Person as DriverIcon,
   Route as TripIcon,
+  ArrowBack as BackIcon,
+  Visibility as ViewIcon,
 } from '@mui/icons-material';
 import { gql, useMutation, useQuery } from '@apollo/client';
 
@@ -161,6 +163,77 @@ const GET_VEHICLES_QUERY = gql`
   }
 `;
 
+const GET_VEHICLE_COST_SUMMARY = gql`
+  query GetVehicleCostSummary($vehicleId: Int!, $year: Int) {
+    vehicleCostSummary(vehicleId: $vehicleId, year: $year) {
+      totalFuel
+      totalRepairs
+      totalInspections
+      totalInsurances
+      totalVignettes
+      totalTolls
+      grandTotal
+      costPerKm
+    }
+  }
+`;
+
+const GET_VEHICLE_MILEAGE = gql`
+  query GetVehicleMileage($vehicleId: Int!) {
+    vehicleMileage(vehicleId: $vehicleId) {
+      id date mileage notes
+    }
+  }
+`;
+
+const GET_VEHICLE_FUEL = gql`
+  query GetVehicleFuel($vehicleId: Int!) {
+    vehicleFuelLogs(vehicleId: $vehicleId) {
+      id date liters price total fuelType notes
+    }
+  }
+`;
+
+const GET_VEHICLE_REPAIRS = gql`
+  query GetVehicleRepairs($vehicleId: Int!) {
+    vehicleRepairs(vehicleId: $vehicleId) {
+      id date description cost repairType notes
+    }
+  }
+`;
+
+const GET_VEHICLE_INSURANCES = gql`
+  query GetVehicleInsurances($vehicleId: Int!) {
+    vehicleInsurances(vehicleId: $vehicleId) {
+      id provider policyNumber startDate endDate premium insuranceType notes
+    }
+  }
+`;
+
+const GET_VEHICLE_INSPECTIONS = gql`
+  query GetVehicleInspections($vehicleId: Int!) {
+    vehicleInspections(vehicleId: $vehicleId) {
+      id date result nextDate cost protocolNumber notes
+    }
+  }
+`;
+
+const GET_VEHICLE_DRIVERS = gql`
+  query GetVehicleDrivers($vehicleId: Int!) {
+    vehicleDrivers(vehicleId: $vehicleId) {
+      id userId licenseNumber category isPrimary assignedFrom assignedTo notes
+    }
+  }
+`;
+
+const GET_VEHICLE_TRIPS = gql`
+  query GetVehicleTrips($vehicleId: Int!) {
+    vehicleTrips(vehicleId: $vehicleId) {
+      id startTime endTime startAddress endAddress distanceKm purpose notes
+    }
+  }
+`;
+
 const GET_USERS_QUERY = gql`
   query GetUsers {
     users {
@@ -192,6 +265,11 @@ function TabPanel(props: TabPanelProps) {
 const FleetPage: React.FC = () => {
   const { currency } = useCurrency();
   const currencySymbol = getCurrencySymbolForCurrency(currency);
+  
+  const formatPrice = (value: number | string | null | undefined): string => {
+    return `${currencySymbol}${Number(value || 0).toFixed(2)}`;
+  };
+
   const [tabValue, setTabValue] = useState(0);
   const [vehiclesOpen, setVehiclesOpen] = useState(false);
   const [mileageOpen, setMileageOpen] = useState(false);
@@ -236,6 +314,11 @@ const FleetPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [fuelFilter, setFuelFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  
+  // Detail View State
+  const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
+  const [detailTab, setDetailTab] = useState(0);
+  const [costYear, setCostYear] = useState(new Date().getFullYear());
 
   const { data: vehiclesData, refetch: refetchVehicles } = useQuery(GET_VEHICLES_QUERY, {
     variables: { 
@@ -246,6 +329,40 @@ const FleetPage: React.FC = () => {
       fuelType: fuelFilter || undefined,
       vehicleType: typeFilter || undefined,
     },
+  });
+
+  // Detail Queries
+  const { data: costData } = useQuery(GET_VEHICLE_COST_SUMMARY, {
+    variables: { vehicleId: selectedVehicleId || 0, year: costYear },
+    skip: !selectedVehicleId,
+  });
+  const { data: mileageData } = useQuery(GET_VEHICLE_MILEAGE, {
+    variables: { vehicleId: selectedVehicleId || 0 },
+    skip: !selectedVehicleId,
+  });
+  const { data: fuelData } = useQuery(GET_VEHICLE_FUEL, {
+    variables: { vehicleId: selectedVehicleId || 0 },
+    skip: !selectedVehicleId,
+  });
+  const { data: repairData } = useQuery(GET_VEHICLE_REPAIRS, {
+    variables: { vehicleId: selectedVehicleId || 0 },
+    skip: !selectedVehicleId,
+  });
+  const { data: insuranceData } = useQuery(GET_VEHICLE_INSURANCES, {
+    variables: { vehicleId: selectedVehicleId || 0 },
+    skip: !selectedVehicleId,
+  });
+  const { data: inspectionData } = useQuery(GET_VEHICLE_INSPECTIONS, {
+    variables: { vehicleId: selectedVehicleId || 0 },
+    skip: !selectedVehicleId,
+  });
+  const { data: driverData } = useQuery(GET_VEHICLE_DRIVERS, {
+    variables: { vehicleId: selectedVehicleId || 0 },
+    skip: !selectedVehicleId,
+  });
+  const { data: tripData } = useQuery(GET_VEHICLE_TRIPS, {
+    variables: { vehicleId: selectedVehicleId || 0 },
+    skip: !selectedVehicleId,
   });
   const { data: usersData } = useQuery(GET_USERS_QUERY);
 
@@ -669,7 +786,7 @@ const FleetPage: React.FC = () => {
             <TableBody>
               {!vehiclesData?.vehicles?.vehicles || vehiclesData.vehicles.vehicles.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center">
+                  <TableCell colSpan={9} align="center">
                     Няма регистрирани автомобили. Добавете първия.
                   </TableCell>
                 </TableRow>
@@ -690,6 +807,12 @@ const FleetPage: React.FC = () => {
                     </TableCell>
                     <TableCell>{vehicle.initialMileage?.toLocaleString() || 0} км</TableCell>
                     <TableCell align="right">
+                      <IconButton size="small" onClick={() => {
+                        setSelectedVehicleId(vehicle.id);
+                        setDetailTab(0);
+                      }}>
+                        <ViewIcon />
+                      </IconButton>
                       <IconButton size="small" onClick={() => {
                         setEditingVehicle({
                           id: vehicle.id,
@@ -740,6 +863,284 @@ const FleetPage: React.FC = () => {
           />
         </TableContainer>
       </TabPanel>
+
+      {/* Vehicle Detail View */}
+      {selectedVehicleId && (
+        <Box sx={{ mt: 4, p: 3, bgcolor: 'background.paper', borderRadius: 2, boxShadow: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+            <IconButton onClick={() => setSelectedVehicleId(null)} sx={{ mr: 2 }}>
+              <BackIcon />
+            </IconButton>
+            <Typography variant="h5" fontWeight="bold">
+              Детайли за автомобил
+            </Typography>
+          </Box>
+
+          {/* Cost Summary Card */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Card>
+                <CardContent>
+                  <Typography color="text.secondary" gutterBottom>Гориво</Typography>
+                  <Typography variant="h6" color="warning.main">{formatPrice(costData?.vehicleCostSummary?.totalFuel || 0)}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Card>
+                <CardContent>
+                  <Typography color="text.secondary" gutterBottom>Ремонти</Typography>
+                  <Typography variant="h6" color="error.main">{formatPrice(costData?.vehicleCostSummary?.totalRepairs || 0)}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Card>
+                <CardContent>
+                  <Typography color="text.secondary" gutterBottom>Застраховки</Typography>
+                  <Typography variant="h6" color="info.main">{formatPrice(costData?.vehicleCostSummary?.totalInsurances || 0)}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Card>
+                <CardContent>
+                  <Typography color="text.secondary" gutterBottom>Общо разходи</Typography>
+                  <Typography variant="h6" color="primary.main">{formatPrice(costData?.vehicleCostSummary?.grandTotal || 0)}</Typography>
+                  {(costData?.vehicleCostSummary?.costPerKm || 0) > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      {costData?.vehicleCostSummary?.costPerKm?.toFixed(2)} лв/км
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          {/* Detail Tabs */}
+          <Tabs value={detailTab} onChange={(_, v) => setDetailTab(v)} sx={{ mb: 2 }}>
+            <Tab label="Километри" />
+            <Tab label="Гориво" />
+            <Tab label="Ремонти" />
+            <Tab label="Застраховки" />
+            <Tab label="ГТП" />
+            <Tab label="Водачи" />
+            <Tab label="Маршрути" />
+          </Tabs>
+
+          <TabPanel value={detailTab} index={0}>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Дата</TableCell>
+                    <TableCell align="right">Километри</TableCell>
+                    <TableCell>Забележки</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {mileageData?.vehicleMileage?.map((m: any) => (
+                    <TableRow key={m.id}>
+                      <TableCell>{formatDate(m.date)}</TableCell>
+                      <TableCell align="right">{m.mileage.toLocaleString()} км</TableCell>
+                      <TableCell>{m.notes || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!mileageData?.vehicleMileage?.length && (
+                    <TableRow><TableCell colSpan={3} align="center">Няма записи</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={detailTab} index={1}>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Дата</TableCell>
+                    <TableCell align="right">Литри</TableCell>
+                    <TableCell align="right">Цена</TableCell>
+                    <TableCell align="right">Общо</TableCell>
+                    <TableCell>Гориво</TableCell>
+                    <TableCell>Забележки</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {fuelData?.vehicleFuelLogs?.map((f: any) => (
+                    <TableRow key={f.id}>
+                      <TableCell>{formatDate(f.date)}</TableCell>
+                      <TableCell align="right">{f.liters}</TableCell>
+                      <TableCell align="right">{formatPrice(f.price)}</TableCell>
+                      <TableCell align="right">{formatPrice(f.total)}</TableCell>
+                      <TableCell>{f.fuelType}</TableCell>
+                      <TableCell>{f.notes || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!fuelData?.vehicleFuelLogs?.length && (
+                    <TableRow><TableCell colSpan={6} align="center">Няма записи</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={detailTab} index={2}>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Дата</TableCell>
+                    <TableCell>Описание</TableCell>
+                    <TableCell>Тип</TableCell>
+                    <TableCell align="right">Стойност</TableCell>
+                    <TableCell>Забележки</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {repairData?.vehicleRepairs?.map((r: any) => (
+                    <TableRow key={r.id}>
+                      <TableCell>{formatDate(r.date)}</TableCell>
+                      <TableCell>{r.description}</TableCell>
+                      <TableCell>{r.repairType}</TableCell>
+                      <TableCell align="right">{formatPrice(r.cost)}</TableCell>
+                      <TableCell>{r.notes || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!repairData?.vehicleRepairs?.length && (
+                    <TableRow><TableCell colSpan={5} align="center">Няма записи</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={detailTab} index={3}>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Застраховател</TableCell>
+                    <TableCell>Полица №</TableCell>
+                    <TableCell>Тип</TableCell>
+                    <TableCell>Начало</TableCell>
+                    <TableCell>Край</TableCell>
+                    <TableCell align="right">Премиум</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {insuranceData?.vehicleInsurances?.map((i: any) => (
+                    <TableRow key={i.id}>
+                      <TableCell>{i.provider}</TableCell>
+                      <TableCell>{i.policyNumber}</TableCell>
+                      <TableCell>{i.insuranceType}</TableCell>
+                      <TableCell>{formatDate(i.startDate)}</TableCell>
+                      <TableCell>{formatDate(i.endDate)}</TableCell>
+                      <TableCell align="right">{formatPrice(i.premium)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!insuranceData?.vehicleInsurances?.length && (
+                    <TableRow><TableCell colSpan={6} align="center">Няма записи</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={detailTab} index={4}>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Дата</TableCell>
+                    <TableCell>Резултат</TableCell>
+                    <TableCell>Валиден до</TableCell>
+                    <TableCell align="right">Стойност</TableCell>
+                    <TableCell>Протокол №</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {inspectionData?.vehicleInspections?.map((i: any) => (
+                    <TableRow key={i.id}>
+                      <TableCell>{formatDate(i.date)}</TableCell>
+                      <TableCell>{i.result}</TableCell>
+                      <TableCell>{formatDate(i.nextDate)}</TableCell>
+                      <TableCell align="right">{formatPrice(i.cost)}</TableCell>
+                      <TableCell>{i.protocolNumber || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!inspectionData?.vehicleInspections?.length && (
+                    <TableRow><TableCell colSpan={5} align="center">Няма записи</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={detailTab} index={5}>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Водач ID</TableCell>
+                    <TableCell>Категория</TableCell>
+                    <TableCell>Основен</TableCell>
+                    <TableCell>От</TableCell>
+                    <TableCell>До</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {driverData?.vehicleDrivers?.map((d: any) => (
+                    <TableRow key={d.id}>
+                      <TableCell>{d.userId}</TableCell>
+                      <TableCell>{d.category}</TableCell>
+                      <TableCell>{d.isPrimary ? 'Да' : 'Не'}</TableCell>
+                      <TableCell>{formatDate(d.assignedFrom)}</TableCell>
+                      <TableCell>{d.assignedTo ? formatDate(d.assignedTo) : '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!driverData?.vehicleDrivers?.length && (
+                    <TableRow><TableCell colSpan={5} align="center">Няма записи</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+
+          <TabPanel value={detailTab} index={6}>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Начало</TableCell>
+                    <TableCell>Край</TableCell>
+                    <TableCell>От</TableCell>
+                    <TableCell>До</TableCell>
+                    <TableCell align="right">Км</TableCell>
+                    <TableCell>Цел</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {tripData?.vehicleTrips?.map((t: any) => (
+                    <TableRow key={t.id}>
+                      <TableCell>{formatDate(t.startTime)}</TableCell>
+                      <TableCell>{formatDate(t.endTime)}</TableCell>
+                      <TableCell>{t.startAddress}</TableCell>
+                      <TableCell>{t.endAddress}</TableCell>
+                      <TableCell align="right">{t.distanceKm}</TableCell>
+                      <TableCell>{t.purpose || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!tripData?.vehicleTrips?.length && (
+                    <TableRow><TableCell colSpan={6} align="center">Няма записи</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+        </Box>
+      )}
 
       <TabPanel value={tabValue} index={1}>
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>

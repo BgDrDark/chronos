@@ -441,3 +441,15 @@ __all__ = [
 class VehiclePage:
     vehicles: list[Vehicle]
     total_count: int
+
+
+@strawberry.type
+class VehicleCostSummary:
+    total_fuel: float
+    total_repairs: float
+    total_inspections: float
+    total_insurances: float
+    total_vignettes: float
+    total_tolls: float
+    grand_total: float
+    cost_per_km: float | None = None
