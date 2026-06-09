@@ -470,7 +470,7 @@ class VehicleAccident:
     third_party_name: strawberry.auto
     third_party_insurance: strawberry.auto
     police_report_number: strawberry.auto
-    photos: strawberry.auto
+    photos: JSONScalar | None = None
     downtime_days: strawberry.auto
     status: strawberry.auto
     created_at: strawberry.auto
