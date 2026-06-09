@@ -138,21 +138,24 @@ const CREATE_TRIP_MUTATION = gql`
 `;
 
 const GET_VEHICLES_QUERY = gql`
-  query GetVehicles {
-    vehicles {
-      id
-      registrationNumber
-      vin
-      make
-      model
-      year
-      vehicleTypeId
-      fuelType
-      status
-      color
-      initialMileage
-      isCompany
-      notes
+  query GetVehicles($skip: Int, $limit: Int) {
+    vehicles(skip: $skip, limit: $limit) {
+      vehicles {
+        id
+        registrationNumber
+        vin
+        make
+        model
+        year
+        vehicleTypeId
+        fuelType
+        status
+        color
+        initialMileage
+        isCompany
+        notes
+      }
+      totalCount
     }
   }
 `;
@@ -226,7 +229,12 @@ const FleetPage: React.FC = () => {
   const [createInspection] = useMutation(CREATE_INSPECTION_MUTATION);
   const [createDriver] = useMutation(CREATE_DRIVER_MUTATION);
   const [createTrip] = useMutation(CREATE_TRIP_MUTATION);
-  const { data: vehiclesData, refetch: refetchVehicles } = useQuery(GET_VEHICLES_QUERY);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
+
+  const { data: vehiclesData, refetch: refetchVehicles } = useQuery(GET_VEHICLES_QUERY, {
+    variables: { skip: page * rowsPerPage, limit: rowsPerPage },
+  });
   const { data: usersData } = useQuery(GET_USERS_QUERY);
 
   const [editingVehicle, setEditingVehicle] = useState<{ id: number; registrationNumber: string; make: string; model: string; vin: string; year: number; fuelType: string; status: string; color: string; initialMileage: number; isCompanyVehicle: boolean; notes: string } | null>(null);
@@ -505,7 +513,7 @@ const FleetPage: React.FC = () => {
             <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Box>
                 <Typography color="text.secondary" gutterBottom>Общо</Typography>
-                <Typography variant="h4">{vehiclesData?.vehicles?.length || 0}</Typography>
+                <Typography variant="h4">{vehiclesData?.vehicles?.totalCount || 0}</Typography>
               </Box>
               <Avatar sx={{ bgcolor: 'primary.main' }}><CarIcon /></Avatar>
             </CardContent>
@@ -517,7 +525,7 @@ const FleetPage: React.FC = () => {
               <Box>
                 <Typography color="text.secondary" gutterBottom>Активни</Typography>
                 <Typography variant="h4" color="success.main">
-                  {vehiclesData?.vehicles?.filter((v: { status: string }) => v.status === 'active').length || 0}
+                  {vehiclesData?.vehicles?.vehicles?.filter((v: { status: string }) => v.status === 'active').length || 0}
                 </Typography>
               </Box>
               <Avatar sx={{ bgcolor: 'success.main' }}><CarIcon /></Avatar>
@@ -530,7 +538,7 @@ const FleetPage: React.FC = () => {
               <Box>
                 <Typography color="text.secondary" gutterBottom>В ремонт</Typography>
                 <Typography variant="h4" color="warning.main">
-                  {vehiclesData?.vehicles?.filter((v: { status: string }) => v.status === 'in_repair').length || 0}
+                  {vehiclesData?.vehicles?.vehicles?.filter((v: { status: string }) => v.status === 'in_repair').length || 0}
                 </Typography>
               </Box>
               <Avatar sx={{ bgcolor: 'warning.main' }}><RepairIcon /></Avatar>
@@ -543,7 +551,7 @@ const FleetPage: React.FC = () => {
               <Box>
                 <Typography color="text.secondary" gutterBottom>Извън експлоатация</Typography>
                 <Typography variant="h4" color="error.main">
-                  {vehiclesData?.vehicles?.filter((v: { status: string }) => v.status === 'out_of_service').length || 0}
+                  {vehiclesData?.vehicles?.vehicles?.filter((v: { status: string }) => v.status === 'out_of_service').length || 0}
                 </Typography>
               </Box>
               <Avatar sx={{ bgcolor: 'error.main' }}><CarIcon /></Avatar>
@@ -584,14 +592,14 @@ const FleetPage: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {!vehiclesData?.vehicles || vehiclesData.vehicles.length === 0 ? (
+              {!vehiclesData?.vehicles?.vehicles || vehiclesData.vehicles.vehicles.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} align="center">
                     Няма регистрирани автомобили. Добавете първия.
                   </TableCell>
                 </TableRow>
               ) : (
-                vehiclesData.vehicles.map((vehicle: { id: number; registrationNumber: string; make: string; model: string; vin: string; year: number; fuelType: string; status: string; initialMileage: number }) => (
+                vehiclesData.vehicles.vehicles.map((vehicle: { id: number; registrationNumber: string; make: string; model: string; vin: string; year: number; fuelType: string; status: string; initialMileage: number }) => (
                   <TableRow key={vehicle.id}>
                     <TableCell>{vehicle.registrationNumber}</TableCell>
                     <TableCell>{vehicle.make} {vehicle.model}</TableCell>
@@ -644,6 +652,17 @@ const FleetPage: React.FC = () => {
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={vehiclesData?.vehicles?.totalCount || 0}
+            page={page}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+            rowsPerPageOptions={[25, 50, 100]}
+            labelRowsPerPage="Редове:"
+            labelDisplayedRows={({ from, to, count }) => `${from}-${to} от ${count !== -1 ? count : `повече от ${to}`}`}
+          />
         </TableContainer>
       </TabPanel>
 
