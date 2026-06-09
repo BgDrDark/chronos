@@ -30,6 +30,10 @@ class VehicleQuery:
         self, 
         info: strawberry.Info, 
         company_id: int | None = None,
+        search: str | None = None,
+        status: str | None = None,
+        fuel_type: str | None = None,
+        vehicle_type: str | None = None,
         skip: int = 0,
         limit: int = 50,
     ) -> types.VehiclePage:
@@ -38,22 +42,65 @@ class VehicleQuery:
         if not current_user:
             raise AuthenticationException()
 
+        from sqlalchemy import func, or_
+
         stmt = select(Vehicle).options(
             selectinload(Vehicle.vehicle_type),
         )
 
+        # Company filter
         if company_id:
             stmt = stmt.where(Vehicle.company_id == company_id)
         elif current_user.role.name != "super_admin":
             stmt = stmt.where(Vehicle.company_id == current_user.company_id)
 
+        # Search filter
+        if search:
+            search_term = f"%{search.lower()}%"
+            stmt = stmt.where(
+                or_(
+                    Vehicle.registration_number.ilike(search_term),
+                    Vehicle.make.ilike(search_term),
+                    Vehicle.model.ilike(search_term),
+                    Vehicle.vin.ilike(search_term),
+                )
+            )
+
+        # Status filter
+        if status:
+            stmt = stmt.where(Vehicle.status == status)
+
+        # Fuel type filter
+        if fuel_type:
+            stmt = stmt.where(Vehicle.fuel_type == fuel_type)
+
+        # Vehicle type filter
+        if vehicle_type:
+            stmt = stmt.join(VehicleType, Vehicle.vehicle_type_id == VehicleType.id).where(VehicleType.code == vehicle_type)
+
         # Count total
-        from sqlalchemy import func
         count_stmt = select(func.count(Vehicle.id)).select_from(Vehicle)
         if company_id:
             count_stmt = count_stmt.where(Vehicle.company_id == company_id)
         elif current_user.role.name != "super_admin":
             count_stmt = count_stmt.where(Vehicle.company_id == current_user.company_id)
+        
+        if search:
+            search_term = f"%{search.lower()}%"
+            count_stmt = count_stmt.where(
+                or_(
+                    Vehicle.registration_number.ilike(search_term),
+                    Vehicle.make.ilike(search_term),
+                    Vehicle.model.ilike(search_term),
+                    Vehicle.vin.ilike(search_term),
+                )
+            )
+        if status:
+            count_stmt = count_stmt.where(Vehicle.status == status)
+        if fuel_type:
+            count_stmt = count_stmt.where(Vehicle.fuel_type == fuel_type)
+        if vehicle_type:
+            count_stmt = count_stmt.join(VehicleType, Vehicle.vehicle_type_id == VehicleType.id).where(VehicleType.code == vehicle_type)
         
         total_count = (await db.execute(count_stmt)).scalar() or 0
 

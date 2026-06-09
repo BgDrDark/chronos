@@ -138,8 +138,8 @@ const CREATE_TRIP_MUTATION = gql`
 `;
 
 const GET_VEHICLES_QUERY = gql`
-  query GetVehicles($skip: Int, $limit: Int) {
-    vehicles(skip: $skip, limit: $limit) {
+  query GetVehicles($skip: Int, $limit: Int, $search: String, $status: String, $fuelType: String, $vehicleType: String) {
+    vehicles(skip: $skip, limit: $limit, search: $search, status: $status, fuelType: $fuelType, vehicleType: $vehicleType) {
       vehicles {
         id
         registrationNumber
@@ -154,6 +154,7 @@ const GET_VEHICLES_QUERY = gql`
         initialMileage
         isCompany
         notes
+        vehicleType { name code }
       }
       totalCount
     }
@@ -231,9 +232,20 @@ const FleetPage: React.FC = () => {
   const [createTrip] = useMutation(CREATE_TRIP_MUTATION);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
+  const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [fuelFilter, setFuelFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
 
   const { data: vehiclesData, refetch: refetchVehicles } = useQuery(GET_VEHICLES_QUERY, {
-    variables: { skip: page * rowsPerPage, limit: rowsPerPage },
+    variables: { 
+      skip: page * rowsPerPage, 
+      limit: rowsPerPage,
+      search: searchText || undefined,
+      status: statusFilter || undefined,
+      fuelType: fuelFilter || undefined,
+      vehicleType: typeFilter || undefined,
+    },
   });
   const { data: usersData } = useQuery(GET_USERS_QUERY);
 
@@ -572,6 +584,46 @@ const FleetPage: React.FC = () => {
       </Tabs>
 
       <TabPanel value={tabValue} index={0}>
+        <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <TextField
+            size="small"
+            label="Търсене (Рег. номер, Марка, Модел, VIN)"
+            value={searchText}
+            onChange={(e) => { setSearchText(e.target.value); setPage(0); }}
+            sx={{ minWidth: 250, flex: 1 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Статус</InputLabel>
+            <Select value={statusFilter} label="Статус" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+              <MenuItem value="">Всички</MenuItem>
+              <MenuItem value="active">Активен</MenuItem>
+              <MenuItem value="in_repair">В ремонт</MenuItem>
+              <MenuItem value="out_of_service">Извън експлоатация</MenuItem>
+              <MenuItem value="sold">Продаден</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Гориво</InputLabel>
+            <Select value={fuelFilter} label="Гориво" onChange={(e) => { setFuelFilter(e.target.value); setPage(0); }}>
+              <MenuItem value="">Всички</MenuItem>
+              <MenuItem value="benzin">Бензин</MenuItem>
+              <MenuItem value="dizel">Дизел</MenuItem>
+              <MenuItem value="electric">Електрически</MenuItem>
+              <MenuItem value="hybrid">Хибрид</MenuItem>
+              <MenuItem value="lng">LNG</MenuItem>
+              <MenuItem value="cng">CNG</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Тип</InputLabel>
+            <Select value={typeFilter} label="Тип" onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }}>
+              <MenuItem value="">Всички</MenuItem>
+              <MenuItem value="car">Лека кола</MenuItem>
+              <MenuItem value="truck">Камион</MenuItem>
+              <MenuItem value="van">Бус</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setVehiclesOpen(true)}>
             Добави автомобил
