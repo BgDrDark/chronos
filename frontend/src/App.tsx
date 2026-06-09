@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
 import { ErrorProvider } from './context/ErrorContext';
+import { DriverModeProvider } from './context/DriverModeContext';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { NetworkStatusBanner } from './components/NetworkStatusBanner';
 import MainLayout from './components/MainLayout';
@@ -34,6 +35,7 @@ import DocumentViewerPage from './pages/DocumentViewerPage';
 import NotificationsPage from './pages/NotificationsPage';
 import LogisticsPage from './pages/LogisticsPage';
 import FleetPage from './pages/FleetPage';
+import DriverDashboard from './pages/DriverDashboard';
 import VehicleProfilePage from './pages/VehicleProfilePage';
 import FleetReportsPage from './pages/FleetReportsPage';
 import TRZSettingsPage from './pages/TRZSettingsPage';
@@ -106,6 +108,7 @@ function App() {
       <NetworkStatusBanner />
       <PWAInstallBanner />
       <ErrorProvider>
+        <DriverModeProvider>
         <MainLayout>
           <Routes>
           <Route path="/" element={<DashboardPage />} />
@@ -333,6 +336,7 @@ function App() {
         
         {/* Автомобили (Fleet) */}
         <Route path="/admin/fleet" element={<AdminRoute><FleetPage /></AdminRoute>} />
+        <Route path="/driver" element={<AdminRoute><DriverDashboard /></AdminRoute>} />
         
         {/* Профил на автомобил */}
         <Route
@@ -372,6 +376,7 @@ function App() {
           <Route path="/documents/view" element={<DocumentViewerPage />} />
         </Routes>
       </MainLayout>
+      </DriverModeProvider>
     </ErrorProvider>
     </>
   );

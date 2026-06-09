@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   AppBar, Box, CssBaseline, Divider, Drawer as MuiDrawer, IconButton,
   Toolbar, Typography, Alert, AlertTitle, styled, type Theme, type CSSObject,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, CircularProgress, Paper
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, CircularProgress, Paper,
+  Switch, FormControlLabel
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -40,6 +41,7 @@ import { ME_QUERY, MODULES_QUERY, MAINTENANCE_STATUS_QUERY } from '../graphql/qu
 import useSessionActivity from '../hooks/useSessionActivity';
 import { SidebarMenu, type MenuItem } from './SidebarMenu';
 import NotificationBell from './NotificationBell';
+import { useDriverMode } from '../context/DriverModeContext';
 
 const drawerWidth = 260;
 const collapsedDrawerWidth = 72;
@@ -119,6 +121,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const client = useApolloClient();
+  const { isDriverMode, toggleDriverMode } = useDriverMode();
   
   useEffect(() => {
     localStorage.setItem('sidebarCollapsed', isCollapsed.toString());
@@ -353,6 +356,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Контрол', icon: <TaskIcon />, path: '/admin/production/control', visible: isAdmin && isEnabled('confectionery') },
     { text: 'Логистика', icon: <LogisticsIcon />, path: '/admin/logistics', visible: isAdmin && isEnabled('fleet') },
     { text: 'Автомобили', icon: <FleetIcon />, path: '/admin/fleet', visible: isAdmin && isEnabled('fleet') },
+    { text: 'Driver Dashboard', icon: <FleetIcon />, path: '/driver', visible: isAdmin && isDriverMode },
     { text: 'Справки', icon: <ReportsIcon />, path: '/admin/fleet/reports', visible: isAdmin && isEnabled('fleet') },
     { text: 'Терминал за присъствие', icon: <QrCodeScannerIcon />, path: '/kiosk', visible: isAdmin },
     { text: 'Терминал за достъп', icon: <DoorIcon />, path: '/kiosk/terminal', visible: isAdmin },
@@ -460,6 +464,11 @@ const MainLayout: React.FC<Props> = ({ children }) => {
                 <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{displayName}</Typography>
                 <Typography variant="caption" color="text.secondary">{user.role?.description || user.role?.name}</Typography>
               </Box>
+              <FormControlLabel
+                control={<Switch checked={isDriverMode} onChange={toggleDriverMode} size="small" />}
+                label="Driver"
+                sx={{ ml: 1, '& .MuiTypography-root': { fontSize: '0.8rem' } }}
+              />
               <IconButton color="error" onClick={handleLogout} title="Изход" sx={{ bgcolor: 'error.lighter' }}>
                 <LogoutIcon />
               </IconButton>
