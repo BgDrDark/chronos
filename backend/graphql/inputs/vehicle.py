@@ -185,3 +185,20 @@ class VehicleTripUpdateInput:
     distance: float | None = None
     trip_type: str | None = None
     notes: str | None = None
+
+
+@strawberry.input
+class VehicleAccidentInput:
+    vehicle_id: int
+    date: datetime.datetime
+    location: str | None = None
+    description: str
+    severity: str = "minor"
+    estimated_cost: float = 0
+    actual_cost: float = 0
+    third_party_name: str | None = None
+    third_party_insurance: str | None = None
+    police_report_number: str | None = None
+    photos: list[str] | None = None
+    downtime_days: int = 0
+    status: str = "reported"

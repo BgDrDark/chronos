@@ -434,6 +434,7 @@ __all__ = [
     "VehicleTrip",
     "VehicleType",
     "VehicleVignette",
+    "VehicleAccident",
 ]
 
 
@@ -453,3 +454,22 @@ class VehicleCostSummary:
     total_tolls: float
     grand_total: float
     cost_per_km: float | None = None
+
+
+@sp.type(schemas.VehicleAccident)
+class VehicleAccident:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    date: strawberry.auto
+    location: strawberry.auto
+    description: strawberry.auto
+    severity: strawberry.auto
+    estimated_cost: strawberry.auto
+    actual_cost: strawberry.auto
+    third_party_name: strawberry.auto
+    third_party_insurance: strawberry.auto
+    police_report_number: strawberry.auto
+    photos: strawberry.auto
+    downtime_days: strawberry.auto
+    status: strawberry.auto
+    created_at: strawberry.auto

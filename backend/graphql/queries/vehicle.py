@@ -198,6 +198,14 @@ class VehicleQuery:
         return [types.VehicleSchedule.from_pydantic(s) for s in res.scalars().all()]
 
     @strawberry.field
+    async def vehicle_accidents(self, info: strawberry.Info, vehicle_id: int) -> list[types.VehicleAccident]:
+        db = info.context["db"]
+        from backend.database.models import VehicleAccident
+        stmt = select(VehicleAccident).where(VehicleAccident.vehicle_id == vehicle_id).order_by(VehicleAccident.date.desc())
+        res = await db.execute(stmt)
+        return [types.VehicleAccident.from_pydantic(a) for a in res.scalars().all()]
+
+    @strawberry.field
     async def vehicle_cost_summary(
         self,
         info: strawberry.Info,

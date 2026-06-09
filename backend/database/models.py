@@ -3151,6 +3151,44 @@ class UpdateSchedule(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
 
 
+class AccidentSeverity(enum.StrEnum):
+    MINOR = "minor"
+    MODERATE = "moderate"
+    SEVERE = "severe"
+    TOTAL_LOSS = "total_loss"
+
+
+class AccidentStatus(enum.StrEnum):
+    REPORTED = "reported"
+    INVESTIGATING = "investigating"
+    SETTLED = "settled"
+    CLOSED = "closed"
+
+
+class VehicleAccident(Base):
+    """Регистър на инцидентите"""
+
+    __tablename__ = "vehicle_accidents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    vehicle_id: Mapped[int] = mapped_column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), default=AccidentSeverity.MINOR.value)
+    estimated_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    actual_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    third_party_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    third_party_insurance: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    police_report_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    photos: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    downtime_days: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default=AccidentStatus.REPORTED.value)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+
+    vehicle = relationship("Vehicle", backref="accidents")
+
+
 # Add back_populates relationships after all models are defined
 User.purchase_requests = relationship("PurchaseRequest", foreign_keys=[PurchaseRequest.requested_by_id], back_populates="requested_by_user")
 User.vehicle_fuel_records = relationship("VehicleFuel", foreign_keys=[VehicleFuel.driver_id], back_populates="driver")

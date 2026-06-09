@@ -9,6 +9,7 @@ from backend.crud.repositories import vehicle_repo
 from backend.exceptions import NotFoundException, ValidationException
 from backend.graphql import types
 from backend.graphql.inputs.vehicle import (
+    VehicleAccidentInput,
     VehicleCreateInput,
     VehicleDriverInput,
     VehicleDriverUpdateInput,
@@ -325,7 +326,32 @@ class VehicleMutation:
         )
         await db.commit()
         await db.refresh(record)
-        return types.VehicleTrip.from_pydantic(record)
+        return types.VehicleInspection.from_pydantic(record)
+
+    @strawberry.mutation
+    async def create_vehicle_accident(self, input: VehicleAccidentInput, info: strawberry.Info) -> types.VehicleAccident:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
+
+        from backend.database.models import VehicleAccident
+        accident = VehicleAccident(
+            vehicle_id=input.vehicle_id,
+            date=input.date.date() if hasattr(input.date, "date") else input.date,
+            location=input.location,
+            description=input.description,
+            severity=input.severity,
+            estimated_cost=input.estimated_cost,
+            third_party_name=input.third_party_name,
+            third_party_insurance=input.third_party_insurance,
+            police_report_number=input.police_report_number,
+            photos=input.photos,
+            status=input.status,
+        )
+        db.add(accident)
+        await db.commit()
+        await db.refresh(accident)
+        return types.VehicleAccident.from_pydantic(accident)
 
     @strawberry.mutation
     async def delete_vehicle_mileage(self, id: int, info: strawberry.Info) -> bool:
