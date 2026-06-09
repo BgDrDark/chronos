@@ -4,6 +4,7 @@ import { Box, CircularProgress } from '@mui/material';
 import { ErrorProvider } from './context/ErrorContext';
 import { DriverModeProvider } from './context/DriverModeContext';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { SWUpdateBanner } from './components/SWUpdateBanner';
 import { NetworkStatusBanner } from './components/NetworkStatusBanner';
 import MainLayout from './components/MainLayout';
 import DashboardPage from './pages/DashboardPage';
@@ -106,6 +107,7 @@ function App() {
   return (
     <>
       <NetworkStatusBanner />
+      <SWUpdateBanner />
       <PWAInstallBanner />
       <ErrorProvider>
         <DriverModeProvider>
