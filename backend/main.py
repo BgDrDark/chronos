@@ -232,18 +232,20 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         # Permissions Policy - allow geolocation and camera for Kiosk mode
         response.headers["Permissions-Policy"] = "geolocation=(self), camera=(self), microphone=()"
-        # Content Security Policy (CSP)
+        # Content Security Policy (CSP) - разрешава PWA, Google OAuth и kiosk
         # Added domains for Google OAuth and local development
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' https://accounts.google.com https://apis.google.com; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: blob: https://lh3.googleusercontent.com https://ssl.gstatic.com; "
             "font-src 'self' data: https://fonts.gstatic.com; "
-            "connect-src 'self' https://chronos.oblak24.org https://dev.oblak24.org http://localhost:14240 http://192.168.1.92:14240 https://accounts.google.com https://oauth2.googleapis.com https://play.google.com; "
+            "connect-src 'self' https://chronos.oblak24.org https://dev.oblak24.org http://localhost:14240 http://192.168.1.92:14240 https://accounts.google.com https://oauth2.googleapis.com https://play.google.com ws: wss:; "
             "frame-src https://accounts.google.com; "
             "frame-ancestors 'none'; "
-            "object-src 'none';"
+            "object-src 'none'; "
+            "worker-src 'self' blob:; "
+            "manifest-src 'self';"
         )
         return response
 
