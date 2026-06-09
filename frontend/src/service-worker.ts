@@ -78,6 +78,26 @@ registerRoute(
 );
 
 self.addEventListener('fetch', (event) => {
+  // Handle Share Target POST
+  if (event.request.method === 'POST' && event.request.url.includes('/share')) {
+    event.respondWith(
+      (async () => {
+        const formData = await event.request.formData();
+        const title = formData.get('title') || '';
+        const text = formData.get('text') || '';
+        const url = formData.get('url') || '';
+
+        const params = new URLSearchParams();
+        if (title) params.set('title', title.toString());
+        if (text) params.set('text', text.toString());
+        if (url) params.set('url', url.toString());
+
+        return Response.redirect(`/share?${params.toString()}`, 303);
+      })()
+    );
+    return;
+  }
+
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request).catch(async () => {
@@ -88,6 +108,21 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
+// Badge counter persisted via Cache API
+async function getBadgeCount(): Promise<number> {
+  try {
+    const cache = await caches.open('badge-count');
+    const response = await cache.match('/__badge_count__');
+    if (response) {
+      const count = await response.text();
+      return parseInt(count, 10) || 0;
+    }
+  } catch (e) {
+    console.error('Failed to get badge count:', e);
+  }
+  return 0;
+}
+
 self.addEventListener('push', (event) => {
   if (!event.data) return;
 
@@ -96,12 +131,24 @@ self.addEventListener('push', (event) => {
     const notification = data.notification;
 
     event.waitUntil(
-      self.registration.showNotification(notification.title, {
-        body: notification.body,
-        icon: notification.icon || '/pwa-192x192.png',
-        badge: '/icon16.png',
-        data: notification.data
-      })
+      (async () => {
+        // Set app badge
+        if ('setAppBadge' in self.navigator) {
+          try {
+            const badgeCount = await getBadgeCount();
+            await self.navigator.setAppBadge(badgeCount + 1);
+          } catch (e) {
+            console.error('Badge set failed:', e);
+          }
+        }
+
+        await self.registration.showNotification(notification.title, {
+          body: notification.body,
+          icon: notification.icon || '/pwa-192x192.png',
+          badge: '/icon16.png',
+          data: notification.data
+        });
+      })()
     );
   } catch (e) {
     console.error("Push data is not JSON or invalid", e);
@@ -110,10 +157,20 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const urlToOpen = event.notification.data?.url || '/';
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+    (async () => {
+      // Clear app badge when user interacts with notifications
+      if ('clearAppBadge' in self.navigator) {
+        try {
+          await self.navigator.clearAppBadge();
+        } catch (e) {
+          console.error('Failed to clear badge:', e);
+        }
+      }
+
+      const urlToOpen = event.notification.data?.url || '/';
+      const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const client of windowClients) {
         if (client.url === urlToOpen && 'focus' in client) {
           return client.focus();
@@ -122,7 +179,7 @@ self.addEventListener('notificationclick', (event) => {
       if (self.clients.openWindow) {
         return self.clients.openWindow(urlToOpen);
       }
-    })
+    })()
   );
 });
 

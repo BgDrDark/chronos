@@ -34,6 +34,7 @@ import ProductionKioskPage from './pages/ProductionKioskPage';
 import AccountingPage from './pages/AccountingPage';
 import DocumentViewerPage from './pages/DocumentViewerPage';
 import NotificationsPage from './pages/NotificationsPage';
+import { SharePage } from './pages/SharePage';
 import LogisticsPage from './pages/LogisticsPage';
 import FleetPage from './pages/FleetPage';
 import DriverDashboard from './pages/DriverDashboard';
@@ -376,6 +377,7 @@ function App() {
         <Route path="/admin/behavioral-analysis/employee/:id" element={<AdminRoute><EmployeeProfilePage /></AdminRoute>} />
           <Route path="/admin/behavioral-analysis/system" element={<AdminRoute><SystemHealthPage /></AdminRoute>} />
           <Route path="/documents/view" element={<DocumentViewerPage />} />
+          <Route path="/share" element={<SharePage />} />
         </Routes>
       </MainLayout>
       </DriverModeProvider>

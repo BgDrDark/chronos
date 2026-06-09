@@ -115,6 +115,15 @@ export default defineConfig({
             purpose: 'any maskable'
           }
         ],
+        share_target: {
+          action: '/share',
+          method: 'POST',
+          params: {
+            title: 'text',
+            text: 'text',
+            url: 'text',
+          },
+        },
         file_handlers: [
           {
             action: '/documents/view',
