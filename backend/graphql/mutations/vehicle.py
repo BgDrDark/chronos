@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import datetime
+import re
+
 import strawberry
 
 from backend.crud.repositories import vehicle_repo
-from backend.exceptions import NotFoundException
+from backend.exceptions import NotFoundException, ValidationException
 from backend.graphql import types
 from backend.graphql.inputs.vehicle import (
     VehicleCreateInput,
@@ -34,6 +37,21 @@ class VehicleMutation:
         current_user = info.context["current_user"]
 
         company_id = input.company_id or current_user.company_id
+
+        # VIN Validation
+        if input.vin:
+            if not re.match(r'^[A-HJ-NPR-Z0-9]{17}$', input.vin.upper()):
+                raise ValidationException.detail("VIN трябва да е точно 17 символа (без I, O, Q)")
+            input.vin = input.vin.upper()
+
+        # Year Validation
+        current_year = datetime.datetime.now().year
+        if input.year and (input.year < 1900 or input.year > current_year + 1):
+            raise ValidationException.detail(f"Годината трябва да е между 1900 и {current_year + 1}")
+
+        # Initial Mileage Validation
+        if input.initial_mileage is not None and input.initial_mileage < 0:
+            raise ValidationException.detail("Началният пробег не може да бъде отрицателен")
 
         vehicle_type_obj = None
         if input.vehicle_type:
@@ -68,6 +86,21 @@ class VehicleMutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         check_company_access(db, current_user, "Vehicle", id)
+
+        # VIN Validation
+        if input.vin:
+            if not re.match(r'^[A-HJ-NPR-Z0-9]{17}$', input.vin.upper()):
+                raise ValidationException.detail("VIN трябва да е точно 17 символа (без I, O, Q)")
+            input.vin = input.vin.upper()
+
+        # Year Validation
+        current_year = datetime.datetime.now().year
+        if input.year and (input.year < 1900 or input.year > current_year + 1):
+            raise ValidationException.detail(f"Годината трябва да е между 1900 и {current_year + 1}")
+
+        # Initial Mileage Validation
+        if input.initial_mileage is not None and input.initial_mileage < 0:
+            raise ValidationException.detail("Началният пробег не може да бъде отрицателен")
 
         update_data = {
             "registration_number": input.registration_number,
@@ -115,6 +148,18 @@ class VehicleMutation:
         db = info.context["db"]
         current_user = info.context["current_user"]
         check_company_access(db, current_user, "Vehicle", input.vehicle_id)
+
+        # Validate mileage is not less than the last recorded mileage
+        from sqlalchemy import select
+        from backend.database.models import VehicleMileage
+        last_mileage_stmt = select(VehicleMileage).where(
+            VehicleMileage.vehicle_id == input.vehicle_id
+        ).order_by(VehicleMileage.date.desc(), VehicleMileage.id.desc()).limit(1)
+        last_mileage_res = await db.execute(last_mileage_stmt)
+        last_mileage_record = last_mileage_res.scalars().first()
+
+        if last_mileage_record and input.mileage < last_mileage_record.mileage:
+            raise ValidationException.detail(f"Пробегът не може да бъде по-малък от последния запис ({last_mileage_record.mileage} км)")
 
         record = await vehicle_repo.create_vehicle_mileage(
             db,

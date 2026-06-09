@@ -274,7 +274,26 @@ const FleetPage: React.FC = () => {
       return;
     }
 
-    const existingVehicle = vehiclesData?.vehicles?.find(
+    // VIN Validation
+    if (vehicleForm.vin && !/^[A-HJ-NPR-Z0-9]{17}$/i.test(vehicleForm.vin)) {
+      setError('VIN трябва да е точно 17 символа (без I, O, Q)');
+      return;
+    }
+
+    // Year Validation
+    const currentYear = new Date().getFullYear();
+    if (vehicleForm.year < 1900 || vehicleForm.year > currentYear + 1) {
+      setError(`Годината трябва да е между 1900 и ${currentYear + 1}`);
+      return;
+    }
+
+    // Initial Mileage Validation
+    if (vehicleForm.initialMileage < 0) {
+      setError('Началният пробег не може да бъде отрицателен');
+      return;
+    }
+
+    const existingVehicle = vehiclesData?.vehicles?.vehicles?.find(
       (v: { registrationNumber: string }) => v.registrationNumber.toLowerCase() === vehicleForm.registrationNumber.toLowerCase()
     );
     if (existingVehicle) {
@@ -331,6 +350,10 @@ const FleetPage: React.FC = () => {
   const handleSaveMileage = async () => {
     if (!mileageForm.vehicleId || !mileageForm.mileage) {
       setError('Моля, изберете автомобил и въведете километри');
+      return;
+    }
+    if (mileageForm.mileage < 0) {
+      setError('Километрите не могат да бъдат отрицателни');
       return;
     }
     try {
