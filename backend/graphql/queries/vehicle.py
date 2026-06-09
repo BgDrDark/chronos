@@ -1,6 +1,7 @@
 
 import strawberry
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from backend.database.models import (
     Vehicle,
@@ -31,7 +32,12 @@ class VehicleQuery:
         if not current_user:
             raise AuthenticationException()
 
-        stmt = select(Vehicle)
+        stmt = select(Vehicle).options(
+            selectinload(Vehicle.vehicle_type),
+            selectinload(Vehicle.drivers),
+            selectinload(Vehicle.insurances),
+            selectinload(Vehicle.inspections),
+        )
 
         if company_id:
             stmt = stmt.where(Vehicle.company_id == company_id)
