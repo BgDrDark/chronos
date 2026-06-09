@@ -13,6 +13,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TablePagination,
   Button,
   TextField,
   Select,
@@ -285,6 +286,15 @@ const FleetPage: React.FC = () => {
   
   const formatPrice = (value: number | string | null | undefined): string => {
     return `${currencySymbol}${Number(value || 0).toFixed(2)}`;
+  };
+
+  const formatDate = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return '-';
+    try {
+      return new Date(dateStr).toLocaleDateString('bg-BG');
+    } catch {
+      return dateStr;
+    }
   };
 
   const [tabValue, setTabValue] = useState(0);
@@ -562,7 +572,7 @@ const FleetPage: React.FC = () => {
         }
       });
       setRepairOpen(false);
-      setRepairForm({ vehicleId: '', date: new Date().toISOString().split('T')[0], description: '', cost: 0, notes: '' });
+      setRepairForm({ vehicleId: '', date: new Date().toISOString().split('T')[0], mileage: 0, description: '', service: '', cost: 0, repairType: 'maintenance', notes: '' });
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -588,7 +598,7 @@ const FleetPage: React.FC = () => {
         }
       });
       setInsuranceOpen(false);
-      setInsuranceForm({ vehicleId: '', provider: '', policyNumber: '', startDate: new Date().toISOString().split('T')[0], endDate: '', premium: 0, notes: '' });
+      setInsuranceForm({ vehicleId: '', provider: '', policyNumber: '', startDate: new Date().toISOString().split('T')[0], endDate: '', premium: 0, insuranceType: 'grazhdanska', notes: '' });
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -612,7 +622,7 @@ const FleetPage: React.FC = () => {
         }
       });
       setInspectionOpen(false);
-      setInspectionForm({ vehicleId: '', date: new Date().toISOString().split('T')[0], nextDate: '', cost: 0, notes: '' });
+      setInspectionForm({ vehicleId: '', date: new Date().toISOString().split('T')[0], nextDate: '', cost: 0, protocolNumber: '', result: 'passed', notes: '' });
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -2096,10 +2106,11 @@ const FleetPage: React.FC = () => {
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 margin="dense" label="Стойност" type="number" fullWidth variant="outlined"
-                InputProps={{ startAdornment: currencySymbol }}
                 value={insuranceForm.premium}
                 onChange={(e) => setInsuranceForm({ ...insuranceForm, premium: parseFloat(e.target.value) || 0 })}
+                slotProps={{
                   input: {
+                    startAdornment: <InputAdornment position="start">{currencySymbol}</InputAdornment>,
                     endAdornment: (
                       <InputAdornment position="end">
                         <InfoIcon helpText="Застрахователна премия в лева" />
