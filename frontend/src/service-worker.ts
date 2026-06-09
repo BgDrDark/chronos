@@ -66,13 +66,26 @@ registerRoute(
   })
 );
 
+// Categorized: GraphQL GET queries (read operations) — 5min cache
 registerRoute(
-  ({ url }) => url.pathname === '/graphql',
+  ({ url, request }) => url.pathname === '/graphql' && request.method === 'GET',
   new StaleWhileRevalidate({
-    cacheName: 'graphql-cache',
+    cacheName: 'graphql-queries',
     plugins: [
-      new CacheableResponsePlugin({ statuses: [200] }),
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
       new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 5 * 60 }),
+    ],
+  })
+);
+
+// Categorized: API GET endpoints (export/reference data) — 30min cache
+registerRoute(
+  ({ url, request }) => url.pathname.startsWith('/api/') && request.method === 'GET',
+  new StaleWhileRevalidate({
+    cacheName: 'api-data',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 30 * 60 }),
     ],
   })
 );
@@ -200,6 +213,8 @@ self.addEventListener('periodicsync', ((event: PeriodicSyncEvent) => {
 self.addEventListener('sync', ((event: SyncEvent) => {
   if (event.tag === 'sync-clock-logs') {
     event.waitUntil(syncClockLogs());
+  } else if (event.tag === 'sync-fleet-logs') {
+    event.waitUntil(syncFleetLogs());
   }
 }) as EventListener);
 
@@ -245,6 +260,25 @@ async function syncClockLogs() {
   });
 }
 
+async function syncFleetLogs() {
+  try {
+    const cache = await caches.open('fleet-offline');
+    const keys = await cache.keys();
+    for (const request of keys) {
+      try {
+        const response = await fetch(request);
+        if (response.ok) {
+          await cache.delete(request);
+        }
+      } catch (e) {
+        console.error('Fleet sync failed for:', request.url, e);
+      }
+    }
+  } catch (e) {
+    console.error('Fleet sync error:', e);
+  }
+}
+
 function openIDB(name: string, version: number): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(name, version);
@@ -255,12 +289,15 @@ function openIDB(name: string, version: number): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('clock-logs')) {
         db.createObjectStore('clock-logs', { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains('fleet-logs')) {
+        db.createObjectStore('fleet-logs', { keyPath: 'id' });
+      }
     };
   });
 }
 
 async function refreshData() {
-  const cache = await caches.open('graphql-cache');
+  const cache = await caches.open('graphql-queries');
   
   try {
     const response = await fetch('/graphql', {
