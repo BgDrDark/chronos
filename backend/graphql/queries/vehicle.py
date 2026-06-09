@@ -270,6 +270,19 @@ class VehicleQuery:
 
         grand_total = total_fuel + total_repairs + total_inspections + total_insurances + total_vignettes + total_tolls
 
+        # Calculate depreciation
+        vehicle_res = await db.execute(select(Vehicle).where(Vehicle.id == vehicle_id))
+        vehicle = vehicle_res.scalars().first()
+        depreciation = 0
+        if vehicle and vehicle.purchase_price and vehicle.purchase_date and vehicle.useful_life_years:
+            from datetime import date
+            today = date.today()
+            years_passed = (today - vehicle.purchase_date).days / 365.25
+            if years_passed < vehicle.useful_life_years:
+                salvage = vehicle.salvage_value or 0
+                annual_dep = (vehicle.purchase_price - salvage) / vehicle.useful_life_years
+                depreciation = annual_dep * years_passed
+
         # Calculate cost per km
         mileage_stmt = select(func.max(VehicleMileage.mileage)).where(VehicleMileage.vehicle_id == vehicle_id)
         current_mileage = (await db.execute(mileage_stmt)).scalar() or 0
@@ -285,6 +298,6 @@ class VehicleQuery:
             total_insurances=total_insurances,
             total_vignettes=total_vignettes,
             total_tolls=total_tolls,
-            grand_total=grand_total,
+            grand_total=grand_total + depreciation,
             cost_per_km=cost_per_km,
         )

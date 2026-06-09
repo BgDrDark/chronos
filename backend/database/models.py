@@ -2681,6 +2681,10 @@ class Vehicle(Base):
     status: Mapped[str] = mapped_column(String(20), default=VehicleStatus.ACTIVE.value)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    purchase_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    salvage_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    useful_life_years: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
     updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
 
