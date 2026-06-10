@@ -324,6 +324,7 @@ const FleetPage: React.FC = () => {
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
 
   const [createVehicle] = useMutation(CREATE_VEHICLE_MUTATION);
   const [updateVehicle] = useMutation(UPDATE_VEHICLE_MUTATION);
@@ -418,11 +419,22 @@ const FleetPage: React.FC = () => {
 
   const handleVehicleChange = (field: string, value: unknown) => {
     setVehicleForm(prev => ({ ...prev, [field]: value }));
+    if (validationErrors[field]) {
+      setValidationErrors(prev => ({ ...prev, [field]: false }));
+    }
   };
 
   const handleSaveVehicle = async () => {
-    if (!vehicleForm.registrationNumber || !vehicleForm.make) {
-      setError('Моля, попълте регистрационния номер и марката');
+    const errors: Record<string, boolean> = {};
+    if (!vehicleForm.registrationNumber) errors.registrationNumber = true;
+    if (!vehicleForm.make) errors.make = true;
+    if (!vehicleForm.year || vehicleForm.year < 1900) errors.year = true;
+    if (!vehicleForm.vehicleType) errors.vehicleType = true;
+    if (!vehicleForm.fuelType) errors.fuelType = true;
+    setValidationErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
+      setError('Моля, попълнете всички задължителни полета');
       return;
     }
 
@@ -1382,6 +1394,8 @@ const FleetPage: React.FC = () => {
                 variant="outlined" 
                 value={vehicleForm.registrationNumber}
                 onChange={(e) => handleVehicleChange('registrationNumber', e.target.value)}
+                error={!!validationErrors.registrationNumber}
+                helperText={validationErrors.registrationNumber ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1420,6 +1434,8 @@ const FleetPage: React.FC = () => {
                 variant="outlined" 
                 value={vehicleForm.make}
                 onChange={(e) => handleVehicleChange('make', e.target.value)}
+                error={!!validationErrors.make}
+                helperText={validationErrors.make ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1459,6 +1475,8 @@ const FleetPage: React.FC = () => {
                 variant="outlined" 
                 value={vehicleForm.year}
                 onChange={(e) => handleVehicleChange('year', parseInt(e.target.value))}
+                error={!!validationErrors.year}
+                helperText={validationErrors.year ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1471,10 +1489,10 @@ const FleetPage: React.FC = () => {
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Тип</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!validationErrors.vehicleType}>
+                <InputLabel>Тип *</InputLabel>
                 <Select 
-                  label="Тип" 
+                  label="Тип *" 
                   value={vehicleForm.vehicleType}
                   onChange={(e) => handleVehicleChange('vehicleType', e.target.value)}
                 >
@@ -1485,10 +1503,10 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Гориво</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!validationErrors.fuelType}>
+                <InputLabel>Гориво *</InputLabel>
                 <Select 
-                  label="Гориво" 
+                  label="Гориво *" 
                   value={vehicleForm.fuelType}
                   onChange={(e) => handleVehicleChange('fuelType', e.target.value)}
                 >
