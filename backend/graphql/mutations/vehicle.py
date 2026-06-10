@@ -90,7 +90,7 @@ class VehicleMutation:
     async def update_vehicle(self, id: int, input: VehicleUpdateInput, info: strawberry.Info) -> types.Vehicle:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        check_company_access(db, current_user, "Vehicle", id)
+        await check_company_access(db, current_user, "Vehicle", id)
 
         # VIN Validation
         if input.vin:
@@ -140,7 +140,7 @@ class VehicleMutation:
     async def delete_vehicle(self, id: int, info: strawberry.Info) -> bool:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        check_company_access(db, current_user, "Vehicle", id)
+        await check_company_access(db, current_user, "Vehicle", id)
 
         success = await vehicle_repo.delete_vehicle(db, vehicle_id=id)
         if not success:
@@ -152,7 +152,7 @@ class VehicleMutation:
     async def create_vehicle_mileage(self, input: VehicleMileageInput, info: strawberry.Info) -> types.VehicleMileage:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
+        await check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         # Validate mileage is not less than the last recorded mileage
         from sqlalchemy import select
@@ -181,7 +181,7 @@ class VehicleMutation:
     async def create_vehicle_fuel(self, input: VehicleFuelInput, info: strawberry.Info) -> types.VehicleFuel:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
+        await check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         # Calculate Efficiency (L/100km)
         efficiency = None
@@ -270,7 +270,7 @@ class VehicleMutation:
     async def create_vehicle_repair(self, input: VehicleRepairInput, info: strawberry.Info) -> types.VehicleRepair:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
+        await check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_repair(
             db,
@@ -288,7 +288,7 @@ class VehicleMutation:
     async def create_vehicle_insurance(self, input: VehicleInsuranceInput, info: strawberry.Info) -> types.VehicleInsurance:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
+        await check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_insurance(
             db,
@@ -308,7 +308,7 @@ class VehicleMutation:
     async def create_vehicle_inspection(self, input: VehicleInspectionInput, info: strawberry.Info) -> types.VehicleInspection:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
+        await check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_inspection(
             db,
@@ -328,7 +328,7 @@ class VehicleMutation:
     async def create_vehicle_driver(self, input: VehicleDriverInput, info: strawberry.Info) -> types.VehicleDriver:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
+        await check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_driver(
             db,
@@ -347,7 +347,7 @@ class VehicleMutation:
     async def create_vehicle_trip(self, input: VehicleTripInput, info: strawberry.Info) -> types.VehicleTrip:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
+        await check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         record = await vehicle_repo.create_vehicle_trip(
             db,
@@ -369,7 +369,7 @@ class VehicleMutation:
     async def create_vehicle_accident(self, input: VehicleAccidentInput, info: strawberry.Info) -> types.VehicleAccident:
         db = info.context["db"]
         current_user = info.context["current_user"]
-        check_company_access(db, current_user, "Vehicle", input.vehicle_id)
+        await check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
         from backend.database.models import VehicleAccident
         accident = VehicleAccident(
