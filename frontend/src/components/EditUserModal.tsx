@@ -135,7 +135,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
     handleSubmit,
     reset,
     control,
-    formState: { isSubmitting },
+    setError,
+    formState: { isSubmitting, errors },
   } = useForm<UpdateUserFormData>({
     resolver: zodResolver(updateUserSchema),
   });
@@ -145,6 +146,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
 
   useEffect(() => {
     if (user && open) {
+      setApiError('');
       const contract = user.employmentContract;
       
       reset({
@@ -254,10 +256,14 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
       refetchUsers();
       onClose();
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setApiError(err.message);
+      const graphqlError = err as { graphQLErrors?: Array<{ message?: string; extensions?: { context?: { field?: string; reason?: string } } }> };
+      const gqlErr = graphqlError.graphQLErrors?.[0];
+      if (gqlErr?.extensions?.context?.field) {
+        const fieldName = gqlErr.extensions.context.field as keyof UpdateUserFormData;
+        const reason = gqlErr.extensions.context.reason || gqlErr.message;
+        setError(fieldName, { type: 'server', message: reason });
       } else {
-        setApiError('Възникна неочаквана грешка');
+        setApiError(err instanceof Error ? err.message : 'Възникна неочаквана грешка');
       }
     }
   };
@@ -429,6 +435,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 label="Потребителско име"
                 size="small"
                 {...register('username')}
+                error={!!errors.username}
+                helperText={errors.username?.message}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -446,6 +454,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 label="Имейл"
                 size="small"
                 {...register('email')}
+                error={!!errors.email}
+                helperText={errors.email?.message}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -685,6 +695,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 type="number"
                 size="small"
                 {...register('workHoursPerWeek', { valueAsNumber: true })}
+                error={!!errors.workHoursPerWeek}
+                helperText={errors.workHoursPerWeek?.message}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -703,6 +715,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 type="number"
                 size="small"
                 {...register('probationMonths', { valueAsNumber: true })}
+                error={!!errors.probationMonths}
+                helperText={errors.probationMonths?.message}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -760,6 +774,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 type="number"
                 size="small"
                 {...register('salaryInstallmentsCount', { valueAsNumber: true })}
+                error={!!errors.salaryInstallmentsCount}
+                helperText={errors.salaryInstallmentsCount?.message}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -778,6 +794,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 type="number"
                 size="small"
                 {...register('monthlyAdvanceAmount', { valueAsNumber: true })}
+                error={!!errors.monthlyAdvanceAmount}
+                helperText={errors.monthlyAdvanceAmount?.message}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -832,6 +850,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 inputProps={{ step: 0.1 }}
                 size="small"
                 {...register('nightWorkRate', { valueAsNumber: true })}
+                error={!!errors.nightWorkRate}
+                helperText={errors.nightWorkRate?.message}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -851,6 +871,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 inputProps={{ step: 0.1 }}
                 size="small"
                 {...register('overtimeRate', { valueAsNumber: true })}
+                error={!!errors.overtimeRate}
+                helperText={errors.overtimeRate?.message}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -870,6 +892,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                 inputProps={{ step: 0.1 }}
                 size="small"
                 {...register('holidayRate', { valueAsNumber: true })}
+                error={!!errors.holidayRate}
+                helperText={errors.holidayRate?.message}
                 slotProps={{
                   input: {
                     endAdornment: (

@@ -19,6 +19,7 @@ import {
   Select,
   MenuItem,
   FormControl,
+  FormHelperText,
   InputLabel,
   Dialog,
   DialogTitle,
@@ -42,13 +43,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   DirectionsCar as CarIcon,
-  LocalGasStation as FuelIcon,
   Build as RepairIcon,
-  Security as InsuranceIcon,
-  CheckCircle as InspectionIcon,
-  Speed as MileageIcon,
-  Person as DriverIcon,
-  Route as TripIcon,
   ArrowBack as BackIcon,
   Visibility as ViewIcon,
   Download as DownloadIcon,
@@ -141,6 +136,14 @@ const CREATE_TRIP_MUTATION = gql`
   }
 `;
 
+const CREATE_ACCIDENT_MUTATION = gql`
+  mutation CreateVehicleAccident($input: VehicleAccidentInput!) {
+    createVehicleAccident(input: $input) {
+      id
+    }
+  }
+`;
+
 const GET_VEHICLES_QUERY = gql`
   query GetVehicles($skip: Int, $limit: Int, $search: String, $status: String, $fuelType: String, $vehicleType: String) {
     vehicles(skip: $skip, limit: $limit, search: $search, status: $status, fuelType: $fuelType, vehicleType: $vehicleType) {
@@ -224,6 +227,7 @@ const GET_VEHICLE_DRIVERS = gql`
   query GetVehicleDrivers($vehicleId: Int!) {
     vehicleDrivers(vehicleId: $vehicleId) {
       id userId licenseNumber category isPrimary assignedFrom assignedTo notes
+      user { firstName lastName }
     }
   }
 `;
@@ -297,7 +301,27 @@ const FleetPage: React.FC = () => {
     }
   };
 
-  const [tabValue, setTabValue] = useState(0);
+  const fuelTypeLabels: Record<string, string> = {
+    benzin: 'Бензин',
+    dizel: 'Дизел',
+    electric: 'Електрически',
+    hybrid: 'Хибрид',
+    lng: 'LNG',
+    cng: 'CNG',
+  };
+
+  const insuranceTypeLabels: Record<string, string> = {
+    civil: 'Гражданска отговорност',
+    kasko: 'Автокаско',
+    border: 'Гранична застраховка',
+  };
+
+  const inspectionResultLabels: Record<string, string> = {
+    passed: 'Минал',
+    failed: 'Не минал',
+    pending: 'В изчакване',
+  };
+
   const [vehiclesOpen, setVehiclesOpen] = useState(false);
   const [mileageOpen, setMileageOpen] = useState(false);
   const [fuelOpen, setFuelOpen] = useState(false);
@@ -306,6 +330,7 @@ const FleetPage: React.FC = () => {
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [driverOpen, setDriverOpen] = useState(false);
   const [tripOpen, setTripOpen] = useState(false);
+  const [accidentOpen, setAccidentOpen] = useState(false);
 
   const [vehicleForm, setVehicleForm] = useState({
     registrationNumber: '',
@@ -325,6 +350,13 @@ const FleetPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
+  const [mileageValidationErrors, setMileageValidationErrors] = useState<Record<string, boolean>>({});
+  const [fuelValidationErrors, setFuelValidationErrors] = useState<Record<string, boolean>>({});
+  const [repairValidationErrors, setRepairValidationErrors] = useState<Record<string, boolean>>({});
+  const [insuranceValidationErrors, setInsuranceValidationErrors] = useState<Record<string, boolean>>({});
+  const [inspectionValidationErrors, setInspectionValidationErrors] = useState<Record<string, boolean>>({});
+  const [driverValidationErrors, setDriverValidationErrors] = useState<Record<string, boolean>>({});
+  const [tripValidationErrors, setTripValidationErrors] = useState<Record<string, boolean>>({});
 
   const [createVehicle] = useMutation(CREATE_VEHICLE_MUTATION);
   const [updateVehicle] = useMutation(UPDATE_VEHICLE_MUTATION);
@@ -336,6 +368,7 @@ const FleetPage: React.FC = () => {
   const [createInspection] = useMutation(CREATE_INSPECTION_MUTATION);
   const [createDriver] = useMutation(CREATE_DRIVER_MUTATION);
   const [createTrip] = useMutation(CREATE_TRIP_MUTATION);
+  const [createAccident] = useMutation(CREATE_ACCIDENT_MUTATION);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
   const [searchText, setSearchText] = useState('');
@@ -411,17 +444,67 @@ const FleetPage: React.FC = () => {
   const [insuranceForm, setInsuranceForm] = useState({ vehicleId: '', provider: '', policyNumber: '', startDate: new Date().toISOString().split('T')[0], endDate: '', premium: 0, insuranceType: 'grazhdanska', notes: '' });
   const [inspectionForm, setInspectionForm] = useState({ vehicleId: '', date: new Date().toISOString().split('T')[0], nextDate: '', cost: 0, protocolNumber: '', result: 'passed', notes: '' });
   const [driverForm, setDriverForm] = useState({ userId: '', vehicleId: '', licenseNumber: '', licenseExpiry: '', phone: '', category: 'B', isPrimary: true, notes: '' });
-  const [tripForm, setTripForm] = useState({ vehicleId: '', userId: '', startDate: new Date().toISOString().split('T')[0], endDate: '', startLocation: '', endLocation: '', distance: 0, notes: '' });
-
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-  };
+  const [tripForm, setTripForm] = useState({ vehicleId: '', userId: '', startDate: new Date().toISOString().split('T')[0], endDate: '', startLocation: '', endLocation: '', distance: 0, tripType: 'business', description: '', notes: '' });
+  const [accidentForm, setAccidentForm] = useState({ vehicleId: '', date: new Date().toISOString().split('T')[0], location: '', description: '', severity: 'minor', estimatedCost: 0, thirdPartyName: '', policeReportNumber: '', status: 'reported' });
 
   const handleVehicleChange = (field: string, value: unknown) => {
     setVehicleForm(prev => ({ ...prev, [field]: value }));
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: false }));
     }
+  };
+
+  const handleMileageChange = (field: string, value: unknown) => {
+    setMileageForm(prev => ({ ...prev, [field]: value }));
+    if (mileageValidationErrors[field]) {
+      setMileageValidationErrors(prev => ({ ...prev, [field]: false }));
+    }
+  };
+
+  const handleFuelChange = (field: string, value: unknown) => {
+    setFuelForm(prev => ({ ...prev, [field]: value }));
+    if (fuelValidationErrors[field]) {
+      setFuelValidationErrors(prev => ({ ...prev, [field]: false }));
+    }
+  };
+
+  const handleRepairChange = (field: string, value: unknown) => {
+    setRepairForm(prev => ({ ...prev, [field]: value }));
+    if (repairValidationErrors[field]) {
+      setRepairValidationErrors(prev => ({ ...prev, [field]: false }));
+    }
+  };
+
+  const handleInsuranceChange = (field: string, value: unknown) => {
+    setInsuranceForm(prev => ({ ...prev, [field]: value }));
+    if (insuranceValidationErrors[field]) {
+      setInsuranceValidationErrors(prev => ({ ...prev, [field]: false }));
+    }
+  };
+
+  const handleInspectionChange = (field: string, value: unknown) => {
+    setInspectionForm(prev => ({ ...prev, [field]: value }));
+    if (inspectionValidationErrors[field]) {
+      setInspectionValidationErrors(prev => ({ ...prev, [field]: false }));
+    }
+  };
+
+  const handleDriverChange = (field: string, value: unknown) => {
+    setDriverForm(prev => ({ ...prev, [field]: value }));
+    if (driverValidationErrors[field]) {
+      setDriverValidationErrors(prev => ({ ...prev, [field]: false }));
+    }
+  };
+
+  const handleTripChange = (field: string, value: unknown) => {
+    setTripForm(prev => ({ ...prev, [field]: value }));
+    if (tripValidationErrors[field]) {
+      setTripValidationErrors(prev => ({ ...prev, [field]: false }));
+    }
+  };
+
+  const handleAccidentChange = (field: string, value: unknown) => {
+    setAccidentForm(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSaveVehicle = async () => {
@@ -512,8 +595,13 @@ const FleetPage: React.FC = () => {
   };
 
   const handleSaveMileage = async () => {
-    if (!mileageForm.vehicleId || !mileageForm.mileage) {
-      setError('Моля, изберете автомобил и въведете километри');
+    setError(null);
+    const errors: Record<string, boolean> = {};
+    if (!mileageForm.vehicleId) errors.vehicleId = true;
+    if (!mileageForm.mileage) errors.mileage = true;
+    setMileageValidationErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Моля, попълнете всички задължителни полета');
       return;
     }
     if (mileageForm.mileage < 0) {
@@ -529,18 +617,26 @@ const FleetPage: React.FC = () => {
             mileage: mileageForm.mileage,
             notes: mileageForm.notes,
           }
-        }
+        },
+        refetchQueries: selectedVehicleId ? [{ query: GET_VEHICLE_MILEAGE, variables: { vehicleId: selectedVehicleId } }] : []
       });
       setMileageOpen(false);
       setMileageForm({ vehicleId: '', date: new Date().toISOString().split('T')[0], mileage: 0, notes: '' });
+      setMileageValidationErrors({});
     } catch (err) {
       setError(getErrorMessage(err));
     }
   };
 
   const handleSaveFuel = async () => {
-    if (!fuelForm.vehicleId) {
-      setError('Моля, изберете автомобил');
+    setError(null);
+    const errors: Record<string, boolean> = {};
+    if (!fuelForm.vehicleId) errors.vehicleId = true;
+    if (!fuelForm.liters) errors.liters = true;
+    if (!fuelForm.price) errors.price = true;
+    setFuelValidationErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Моля, попълнете всички задължителни полета');
       return;
     }
     try {
@@ -557,18 +653,25 @@ const FleetPage: React.FC = () => {
             mileage: fuelForm.mileage > 0 ? fuelForm.mileage : undefined,
             notes: fuelForm.notes || undefined,
           }
-        }
+        },
+        refetchQueries: selectedVehicleId ? [{ query: GET_VEHICLE_FUEL, variables: { vehicleId: selectedVehicleId } }] : []
       });
       setFuelOpen(false);
       setFuelForm({ vehicleId: '', date: new Date().toISOString().split('T')[0], mileage: 0, liters: 0, price: 0, total: 0, fuelType: 'dizel', station: '', notes: '' });
+      setFuelValidationErrors({});
     } catch (err) {
       setError(getErrorMessage(err));
     }
   };
 
   const handleSaveRepair = async () => {
-    if (!repairForm.vehicleId || !repairForm.description) {
-      setError('Моля, изберете автомобил и въведете описание');
+    setError(null);
+    const errors: Record<string, boolean> = {};
+    if (!repairForm.vehicleId) errors.vehicleId = true;
+    if (!repairForm.description) errors.description = true;
+    setRepairValidationErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Моля, попълнете всички задължителни полета');
       return;
     }
     try {
@@ -579,20 +682,31 @@ const FleetPage: React.FC = () => {
             date: repairForm.date,
             description: repairForm.description,
             cost: repairForm.cost,
-            repairType: 'maintenance',
+            repairType: repairForm.repairType || 'other',
+            notes: repairForm.notes || undefined,
           }
-        }
+        },
+        refetchQueries: selectedVehicleId ? [{ query: GET_VEHICLE_REPAIRS, variables: { vehicleId: selectedVehicleId } }] : []
       });
       setRepairOpen(false);
       setRepairForm({ vehicleId: '', date: new Date().toISOString().split('T')[0], mileage: 0, description: '', service: '', cost: 0, repairType: 'maintenance', notes: '' });
+      setRepairValidationErrors({});
     } catch (err) {
       setError(getErrorMessage(err));
     }
   };
 
   const handleSaveInsurance = async () => {
-    if (!insuranceForm.vehicleId || !insuranceForm.provider || !insuranceForm.policyNumber) {
-      setError('Моля, попълте всички задължителни полета');
+    setError(null);
+    const errors: Record<string, boolean> = {};
+    if (!insuranceForm.vehicleId) errors.vehicleId = true;
+    if (!insuranceForm.provider) errors.provider = true;
+    if (!insuranceForm.policyNumber) errors.policyNumber = true;
+    if (!insuranceForm.endDate) errors.endDate = true;
+    if (!insuranceForm.startDate) errors.startDate = true;
+    setInsuranceValidationErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Моля, попълнете всички задължителни полета');
       return;
     }
     try {
@@ -607,18 +721,26 @@ const FleetPage: React.FC = () => {
             premium: insuranceForm.premium,
             insuranceType: 'grazhdanska',
           }
-        }
+        },
+        refetchQueries: selectedVehicleId ? [{ query: GET_VEHICLE_INSURANCES, variables: { vehicleId: selectedVehicleId } }] : []
       });
       setInsuranceOpen(false);
       setInsuranceForm({ vehicleId: '', provider: '', policyNumber: '', startDate: new Date().toISOString().split('T')[0], endDate: '', premium: 0, insuranceType: 'grazhdanska', notes: '' });
+      setInsuranceValidationErrors({});
     } catch (err) {
       setError(getErrorMessage(err));
     }
   };
 
   const handleSaveInspection = async () => {
-    if (!inspectionForm.vehicleId) {
-      setError('Моля, изберете автомобил');
+    setError(null);
+    const errors: Record<string, boolean> = {};
+    if (!inspectionForm.vehicleId) errors.vehicleId = true;
+    if (!inspectionForm.date) errors.date = true;
+    if (!inspectionForm.result) errors.result = true;
+    setInspectionValidationErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Моля, попълнете всички задължителни полета');
       return;
     }
     try {
@@ -631,18 +753,27 @@ const FleetPage: React.FC = () => {
             cost: inspectionForm.cost,
             result: 'passed',
           }
-        }
+        },
+        refetchQueries: selectedVehicleId ? [{ query: GET_VEHICLE_INSPECTIONS, variables: { vehicleId: selectedVehicleId } }] : []
       });
       setInspectionOpen(false);
       setInspectionForm({ vehicleId: '', date: new Date().toISOString().split('T')[0], nextDate: '', cost: 0, protocolNumber: '', result: 'passed', notes: '' });
+      setInspectionValidationErrors({});
     } catch (err) {
       setError(getErrorMessage(err));
     }
   };
 
   const handleSaveDriver = async () => {
-    if (!driverForm.userId || !driverForm.vehicleId || !driverForm.licenseNumber) {
-      setError('Моля, попълте всички задължителни полета');
+    setError(null);
+    const errors: Record<string, boolean> = {};
+    if (!driverForm.userId) errors.userId = true;
+    if (!driverForm.vehicleId) errors.vehicleId = true;
+    if (!driverForm.licenseNumber) errors.licenseNumber = true;
+    if (!driverForm.licenseExpiry) errors.licenseExpiry = true;
+    setDriverValidationErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Моля, попълнете всички задължителни полета');
       return;
     }
     try {
@@ -657,18 +788,25 @@ const FleetPage: React.FC = () => {
             category: driverForm.category,
             isPrimary: driverForm.isPrimary,
           }
-        }
+        },
+        refetchQueries: selectedVehicleId ? [{ query: GET_VEHICLE_DRIVERS, variables: { vehicleId: selectedVehicleId } }] : []
       });
       setDriverOpen(false);
       setDriverForm({ userId: '', vehicleId: '', licenseNumber: '', licenseExpiry: '', phone: '', category: 'B', isPrimary: true, notes: '' });
+      setDriverValidationErrors({});
     } catch (err) {
       setError(getErrorMessage(err));
     }
   };
 
   const handleSaveTrip = async () => {
-    if (!tripForm.vehicleId || !tripForm.userId) {
-      setError('Моля, изберете автомобил и водач');
+    setError(null);
+    const errors: Record<string, boolean> = {};
+    if (!tripForm.vehicleId) errors.vehicleId = true;
+    if (!tripForm.userId) errors.userId = true;
+    setTripValidationErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Моля, попълнете всички задължителни полета');
       return;
     }
     try {
@@ -683,10 +821,12 @@ const FleetPage: React.FC = () => {
             distance: tripForm.distance,
             tripType: 'business',
           }
-        }
+        },
+        refetchQueries: selectedVehicleId ? [{ query: GET_VEHICLE_TRIPS, variables: { vehicleId: selectedVehicleId } }] : []
       });
       setTripOpen(false);
-      setTripForm({ vehicleId: '', userId: '', startDate: new Date().toISOString().split('T')[0], endDate: '', startLocation: '', endLocation: '', distance: 0, notes: '' });
+      setTripForm({ vehicleId: '', userId: '', startDate: new Date().toISOString().split('T')[0], endDate: '', startLocation: '', endLocation: '', distance: 0, tripType: 'business', description: '', notes: '' });
+      setTripValidationErrors({});
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -728,7 +868,7 @@ const FleetPage: React.FC = () => {
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => setVehiclesOpen(true)}
+          onClick={() => { setError(null); setVehiclesOpen(true); }}
         >
           Нов автомобил
         </Button>
@@ -788,66 +928,51 @@ const FleetPage: React.FC = () => {
         </Grid>
       </Grid>
 
-      <Tabs value={tabValue} onChange={handleTabChange} sx={{ px: 2 }}>
-        <Tab icon={<CarIcon />} label="Автомобили" />
-        <Tab icon={<MileageIcon />} label="Километри" />
-        <Tab icon={<FuelIcon />} label="Гориво" />
-        <Tab icon={<RepairIcon />} label="Ремонти" />
-        <Tab icon={<InsuranceIcon />} label="Застраховки" />
-        <Tab icon={<InspectionIcon />} label="ГТП" />
-        <Tab icon={<DriverIcon />} label="Водачи" />
-        <Tab icon={<TripIcon />} label="Маршрути" />
-      </Tabs>
-
-      <TabPanel value={tabValue} index={0}>
-        <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-          <TextField
-            size="small"
-            label="Търсене (Рег. номер, Марка, Модел, VIN)"
-            value={searchText}
-            onChange={(e) => { setSearchText(e.target.value); setPage(0); }}
-            sx={{ minWidth: 250, flex: 1 }}
-          />
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Статус</InputLabel>
-            <Select value={statusFilter} label="Статус" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
-              <MenuItem value="">Всички</MenuItem>
-              <MenuItem value="active">Активен</MenuItem>
-              <MenuItem value="in_repair">В ремонт</MenuItem>
-              <MenuItem value="out_of_service">Извън експлоатация</MenuItem>
-              <MenuItem value="sold">Продаден</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Гориво</InputLabel>
-            <Select value={fuelFilter} label="Гориво" onChange={(e) => { setFuelFilter(e.target.value); setPage(0); }}>
-              <MenuItem value="">Всички</MenuItem>
-              <MenuItem value="benzin">Бензин</MenuItem>
-              <MenuItem value="dizel">Дизел</MenuItem>
-              <MenuItem value="electric">Електрически</MenuItem>
-              <MenuItem value="hybrid">Хибрид</MenuItem>
-              <MenuItem value="lng">LNG</MenuItem>
-              <MenuItem value="cng">CNG</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Тип</InputLabel>
-            <Select value={typeFilter} label="Тип" onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }}>
-              <MenuItem value="">Всички</MenuItem>
-              <MenuItem value="car">Лека кола</MenuItem>
-              <MenuItem value="truck">Камион</MenuItem>
-              <MenuItem value="van">Бус</MenuItem>
-            </Select>
-          </FormControl>
-        </Box>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2, gap: 2 }}>
-          <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport}>
-            Експорт Excel
-          </Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setVehiclesOpen(true)}>
-            Добави автомобил
-          </Button>
-        </Box>
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField
+          size="small"
+          label="Търсене (Рег. номер, Марка, Модел, VIN)"
+          value={searchText}
+          onChange={(e) => { setSearchText(e.target.value); setPage(0); }}
+          sx={{ minWidth: 250, flex: 1 }}
+        />
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Статус</InputLabel>
+          <Select value={statusFilter} label="Статус" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+            <MenuItem value="">Всички</MenuItem>
+            <MenuItem value="active">Активен</MenuItem>
+            <MenuItem value="in_repair">В ремонт</MenuItem>
+            <MenuItem value="out_of_service">Извън експлоатация</MenuItem>
+            <MenuItem value="sold">Продаден</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Гориво</InputLabel>
+          <Select value={fuelFilter} label="Гориво" onChange={(e) => { setFuelFilter(e.target.value); setPage(0); }}>
+            <MenuItem value="">Всички</MenuItem>
+            <MenuItem value="benzin">Бензин</MenuItem>
+            <MenuItem value="dizel">Дизел</MenuItem>
+            <MenuItem value="electric">Електрически</MenuItem>
+            <MenuItem value="hybrid">Хибрид</MenuItem>
+            <MenuItem value="lng">LNG</MenuItem>
+            <MenuItem value="cng">CNG</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Тип</InputLabel>
+          <Select value={typeFilter} label="Тип" onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }}>
+            <MenuItem value="">Всички</MenuItem>
+            <MenuItem value="car">Лека кола</MenuItem>
+            <MenuItem value="truck">Камион</MenuItem>
+            <MenuItem value="van">Бус</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport}>
+          Експорт Excel
+        </Button>
+      </Box>
         <TableContainer component={Paper}>
           <Table>
             <TableHead>
@@ -876,7 +1001,7 @@ const FleetPage: React.FC = () => {
                     <TableCell>{vehicle.make} {vehicle.model}</TableCell>
                     <TableCell>{vehicle.vin || '-'}</TableCell>
                     <TableCell>{vehicle.year || '-'}</TableCell>
-                    <TableCell>{vehicle.fuelType}</TableCell>
+                    <TableCell>{fuelTypeLabels[vehicle.fuelType] || vehicle.fuelType}</TableCell>
                     <TableCell>
                       <Chip 
                         label={vehicle.status === 'active' ? 'Активен' : vehicle.status === 'in_repair' ? 'В ремонт' : 'Извън експлоатация'}
@@ -941,7 +1066,6 @@ const FleetPage: React.FC = () => {
             labelDisplayedRows={({ from, to, count }) => `${from}-${to} от ${count !== -1 ? count : `повече от ${to}`}`}
           />
         </TableContainer>
-      </TabPanel>
 
       {/* Vehicle Detail View */}
       {selectedVehicleId && (
@@ -1010,6 +1134,13 @@ const FleetPage: React.FC = () => {
           </Tabs>
 
           <TabPanel value={detailTab} index={0}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                setMileageForm(prev => ({ ...prev, vehicleId: String(selectedVehicleId) }));
+                setError(null);
+                setMileageOpen(true);
+              }}>Нов запис</Button>
+            </Box>
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
@@ -1036,6 +1167,13 @@ const FleetPage: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={detailTab} index={1}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                setFuelForm(prev => ({ ...prev, vehicleId: String(selectedVehicleId) }));
+                setError(null);
+                setFuelOpen(true);
+              }}>Нов запис</Button>
+            </Box>
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
@@ -1060,7 +1198,7 @@ const FleetPage: React.FC = () => {
                         {f.efficiencyLPer100km ? f.efficiencyLPer100km.toFixed(1) : '-'}
                         {f.isAnomaly && ' ⚠️'}
                       </TableCell>
-                      <TableCell>{f.fuelType}</TableCell>
+                      <TableCell>{fuelTypeLabels[f.fuelType] || f.fuelType}</TableCell>
                       <TableCell>{f.notes || '-'}</TableCell>
                     </TableRow>
                   ))}
@@ -1073,6 +1211,13 @@ const FleetPage: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={detailTab} index={2}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                setRepairForm(prev => ({ ...prev, vehicleId: String(selectedVehicleId) }));
+                setError(null);
+                setRepairOpen(true);
+              }}>Нов запис</Button>
+            </Box>
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
@@ -1103,6 +1248,13 @@ const FleetPage: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={detailTab} index={3}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                setInsuranceForm(prev => ({ ...prev, vehicleId: String(selectedVehicleId) }));
+                setError(null);
+                setInsuranceOpen(true);
+              }}>Нов запис</Button>
+            </Box>
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
@@ -1120,7 +1272,7 @@ const FleetPage: React.FC = () => {
                     <TableRow key={i.id}>
                       <TableCell>{i.provider}</TableCell>
                       <TableCell>{i.policyNumber}</TableCell>
-                      <TableCell>{i.insuranceType}</TableCell>
+                      <TableCell>{insuranceTypeLabels[i.insuranceType] || i.insuranceType}</TableCell>
                       <TableCell>{formatDate(i.startDate)}</TableCell>
                       <TableCell>{formatDate(i.endDate)}</TableCell>
                       <TableCell align="right">{formatPrice(i.premium)}</TableCell>
@@ -1135,6 +1287,13 @@ const FleetPage: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={detailTab} index={4}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                setInspectionForm(prev => ({ ...prev, vehicleId: String(selectedVehicleId) }));
+                setError(null);
+                setInspectionOpen(true);
+              }}>Нов запис</Button>
+            </Box>
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
@@ -1150,7 +1309,7 @@ const FleetPage: React.FC = () => {
                   {inspectionData?.vehicleInspections?.map((i: any) => (
                     <TableRow key={i.id}>
                       <TableCell>{formatDate(i.date)}</TableCell>
-                      <TableCell>{i.result}</TableCell>
+                      <TableCell>{inspectionResultLabels[i.result] || i.result}</TableCell>
                       <TableCell>{formatDate(i.nextDate)}</TableCell>
                       <TableCell align="right">{formatPrice(i.cost)}</TableCell>
                       <TableCell>{i.protocolNumber || '-'}</TableCell>
@@ -1165,6 +1324,13 @@ const FleetPage: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={detailTab} index={5}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                setDriverForm(prev => ({ ...prev, vehicleId: String(selectedVehicleId) }));
+                setError(null);
+                setDriverOpen(true);
+              }}>Нов запис</Button>
+            </Box>
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
@@ -1179,7 +1345,7 @@ const FleetPage: React.FC = () => {
                 <TableBody>
                   {driverData?.vehicleDrivers?.map((d: any) => (
                     <TableRow key={d.id}>
-                      <TableCell>{d.userId}</TableCell>
+                      <TableCell>{d.user ? `${d.user.firstName} ${d.user.lastName}` : d.userId}</TableCell>
                       <TableCell>{d.category}</TableCell>
                       <TableCell>{d.isPrimary ? 'Да' : 'Не'}</TableCell>
                       <TableCell>{formatDate(d.assignedFrom)}</TableCell>
@@ -1195,6 +1361,13 @@ const FleetPage: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={detailTab} index={6}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                setTripForm(prev => ({ ...prev, vehicleId: String(selectedVehicleId) }));
+                setError(null);
+                setTripOpen(true);
+              }}>Нов запис</Button>
+            </Box>
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
@@ -1227,6 +1400,12 @@ const FleetPage: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={detailTab} index={7}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                setError(null);
+                // TODO: add schedule dialog
+              }}>Нов запис</Button>
+            </Box>
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
@@ -1263,6 +1442,12 @@ const FleetPage: React.FC = () => {
           </TabPanel>
 
           <TabPanel value={detailTab} index={8}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                setError(null);
+                // TODO: add accident dialog
+              }}>Нов запис</Button>
+            </Box>
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
@@ -1301,83 +1486,6 @@ const FleetPage: React.FC = () => {
           </TabPanel>
         </Box>
       )}
-
-      <TabPanel value={tabValue} index={1}>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMileageOpen(true)}>
-            Нов запис
-          </Button>
-        </Box>
-        <Typography variant="body1" color="text.secondary" align="center">
-          Няма записи за километри.
-        </Typography>
-      </TabPanel>
-
-      <TabPanel value={tabValue} index={2}>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setFuelOpen(true)}>
-            Нов запис
-          </Button>
-        </Box>
-        <Typography variant="body1" color="text.secondary" align="center">
-          Няма записи за гориво.
-        </Typography>
-      </TabPanel>
-
-      <TabPanel value={tabValue} index={3}>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setRepairOpen(true)}>
-            Нов запис
-          </Button>
-        </Box>
-        <Typography variant="body1" color="text.secondary" align="center">
-          Няма записи за ремонти.
-        </Typography>
-      </TabPanel>
-
-      <TabPanel value={tabValue} index={4}>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setInsuranceOpen(true)}>
-            Нов запис
-          </Button>
-        </Box>
-        <Typography variant="body1" color="text.secondary" align="center">
-          Няма записи за застраховки.
-        </Typography>
-      </TabPanel>
-
-      <TabPanel value={tabValue} index={5}>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setInspectionOpen(true)}>
-            Нов запис
-          </Button>
-        </Box>
-        <Typography variant="body1" color="text.secondary" align="center">
-          Няма записи за ГТП.
-        </Typography>
-      </TabPanel>
-
-      <TabPanel value={tabValue} index={6}>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDriverOpen(true)}>
-            Нов водач
-          </Button>
-        </Box>
-        <Typography variant="body1" color="text.secondary" align="center">
-          Няма назначени водачи.
-        </Typography>
-      </TabPanel>
-
-      <TabPanel value={tabValue} index={7}>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setTripOpen(true)}>
-            Нов маршрут
-          </Button>
-        </Box>
-        <Typography variant="body1" color="text.secondary" align="center">
-          Няма записи за маршрути.
-        </Typography>
-      </TabPanel>
 
       {/* Add Vehicle Dialog */}
       <Dialog open={vehiclesOpen} onClose={() => setVehiclesOpen(false)} maxWidth="md" fullWidth>
@@ -1716,14 +1824,15 @@ const FleetPage: React.FC = () => {
       <Dialog open={mileageOpen} onClose={() => setMileageOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Нов запис за километри</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Grid container spacing={2}>
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Автомобил</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!mileageValidationErrors.vehicleId}>
+                <InputLabel>Автомобил *</InputLabel>
                 <Select 
-                  label="Автомобил" 
+                  label="Автомобил *" 
                   value={mileageForm.vehicleId}
-                  onChange={(e) => setMileageForm({ ...mileageForm, vehicleId: e.target.value })}
+                  onChange={(e) => handleMileageChange('vehicleId', e.target.value)}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
                   {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
@@ -1732,6 +1841,7 @@ const FleetPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {mileageValidationErrors.vehicleId && <FormHelperText>Задължително поле</FormHelperText>}
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -1739,7 +1849,7 @@ const FleetPage: React.FC = () => {
                 autoFocus margin="dense" label="Дата" type="date" fullWidth variant="outlined" 
                 InputLabelProps={{ shrink: true }}
                 value={mileageForm.date}
-                onChange={(e) => setMileageForm({ ...mileageForm, date: e.target.value })}
+                onChange={(e) => handleMileageChange('date', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1753,9 +1863,11 @@ const FleetPage: React.FC = () => {
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField 
-                margin="dense" label="Километри" type="number" fullWidth variant="outlined" 
+                margin="dense" label="Километри *" type="number" fullWidth variant="outlined" 
                 value={mileageForm.mileage}
-                onChange={(e) => setMileageForm({ ...mileageForm, mileage: parseInt(e.target.value) || 0 })}
+                onChange={(e) => handleMileageChange('mileage', parseInt(e.target.value) || 0)}
+                error={!!mileageValidationErrors.mileage}
+                helperText={mileageValidationErrors.mileage ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1771,7 +1883,7 @@ const FleetPage: React.FC = () => {
               <TextField 
                 margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" 
                 value={mileageForm.notes}
-                onChange={(e) => setMileageForm({ ...mileageForm, notes: e.target.value })}
+                onChange={(e) => handleMileageChange('notes', e.target.value)}
               />
             </Grid>
           </Grid>
@@ -1786,14 +1898,15 @@ const FleetPage: React.FC = () => {
       <Dialog open={fuelOpen} onClose={() => setFuelOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Нов запис за гориво</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Grid container spacing={2}>
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Автомобил</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!fuelValidationErrors.vehicleId}>
+                <InputLabel>Автомобил *</InputLabel>
                 <Select 
-                  label="Автомобил" 
+                  label="Автомобил *" 
                   value={fuelForm.vehicleId}
-                  onChange={(e) => setFuelForm({ ...fuelForm, vehicleId: e.target.value })}
+                  onChange={(e) => handleFuelChange('vehicleId', e.target.value)}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
                   {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
@@ -1802,6 +1915,7 @@ const FleetPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {fuelValidationErrors.vehicleId && <FormHelperText>Задължително поле</FormHelperText>}
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -1809,7 +1923,7 @@ const FleetPage: React.FC = () => {
                 autoFocus margin="dense" label="Дата" type="date" fullWidth variant="outlined"
                 InputLabelProps={{ shrink: true }}
                 value={fuelForm.date}
-                onChange={(e) => setFuelForm({ ...fuelForm, date: e.target.value })}
+                onChange={(e) => handleFuelChange('date', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1825,7 +1939,7 @@ const FleetPage: React.FC = () => {
               <TextField
                 margin="dense" label="Километри" type="number" fullWidth variant="outlined"
                 value={fuelForm.mileage}
-                onChange={(e) => setFuelForm({ ...fuelForm, mileage: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => handleFuelChange('mileage', parseFloat(e.target.value) || 0)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1839,9 +1953,11 @@ const FleetPage: React.FC = () => {
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
-                margin="dense" label="Литри" type="number" fullWidth variant="outlined"
+                margin="dense" label="Литри *" type="number" fullWidth variant="outlined"
                 value={fuelForm.liters}
-                onChange={(e) => setFuelForm({ ...fuelForm, liters: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => handleFuelChange('liters', parseFloat(e.target.value) || 0)}
+                error={!!fuelValidationErrors.liters}
+                helperText={fuelValidationErrors.liters ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1855,10 +1971,12 @@ const FleetPage: React.FC = () => {
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
-                margin="dense" label="Цена" type="number" fullWidth variant="outlined"
+                margin="dense" label="Цена *" type="number" fullWidth variant="outlined"
                 InputProps={{ startAdornment: currencySymbol }}
                 value={fuelForm.price}
-                onChange={(e) => setFuelForm({ ...fuelForm, price: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => handleFuelChange('price', parseFloat(e.target.value) || 0)}
+                error={!!fuelValidationErrors.price}
+                helperText={fuelValidationErrors.price ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1873,7 +1991,7 @@ const FleetPage: React.FC = () => {
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth margin="dense">
                 <InputLabel>Тип гориво</InputLabel>
-                <Select label="Тип гориво" value={fuelForm.fuelType} onChange={(e) => setFuelForm({ ...fuelForm, fuelType: e.target.value })}>
+                <Select label="Тип гориво" value={fuelForm.fuelType} onChange={(e) => handleFuelChange('fuelType', e.target.value)}>
                   <MenuItem value="benzin">Бензин</MenuItem>
                   <MenuItem value="dizel">Дизел</MenuItem>
                   <MenuItem value="lng">LNG</MenuItem>
@@ -1885,7 +2003,7 @@ const FleetPage: React.FC = () => {
               <TextField
                 margin="dense" label="Бензиностанция" fullWidth variant="outlined"
                 value={fuelForm.station}
-                onChange={(e) => setFuelForm({ ...fuelForm, station: e.target.value })}
+                onChange={(e) => handleFuelChange('station', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1898,7 +2016,7 @@ const FleetPage: React.FC = () => {
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" value={fuelForm.notes} onChange={(e) => setFuelForm({ ...fuelForm, notes: e.target.value })} />
+              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" value={fuelForm.notes} onChange={(e) => handleFuelChange('notes', e.target.value)} />
             </Grid>
           </Grid>
         </DialogContent>
@@ -1912,14 +2030,15 @@ const FleetPage: React.FC = () => {
       <Dialog open={repairOpen} onClose={() => setRepairOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Нов запис за ремонт</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Grid container spacing={2}>
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Автомобил</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!repairValidationErrors.vehicleId}>
+                <InputLabel>Автомобил *</InputLabel>
                 <Select 
-                  label="Автомобил" 
+                  label="Автомобил *" 
                   value={repairForm.vehicleId}
-                  onChange={(e) => setRepairForm({ ...repairForm, vehicleId: e.target.value })}
+                  onChange={(e) => handleRepairChange('vehicleId', e.target.value)}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
                   {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
@@ -1928,6 +2047,7 @@ const FleetPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {repairValidationErrors.vehicleId && <FormHelperText>Задължително поле</FormHelperText>}
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -1935,7 +2055,7 @@ const FleetPage: React.FC = () => {
                 autoFocus margin="dense" label="Дата" type="date" fullWidth variant="outlined"
                 InputLabelProps={{ shrink: true }}
                 value={repairForm.date}
-                onChange={(e) => setRepairForm({ ...repairForm, date: e.target.value })}
+                onChange={(e) => handleRepairChange('date', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1951,7 +2071,7 @@ const FleetPage: React.FC = () => {
               <TextField
                 margin="dense" label="Километри" type="number" fullWidth variant="outlined"
                 value={repairForm.mileage}
-                onChange={(e) => setRepairForm({ ...repairForm, mileage: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => handleRepairChange('mileage', parseFloat(e.target.value) || 0)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1964,13 +2084,13 @@ const FleetPage: React.FC = () => {
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField margin="dense" label="Описание" fullWidth multiline rows={2} variant="outlined" value={repairForm.description} onChange={(e) => setRepairForm({ ...repairForm, description: e.target.value })} />
+              <TextField margin="dense" label="Описание *" fullWidth multiline rows={2} variant="outlined" value={repairForm.description} onChange={(e) => handleRepairChange('description', e.target.value)} error={!!repairValidationErrors.description} helperText={repairValidationErrors.description ? 'Задължително поле' : undefined} />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 margin="dense" label="Сервиз" fullWidth variant="outlined"
                 value={repairForm.service}
-                onChange={(e) => setRepairForm({ ...repairForm, service: e.target.value })}
+                onChange={(e) => handleRepairChange('service', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -1987,7 +2107,7 @@ const FleetPage: React.FC = () => {
                 margin="dense" label="Стойност" type="number" fullWidth variant="outlined"
                 InputProps={{ startAdornment: currencySymbol }}
                 value={repairForm.cost}
-                onChange={(e) => setRepairForm({ ...repairForm, cost: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => handleRepairChange('cost', parseFloat(e.target.value) || 0)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2002,7 +2122,7 @@ const FleetPage: React.FC = () => {
             <Grid size={{ xs: 12 }}>
               <FormControl fullWidth margin="dense">
                 <InputLabel>Тип ремонт</InputLabel>
-                <Select label="Тип ремонт" value={repairForm.repairType} onChange={(e) => setRepairForm({ ...repairForm, repairType: e.target.value })}>
+                <Select label="Тип ремонт" value={repairForm.repairType} onChange={(e) => handleRepairChange('repairType', e.target.value)}>
                   <MenuItem value="maintenance">Техническо обслужване</MenuItem>
                   <MenuItem value="repair">Ремонт</MenuItem>
                   <MenuItem value="tire">Гуми</MenuItem>
@@ -2013,7 +2133,7 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" value={repairForm.notes} onChange={(e) => setRepairForm({ ...repairForm, notes: e.target.value })} />
+              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" value={repairForm.notes} onChange={(e) => handleRepairChange('notes', e.target.value)} />
             </Grid>
           </Grid>
         </DialogContent>
@@ -2027,14 +2147,15 @@ const FleetPage: React.FC = () => {
       <Dialog open={insuranceOpen} onClose={() => setInsuranceOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Нова застраховка</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Grid container spacing={2}>
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Автомобил</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!insuranceValidationErrors.vehicleId}>
+                <InputLabel>Автомобил *</InputLabel>
                 <Select 
-                  label="Автомобил" 
+                  label="Автомобил *" 
                   value={insuranceForm.vehicleId}
-                  onChange={(e) => setInsuranceForm({ ...insuranceForm, vehicleId: e.target.value })}
+                  onChange={(e) => handleInsuranceChange('vehicleId', e.target.value)}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
                   {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
@@ -2043,13 +2164,16 @@ const FleetPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {insuranceValidationErrors.vehicleId && <FormHelperText>Задължително поле</FormHelperText>}
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12 }}>
               <TextField
-                autoFocus margin="dense" label="Застрахователна компания" fullWidth variant="outlined"
+                autoFocus margin="dense" label="Застрахователна компания *" fullWidth variant="outlined"
                 value={insuranceForm.provider}
-                onChange={(e) => setInsuranceForm({ ...insuranceForm, provider: e.target.value })}
+                onChange={(e) => handleInsuranceChange('provider', e.target.value)}
+                error={!!insuranceValidationErrors.provider}
+                helperText={insuranceValidationErrors.provider ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2063,9 +2187,11 @@ const FleetPage: React.FC = () => {
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
-                margin="dense" label="Номер на полица" fullWidth variant="outlined"
+                margin="dense" label="Номер на полица *" fullWidth variant="outlined"
                 value={insuranceForm.policyNumber}
-                onChange={(e) => setInsuranceForm({ ...insuranceForm, policyNumber: e.target.value })}
+                onChange={(e) => handleInsuranceChange('policyNumber', e.target.value)}
+                error={!!insuranceValidationErrors.policyNumber}
+                helperText={insuranceValidationErrors.policyNumber ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2080,7 +2206,7 @@ const FleetPage: React.FC = () => {
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth margin="dense">
                 <InputLabel>Тип застраховка</InputLabel>
-                <Select label="Тип застраховка" value={insuranceForm.insuranceType} onChange={(e) => setInsuranceForm({ ...insuranceForm, insuranceType: e.target.value })}>
+                <Select label="Тип застраховка" value={insuranceForm.insuranceType} onChange={(e) => handleInsuranceChange('insuranceType', e.target.value)}>
                   <MenuItem value="grazhdanska">Гражданска отговорност</MenuItem>
                   <MenuItem value="avtokasko">Автокаско</MenuItem>
                   <MenuItem value="imot">Имущество</MenuItem>
@@ -2089,10 +2215,12 @@ const FleetPage: React.FC = () => {
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
-                margin="dense" label="Начална дата" type="date" fullWidth variant="outlined"
+                margin="dense" label="Начална дата *" type="date" fullWidth variant="outlined"
                 InputLabelProps={{ shrink: true }}
                 value={insuranceForm.startDate}
-                onChange={(e) => setInsuranceForm({ ...insuranceForm, startDate: e.target.value })}
+                onChange={(e) => handleInsuranceChange('startDate', e.target.value)}
+                error={!!insuranceValidationErrors.startDate}
+                helperText={insuranceValidationErrors.startDate ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2106,10 +2234,12 @@ const FleetPage: React.FC = () => {
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
-                margin="dense" label="Крайна дата" type="date" fullWidth variant="outlined"
+                margin="dense" label="Крайна дата *" type="date" fullWidth variant="outlined"
                 InputLabelProps={{ shrink: true }}
                 value={insuranceForm.endDate}
-                onChange={(e) => setInsuranceForm({ ...insuranceForm, endDate: e.target.value })}
+                onChange={(e) => handleInsuranceChange('endDate', e.target.value)}
+                error={!!insuranceValidationErrors.endDate}
+                helperText={insuranceValidationErrors.endDate ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2125,7 +2255,7 @@ const FleetPage: React.FC = () => {
               <TextField
                 margin="dense" label="Стойност" type="number" fullWidth variant="outlined"
                 value={insuranceForm.premium}
-                onChange={(e) => setInsuranceForm({ ...insuranceForm, premium: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => handleInsuranceChange('premium', parseFloat(e.target.value) || 0)}
                 slotProps={{
                   input: {
                     startAdornment: <InputAdornment position="start">{currencySymbol}</InputAdornment>,
@@ -2139,7 +2269,7 @@ const FleetPage: React.FC = () => {
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" />
+              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" value={insuranceForm.notes} onChange={(e) => handleInsuranceChange('notes', e.target.value)} />
             </Grid>
           </Grid>
         </DialogContent>
@@ -2153,14 +2283,15 @@ const FleetPage: React.FC = () => {
       <Dialog open={inspectionOpen} onClose={() => setInspectionOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Нов преглед ГТП</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Grid container spacing={2}>
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Автомобил</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!inspectionValidationErrors.vehicleId}>
+                <InputLabel>Автомобил *</InputLabel>
                 <Select 
-                  label="Автомобил" 
+                  label="Автомобил *" 
                   value={inspectionForm.vehicleId}
-                  onChange={(e) => setInspectionForm({ ...inspectionForm, vehicleId: e.target.value })}
+                  onChange={(e) => handleInspectionChange('vehicleId', e.target.value)}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
                   {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
@@ -2169,14 +2300,17 @@ const FleetPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {inspectionValidationErrors.vehicleId && <FormHelperText>Задължително поле</FormHelperText>}
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
-                autoFocus margin="dense" label="Дата на преглед" type="date" fullWidth variant="outlined"
+                autoFocus margin="dense" label="Дата на преглед *" type="date" fullWidth variant="outlined"
                 InputLabelProps={{ shrink: true }}
                 value={inspectionForm.date}
-                onChange={(e) => setInspectionForm({ ...inspectionForm, date: e.target.value })}
+                onChange={(e) => handleInspectionChange('date', e.target.value)}
+                error={!!inspectionValidationErrors.date}
+                helperText={inspectionValidationErrors.date ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2193,7 +2327,7 @@ const FleetPage: React.FC = () => {
                 margin="dense" label="Валиден до" type="date" fullWidth variant="outlined"
                 InputLabelProps={{ shrink: true }}
                 value={inspectionForm.nextDate}
-                onChange={(e) => setInspectionForm({ ...inspectionForm, nextDate: e.target.value })}
+                onChange={(e) => handleInspectionChange('nextDate', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2209,7 +2343,7 @@ const FleetPage: React.FC = () => {
               <TextField
                 margin="dense" label="Номер на протокол" fullWidth variant="outlined"
                 value={inspectionForm.protocolNumber}
-                onChange={(e) => setInspectionForm({ ...inspectionForm, protocolNumber: e.target.value })}
+                onChange={(e) => handleInspectionChange('protocolNumber', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2226,7 +2360,7 @@ const FleetPage: React.FC = () => {
                 margin="dense" label="Стойност" type="number" fullWidth variant="outlined"
                 InputProps={{ startAdornment: currencySymbol }}
                 value={inspectionForm.cost}
-                onChange={(e) => setInspectionForm({ ...inspectionForm, cost: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => handleInspectionChange('cost', parseFloat(e.target.value) || 0)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2239,17 +2373,18 @@ const FleetPage: React.FC = () => {
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Резултат</InputLabel>
-                <Select label="Резултат" value={inspectionForm.result} onChange={(e) => setInspectionForm({ ...inspectionForm, result: e.target.value })}>
+              <FormControl fullWidth margin="dense" error={!!inspectionValidationErrors.result}>
+                <InputLabel>Резултат *</InputLabel>
+                <Select label="Резултат *" value={inspectionForm.result} onChange={(e) => handleInspectionChange('result', e.target.value)}>
                   <MenuItem value="passed">Преминат</MenuItem>
                   <MenuItem value="failed">Непреминат</MenuItem>
                   <MenuItem value="pending">Предстои</MenuItem>
                 </Select>
+                {inspectionValidationErrors.result && <FormHelperText>Задължително поле</FormHelperText>}
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" />
+              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" value={inspectionForm.notes} onChange={(e) => handleInspectionChange('notes', e.target.value)} />
             </Grid>
           </Grid>
         </DialogContent>
@@ -2263,14 +2398,15 @@ const FleetPage: React.FC = () => {
       <Dialog open={driverOpen} onClose={() => setDriverOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Нов водач</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Grid container spacing={2}>
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Служител</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!driverValidationErrors.userId}>
+                <InputLabel>Служител *</InputLabel>
                 <Select 
-                  label="Служител" 
+                  label="Служител *" 
                   value={driverForm.userId}
-                  onChange={(e) => setDriverForm({ ...driverForm, userId: e.target.value })}
+                  onChange={(e) => handleDriverChange('userId', e.target.value)}
                 >
                   <MenuItem value="">-- Изберете служител --</MenuItem>
                   {usersData?.users?.users?.map((user: { id: number; firstName: string; lastName: string; email: string }) => (
@@ -2279,15 +2415,16 @@ const FleetPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {driverValidationErrors.userId && <FormHelperText>Задължително поле</FormHelperText>}
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Автомобил</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!driverValidationErrors.vehicleId}>
+                <InputLabel>Автомобил *</InputLabel>
                 <Select 
-                  label="Автомобил" 
+                  label="Автомобил *" 
                   value={driverForm.vehicleId}
-                  onChange={(e) => setDriverForm({ ...driverForm, vehicleId: e.target.value })}
+                  onChange={(e) => handleDriverChange('vehicleId', e.target.value)}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
                   {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
@@ -2296,13 +2433,16 @@ const FleetPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {driverValidationErrors.vehicleId && <FormHelperText>Задължително поле</FormHelperText>}
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
-                autoFocus margin="dense" label="Номер на шофьорска книжка" fullWidth variant="outlined"
+                autoFocus margin="dense" label="Номер на шофьорска книжка *" fullWidth variant="outlined"
                 value={driverForm.licenseNumber}
-                onChange={(e) => setDriverForm({ ...driverForm, licenseNumber: e.target.value })}
+                onChange={(e) => handleDriverChange('licenseNumber', e.target.value)}
+                error={!!driverValidationErrors.licenseNumber}
+                helperText={driverValidationErrors.licenseNumber ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2316,10 +2456,12 @@ const FleetPage: React.FC = () => {
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
-                margin="dense" label="Валидна до" type="date" fullWidth variant="outlined"
+                margin="dense" label="Валидна до *" type="date" fullWidth variant="outlined"
                 InputLabelProps={{ shrink: true }}
                 value={driverForm.licenseExpiry}
-                onChange={(e) => setDriverForm({ ...driverForm, licenseExpiry: e.target.value })}
+                onChange={(e) => handleDriverChange('licenseExpiry', e.target.value)}
+                error={!!driverValidationErrors.licenseExpiry}
+                helperText={driverValidationErrors.licenseExpiry ? 'Задължително поле' : undefined}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2335,7 +2477,7 @@ const FleetPage: React.FC = () => {
               <TextField
                 margin="dense" label="Телефон" fullWidth variant="outlined"
                 value={driverForm.phone}
-                onChange={(e) => setDriverForm({ ...driverForm, phone: e.target.value })}
+                onChange={(e) => handleDriverChange('phone', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2351,7 +2493,7 @@ const FleetPage: React.FC = () => {
               <TextField
                 margin="dense" label="Категория" fullWidth variant="outlined"
                 value={driverForm.category}
-                onChange={(e) => setDriverForm({ ...driverForm, category: e.target.value })}
+                onChange={(e) => handleDriverChange('category', e.target.value)}
                 placeholder="B, C, D..."
                 slotProps={{
                   input: {
@@ -2366,11 +2508,11 @@ const FleetPage: React.FC = () => {
             </Grid>
             <Grid size={{ xs: 12 }}>
               <FormControl margin="dense">
-                <FormControlLabel control={<Switch checked={driverForm.isPrimary} onChange={(e) => setDriverForm({ ...driverForm, isPrimary: e.target.checked })} />} label="Основен водач" />
+                <FormControlLabel control={<Switch checked={driverForm.isPrimary} onChange={(e) => handleDriverChange('isPrimary', e.target.checked)} />} label="Основен водач" />
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" />
+              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" value={driverForm.notes} onChange={(e) => handleDriverChange('notes', e.target.value)} />
             </Grid>
           </Grid>
         </DialogContent>
@@ -2384,14 +2526,15 @@ const FleetPage: React.FC = () => {
       <Dialog open={tripOpen} onClose={() => setTripOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Нов маршрут</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Grid container spacing={2}>
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Автомобил</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!tripValidationErrors.vehicleId}>
+                <InputLabel>Автомобил *</InputLabel>
                 <Select 
-                  label="Автомобил" 
+                  label="Автомобил *" 
                   value={tripForm.vehicleId}
-                  onChange={(e) => setTripForm({ ...tripForm, vehicleId: e.target.value })}
+                  onChange={(e) => handleTripChange('vehicleId', e.target.value)}
                 >
                   <MenuItem value="">-- Изберете автомобил --</MenuItem>
                   {vehiclesData?.vehicles?.vehicles?.map((vehicle: { id: number; registrationNumber: string; make: string; model: string }) => (
@@ -2400,15 +2543,16 @@ const FleetPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {tripValidationErrors.vehicleId && <FormHelperText>Задължително поле</FormHelperText>}
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Водач</InputLabel>
+              <FormControl fullWidth margin="dense" error={!!tripValidationErrors.userId}>
+                <InputLabel>Водач *</InputLabel>
                 <Select 
-                  label="Водач" 
+                  label="Водач *" 
                   value={tripForm.userId}
-                  onChange={(e) => setTripForm({ ...tripForm, userId: e.target.value })}
+                  onChange={(e) => handleTripChange('userId', e.target.value)}
                 >
                   <MenuItem value="">-- Изберете водач --</MenuItem>
                   {usersData?.users?.users?.map((user: { id: number; firstName: string; lastName: string; email: string }) => (
@@ -2417,6 +2561,7 @@ const FleetPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                {tripValidationErrors.userId && <FormHelperText>Задължително поле</FormHelperText>}
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -2424,7 +2569,7 @@ const FleetPage: React.FC = () => {
                 autoFocus margin="dense" label="Дата тръгване" type="datetime-local" fullWidth variant="outlined"
                 InputLabelProps={{ shrink: true }}
                 value={tripForm.startDate}
-                onChange={(e) => setTripForm({ ...tripForm, startDate: e.target.value })}
+                onChange={(e) => handleTripChange('startDate', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2441,7 +2586,7 @@ const FleetPage: React.FC = () => {
                 margin="dense" label="Дата връщане" type="datetime-local" fullWidth variant="outlined"
                 InputLabelProps={{ shrink: true }}
                 value={tripForm.endDate}
-                onChange={(e) => setTripForm({ ...tripForm, endDate: e.target.value })}
+                onChange={(e) => handleTripChange('endDate', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2457,7 +2602,7 @@ const FleetPage: React.FC = () => {
               <TextField
                 margin="dense" label="Място тръгване" fullWidth variant="outlined"
                 value={tripForm.startLocation}
-                onChange={(e) => setTripForm({ ...tripForm, startLocation: e.target.value })}
+                onChange={(e) => handleTripChange('startLocation', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2473,7 +2618,7 @@ const FleetPage: React.FC = () => {
               <TextField
                 margin="dense" label="Място пристигане" fullWidth variant="outlined"
                 value={tripForm.endLocation}
-                onChange={(e) => setTripForm({ ...tripForm, endLocation: e.target.value })}
+                onChange={(e) => handleTripChange('endLocation', e.target.value)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2489,7 +2634,7 @@ const FleetPage: React.FC = () => {
               <TextField
                 margin="dense" label="Километри" type="number" fullWidth variant="outlined"
                 value={tripForm.distance}
-                onChange={(e) => setTripForm({ ...tripForm, distance: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => handleTripChange('distance', parseFloat(e.target.value) || 0)}
                 slotProps={{
                   input: {
                     endAdornment: (
@@ -2504,7 +2649,7 @@ const FleetPage: React.FC = () => {
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth margin="dense">
                 <InputLabel>Цел</InputLabel>
-                <Select label="Цел">
+                <Select label="Цел" value={tripForm.tripType || 'business'} onChange={(e) => handleTripChange('tripType', e.target.value)}>
                   <MenuItem value="business">Служебна</MenuItem>
                   <MenuItem value="personal">Лична</MenuItem>
                   <MenuItem value="transport">Транспорт</MenuItem>
@@ -2513,10 +2658,10 @@ const FleetPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField margin="dense" label="Описание" fullWidth multiline rows={2} variant="outlined" />
+              <TextField margin="dense" label="Описание" fullWidth multiline rows={2} variant="outlined" value={tripForm.description || ''} onChange={(e) => handleTripChange('description', e.target.value)} />
             </Grid>
             <Grid size={{ xs: 12 }}>
-              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" />
+              <TextField margin="dense" label="Забележки" fullWidth multiline rows={2} variant="outlined" value={tripForm.notes} onChange={(e) => handleTripChange('notes', e.target.value)} />
             </Grid>
           </Grid>
         </DialogContent>

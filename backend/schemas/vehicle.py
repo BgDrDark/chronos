@@ -104,6 +104,8 @@ class VehicleFuel(CustomBaseModel):
     invoice_number: str | None = None
     fuel_card_id: int | None = None
     driver_id: int | None = None
+    efficiency_l_per_100km: float | None = None
+    is_anomaly: bool = False
     created_at: datetime | None = None
 
 

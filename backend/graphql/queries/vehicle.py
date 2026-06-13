@@ -222,22 +222,18 @@ class VehicleQuery:
             base_filters.append(func.extract('year', VehicleFuel.date) == year)
 
         # Fuel costs
-        fuel_stmt = select(func.coalesce(func.sum(VehicleFuel.total), 0)).where(*base_filters)
+        fuel_stmt = select(func.coalesce(func.sum(VehicleFuel.total_amount), 0)).where(*base_filters)
         total_fuel = float((await db.execute(fuel_stmt)).scalar())
 
         # Repair costs
         repair_filters = [VehicleRepair.vehicle_id == vehicle_id]
         if year:
             repair_filters.append(func.extract('year', VehicleRepair.repair_date) == year)
-        repair_stmt = select(func.coalesce(func.sum(VehicleRepair.cost), 0)).where(*repair_filters)
+        repair_stmt = select(func.coalesce(func.sum(VehicleRepair.total_cost), 0)).where(*repair_filters)
         total_repairs = float((await db.execute(repair_stmt)).scalar())
 
-        # Inspection costs
-        insp_filters = [VehicleInspection.vehicle_id == vehicle_id]
-        if year:
-            insp_filters.append(func.extract('year', VehicleInspection.inspection_date) == year)
-        insp_stmt = select(func.coalesce(func.sum(VehicleInspection.cost), 0)).where(*insp_filters)
-        total_inspections = float((await db.execute(insp_stmt)).scalar())
+        # Inspection costs (no cost column in DB)
+        total_inspections = 0
 
         # Insurance premiums
         ins_filters = [VehicleInsurance.vehicle_id == vehicle_id]
@@ -251,8 +247,8 @@ class VehicleQuery:
             from backend.database.models import VehicleVignette
             vig_filters = [VehicleVignette.vehicle_id == vehicle_id]
             if year:
-                vig_filters.append(func.extract('year', VehicleVignette.start_date) == year)
-            vig_stmt = select(func.coalesce(func.sum(VehicleVignette.cost), 0)).where(*vig_filters)
+                vig_filters.append(func.extract('year', VehicleVignette.valid_from) == year)
+            vig_stmt = select(func.coalesce(func.sum(VehicleVignette.price), 0)).where(*vig_filters)
             total_vignettes = float((await db.execute(vig_stmt)).scalar())
         except Exception:
             total_vignettes = 0
@@ -262,8 +258,8 @@ class VehicleQuery:
             from backend.database.models import VehicleToll
             toll_filters = [VehicleToll.vehicle_id == vehicle_id]
             if year:
-                toll_filters.append(func.extract('year', VehicleToll.date) == year)
-            toll_stmt = select(func.coalesce(func.sum(VehicleToll.cost), 0)).where(*toll_filters)
+                toll_filters.append(func.extract('year', VehicleToll.toll_date) == year)
+            toll_stmt = select(func.coalesce(func.sum(VehicleToll.toll_amount), 0)).where(*toll_filters)
             total_tolls = float((await db.execute(toll_stmt)).scalar())
         except Exception:
             total_tolls = 0

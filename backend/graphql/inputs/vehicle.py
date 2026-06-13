@@ -52,6 +52,7 @@ class VehicleFuelInput:
     price: float
     total: float
     fuel_type: str | None = "dizel"
+    mileage: float | None = None
     notes: str | None = None
 
 
@@ -81,13 +82,13 @@ class VehicleInsuranceInput:
 class VehicleInspectionInput:
     vehicle_id: int
     date: datetime.datetime
-    next_date: datetime.datetime | None = None
+    next_date: str | None = None
     cost: float | None = 0
     result: str | None = "passed"
     protocol_number: str | None = None
     notes: str | None = None
     inspection_type: str | None = "periodic"
-    next_inspection_date: datetime.datetime | None = None
+    next_inspection_date: str | None = None
 
 
 
@@ -158,8 +159,8 @@ class VehicleInsuranceUpdateInput:
 
 @strawberry.input
 class VehicleInspectionUpdateInput:
-    date: datetime.datetime | None = None
-    next_date: datetime.datetime | None = None
+    date: str | None = None
+    next_date: str | None = None
     cost: float | None = None
     result: str | None = None
     protocol_number: str | None = None

@@ -172,6 +172,8 @@ docs/
 setup-update-manager.sh
 update-manager.py
 CASH_JOURNAL_ENHANCEMENT_PLAN.md
+FLEET_ENHANCEMENT_PLAN.md
+PWA_ENHANCEMENT_PLAN.md
 GRAPHQL_SCHEMA_REPORT.md
 
 # ==========================================

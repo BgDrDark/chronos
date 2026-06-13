@@ -11,8 +11,9 @@ interface Props {
 
 const UserManagementPage: React.FC<Props> = ({ tab }) => {
   const [open, setOpen] = useState(false);
+  const [dialogKey, setDialogKey] = useState(0);
 
-  const handleOpen = () => setOpen(true);
+  const handleOpen = () => { setDialogKey(k => k + 1); setOpen(true); };
   const handleClose = () => setOpen(false);
 
   return (
@@ -40,7 +41,7 @@ const UserManagementPage: React.FC<Props> = ({ tab }) => {
         <UserList />
       )}
 
-      <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
+      <Dialog key={dialogKey} open={open} onClose={handleClose} fullWidth maxWidth="sm">
         <DialogTitle sx={{ fontWeight: 'bold' }}>Създаване на нов потребител</DialogTitle>
         <DialogContent dividers>
           <CreateUserForm onCreated={() => {

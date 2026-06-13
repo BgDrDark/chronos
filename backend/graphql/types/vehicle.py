@@ -1,9 +1,12 @@
+import datetime
 import enum
+from decimal import Decimal
 
 import strawberry
 from strawberry.experimental import pydantic as sp
 
 from backend import schemas
+from backend.graphql.types.user import User
 from backend.utils.json_type import JSONScalar
 
 
@@ -146,11 +149,29 @@ class VehicleFuel:
     price_per_liter: strawberry.auto
     total_amount: strawberry.auto
     mileage: strawberry.auto
+    efficiency_l_per_100km: strawberry.auto
+    is_anomaly: strawberry.auto
     location: strawberry.auto
     invoice_number: strawberry.auto
     fuel_card_id: strawberry.auto
     driver_id: strawberry.auto
     created_at: strawberry.auto
+
+    @strawberry.field(name="liters")
+    def liters(self) -> Decimal:
+        return self.quantity
+
+    @strawberry.field(name="price")
+    def price(self) -> Decimal:
+        return self.price_per_liter
+
+    @strawberry.field(name="total")
+    def total(self) -> Decimal:
+        return self.total_amount
+
+    @strawberry.field
+    def notes(self) -> str | None:
+        return None
 
 
 @sp.type(schemas.VehicleService)
@@ -184,6 +205,14 @@ class VehicleRepair:
     notes: strawberry.auto
     created_at: strawberry.auto
 
+    @strawberry.field(name="date")
+    def date(self) -> datetime.datetime:
+        return self.repair_date
+
+    @strawberry.field(name="cost")
+    def cost(self) -> Decimal:
+        return self.total_cost
+
 
 @sp.type(schemas.VehicleSchedule)
 class VehicleSchedule:
@@ -206,7 +235,7 @@ class VehicleSchedule:
 class VehicleInsurance:
     id: strawberry.auto
     vehicle_id: strawberry.auto
-    insurance_type: InsuranceType
+    insurance_type: strawberry.auto
     policy_number: strawberry.auto
     insurance_company: strawberry.auto
     start_date: strawberry.auto
@@ -218,6 +247,10 @@ class VehicleInsurance:
     notes: strawberry.auto
     created_at: strawberry.auto
 
+    @strawberry.field(name="provider")
+    def provider(self) -> str | None:
+        return self.insurance_company
+
 
 @sp.type(schemas.VehicleInspection)
 class VehicleInspection:
@@ -225,13 +258,29 @@ class VehicleInspection:
     vehicle_id: strawberry.auto
     inspection_date: strawberry.auto
     valid_until: strawberry.auto
-    result: InspectionResult
+    result: strawberry.auto
     mileage: strawberry.auto
     inspector: strawberry.auto
     certificate_number: strawberry.auto
     next_inspection_date: strawberry.auto
     notes: strawberry.auto
     created_at: strawberry.auto
+
+    @strawberry.field(name="date")
+    def date(self) -> datetime.date:
+        return self.inspection_date
+
+    @strawberry.field
+    def cost(self) -> float | None:
+        return None
+
+    @strawberry.field(name="protocolNumber")
+    def protocol_number(self) -> str | None:
+        return self.certificate_number
+
+    @strawberry.field(name="nextDate")
+    def next_date(self) -> datetime.date | None:
+        return self.next_inspection_date
 
 
 @sp.type(schemas.VehiclePreTripInspection)
@@ -260,7 +309,7 @@ class VehiclePreTripInspection:
     first_aid_kit: strawberry.auto
     fire_extinguisher: strawberry.auto
     warning_triangle: strawberry.auto
-    overall_status: PreTripStatus
+    overall_status: strawberry.auto
     notes: strawberry.auto
     photos: JSONScalar | None = None
     created_at: strawberry.auto
@@ -275,6 +324,24 @@ class VehicleDriver:
     assigned_to: strawberry.auto
     is_primary: strawberry.auto
     created_at: strawberry.auto
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> User | None:
+        if not self.user_id:
+            return None
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
+
+    @strawberry.field
+    def license_number(self) -> str | None:
+        return None
+
+    @strawberry.field
+    def category(self) -> str | None:
+        return None
+
+    @strawberry.field
+    def notes(self) -> str | None:
+        return None
 
 
 @sp.type(schemas.VehicleTrip)
@@ -299,7 +366,7 @@ class VehicleTrip:
 class VehicleExpense:
     id: strawberry.auto
     vehicle_id: strawberry.auto
-    expense_type: ExpenseType
+    expense_type: strawberry.auto
     expense_date: strawberry.auto
     amount: strawberry.auto
     vat_amount: strawberry.auto
@@ -322,14 +389,14 @@ class Vehicle:
     model: strawberry.auto
     year: strawberry.auto
     vehicle_type_id: strawberry.auto
-    fuel_type: FuelType
+    fuel_type: strawberry.auto
     engine_number: strawberry.auto
     chassis_number: strawberry.auto
     color: strawberry.auto
     initial_mileage: strawberry.auto
     is_company: strawberry.auto
     owner_name: strawberry.auto
-    status: VehicleStatus
+    status: strawberry.auto
     notes: strawberry.auto
     company_id: strawberry.auto
     created_at: strawberry.auto

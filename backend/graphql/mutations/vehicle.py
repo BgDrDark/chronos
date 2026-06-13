@@ -46,17 +46,17 @@ class VehicleMutation:
         # VIN Validation
         if input.vin:
             if not re.match(r'^[A-HJ-NPR-Z0-9]{17}$', input.vin.upper()):
-                raise ValidationException.detail("VIN трябва да е точно 17 символа (без I, O, Q)")
+                raise ValidationException(detail="VIN трябва да е точно 17 символа (без I, O, Q)")
             input.vin = input.vin.upper()
 
         # Year Validation
         current_year = datetime.datetime.now().year
         if input.year and (input.year < 1900 or input.year > current_year + 1):
-            raise ValidationException.detail(f"Годината трябва да е между 1900 и {current_year + 1}")
+            raise ValidationException(detail=f"Годината трябва да е между 1900 и {current_year + 1}")
 
         # Initial Mileage Validation
         if input.initial_mileage is not None and input.initial_mileage < 0:
-            raise ValidationException.detail("Началният пробег не може да бъде отрицателен")
+            raise ValidationException(detail="Началният пробег не може да бъде отрицателен")
 
         vehicle_type_obj = None
         if input.vehicle_type:
@@ -95,17 +95,17 @@ class VehicleMutation:
         # VIN Validation
         if input.vin:
             if not re.match(r'^[A-HJ-NPR-Z0-9]{17}$', input.vin.upper()):
-                raise ValidationException.detail("VIN трябва да е точно 17 символа (без I, O, Q)")
+                raise ValidationException(detail="VIN трябва да е точно 17 символа (без I, O, Q)")
             input.vin = input.vin.upper()
 
         # Year Validation
         current_year = datetime.datetime.now().year
         if input.year and (input.year < 1900 or input.year > current_year + 1):
-            raise ValidationException.detail(f"Годината трябва да е между 1900 и {current_year + 1}")
+            raise ValidationException(detail=f"Годината трябва да е между 1900 и {current_year + 1}")
 
         # Initial Mileage Validation
         if input.initial_mileage is not None and input.initial_mileage < 0:
-            raise ValidationException.detail("Началният пробег не може да бъде отрицателен")
+            raise ValidationException(detail="Началният пробег не може да бъде отрицателен")
 
         update_data = {
             "registration_number": input.registration_number,
@@ -164,7 +164,7 @@ class VehicleMutation:
         last_mileage_record = last_mileage_res.scalars().first()
 
         if last_mileage_record and input.mileage < last_mileage_record.mileage:
-            raise ValidationException.detail(f"Пробегът не може да бъде по-малък от последния запис ({last_mileage_record.mileage} км)")
+            raise ValidationException(detail=f"Пробегът не може да бъде по-малък от последния запис ({last_mileage_record.mileage} км)")
 
         record = await vehicle_repo.create_vehicle_mileage(
             db,
@@ -183,13 +183,14 @@ class VehicleMutation:
         current_user = info.context["current_user"]
         await check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
+        from sqlalchemy import select, func
+
         # Calculate Efficiency (L/100km)
         efficiency = None
         is_anomaly = False
         
         if input.mileage is not None:
             # Get last fuel record to calculate distance
-            from sqlalchemy import select, func
             from backend.database.models import VehicleFuel as VehicleFuelModel
             
             last_fuel_stmt = select(VehicleFuelModel).where(
@@ -253,12 +254,11 @@ class VehicleMutation:
             db,
             vehicle_id=input.vehicle_id,
             date=input.date.date() if hasattr(input.date, "date") else input.date,
-            liters=input.liters,
-            price=input.price,
-            total=input.total,
+            quantity=input.liters,
+            price_per_liter=input.price,
+            total_amount=input.total,
             fuel_type=input.fuel_type,
-            notes=input.notes,
-            mileage=input.mileage,  # Pass mileage if available
+            mileage=input.mileage,
             efficiency_l_per_100km=efficiency,
             is_anomaly=is_anomaly,
         )
@@ -275,9 +275,9 @@ class VehicleMutation:
         record = await vehicle_repo.create_vehicle_repair(
             db,
             vehicle_id=input.vehicle_id,
-            date=input.date.date() if hasattr(input.date, "date") else input.date,
+            repair_date=input.date.date() if hasattr(input.date, "date") else input.date,
             description=input.description,
-            cost=input.cost,
+            total_cost=input.cost,
             notes=input.notes,
         )
         await db.commit()
@@ -293,11 +293,12 @@ class VehicleMutation:
         record = await vehicle_repo.create_vehicle_insurance(
             db,
             vehicle_id=input.vehicle_id,
-            provider=input.provider,
+            insurance_company=input.provider,
             policy_number=input.policy_number,
             start_date=input.start_date.date() if hasattr(input.start_date, "date") else input.start_date,
             end_date=input.end_date.date() if hasattr(input.end_date, "date") else input.end_date,
             premium=input.premium,
+            insurance_type=input.insurance_type,
             notes=input.notes,
         )
         await db.commit()
@@ -310,14 +311,25 @@ class VehicleMutation:
         current_user = info.context["current_user"]
         await check_company_access(db, current_user, "Vehicle", input.vehicle_id)
 
+        from datetime import datetime as dt_parse
+        def _parse_date(v: str | None) -> datetime.date | None:
+            if not v:
+                return None
+            return dt_parse.fromisoformat(v).date() if "T" in v else dt_parse.strptime(v, "%Y-%m-%d").date()
+
+        inspection_date = input.date.date() if hasattr(input.date, "date") else input.date
+        next_inspection_date = _parse_date(input.next_inspection_date)
+        next_date = _parse_date(input.next_date)
+        valid_until = next_inspection_date or next_date or inspection_date
+
         record = await vehicle_repo.create_vehicle_inspection(
             db,
             vehicle_id=input.vehicle_id,
-            inspection_type=input.inspection_type,
-            date=input.date.date() if hasattr(input.date, "date") else input.date,
+            inspection_date=inspection_date,
+            valid_until=valid_until,
             result=input.result,
-            next_inspection_date=input.next_inspection_date.date() if input.next_inspection_date is not None and hasattr(input.next_inspection_date, "date") else input.next_inspection_date,
-            cost=input.cost,
+            certificate_number=input.protocol_number,
+            next_inspection_date=next_inspection_date,
             notes=input.notes,
         )
         await db.commit()
@@ -334,10 +346,9 @@ class VehicleMutation:
             db,
             vehicle_id=input.vehicle_id,
             user_id=input.user_id,
-            start_date=input.start_date.date() if input.start_date is not None and hasattr(input.start_date, "date") else input.start_date,
-            end_date=input.end_date.date() if input.end_date is not None and hasattr(input.end_date, "date") else input.end_date,
+            assigned_from=input.start_date.date() if input.start_date is not None and hasattr(input.start_date, "date") else (input.start_date or datetime.date.today()),
+            assigned_to=input.end_date.date() if input.end_date is not None and hasattr(input.end_date, "date") else input.end_date,
             is_primary=input.is_primary,
-            notes=input.notes,
         )
         await db.commit()
         await db.refresh(record)
@@ -363,7 +374,7 @@ class VehicleMutation:
         )
         await db.commit()
         await db.refresh(record)
-        return types.VehicleInspection.from_pydantic(record)
+        return types.VehicleTrip.from_pydantic(record)
 
     @strawberry.mutation
     async def create_vehicle_accident(self, input: VehicleAccidentInput, info: strawberry.Info) -> types.VehicleAccident:
@@ -474,11 +485,10 @@ class VehicleMutation:
         record = await vehicle_repo.update_vehicle_fuel(
             db, id,
             date=input.date.date() if input.date else None,
-            liters=input.liters,
-            price=input.price,
-            total=input.total,
+            quantity=input.liters,
+            price_per_liter=input.price,
+            total_amount=input.total,
             fuel_type=input.fuel_type,
-            notes=input.notes,
         )
         if not record:
             raise NotFoundException.record("Запис")
@@ -491,9 +501,9 @@ class VehicleMutation:
         db = info.context["db"]
         record = await vehicle_repo.update_vehicle_repair(
             db, id,
-            date=input.date.date() if input.date else None,
+            repair_date=input.date.date() if input.date else None,
             description=input.description,
-            cost=input.cost,
+            total_cost=input.cost,
             repair_type=input.repair_type,
             notes=input.notes,
         )
@@ -508,7 +518,7 @@ class VehicleMutation:
         db = info.context["db"]
         record = await vehicle_repo.update_vehicle_insurance(
             db, id,
-            provider=input.provider,
+            insurance_company=input.provider,
             policy_number=input.policy_number,
             start_date=input.start_date.date() if input.start_date else None,
             end_date=input.end_date.date() if input.end_date else None,
@@ -525,13 +535,17 @@ class VehicleMutation:
     @strawberry.mutation
     async def update_vehicle_inspection(self, id: int, input: VehicleInspectionUpdateInput, info: strawberry.Info) -> types.VehicleInspection:
         db = info.context["db"]
+        from datetime import datetime as dt_parse
+        def _pd(v: str | None) -> datetime.date | None:
+            if not v:
+                return None
+            return dt_parse.fromisoformat(v).date() if "T" in v else dt_parse.strptime(v, "%Y-%m-%d").date()
         record = await vehicle_repo.update_vehicle_inspection(
             db, id,
-            date=input.date.date() if input.date else None,
-            next_date=input.next_date.date() if input.next_date else None,
-            cost=input.cost,
+            inspection_date=_pd(input.date),
+            next_inspection_date=_pd(input.next_date),
             result=input.result,
-            protocol_number=input.protocol_number,
+            certificate_number=input.protocol_number,
             notes=input.notes,
         )
         if not record:
@@ -545,12 +559,7 @@ class VehicleMutation:
         db = info.context["db"]
         record = await vehicle_repo.update_vehicle_driver(
             db, id,
-            license_number=input.license_number,
-            license_expiry=input.license_expiry.date() if input.license_expiry else None,
-            phone=input.phone,
-            category=input.category,
             is_primary=input.is_primary,
-            notes=input.notes,
         )
         if not record:
             raise NotFoundException.record("Запис")
