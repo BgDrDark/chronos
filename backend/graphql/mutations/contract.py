@@ -160,6 +160,9 @@ class ContractMutation:
         if contract.status == "signed":
             raise ValidationException.field("Договор", "Вече е подписан")
 
+        if contract.status == "linked":
+            raise ValidationException.field("Договор", "Договорът е линкнат към потребител и не може да бъде подписван отново")
+
         contract.status = "signed"
         contract.signed_at = datetime.datetime.now()
 
@@ -252,8 +255,16 @@ class ContractMutation:
         if contract.status != "signed":
             raise ValidationException.field("Договор", "Трябва първо да бъде подписан")
 
+        if contract.user_id == user_id and contract.status == "linked":
+            raise ValidationException.field("Договор", "Вече е линкнат към този потребител")
+
         contract.user_id = user_id
         contract.status = "linked"
+
+        user.company_id = contract.company_id
+        user.department_id = contract.department_id
+        user.position_id = contract.position_id
+        db.add(user)
 
         await db.commit()
         await db.refresh(contract, ["company", "position", "department"])

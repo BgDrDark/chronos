@@ -334,6 +334,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     },
     { text: 'Настройки', icon: <SettingsIcon />, path: '/settings', visible: isAdmin },
     { text: 'Документация', icon: <HelpOutlineIcon />, path: '/documentation', visible: isAdmin && isEnabled('integrations') },
+    { text: 'Управление на документацията', icon: <HelpOutlineIcon />, path: '/admin/documentation/edit', visible: user?.role?.name === 'super_admin' },
     { 
       text: 'Отдел КД', 
       icon: <QrCodeScannerIcon />, 

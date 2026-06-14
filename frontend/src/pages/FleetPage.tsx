@@ -322,6 +322,18 @@ const FleetPage: React.FC = () => {
     pending: 'В изчакване',
   };
 
+  const repairTypeLabels: Record<string, string> = {
+    maintenance: 'Техническо обслужване',
+    repair: 'Ремонт',
+    tire: 'Гуми',
+    body: 'Каросерия',
+    electrical: 'Електрика',
+    other: 'Друго',
+    scheduled: 'Планов',
+    unscheduled: 'Извънреден',
+    emergency: 'Авариен',
+  };
+
   const [vehiclesOpen, setVehiclesOpen] = useState(false);
   const [mileageOpen, setMileageOpen] = useState(false);
   const [fuelOpen, setFuelOpen] = useState(false);
@@ -441,7 +453,7 @@ const FleetPage: React.FC = () => {
   const [mileageForm, setMileageForm] = useState({ vehicleId: '', date: new Date().toISOString().split('T')[0], mileage: 0, notes: '' });
   const [fuelForm, setFuelForm] = useState({ vehicleId: '', date: new Date().toISOString().split('T')[0], mileage: 0, liters: 0, price: 0, total: 0, fuelType: 'dizel', station: '', notes: '' });
   const [repairForm, setRepairForm] = useState({ vehicleId: '', date: new Date().toISOString().split('T')[0], mileage: 0, description: '', service: '', cost: 0, repairType: 'maintenance', notes: '' });
-  const [insuranceForm, setInsuranceForm] = useState({ vehicleId: '', provider: '', policyNumber: '', startDate: new Date().toISOString().split('T')[0], endDate: '', premium: 0, insuranceType: 'grazhdanska', notes: '' });
+  const [insuranceForm, setInsuranceForm] = useState({ vehicleId: '', provider: '', policyNumber: '', startDate: new Date().toISOString().split('T')[0], endDate: '', premium: 0, insuranceType: 'civil', notes: '' });
   const [inspectionForm, setInspectionForm] = useState({ vehicleId: '', date: new Date().toISOString().split('T')[0], nextDate: '', cost: 0, protocolNumber: '', result: 'passed', notes: '' });
   const [driverForm, setDriverForm] = useState({ userId: '', vehicleId: '', licenseNumber: '', licenseExpiry: '', phone: '', category: 'B', isPrimary: true, notes: '' });
   const [tripForm, setTripForm] = useState({ vehicleId: '', userId: '', startDate: new Date().toISOString().split('T')[0], endDate: '', startLocation: '', endLocation: '', distance: 0, tripType: 'business', description: '', notes: '' });
@@ -719,13 +731,13 @@ const FleetPage: React.FC = () => {
             startDate: insuranceForm.startDate,
             endDate: insuranceForm.endDate,
             premium: insuranceForm.premium,
-            insuranceType: 'grazhdanska',
+            insuranceType: insuranceForm.insuranceType,
           }
         },
         refetchQueries: selectedVehicleId ? [{ query: GET_VEHICLE_INSURANCES, variables: { vehicleId: selectedVehicleId } }] : []
       });
       setInsuranceOpen(false);
-      setInsuranceForm({ vehicleId: '', provider: '', policyNumber: '', startDate: new Date().toISOString().split('T')[0], endDate: '', premium: 0, insuranceType: 'grazhdanska', notes: '' });
+      setInsuranceForm({ vehicleId: '', provider: '', policyNumber: '', startDate: new Date().toISOString().split('T')[0], endDate: '', premium: 0, insuranceType: 'civil', notes: '' });
       setInsuranceValidationErrors({});
     } catch (err) {
       setError(getErrorMessage(err));
@@ -1234,7 +1246,7 @@ const FleetPage: React.FC = () => {
                     <TableRow key={r.id}>
                       <TableCell>{formatDate(r.date)}</TableCell>
                       <TableCell>{r.description}</TableCell>
-                      <TableCell>{r.repairType}</TableCell>
+                      <TableCell>{repairTypeLabels[r.repairType] || r.repairType}</TableCell>
                       <TableCell align="right">{formatPrice(r.cost)}</TableCell>
                       <TableCell>{r.notes || '-'}</TableCell>
                     </TableRow>
@@ -2207,9 +2219,9 @@ const FleetPage: React.FC = () => {
               <FormControl fullWidth margin="dense">
                 <InputLabel>Тип застраховка</InputLabel>
                 <Select label="Тип застраховка" value={insuranceForm.insuranceType} onChange={(e) => handleInsuranceChange('insuranceType', e.target.value)}>
-                  <MenuItem value="grazhdanska">Гражданска отговорност</MenuItem>
-                  <MenuItem value="avtokasko">Автокаско</MenuItem>
-                  <MenuItem value="imot">Имущество</MenuItem>
+                  <MenuItem value="civil">Гражданска отговорност</MenuItem>
+                  <MenuItem value="kasko">Автокаско</MenuItem>
+                  <MenuItem value="border">Гранична застраховка</MenuItem>
                 </Select>
               </FormControl>
             </Grid>

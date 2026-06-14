@@ -20,6 +20,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import DocumentationPage from './pages/DocumentationPage';
+import AdminDocumentationPage from './pages/AdminDocumentationPage';
 import ProfilePage from './pages/ProfilePage';
 import KioskAdminPage from './pages/KioskAdminPage';
 import KioskTerminalPage from './pages/KioskTerminalPage';
@@ -355,6 +356,9 @@ function App() {
         
         {/* Справки - Автомобили */}
         <Route path="/admin/fleet/reports" element={<AdminRoute><FleetReportsPage /></AdminRoute>} />
+        
+        {/* Управление на документацията */}
+        <Route path="/admin/documentation/edit" element={<AdminRoute><AdminDocumentationPage /></AdminRoute>} />
         
         {/* ТРЗ Настройки */}
         <Route path="/admin/payroll/trz-settings" element={<AdminRoute><TRZSettingsPage /></AdminRoute>} />

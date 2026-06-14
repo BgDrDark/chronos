@@ -3195,6 +3195,41 @@ class VehicleAccident(Base):
     vehicle = relationship("Vehicle", backref="accidents")
 
 
+class DocumentationCategory(Base):
+    """Категории за документация"""
+
+    __tablename__ = "documentation_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    icon: Mapped[str] = mapped_column(String(50), default="folder")
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
+
+    articles = relationship("DocumentationArticle", back_populates="category", cascade="all, delete-orphan", order_by="DocumentationArticle.order")
+
+
+class DocumentationArticle(Base):
+    """Статии за документация"""
+
+    __tablename__ = "documentation_articles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    category_id: Mapped[int] = mapped_column(Integer, ForeignKey("documentation_categories.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, default="")
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
+
+    category = relationship("DocumentationCategory", back_populates="articles")
+    author = relationship("User", foreign_keys=[created_by])
+
+
 # Add back_populates relationships after all models are defined
 User.purchase_requests = relationship("PurchaseRequest", foreign_keys=[PurchaseRequest.requested_by_id], back_populates="requested_by_user")
 User.vehicle_fuel_records = relationship("VehicleFuel", foreign_keys=[VehicleFuel.driver_id], back_populates="driver")

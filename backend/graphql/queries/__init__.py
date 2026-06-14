@@ -19,6 +19,7 @@ from backend.graphql.queries.accounting import AccountingQuery
 from backend.graphql.queries.company import CompanyQuery
 from backend.graphql.queries.contract import ContractQuery
 from backend.graphql.queries.cost_center import CostCenterQuery
+from backend.graphql.queries.documentation import DocumentationQuery
 from backend.graphql.queries.hardware import HardwareQuery
 from backend.graphql.queries.leave import LeaveQuery
 from backend.graphql.queries.logistics import LogisticsQuery
@@ -36,7 +37,7 @@ from backend.services.payroll_calculator import PayrollCalculator
 
 authenticate_msg = "Трябва да се автентикирате"
 @strawberry.type
-class Query(LeaveQuery, UserQuery, NotificationsQuery, VehicleQuery, CostCenterQuery, ShiftsQuery, LogisticsQuery, ProductionQuery, AccountingQuery, ContractQuery, HardwareQuery, AccessControlQuery, PayrollQuery, BehavioralQuery, TimeTrackingQuery, SystemQuery, CompanyQuery, StatsQuery):
+class Query(LeaveQuery, UserQuery, NotificationsQuery, VehicleQuery, CostCenterQuery, ShiftsQuery, LogisticsQuery, ProductionQuery, AccountingQuery, ContractQuery, HardwareQuery, AccessControlQuery, PayrollQuery, BehavioralQuery, TimeTrackingQuery, SystemQuery, CompanyQuery, StatsQuery, DocumentationQuery):
     @strawberry.field
     async def hello(self) -> str:
         return "Hello World"

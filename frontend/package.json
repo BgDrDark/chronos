@@ -1,8 +1,7 @@
 {
   "name": "chronos-frontend",
   "private": true,
-  "version": "3.7.14",
-  "scripts.0": "dev",
+  "version": "3.7.14.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -32,6 +31,12 @@
     "@mui/material": "^7.3.6",
     "@mui/x-date-pickers": "^8.27.2",
     "@simplewebauthn/browser": "^13.2.2",
+    "@tiptap/extension-image": "^3.26.1",
+    "@tiptap/extension-link": "^3.26.1",
+    "@tiptap/extension-placeholder": "^3.26.1",
+    "@tiptap/pm": "^3.26.1",
+    "@tiptap/react": "^3.26.1",
+    "@tiptap/starter-kit": "^3.26.1",
     "axios": "^1.13.4",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.19",

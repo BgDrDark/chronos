@@ -1,5 +1,6 @@
 import datetime
 import logging
+from decimal import Decimal
 
 import strawberry
 from pydantic import ValidationError as PydanticValidationError
@@ -74,6 +75,41 @@ class UserMutation:
             raise AssertionError("unreachable")  # _handle_pydantic_error always raises
 
         db_user = await user_repo.create_user(db=db, user_data=user_data, role_id=userInput.role_id)
+
+        has_contract_data = any([
+            userInput.contract_type is not None,
+            userInput.base_salary is not None,
+            userInput.contract_start_date is not None,
+        ])
+        if has_contract_data:
+            contract = EmploymentContract(
+                user_id=db_user.id,
+                company_id=userInput.company_id,
+                contract_type=userInput.contract_type or 'full_time',
+                start_date=userInput.contract_start_date or datetime.date.today(),
+                base_salary=userInput.base_salary,
+                work_hours_per_week=userInput.work_hours_per_week or 40,
+                contract_number=userInput.contract_number,
+                end_date=userInput.contract_end_date,
+                probation_months=userInput.probation_months or 0,
+                salary_calculation_type=userInput.salary_calculation_type or 'gross',
+                salary_installments_count=userInput.salary_installments_count or 1,
+                monthly_advance_amount=userInput.monthly_advance_amount or Decimal(0),
+                tax_resident=userInput.tax_resident if userInput.tax_resident is not None else True,
+                insurance_contributor=userInput.insurance_contributor if userInput.insurance_contributor is not None else True,
+                has_income_tax=userInput.has_income_tax if userInput.has_income_tax is not None else True,
+                payment_day=userInput.payment_day or 25,
+                experience_start_date=userInput.experience_start_date,
+                night_work_rate=userInput.night_work_rate or Decimal('0.50'),
+                overtime_rate=userInput.overtime_rate or Decimal('1.50'),
+                holiday_rate=userInput.holiday_rate or Decimal('2.00'),
+                work_class=userInput.work_class,
+                dangerous_work=userInput.dangerous_work or False,
+                status='draft',
+                is_active=False,
+            )
+            db.add(contract)
+
         await db.commit()
         await db.refresh(db_user)
         return types.User.from_pydantic(schemas.User.model_validate(db_user))
@@ -122,93 +158,71 @@ class UserMutation:
         if userInput.password is not None and userInput.password != '':
             update_data["password"] = userInput.password
 
-        update_data["base_salary"] = userInput.base_salary
-        update_data["contract_type"] = userInput.contract_type
-        update_data["contract_number"] = userInput.contract_number
-        update_data["contract_start_date"] = userInput.contract_start_date
-        update_data["contract_end_date"] = userInput.contract_end_date
-        update_data["work_hours_per_week"] = userInput.work_hours_per_week
-        update_data["probation_months"] = userInput.probation_months
-        update_data["salary_calculation_type"] = userInput.salary_calculation_type
-        update_data["salary_installments_count"] = userInput.salary_installments_count
-        update_data["monthly_advance_amount"] = userInput.monthly_advance_amount
-        update_data["tax_resident"] = userInput.tax_resident
-        update_data["insurance_contributor"] = userInput.insurance_contributor
-        update_data["has_income_tax"] = userInput.has_income_tax
-        update_data["payment_day"] = userInput.payment_day
-        update_data["experience_start_date"] = userInput.experience_start_date
-        update_data["night_work_rate"] = userInput.night_work_rate
-        update_data["overtime_rate"] = userInput.overtime_rate
-        update_data["holiday_rate"] = userInput.holiday_rate
-        update_data["work_class"] = userInput.work_class
-        update_data["dangerous_work"] = userInput.dangerous_work
-
-        contract_fields = [
-            'base_salary', 'contract_type', 'contract_number', 'contract_start_date', 
-            'contract_end_date', 'work_hours_per_week', 'probation_months', 
-            'salary_calculation_type', 'salary_installments_count', 'monthly_advance_amount',
-            'tax_resident', 'insurance_contributor', 'has_income_tax', 'payment_day',
-            'experience_start_date', 'night_work_rate', 'overtime_rate', 'holiday_rate',
-            'work_class', 'dangerous_work'
-        ]
-        for field in contract_fields:
-            if field in update_data and update_data[field] is None:
-                del update_data[field]
-
-        if userInput.surname is not None:
-            update_data["surname"] = userInput.surname
-
         user_in = schemas.UserUpdate(**update_data)
         db_user = await user_repo.update_user(db, user_id=userInput.id, user_in=user_in)
-        
-        if userInput.contract_type or userInput.base_salary:
+
+        has_contract_data = any([
+            userInput.contract_type is not None,
+            userInput.base_salary is not None,
+            userInput.contract_start_date is not None,
+        ])
+        if has_contract_data:
             stmt = select(EmploymentContract).where(
                 EmploymentContract.user_id == userInput.id,
-                EmploymentContract.is_active
-            )
+                EmploymentContract.status.in_(["draft", "signed", "linked"]),
+            ).order_by(EmploymentContract.created_at.desc())
             result = await db.execute(stmt)
-            contract = result.scalar_one_or_none()
-            
-            if contract:
-                if userInput.contract_type:
-                    contract.contract_type = userInput.contract_type
+            existing_contract = result.scalar_one_or_none()
+
+            if existing_contract and existing_contract.status in ("signed", "linked"):
+                raise ValidationException.field(
+                    "Договор",
+                    "Потребителят има подписан или линкнат договор. Промени се правят само чрез анекс."
+                )
+
+            if existing_contract and existing_contract.status == "draft":
+                if userInput.contract_type is not None:
+                    existing_contract.contract_type = userInput.contract_type
+                if userInput.contract_number is not None:
+                    existing_contract.contract_number = userInput.contract_number
+                if userInput.contract_start_date is not None:
+                    existing_contract.start_date = userInput.contract_start_date
+                if userInput.contract_end_date is not None:
+                    existing_contract.end_date = userInput.contract_end_date
                 if userInput.base_salary is not None:
-                    contract.base_salary = userInput.base_salary
-                if userInput.contract_start_date:
-                    contract.start_date = userInput.contract_start_date
-                if userInput.contract_end_date:
-                    contract.end_date = userInput.contract_end_date
-                if userInput.salary_installments_count:
-                    contract.salary_installments_count = userInput.salary_installments_count
-                if userInput.monthly_advance_amount is not None:
-                    contract.monthly_advance_amount = userInput.monthly_advance_amount
-                if userInput.tax_resident is not None:
-                    contract.tax_resident = userInput.tax_resident
-                if userInput.has_income_tax is not None:
-                    contract.has_income_tax = userInput.has_income_tax
-                if userInput.insurance_contributor is not None:
-                    contract.insurance_contributor = userInput.insurance_contributor
+                    existing_contract.base_salary = userInput.base_salary
                 if userInput.work_hours_per_week is not None:
-                    contract.work_hours_per_week = userInput.work_hours_per_week
+                    existing_contract.work_hours_per_week = userInput.work_hours_per_week
                 if userInput.probation_months is not None:
-                    contract.probation_months = userInput.probation_months
-                if userInput.salary_calculation_type:
-                    contract.salary_calculation_type = userInput.salary_calculation_type
+                    existing_contract.probation_months = userInput.probation_months
+                if userInput.salary_calculation_type is not None:
+                    existing_contract.salary_calculation_type = userInput.salary_calculation_type
+                if userInput.salary_installments_count is not None:
+                    existing_contract.salary_installments_count = userInput.salary_installments_count
+                if userInput.monthly_advance_amount is not None:
+                    existing_contract.monthly_advance_amount = userInput.monthly_advance_amount
+                if userInput.tax_resident is not None:
+                    existing_contract.tax_resident = userInput.tax_resident
+                if userInput.insurance_contributor is not None:
+                    existing_contract.insurance_contributor = userInput.insurance_contributor
+                if userInput.has_income_tax is not None:
+                    existing_contract.has_income_tax = userInput.has_income_tax
                 if userInput.payment_day is not None:
-                    contract.payment_day = userInput.payment_day
-                if userInput.experience_start_date:
-                    contract.experience_start_date = userInput.experience_start_date
+                    existing_contract.payment_day = userInput.payment_day
+                if userInput.experience_start_date is not None:
+                    existing_contract.experience_start_date = userInput.experience_start_date
                 if userInput.night_work_rate is not None:
-                    contract.night_work_rate = userInput.night_work_rate
+                    existing_contract.night_work_rate = userInput.night_work_rate
                 if userInput.overtime_rate is not None:
-                    contract.overtime_rate = userInput.overtime_rate
+                    existing_contract.overtime_rate = userInput.overtime_rate
                 if userInput.holiday_rate is not None:
-                    contract.holiday_rate = userInput.holiday_rate
-                if userInput.work_class:
-                    contract.work_class = userInput.work_class
+                    existing_contract.holiday_rate = userInput.holiday_rate
+                if userInput.work_class is not None:
+                    existing_contract.work_class = userInput.work_class
                 if userInput.dangerous_work is not None:
-                    contract.dangerous_work = userInput.dangerous_work
-            else:
+                    existing_contract.dangerous_work = userInput.dangerous_work
+                db.add(existing_contract)
+            elif not existing_contract:
                 contract = EmploymentContract(
                     user_id=userInput.id,
                     company_id=userInput.company_id or (db_user.company_id if db_user else None),
@@ -216,26 +230,27 @@ class UserMutation:
                     start_date=userInput.contract_start_date or datetime.date.today(),
                     base_salary=userInput.base_salary,
                     work_hours_per_week=userInput.work_hours_per_week or 40,
+                    contract_number=userInput.contract_number,
+                    end_date=userInput.contract_end_date,
                     probation_months=userInput.probation_months or 0,
                     salary_calculation_type=userInput.salary_calculation_type or 'gross',
-                    is_active=True,
                     salary_installments_count=userInput.salary_installments_count or 1,
-                    monthly_advance_amount=userInput.monthly_advance_amount or 0,
+                    monthly_advance_amount=userInput.monthly_advance_amount or Decimal(0),
                     tax_resident=userInput.tax_resident if userInput.tax_resident is not None else True,
                     insurance_contributor=userInput.insurance_contributor if userInput.insurance_contributor is not None else True,
                     has_income_tax=userInput.has_income_tax if userInput.has_income_tax is not None else True,
                     payment_day=userInput.payment_day or 25,
                     experience_start_date=userInput.experience_start_date,
-                    night_work_rate=userInput.night_work_rate or 0.5,
-                    overtime_rate=userInput.overtime_rate or 1.5,
-                    holiday_rate=userInput.holiday_rate or 2.0,
+                    night_work_rate=userInput.night_work_rate or Decimal('0.50'),
+                    overtime_rate=userInput.overtime_rate or Decimal('1.50'),
+                    holiday_rate=userInput.holiday_rate or Decimal('2.00'),
                     work_class=userInput.work_class,
-                    dangerous_work=userInput.dangerous_work or False
+                    dangerous_work=userInput.dangerous_work or False,
+                    status='draft',
+                    is_active=False,
                 )
                 db.add(contract)
-            
-            await db.commit()
-        
+
         return types.User.from_pydantic(schemas.User.model_validate(db_user))
 
     @strawberry.mutation

@@ -15,6 +15,7 @@ from backend.graphql.mutations.calendar import CalendarMutation
 from backend.graphql.mutations.company import CompanyMutation
 from backend.graphql.mutations.contract import ContractMutation
 from backend.graphql.mutations.cost_center import CostCenterMutation
+from backend.graphql.mutations.documentation import DocumentationMutation
 from backend.graphql.mutations.hardware import HardwareMutation
 from backend.graphql.mutations.hr import HRMutation
 from backend.graphql.mutations.inventory import InventoryMutation
@@ -38,6 +39,6 @@ authenticate_msg = "Трябва да се автентикирате"
 
 
 @strawberry.type
-class Mutation(VehicleMutation, CostCenterMutation, NotificationsMutation, ShiftMutation, LogisticsMutation, ProductionMutation, AccountingMutation, ContractMutation, HardwareMutation, AccessControlMutation, PayrollMutation, TrzMutation, LeaveMutation, CalendarMutation, NapReportMutation, BehavioralMutation, HRMutation, InventoryMutation, ShiftSwapMutation, CompanyMutation, SettingsMutation, UserMutation):
+class Mutation(VehicleMutation, CostCenterMutation, NotificationsMutation, ShiftMutation, LogisticsMutation, ProductionMutation, AccountingMutation, ContractMutation, HardwareMutation, AccessControlMutation, PayrollMutation, TrzMutation, LeaveMutation, CalendarMutation, NapReportMutation, BehavioralMutation, HRMutation, InventoryMutation, ShiftSwapMutation, CompanyMutation, SettingsMutation, UserMutation, DocumentationMutation):
     pass
 
