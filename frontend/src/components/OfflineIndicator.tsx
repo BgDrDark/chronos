@@ -1,39 +1,50 @@
 import React from 'react';
-import { Chip } from '@mui/material';
+import { Box, Chip, Tooltip } from '@mui/material';
 import WifiOffIcon from '@mui/icons-material/WifiOff';
+import SlowMotionVideoIcon from '@mui/icons-material/SlowMotionVideo';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useBackgroundSync } from '../hooks/useBackgroundSync';
 
 export const OfflineIndicator: React.FC = () => {
-  const [offline, setOffline] = React.useState(!navigator.onLine);
+  const { isOnline, connectionType, isSlowConnection } = useNetworkStatus();
+  const { pendingCount } = useBackgroundSync();
 
-  React.useEffect(() => {
-    const handleOnline = () => setOffline(false);
-    const handleOffline = () => setOffline(true);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  if (!offline) return null;
+  if (isOnline && !isSlowConnection && pendingCount === 0) return null;
 
   return (
-    <Chip
-      icon={<WifiOffIcon />}
-      label="Офлайн режим"
-      color="warning"
-      size="small"
-      sx={{
-        position: 'fixed',
-        bottom: 16,
-        left: 16,
-        zIndex: 2000,
-        fontWeight: 'bold',
-        boxShadow: 2,
-      }}
-    />
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      {!isOnline && (
+        <Tooltip title="Няма интернет връзка. Данните се записват локално.">
+          <Chip
+            icon={<WifiOffIcon />}
+            label="Офлайн"
+            size="small"
+            color="error"
+            variant="filled"
+          />
+        </Tooltip>
+      )}
+      {isSlowConnection && isOnline && (
+        <Tooltip title={`Бавен интернет (${connectionType}). Олекотен режим.`}>
+          <Chip
+            icon={<SlowMotionVideoIcon />}
+            label={`2G`}
+            size="small"
+            color="warning"
+            variant="filled"
+          />
+        </Tooltip>
+      )}
+      {pendingCount > 0 && (
+        <Tooltip title={`${pendingCount} записа чакат синхронизация`}>
+          <Chip
+            label={`${pendingCount} за синхр.`}
+            size="small"
+            color="info"
+            variant="outlined"
+          />
+        </Tooltip>
+      )}
+    </Box>
   );
 };

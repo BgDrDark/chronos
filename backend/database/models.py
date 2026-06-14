@@ -453,6 +453,8 @@ class TimeLog(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
     user = relationship("User", back_populates="timelogs")
 
+    idempotency_key: Mapped[str | None] = mapped_column(String(36), unique=True, nullable=True)
+
 
 class Payroll(Base):
     __tablename__ = "payrolls"

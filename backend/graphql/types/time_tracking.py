@@ -17,6 +17,7 @@ class TimeLog:
     notes: strawberry.auto
     latitude: strawberry.auto
     longitude: strawberry.auto
+    idempotency_key: strawberry.auto
     user_id: strawberry.auto
 
     @strawberry.field

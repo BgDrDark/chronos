@@ -28,9 +28,9 @@ export default defineConfig({
         'fonts/**/*',
       ],
       manifest: {
-        name: 'Chronos Working Time',
+        name: 'Chronos ERP system',
         short_name: 'Chronos',
-        description: 'Система за отчитане на работно време и заплати',
+        description: 'ERP Система за отчитане на работно време',
         theme_color: '#3f51b5',
         background_color: '#ffffff',
         display: 'standalone',
@@ -73,13 +73,6 @@ export default defineConfig({
             url: '/production-kiosk?terminal=1',
             icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
           },
-          {
-            name: 'Производство 2',
-            short_name: 'Цех 2',
-            description: 'Производствен терминал - Цех 2',
-            url: '/production-kiosk?terminal=2',
-            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
-          }
         ],
         icons: [
           {
@@ -118,10 +111,24 @@ export default defineConfig({
         share_target: {
           action: '/share',
           method: 'POST',
+          enctype: 'multipart/form-data',
           params: {
-            title: 'text',
+            title: 'title',
             text: 'text',
-            url: 'text',
+            url: 'url',
+            files: [
+              {
+                name: 'files',
+                accept: [
+                  'application/pdf',
+                  'image/png',
+                  'image/jpeg',
+                  'text/plain',
+                  'text/csv',
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                ],
+              },
+            ],
           },
         },
         file_handlers: [

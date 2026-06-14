@@ -1,104 +1,74 @@
-import React, { useState, useEffect } from 'react';
-import { Snackbar, Alert, Button, Box, Typography } from '@mui/material';
+import React from 'react';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { Snackbar, Alert, Button, Box, Typography, IconButton } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
-
-const DISMISS_KEY = 'pwa-install-dismissed';
-const VISIT_KEY = 'pwa-install-visits';
-const DISMISS_DAYS = 7;
-const MIN_VISITS = 2;
+import CloseIcon from '@mui/icons-material/Close';
+import InstallMobileIcon from '@mui/icons-material/InstallMobile';
 
 export const PWAInstallBanner: React.FC = () => {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showBanner, setShowBanner] = useState(false);
-  const [isInstalled, setIsInstalled] = useState(false);
+  const { install, dismiss, isInstallable, isInstalled } = usePWAInstall();
+  const [open, setOpen] = React.useState(false);
+  const [visitCount, setVisitCount] = React.useState(0);
 
-  useEffect(() => {
-    // Check if already installed
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setIsInstalled(true);
-      return;
-    }
+  React.useEffect(() => {
+    if (isInstalled) return;
+    if (!isInstallable) return;
 
-    // Track visits
-    try {
-      const visits = parseInt(localStorage.getItem(VISIT_KEY) || '0', 10);
-      localStorage.setItem(VISIT_KEY, String(visits + 1));
-    } catch { /* ignore */ }
+    const visits = parseInt(localStorage.getItem('pwa_visit_count') || '0', 10);
+    const newVisits = visits + 1;
+    localStorage.setItem('pwa_visit_count', String(newVisits));
+    setVisitCount(newVisits);
 
-    // Check if dismissed
-    try {
-      const dismissed = localStorage.getItem(DISMISS_KEY);
-      if (dismissed) {
-        const dismissedTime = parseInt(dismissed, 10);
-        if (Date.now() - dismissedTime < DISMISS_DAYS * 24 * 60 * 60 * 1000) {
-          return; // Still within dismiss period
-        }
-        localStorage.removeItem(DISMISS_KEY);
-      }
-    } catch { /* ignore */ }
-
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      // Only show after MIN_VISITS
-      try {
-        const visits = parseInt(localStorage.getItem(VISIT_KEY) || '0', 10);
-        if (visits >= MIN_VISITS) {
-          setShowBanner(true);
-        }
-      } catch {
-        setShowBanner(true);
-      }
-    };
-
-    window.addEventListener('beforeinstallprompt', handler);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handler);
-    };
-  }, []);
+    const delay = newVisits >= 3 ? 1000 : 10000;
+    const timer = setTimeout(() => setOpen(true), delay);
+    return () => clearTimeout(timer);
+  }, [isInstallable, isInstalled]);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const result = await deferredPrompt.userChoice;
-    if (result.outcome === 'accepted') {
-      setShowBanner(false);
-      setIsInstalled(true);
-    }
-    setDeferredPrompt(null);
+    const result = await install();
+    if (result) setOpen(false);
   };
 
   const handleDismiss = () => {
-    setShowBanner(false);
-    try {
-      localStorage.setItem(DISMISS_KEY, String(Date.now()));
-    } catch { /* ignore */ }
+    dismiss();
+    setOpen(false);
   };
 
-  if (!showBanner || isInstalled) return null;
+  if (!isInstallable || isInstalled) return null;
 
   return (
     <Snackbar
-      open={true}
+      open={open}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      autoHideDuration={null}
+      onClose={handleDismiss}
     >
       <Alert
         severity="info"
         variant="filled"
-        sx={{ width: '100%', maxWidth: 450 }}
+        sx={{ width: '100%', maxWidth: 420 }}
+        icon={<InstallMobileIcon />}
+        action={
+          <IconButton size="small" color="inherit" onClick={handleDismiss}>
+            <CloseIcon />
+          </IconButton>
+        }
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <DownloadIcon />
-          <Typography variant="body2" sx={{ flexGrow: 1 }}>
-            Инсталирайте Chronos за по-бърз достъп.
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+          <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+            Инсталирай Chronos
           </Typography>
-          <Button size="small" color="inherit" onClick={handleInstall} sx={{ fontWeight: 'bold' }}>
-            Инсталирай
-          </Button>
-          <Button size="small" color="inherit" onClick={handleDismiss}>
-            Не сега
-          </Button>
+          <Typography variant="caption">
+            Бърз достъп от началния екран. Работи и офлайн.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+            <Button size="small" variant="contained" color="primary" onClick={handleInstall} sx={{ fontWeight: 'bold' }}>
+              Инсталирай
+            </Button>
+            <Button size="small" color="inherit" onClick={handleDismiss}>
+              Не сега
+            </Button>
+          </Box>
         </Box>
       </Alert>
     </Snackbar>

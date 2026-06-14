@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Container, Typography, CircularProgress, Box, Alert, Button, Card, CardContent, Grid } from '@mui/material';
 import { useQuery, gql, useMutation } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useOfflineClock } from '../hooks/useOfflineClock';
 import { UserDailyStat } from '../types';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
@@ -108,6 +110,8 @@ const DashboardPage: React.FC = () => {
   
   const [clockIn] = useMutation(CLOCK_IN_MUTATION);
   const [clockOut] = useMutation(CLOCK_OUT_MUTATION);
+  const { isOnline } = useNetworkStatus();
+  const { saveClockEntry } = useOfflineClock();
   const [timer, setTimer] = useState<string>('00:00:00');
   const [isClocking, setIsClocking] = useState(false);
 
@@ -162,36 +166,34 @@ const DashboardPage: React.FC = () => {
   })) || [];
 
   const handleClockToggle = async () => {
-    console.log('=== handleClockToggle called ===');
-    console.log('isClocking:', isClocking);
-    console.log('isActive:', isActive);
-    console.log('data?.activeTimeLog:', data?.activeTimeLog);
-    
-    if (isClocking) {
-      console.log('Already clocking, returning');
-      return;
-    }
-    
+    if (isClocking) return;
     setIsClocking(true);
     try {
-      if (data?.activeTimeLog) {
-        console.log('>>> Calling clockOut mutation...');
+      const isActiveSession = !!data?.activeTimeLog;
+      
+      if (!isOnline) {
+        await saveClockEntry(isActiveSession ? 'clock-out' : 'clock-in', {
+          latitude: null,
+          longitude: null,
+          idempotency_key: crypto.randomUUID(),
+        });
+        alert('Записът ще бъде синхронизиран при възстановяване на връзката.');
+        setIsClocking(false);
+        return;
+      }
+
+      if (isActiveSession) {
         const result = await clockOut();
-        console.log('>>> Clock out result:', result);
         if (result.errors) {
           throw new Error(result.errors[0]?.message || 'Грешка при clock out');
         }
       } else {
-        console.log('>>> Calling clockIn mutation...');
         const result = await clockIn();
-        console.log('>>> Clock in result:', result);
         if (result.errors) {
           throw new Error(result.errors[0]?.message || 'Грешка при clock in');
         }
       }
-      console.log('>>> Refetching data...');
       await refetch();
-      console.log('>>> Refetch complete');
     } catch (err: unknown) {
       console.error('Clock toggle error:', err);
       const error = err as { message?: string; graphQLErrors?: Array<{ message?: string }> };

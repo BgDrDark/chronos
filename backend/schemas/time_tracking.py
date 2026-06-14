@@ -13,6 +13,7 @@ class TimeLogBase(CustomBaseModel):
     notes: str | None = None
     latitude: Decimal | None = None
     longitude: Decimal | None = None
+    idempotency_key: str | None = None
     user_id: int
 
 

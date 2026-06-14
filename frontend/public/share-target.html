@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chronos — Споделяне</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f5f5f5; color: #333; }
+    .loader { border: 3px solid #e0e0e0; border-top: 3px solid #3f51b5; border-radius: 50%; width: 32px; height: 32px; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="loader"></div>
+  <p>Обработка на споделеното съдържание...</p>
+  <script>
+    (async () => {
+      const params = new URLSearchParams(location.search);
+      const formData = new URLSearchParams();
+      if (params.get('title')) formData.set('title', params.get('title'));
+      if (params.get('text')) formData.set('text', params.get('text'));
+      if (params.get('url')) formData.set('url', params.get('url'));
+
+      sessionStorage.setItem('shared_data', JSON.stringify({
+        title: params.get('title'),
+        text: params.get('text'),
+        url: params.get('url'),
+        timestamp: Date.now(),
+      }));
+
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.multiple = true;
+      fileInput.style.display = 'none';
+      document.body.appendChild(fileInput);
+
+      fileInput.addEventListener('change', async () => {
+        const files = Array.from(fileInput.files);
+        sessionStorage.setItem('shared_files', JSON.stringify(
+          files.map(f => ({ name: f.name, type: f.type, size: f.size }))
+        ));
+        window.location.href = '/documents/view';
+      });
+
+      if (params.get('title') || params.get('text') || params.get('url')) {
+        window.location.href = '/share?' + params.toString();
+      }
+
+      fileInput.click();
+    })();
+  </script>
+</body>
+</html>

@@ -159,7 +159,8 @@ class ShiftMutation:
             self,
             info: strawberry.Info,
             latitude: float | None = None,
-            longitude: float | None = None
+            longitude: float | None = None,
+            idempotency_key: str | None = None,
     ) -> types.TimeLog:
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -169,7 +170,7 @@ class ShiftMutation:
         await verify_module_enabled("shifts", db)
 
         service = time_tracking_service(db)
-        log = await service.clock_in(current_user.id, latitude, longitude)
+        log = await service.clock_in(current_user.id, latitude, longitude, idempotency_key=idempotency_key)
         await db.commit()
         await db.refresh(log)
         return _timelog_to_gql(log)
@@ -180,7 +181,8 @@ class ShiftMutation:
             info: strawberry.Info,
             notes: str | None = None,
             latitude: float | None = None,
-            longitude: float | None = None
+            longitude: float | None = None,
+            idempotency_key: str | None = None,
     ) -> types.TimeLog:
         db = info.context["db"]
         current_user = info.context["current_user"]
@@ -193,9 +195,13 @@ class ShiftMutation:
         active_log = await service.get_active_timelog(current_user.id)
 
         if not active_log:
+            if idempotency_key:
+                last_log = await service.repo.get_last_timelog(db, current_user.id)
+                if last_log:
+                    return _timelog_to_gql(last_log)
             raise InvalidOperationException.cannot_complete("No active time log found")
 
-        log = await service.clock_out(current_user.id, latitude, longitude, notes=notes)
+        log = await service.clock_out(current_user.id, latitude, longitude, notes=notes, idempotency_key=idempotency_key)
 
         await create_trz_records_on_clock_out(
             db=db,

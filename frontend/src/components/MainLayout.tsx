@@ -41,6 +41,7 @@ import { ME_QUERY, MODULES_QUERY, MAINTENANCE_STATUS_QUERY } from '../graphql/qu
 import useSessionActivity from '../hooks/useSessionActivity';
 import { SidebarMenu, type MenuItem } from './SidebarMenu';
 import NotificationBell from './NotificationBell';
+import { OfflineIndicator } from './OfflineIndicator';
 import { useDriverMode } from '../context/DriverModeContext';
 
 const drawerWidth = 260;
@@ -460,6 +461,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
           </Typography>
           {user && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <OfflineIndicator />
               <NotificationBell />
               <Box sx={{ display: { xs: 'none', md: 'block' }, textAlign: 'right' }}>
                 <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{displayName}</Typography>

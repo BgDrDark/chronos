@@ -193,8 +193,14 @@ class TimeTrackingService:
         longitude: float | None = None,
         custom_time: datetime | None = None,
         skip_geofence: bool = False,
+        idempotency_key: str | None = None,
     ) -> TimeLog:
         async with atomic_transaction(self.db) as tx:
+            if idempotency_key:
+                existing = await self.repo.get_by_idempotency_key(tx, idempotency_key)
+                if existing:
+                    return existing
+
             active_log_query = select(TimeLog).where(
                 TimeLog.user_id == user_id,
                 TimeLog.end_time.is_(None),
@@ -277,6 +283,7 @@ class TimeTrackingService:
                 start_time=snapped_start_time,
                 latitude=latitude,
                 longitude=longitude,
+                idempotency_key=idempotency_key,
             )
             tx.add(db_log)
             await tx.flush()
@@ -292,6 +299,7 @@ class TimeTrackingService:
         custom_time: datetime | None = None,
         notes: str | None = None,
         skip_geofence: bool = False,
+        idempotency_key: str | None = None,
     ) -> TimeLog:
         async with atomic_transaction(self.db) as tx:
             active_log_query = select(TimeLog).where(

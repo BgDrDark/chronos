@@ -26,6 +26,30 @@ class TimeTrackingRepository(BaseRepository):
 
     model = TimeLog
 
+    async def get_by_idempotency_key(
+        self,
+        db: AsyncSession,
+        idempotency_key: str,
+    ) -> TimeLog | None:
+        result = await db.execute(
+            select(TimeLog).where(TimeLog.idempotency_key == idempotency_key),
+        )
+        return result.scalar_one_or_none()
+
+    async def get_last_timelog(
+        self,
+        db: AsyncSession,
+        user_id: int,
+    ) -> TimeLog | None:
+        result = await db.execute(
+            select(TimeLog)
+            .where(TimeLog.user_id == user_id)
+            .where(TimeLog.end_time.isnot(None))
+            .order_by(TimeLog.end_time.desc())
+            .limit(1),
+        )
+        return result.scalar_one_or_none()
+
     async def get_active_timelog(
         self,
         db: AsyncSession,
