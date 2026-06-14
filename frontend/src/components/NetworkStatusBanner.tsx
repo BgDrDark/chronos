@@ -1,13 +1,33 @@
 import React from 'react';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useBackgroundSync } from '../hooks/useBackgroundSync';
 import { Alert, Box, Typography } from '@mui/material';
 import WifiOffIcon from '@mui/icons-material/WifiOff';
-import WifiIcon from '@mui/icons-material/Wifi';
+import SyncIcon from '@mui/icons-material/Sync';
 
 export const NetworkStatusBanner: React.FC = () => {
   const { isOnline } = useNetworkStatus();
+  const { pendingCount } = useBackgroundSync();
 
-  if (isOnline) return null;
+  if (isOnline) {
+    if (pendingCount > 0) {
+      return (
+        <Alert
+          severity="warning"
+          variant="filled"
+          sx={{ borderRadius: 0, position: 'sticky', top: 0, zIndex: 9999 }}
+          icon={<SyncIcon />}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body2">
+              {pendingCount} записа чакат синхронизация
+            </Typography>
+          </Box>
+        </Alert>
+      );
+    }
+    return null;
+  }
 
   return (
     <Alert

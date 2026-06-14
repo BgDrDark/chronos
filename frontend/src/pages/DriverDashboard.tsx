@@ -3,6 +3,8 @@ import { Box, Typography, Paper, Card, CardContent, Grid, Button, TextField, Dia
 import { DirectionsCar as CarIcon, LocalGasStation as FuelIcon, Speed as SpeedIcon, Assignment as ChecklistIcon } from '@mui/icons-material';
 import { gql, useMutation, useQuery } from '@apollo/client';
 import { useDriverMode } from '../context/DriverModeContext';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { saveOfflineEntry } from '../db/fleet-offline-store';
 import { InfoIcon } from '../components/ui/InfoIcon';
 
 const GET_VEHICLES = gql`
@@ -66,11 +68,20 @@ const DriverDashboard: React.FC = () => {
   const [createFuel, { loading: savingFuel }] = useMutation(CREATE_FUEL, { refetchQueries: ['GetVehicleFuel'] });
 
   const vehicles = vehiclesData?.vehicles?.vehicles || [];
+  const { isOnline } = useNetworkStatus();
 
   const handleMileageSave = async () => {
     if (!selectedVehicleId || !mileageValue) return;
     try {
-      await createMileage({ variables: { input: { vehicleId: selectedVehicleId, mileage: mileageValue, date: new Date().toISOString().split('T')[0], notes: mileageNotes } } });
+      if (isOnline) {
+        await createMileage({ variables: { input: { vehicleId: selectedVehicleId, mileage: mileageValue, date: new Date().toISOString().split('T')[0], notes: mileageNotes } } });
+      } else {
+        await saveOfflineEntry('mileage', selectedVehicleId, {
+          mileage: mileageValue,
+          date: new Date().toISOString().split('T')[0],
+          notes: mileageNotes,
+        });
+      }
       setShowMileageForm(false);
       setMileageValue(0);
       setMileageNotes('');
@@ -80,7 +91,19 @@ const DriverDashboard: React.FC = () => {
   const handleFuelSave = async () => {
     if (!selectedVehicleId || !fuelLiters || !fuelPrice) return;
     try {
-      await createFuel({ variables: { input: { vehicleId: selectedVehicleId, liters: fuelLiters, price: fuelPrice, fuelType, total: fuelLiters * fuelPrice, date: new Date().toISOString().split('T')[0], notes: fuelNotes, mileage: 0 } } });
+      if (isOnline) {
+        await createFuel({ variables: { input: { vehicleId: selectedVehicleId, liters: fuelLiters, price: fuelPrice, fuelType, total: fuelLiters * fuelPrice, date: new Date().toISOString().split('T')[0], notes: fuelNotes, mileage: 0 } } });
+      } else {
+        await saveOfflineEntry('fuel', selectedVehicleId, {
+          liters: fuelLiters,
+          price: fuelPrice,
+          fuelType,
+          total: fuelLiters * fuelPrice,
+          date: new Date().toISOString().split('T')[0],
+          notes: fuelNotes,
+          mileage: 0,
+        });
+      }
       setShowFuelForm(false);
       setFuelLiters(0);
       setFuelPrice(0);

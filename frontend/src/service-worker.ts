@@ -90,6 +90,13 @@ registerRoute(
   })
 );
 
+registerRoute(
+  ({ url }) => url.pathname === '/share',
+  new NetworkFirst({
+    cacheName: 'share-target',
+  })
+);
+
 self.addEventListener('fetch', (event) => {
   // Handle Share Target POST
   if (event.request.method === 'POST' && event.request.url.includes('/share')) {
@@ -262,16 +269,37 @@ async function syncClockLogs() {
 
 async function syncFleetLogs() {
   try {
-    const cache = await caches.open('fleet-offline');
-    const keys = await cache.keys();
-    for (const request of keys) {
+    const db = await openIDB('chronos-fleet-offline', 1);
+    const tx = db.transaction('entries', 'readwrite');
+    const store = tx.objectStore('entries');
+    const index = store.index('syncStatus');
+    const entries = await new Promise<any[]>((resolve, reject) => {
+      const request = index.getAll('pending');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    for (const entry of entries) {
       try {
-        const response = await fetch(request);
+        const mutation = entry.type === 'mileage'
+          ? `mutation { createVehicleMileage(input: { vehicleId: ${entry.vehicleId}, mileage: ${entry.payload.mileage}, date: "${entry.payload.date}", notes: "${entry.payload.notes || ''}" }) { id } }`
+          : `mutation { createVehicleFuel(input: { vehicleId: ${entry.vehicleId}, liters: ${entry.payload.liters}, price: ${entry.payload.price}, total: ${entry.payload.total}, fuelType: "${entry.payload.fuelType || 'dizel'}", date: "${entry.payload.date}", notes: "${entry.payload.notes || ''}", mileage: ${entry.payload.mileage || 0} }) { id } }`;
+
+        const response = await fetch('/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: mutation }),
+        });
+
         if (response.ok) {
-          await cache.delete(request);
+          store.delete(entry.id);
+        } else {
+          entry.syncStatus = 'failed';
+          entry.retryCount += 1;
+          store.put(entry);
         }
       } catch (e) {
-        console.error('Fleet sync failed for:', request.url, e);
+        console.error('Fleet sync failed for entry:', entry.id, e);
       }
     }
   } catch (e) {
@@ -286,11 +314,20 @@ function openIDB(name: string, version: number): Promise<IDBDatabase> {
     request.onsuccess = () => resolve(request.result);
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains('clock-logs')) {
-        db.createObjectStore('clock-logs', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('fleet-logs')) {
-        db.createObjectStore('fleet-logs', { keyPath: 'id' });
+      if (name === 'chronos-offline') {
+        if (!db.objectStoreNames.contains('clock-logs')) {
+          db.createObjectStore('clock-logs', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('fleet-logs')) {
+          db.createObjectStore('fleet-logs', { keyPath: 'id' });
+        }
+      } else if (name === 'chronos-fleet-offline') {
+        if (!db.objectStoreNames.contains('entries')) {
+          const store = db.createObjectStore('entries', { keyPath: 'id' });
+          store.createIndex('syncStatus', 'syncStatus');
+          store.createIndex('vehicleId', 'vehicleId');
+          store.createIndex('type', 'type');
+        }
       }
     };
   });
