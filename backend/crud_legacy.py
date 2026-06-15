@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -443,7 +443,7 @@ async def get_shifts(db: AsyncSession):
     return result.scalars().all()
 
 
-async def create_shift(db: AsyncSession, name: str, start_time: datetime.time, end_time: datetime.time,
+async def create_shift(db: AsyncSession, name: str, start_time: time, end_time: time,
                         tolerance_minutes: int = 15, break_duration_minutes: int = 0, pay_multiplier: float = 1.0,
                         shift_type: str = "regular"):
     db_shift = Shift(
@@ -461,8 +461,8 @@ async def create_shift(db: AsyncSession, name: str, start_time: datetime.time, e
     return db_shift
 
 
-async def update_shift(db: AsyncSession, shift_id: int, name: str | None = None, start_time: datetime.time | None = None,
-                        end_time: datetime.time | None = None, tolerance_minutes: int | None = None,
+async def update_shift(db: AsyncSession, shift_id: int, name: str | None = None, start_time: time | None = None,
+                        end_time: time | None = None, tolerance_minutes: int | None = None,
                         break_duration_minutes: int | None = None, pay_multiplier: Decimal | None = None,
                         shift_type: str | None = None):
     db_shift = await get_shift_by_id(db, shift_id)

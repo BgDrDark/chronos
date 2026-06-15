@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
@@ -149,8 +149,8 @@ class TimeTrackingRepository(BaseRepository):
         self,
         db: AsyncSession,
         name: str,
-        start_time: datetime.time,
-        end_time: datetime.time,
+        start_time: time,
+        end_time: time,
         tolerance_minutes: int = 15,
         break_duration_minutes: int = 0,
         pay_multiplier: float = 1.0,
@@ -185,8 +185,8 @@ class TimeTrackingRepository(BaseRepository):
         db: AsyncSession,
         shift_id: int,
         name: str | None = None,
-        start_time: datetime.time | None = None,
-        end_time: datetime.time | None = None,
+        start_time: time | None = None,
+        end_time: time | None = None,
         tolerance_minutes: int | None = None,
         break_duration_minutes: int | None = None,
         pay_multiplier: float | None = None,
