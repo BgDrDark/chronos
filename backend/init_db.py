@@ -20,6 +20,7 @@ from backend.database.models import (
     ContractTemplate,
     ContractTemplateSection,
     ContractTemplateVersion,
+    GlobalSetting,
     Module,
     Permission,
     Role,
@@ -61,9 +62,14 @@ async def init_db():
             elif m_data["code"] in ("shifts",):
                 existing.is_enabled = True
 
-        # 2. Глобални настройки
+        # 2. Глобални настройки (inline upsert — crud.set_global_setting вика commit)
         for key, value in seed_cfg.GLOBAL_SETTINGS.items():
-            await crud.set_global_setting(session, key, value)
+            result = await session.execute(select(GlobalSetting).where(GlobalSetting.key == key))
+            setting = result.scalar_one_or_none()
+            if setting:
+                setting.value = value
+            else:
+                session.add(GlobalSetting(key=key, value=value))
 
         # 3. Default company
         company_result = await session.execute(select(Company).limit(1))
@@ -143,7 +149,8 @@ async def init_db():
         # 11. Admin user
         admin_email = "admin@example.com"
         admin_role_name = "super_admin"
-        if not await session.execute(select(Role).where(Role.name == admin_role_name)).scalar_one_or_none():
+        role_result = await session.execute(select(Role).where(Role.name == admin_role_name))
+        if not role_result.scalar_one_or_none():
             admin_role_name = "admin"
         db_admin = await crud.get_user_by_email(session, admin_email)
         if not db_admin:
@@ -180,7 +187,15 @@ async def init_db():
         await ensure_shift("Неплатен Отпуск", ShiftType.UNPAID_LEAVE.value)
         await ensure_shift("Почивен Ден", ShiftType.DAY_OFF.value)
 
-        await crud.set_global_setting(session, "seed_version", str(seed_cfg.SEED_VERSION))
+        await session.flush()
+
+        # Mark seed version
+        result = await session.execute(select(GlobalSetting).where(GlobalSetting.key == "seed_version"))
+        setting = result.scalar_one_or_none()
+        if setting:
+            setting.value = str(seed_cfg.SEED_VERSION)
+        else:
+            session.add(GlobalSetting(key="seed_version", value=str(seed_cfg.SEED_VERSION)))
         await session.commit()
         logger.info(f"Seed версия {seed_cfg.SEED_VERSION} приложена. Базата данни е напълно готова.")
 
