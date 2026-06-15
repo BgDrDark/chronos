@@ -1673,7 +1673,7 @@ const PaymentBatchesSection: React.FC = () => {
             {batches.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} align="center">
-                  Няма платежни батчове
+                  Няма платежни нареждания
                 </TableCell>
               </TableRow>
             )}
