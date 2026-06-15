@@ -122,6 +122,7 @@ class Payslip(CustomBaseModel):
     payment_status: str = "pending"
     actual_payment_date: datetime | None = None
     payment_method: str = "bank"
+    batch_id: int | None = None
     generated_at: datetime
 
 
