@@ -102,6 +102,7 @@ class Payslip:
     payment_status: strawberry.auto
     actual_payment_date: strawberry.auto
     payment_method: strawberry.auto
+    batch_id: strawberry.auto
     generated_at: strawberry.auto
 
     @strawberry.field
@@ -138,6 +139,63 @@ class Bonus:
         return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
 
 
+@strawberry.type
+class SalaryPaymentBatchType:
+    id: int
+    company_id: int
+    period_start: datetime.date
+    period_end: datetime.date
+    payment_date: datetime.datetime
+    total_amount: float
+    status: str
+    payment_method: str
+    payment_reference: str | None = None
+    notes: str | None = None
+    created_at: datetime.datetime
+
+    @strawberry.field
+    async def paid_by_user(self, info: strawberry.Info) -> User | None:
+        return await info.context["dataloaders"]["user_by_id"].load(self.paid_by)
+
+    @strawberry.field
+    async def items(self, info: strawberry.Info) -> list["SalaryPaymentItemType"]:
+        from backend.crud.repositories.salary_payment_repo import salary_payment_repo
+        db = info.context["db"]
+        raw_items = await salary_payment_repo.list_items_by_batch(db, self.id)
+        return [SalaryPaymentItemType(
+            id=item.id,
+            batch_id=item.batch_id,
+            payslip_id=item.payslip_id,
+            user_id=item.user_id,
+            amount=float(item.amount),
+            paid_at=item.paid_at,
+        ) for item in raw_items]
+
+
+@strawberry.type
+class SalaryPaymentItemType:
+    id: int
+    batch_id: int
+    payslip_id: int | None = None
+    user_id: int
+    amount: float
+    paid_at: datetime.datetime | None = None
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> User | None:
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
+
+
+@strawberry.type
+class PaymentStatisticsType:
+    total_batches: int
+    total_amount: float
+    total_employees_paid: int
+    average_payment_per_employee: float
+    by_method: dict[str, float] | None = None
+    by_status: dict[str, int] | None = None
+
+
 @sp.type(schemas.AdvancePayment)
 class AdvancePayment:
     id: strawberry.auto
@@ -147,6 +205,10 @@ class AdvancePayment:
     description: strawberry.auto
     is_processed: strawberry.auto
     created_at: strawberry.auto
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> User:
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
 
 
 @sp.type(schemas.ServiceLoan)
@@ -162,6 +224,10 @@ class ServiceLoan:
     description: strawberry.auto
     is_active: strawberry.auto
     created_at: strawberry.auto
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> User:
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
 
 
 @strawberry.type
