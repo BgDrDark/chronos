@@ -183,4 +183,85 @@ class Settings(BaseSettings):
         raise ValueError(v)
 
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class SeedSettings:
+    SEED_VERSION: int = 1
+    MODULES: list[dict] = [
+        {"code": "shifts", "name": "Смени и работно време", "desc": "Управление на работно време, смени и присъствие"},
+        {"code": "salaries", "name": "Заплати", "desc": "Изчисляване на заплати, ТРЗ и договори"},
+        {"code": "kiosk", "name": "Kiosk терминал", "desc": "Управление на физически терминали и QR чекиране"},
+        {"code": "integrations", "name": "Интеграции", "desc": "Google Calendar, Webhooks и външни услуги"},
+        {"code": "confectionery", "name": "Сладкарско производство и Склад", "desc": "Управление на склад (FEFO), Рецептурник и Производствени станции"},
+        {"code": "accounting", "name": "Счетоводство и Фактуриране", "desc": "Управление на фактури, доставчици и разплащания"},
+        {"code": "notifications", "name": "Уведомления и Кореспонденция", "desc": "SMTP настройки, имейл справки и автоматични известия"},
+        {"code": "fleet", "name": "Автопарк", "desc": "Управление на автомобили, горива, ремонти, винетки и пътни карти"},
+        {"code": "cost_centers", "name": "Разходни центрове", "desc": "Управление на разходни центрове за финансово проследяване"},
+        {"code": "inventory", "name": "Инвентаризация", "desc": "Инвентаризационни сесии и баркод сканиране"},
+        {"code": "behavioral_analysis", "name": "Поведенчески анализ", "desc": "4-слоен поведенчески анализ с динамични правила, XAI и bias detection"},
+    ]
+    CONTRACT_TEMPLATES: list[dict] = [
+        {"name": "Трудов договор - пълно работно време", "description": "Стандартен трудов договор с пълно работно време", "contract_type": "full_time", "work_hours_per_week": 40, "probation_months": 6, "salary_calculation_type": "gross", "payment_day": 25, "night_work_rate": 0.5, "overtime_rate": 1.5, "holiday_rate": 2.0},
+        {"name": "Трудов договор - непълно работно време", "description": "Трудов договор с намалено работно време", "contract_type": "part_time", "work_hours_per_week": 20, "probation_months": 6, "salary_calculation_type": "gross", "payment_day": 25, "night_work_rate": 0.5, "overtime_rate": 1.5, "holiday_rate": 2.0},
+        {"name": "Граждански договор", "description": "Договор за извършване на услуга", "contract_type": "contractor", "work_hours_per_week": 0, "probation_months": 0, "salary_calculation_type": "net", "payment_day": 25, "night_work_rate": 0, "overtime_rate": 1.0, "holiday_rate": 1.0},
+    ]
+    ANNEX_TEMPLATES: list[dict] = [
+        {"name": "Повишение на заплатата", "description": "Повишение на основното трудово възнаграждение", "change_type": "salary"},
+        {"name": "Промяна на длъжността", "description": "Промяна на длъжността по трудовия договор", "change_type": "position"},
+        {"name": "Промяна на работното време", "description": "Промяна на режима на работа", "change_type": "hours"},
+        {"name": "Промяна на надбавки", "description": "Промяна на процентите за нощен труд, извънреден труд и труд по празници", "change_type": "rate"},
+    ]
+    CLAUSE_TEMPLATES: list[dict] = [
+        {"title": "Конфиденциалност", "category": "confidentiality", "content": "Работникът се задължава да не разкрива на трети лица информация, станала му известна при или по повод изпълнението на работата, включително след прекратяване на договора."},
+        {"title": "Забрана за конкуренция", "category": "other", "content": "Работникът се задължава да не извършва дейност, конкурентна на работодателя, за срока на договора и 6 месеца след неговото прекратяване."},
+        {"title": "Право на обучение", "category": "rights_employee", "content": "Работникът има право на професионално обучение и квалификация, съгласно Закона за професионалното образование и обучение."},
+        {"title": "Допълнителен платен отпуск", "category": "rights_employee", "content": "Работникът има право на допълнителен платен отпуск при смърт на брачен партньор или роднина - 2 дни."},
+        {"title": "Задължения на работодателя - осигуряване", "category": "rights_employer", "content": "Работодателят е длъжен да осигури на Работника всички необходими лични предпазни средства съгласно изискванията на ЗЗБУТ."},
+    ]
+    GLOBAL_SETTINGS: dict[str, str] = {
+        "payroll_noi_compensation_percent": "80.0",
+        "payroll_employer_paid_sick_days": "2",
+        "payroll_default_tax_resident": "true",
+        "trz_compliance_strict_mode": "false",
+        "payroll_doo_employee_rate": "14.3",
+        "payroll_doo_employer_rate": "14.3",
+        "payroll_doo_older_employee_rate": "19.3",
+        "payroll_doo_older_employer_rate": "19.3",
+        "payroll_zo_employee_rate": "3.2",
+        "payroll_zo_employer_rate": "4.8",
+        "payroll_dzpo_employee_rate": "2.2",
+        "payroll_dzpo_employer_rate": "2.8",
+        "payroll_tzpb_rate": "0.4",
+        "payroll_income_tax_rate": "10",
+        "payroll_standard_deduction": "500",
+        "payroll_max_insurable_base": "4100",
+        "payroll_min_wage": "1213",
+        "payroll_auto_night_work": "false",
+        "payroll_auto_overtime": "false",
+        "payroll_auto_holiday": "false",
+        "payroll_night_hourly_supplement": "0.15",
+        "payroll_overtime_rate": "50",
+        "payroll_holiday_rate": "100",
+        "payroll_annual_leave_days": "20",
+        "payroll_sick_day_1_rate": "70",
+        "payroll_sick_days_covered_by_employer": "2",
+        "payroll_maternity_days": "410",
+        "payroll_paternity_days": "15",
+        "qr_token_regen_minutes": "15",
+        "pwd_min_length": "8",
+        "pwd_max_length": "32",
+        "pwd_require_upper": "false",
+        "pwd_require_lower": "false",
+        "pwd_require_digit": "false",
+        "pwd_require_special": "false",
+        "password_settings_version": "1",
+    }
+    WORKSTATIONS: list[dict] = [
+        {"name": "Пекарна", "description": "Изпичане на блатове и основи"},
+        {"name": "Кремове", "description": "Приготвяне на кремове и пълнежи"},
+        {"name": "Декорация", "description": "Украса на готовите изделия"},
+    ]
+
+
 settings = Settings()
