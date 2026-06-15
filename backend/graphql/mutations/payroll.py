@@ -9,6 +9,7 @@ from backend import schemas
 from backend.database import models
 from backend.exceptions import NotFoundException, ValidationException
 from backend.graphql import types
+from backend.graphql import inputs
 from backend.graphql.inputs.payroll import BonusCreateInput
 from backend.graphql.utils.permission_checker import (
     get_current_user,
@@ -430,10 +431,11 @@ class PayrollMutation:
 
         await require_permission(info, "payroll:create")
 
-        from backend.services import payroll_service
+        from backend.services.payroll_service import PayrollService
 
-        payslip = await payroll_service.generate_payslip(
-            db, user_id, start_date, end_date, current_user.id
+        svc = PayrollService(db)
+        payslip = await svc.generate_payslip(
+            user_id, start_date, end_date, current_user.id
         )
 
         return types.Payslip.from_pydantic(schemas.Payslip.model_validate(payslip))
@@ -450,13 +452,35 @@ class PayrollMutation:
 
         await require_permission(info, "payroll:create_own")
 
-        from backend.services import payroll_service
+        from backend.services.payroll_service import PayrollService
 
-        payslip = await payroll_service.generate_payslip(
-            db, current_user.id, start_date, end_date, current_user.id
+        svc = PayrollService(db)
+        payslip = await svc.generate_payslip(
+            current_user.id, start_date, end_date, current_user.id
         )
 
         return types.Payslip.from_pydantic(schemas.Payslip.model_validate(payslip))
+
+    @strawberry.mutation
+    async def generate_all_payslips(
+            self,
+            start_date: datetime.date,
+            end_date: datetime.date,
+            info: strawberry.Info
+    ) -> list[types.Payslip]:
+        db = info.context["db"]
+        current_user = get_current_user(info)
+
+        await require_permission(info, "payroll:create")
+
+        from backend.services.payroll_service import PayrollService
+
+        svc = PayrollService(db)
+        payslips = await svc.generate_all_payslips(
+            current_user.company_id, start_date, end_date, current_user.id
+        )
+
+        return [types.Payslip.from_pydantic(schemas.Payslip.model_validate(p)) for p in payslips]
 
     @strawberry.mutation
     async def mark_payslip_as_paid(
@@ -474,8 +498,8 @@ class PayrollMutation:
         if not payslip:
             raise Exception(f"Payslip {payslip_id} not found")
 
-        payslip.status = "paid"
-        payslip.paid_at = datetime.datetime.now()
+        payslip.payment_status = "paid"
+        payslip.actual_payment_date = datetime.datetime.now()
 
         await db.commit()
         await db.refresh(payslip)
@@ -498,8 +522,8 @@ class PayrollMutation:
         for payslip_id in payslip_ids:
             payslip = await db.get(models.Payslip, payslip_id)
             if payslip:
-                payslip.status = "paid"
-                payslip.paid_at = datetime.datetime.now()
+                payslip.payment_status = "paid"
+                payslip.actual_payment_date = datetime.datetime.now()
                 payslips.append(payslip)
 
         await db.commit()
@@ -507,6 +531,127 @@ class PayrollMutation:
             await db.refresh(p)
 
         return [types.Payslip.from_pydantic(schemas.Payslip.model_validate(p)) for p in payslips]
+
+    @strawberry.mutation
+    async def create_payment_batch(
+        self,
+        info: strawberry.Info,
+        input: inputs.CreatePaymentBatchInput,
+    ) -> types.SalaryPaymentBatchType:
+        from backend.services.salary_payment_service import SalaryPaymentService
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "payroll:update")
+
+        service = SalaryPaymentService(db)
+        batch = await service.create_batch(
+            company_id=input.company_id,
+            period_start=input.period_start,
+            period_end=input.period_end,
+            payment_date=input.payment_date,
+            payment_method=input.payment_method,
+            paid_by=info.context["user"].id,
+            payment_reference=input.payment_reference,
+            notes=input.notes,
+        )
+        await db.commit()
+        return types.SalaryPaymentBatchType(
+            id=batch.id,
+            company_id=batch.company_id,
+            period_start=batch.period_start,
+            period_end=batch.period_end,
+            payment_date=batch.payment_date,
+            total_amount=float(batch.total_amount),
+            status=batch.status,
+            payment_method=batch.payment_method,
+            payment_reference=batch.payment_reference,
+            notes=batch.notes,
+            created_at=batch.created_at,
+        )
+
+    @strawberry.mutation
+    async def add_items_to_batch(
+        self,
+        info: strawberry.Info,
+        input: inputs.AddItemsToBatchInput,
+    ) -> types.SalaryPaymentBatchType:
+        from backend.services.salary_payment_service import SalaryPaymentService
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "payroll:update")
+
+        service = SalaryPaymentService(db)
+        batch = await service.add_items(batch_id=input.batch_id, user_ids=input.user_ids)
+        await db.commit()
+        return types.SalaryPaymentBatchType(
+            id=batch.id,
+            company_id=batch.company_id,
+            period_start=batch.period_start,
+            period_end=batch.period_end,
+            payment_date=batch.payment_date,
+            total_amount=float(batch.total_amount),
+            status=batch.status,
+            payment_method=batch.payment_method,
+            payment_reference=batch.payment_reference,
+            notes=batch.notes,
+            created_at=batch.created_at,
+        )
+
+    @strawberry.mutation
+    async def complete_payment_batch(
+        self,
+        info: strawberry.Info,
+        batch_id: int,
+    ) -> types.SalaryPaymentBatchType:
+        from backend.services.salary_payment_service import SalaryPaymentService
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "payroll:update")
+
+        service = SalaryPaymentService(db)
+        batch = await service.complete_batch(batch_id)
+        await db.commit()
+        return types.SalaryPaymentBatchType(
+            id=batch.id,
+            company_id=batch.company_id,
+            period_start=batch.period_start,
+            period_end=batch.period_end,
+            payment_date=batch.payment_date,
+            total_amount=float(batch.total_amount),
+            status=batch.status,
+            payment_method=batch.payment_method,
+            payment_reference=batch.payment_reference,
+            notes=batch.notes,
+            created_at=batch.created_at,
+        )
+
+    @strawberry.mutation
+    async def cancel_payment_batch(
+        self,
+        info: strawberry.Info,
+        batch_id: int,
+    ) -> types.SalaryPaymentBatchType:
+        from backend.services.salary_payment_service import SalaryPaymentService
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "payroll:update")
+
+        service = SalaryPaymentService(db)
+        batch = await service.cancel_batch(batch_id)
+        await db.commit()
+        return types.SalaryPaymentBatchType(
+            id=batch.id,
+            company_id=batch.company_id,
+            period_start=batch.period_start,
+            period_end=batch.period_end,
+            payment_date=batch.payment_date,
+            total_amount=float(batch.total_amount),
+            status=batch.status,
+            payment_method=batch.payment_method,
+            payment_reference=batch.payment_reference,
+            notes=batch.notes,
+            created_at=batch.created_at,
+        )
 
     @strawberry.mutation
     async def generate_sepa_xml(
@@ -520,8 +665,9 @@ class PayrollMutation:
         
         await require_permission(info, "payroll:export")
 
-        from backend.services import payroll_service
+        from backend.services.payroll_service import PayrollService
 
-        xml_content = await payroll_service.generate_sepa_xml(db, payslip_ids)
+        svc = PayrollService(db)
+        xml_content = await svc.generate_sepa_xml(payslip_ids)
 
         return xml_content

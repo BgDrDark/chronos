@@ -9,6 +9,10 @@ from backend.config import settings
 from backend.crud.repositories import settings_repo, user_repo
 from backend.exceptions import PermissionDeniedException
 from backend.graphql import types
+from backend.graphql.utils.permission_checker import (
+    get_current_user,
+    require_permission,
+)
 from backend.services.payroll_calculator import PayrollCalculator
 
 authenticate_msg = "Трябва да се автентикирате"
@@ -228,3 +232,109 @@ class PayrollQuery:
         ]
 
         return types.PayrollForecast(total_amount=round(total, 2), by_department=by_dept)
+
+    @strawberry.field
+    async def payment_batches(
+        self,
+        info: strawberry.Info,
+        company_id: int | None = None,
+        status: str | None = None,
+        period_start: datetime.date | None = None,
+        period_end: datetime.date | None = None,
+    ) -> list[types.SalaryPaymentBatchType]:
+        from backend.crud.repositories.salary_payment_repo import salary_payment_repo
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "payroll:read")
+
+        batches = await salary_payment_repo.list_batches(
+            db,
+            company_id=company_id,
+            status=status,
+            period_start=period_start,
+            period_end=period_end,
+        )
+        return [types.SalaryPaymentBatchType(
+            id=b.id, company_id=b.company_id,
+            period_start=b.period_start, period_end=b.period_end,
+            payment_date=b.payment_date, total_amount=float(b.total_amount),
+            status=b.status, payment_method=b.payment_method,
+            payment_reference=b.payment_reference, notes=b.notes,
+            created_at=b.created_at,
+        ) for b in batches]
+
+    @strawberry.field
+    async def payment_batch(
+        self,
+        info: strawberry.Info,
+        id: int,
+    ) -> types.SalaryPaymentBatchType | None:
+        from backend.crud.repositories.salary_payment_repo import salary_payment_repo
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "payroll:read")
+
+        batch = await salary_payment_repo.get_batch(db, id)
+        if not batch:
+            return None
+        return types.SalaryPaymentBatchType(
+            id=batch.id, company_id=batch.company_id,
+            period_start=batch.period_start, period_end=batch.period_end,
+            payment_date=batch.payment_date, total_amount=float(batch.total_amount),
+            status=batch.status, payment_method=batch.payment_method,
+            payment_reference=batch.payment_reference, notes=batch.notes,
+            created_at=batch.created_at,
+        )
+
+    @strawberry.field
+    async def my_payment_history(
+        self,
+        info: strawberry.Info,
+        year: int | None = None,
+    ) -> list[types.SalaryPaymentItemType]:
+        from backend.crud.repositories.salary_payment_repo import salary_payment_repo
+        db = info.context["db"]
+        user = get_current_user(info)
+
+        items = await salary_payment_repo.list_items_by_user(db, user.id, year)
+        return [types.SalaryPaymentItemType(
+            id=item.id, batch_id=item.batch_id,
+            payslip_id=item.payslip_id, user_id=item.user_id,
+            amount=float(item.amount), paid_at=item.paid_at,
+        ) for item in items]
+
+    @strawberry.field
+    async def payment_statistics(
+        self,
+        info: strawberry.Info,
+        company_id: int,
+        year: int,
+        month: int | None = None,
+    ) -> types.PaymentStatisticsType | None:
+        from backend.services.salary_payment_service import SalaryPaymentService
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "payroll:read")
+
+        service = SalaryPaymentService(db)
+        stats = await service.get_statistics(company_id, year, month)
+        return types.PaymentStatisticsType(**stats)
+
+    @strawberry.field
+    async def user_payment_history(
+        self,
+        info: strawberry.Info,
+        user_id: int,
+        year: int | None = None,
+    ) -> list[types.SalaryPaymentItemType]:
+        from backend.crud.repositories.salary_payment_repo import salary_payment_repo
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "payroll:read")
+
+        items = await salary_payment_repo.list_items_by_user(db, user_id, year)
+        return [types.SalaryPaymentItemType(
+            id=item.id, batch_id=item.batch_id,
+            payslip_id=item.payslip_id, user_id=item.user_id,
+            amount=float(item.amount), paid_at=item.paid_at,
+        ) for item in items]
