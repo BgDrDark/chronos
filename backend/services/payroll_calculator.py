@@ -321,7 +321,7 @@ class PayrollCalculator:
             .where(Bonus.date <= ed_date),
         )
         bonuses = bonus_result.scalars().all()
-        bonus_amount = sum(Decimal(str(b.amount)) for b in bonuses)
+        bonus_amount = sum((Decimal(str(b.amount)) for b in bonuses), Decimal(0))
 
         # --- 3.1. Calculate Leave Days ---
         leave_result = await self.db.execute(
