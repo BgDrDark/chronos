@@ -150,6 +150,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
           companyId: contract.company?.id || null,
           departmentId: contract.department?.id || null,
           positionId: contract.position?.id || null,
+          userId: contract.userId || null,
           templateId: contract.templateId || null,
           employeeName: contract.employeeName || '',
           employeeEgn: contract.employeeEgn || '',
