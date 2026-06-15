@@ -7,6 +7,7 @@ from strawberry.experimental import pydantic as sp
 
 from backend import schemas
 from backend.graphql.types import User
+from backend.utils.json_type import JSONScalar
 
 
 @strawberry.type
@@ -152,6 +153,7 @@ class SalaryPaymentBatchType:
     payment_reference: str | None = None
     notes: str | None = None
     created_at: datetime.datetime
+    paid_by: strawberry.Private[int]
 
     @strawberry.field
     async def paid_by_user(self, info: strawberry.Info) -> User | None:
@@ -192,8 +194,8 @@ class PaymentStatisticsType:
     total_amount: float
     total_employees_paid: int
     average_payment_per_employee: float
-    by_method: dict[str, float] | None = None
-    by_status: dict[str, int] | None = None
+    by_method: JSONScalar | None = None
+    by_status: JSONScalar | None = None
 
 
 @sp.type(schemas.AdvancePayment)
