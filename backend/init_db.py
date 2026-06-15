@@ -130,9 +130,10 @@ async def init_db():
                 template = ContractTemplate(company_id=default_company.id, is_active=True, **tpl)
                 session.add(template)
                 await session.flush()
+                _v_fields = {k: v for k, v in tpl.items() if k in ("contract_type", "work_hours_per_week", "probation_months", "salary_calculation_type", "payment_day", "night_work_rate", "overtime_rate", "holiday_rate")}
                 version = ContractTemplateVersion(
                     template_id=template.id, version=1, is_current=True,
-                    created_by="system", change_note="Първоначална версия", **tpl,
+                    created_by="system", change_note="Първоначална версия", **_v_fields,
                 )
                 session.add(version)
                 await session.flush()
