@@ -482,6 +482,9 @@ class Payroll(Base):
 
 class Payslip(Base):
     __tablename__ = "payslips"
+    __table_args__ = (
+        UniqueConstraint("user_id", "period_start", "period_end", name="uq_payslip_user_period"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
@@ -535,8 +538,45 @@ class Payslip(Base):
     payment_method: Mapped[str] = mapped_column(String(20), default="bank")  # bank, cash
 
     generated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    batch_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("salary_payment_batches.id"), nullable=True)
 
     user = relationship("User", back_populates="payslips")
+
+
+class SalaryPaymentBatch(Base):
+    __tablename__ = "salary_payment_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"))
+    period_start: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    payment_date: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    payment_method: Mapped[str] = mapped_column(String(20), default="bank")
+    payment_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    paid_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+
+    company = relationship("Company", foreign_keys=[company_id])
+    paid_by_user = relationship("User", foreign_keys=[paid_by])
+    items = relationship("SalaryPaymentItem", back_populates="batch", cascade="all, delete-orphan")
+
+
+class SalaryPaymentItem(Base):
+    __tablename__ = "salary_payment_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    batch_id: Mapped[int] = mapped_column(Integer, ForeignKey("salary_payment_batches.id"))
+    payslip_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("payslips.id"), nullable=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    paid_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    batch = relationship("SalaryPaymentBatch", back_populates="items")
+    payslip = relationship("Payslip")
+    user = relationship("User")
 
 
 class InsuranceRateHistory(Base):
