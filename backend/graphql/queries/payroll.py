@@ -260,7 +260,7 @@ class PayrollQuery:
             payment_date=b.payment_date, total_amount=float(b.total_amount),
             status=b.status, payment_method=b.payment_method,
             payment_reference=b.payment_reference, notes=b.notes,
-            created_at=b.created_at,
+            created_at=b.created_at, paid_by=b.paid_by,
         ) for b in batches]
 
     @strawberry.field

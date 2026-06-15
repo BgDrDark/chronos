@@ -572,6 +572,7 @@ class PayrollMutation:
             payment_reference=batch.payment_reference,
             notes=batch.notes,
             created_at=batch.created_at,
+            paid_by=batch.paid_by,
         )
 
     @strawberry.mutation
@@ -600,6 +601,7 @@ class PayrollMutation:
             payment_reference=batch.payment_reference,
             notes=batch.notes,
             created_at=batch.created_at,
+            paid_by=batch.paid_by,
         )
 
     @strawberry.mutation
@@ -628,6 +630,7 @@ class PayrollMutation:
             payment_reference=batch.payment_reference,
             notes=batch.notes,
             created_at=batch.created_at,
+            paid_by=batch.paid_by,
         )
 
     @strawberry.mutation
@@ -656,6 +659,7 @@ class PayrollMutation:
             payment_reference=batch.payment_reference,
             notes=batch.notes,
             created_at=batch.created_at,
+            paid_by=batch.paid_by,
         )
 
     @strawberry.mutation
