@@ -552,20 +552,72 @@ async def export_contract_pdf(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(jwt_utils.get_current_user),
 ):
-    """Генерира PDF на трудов договор.
-    """
     if current_user.role.name not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Only admins can export contracts")
 
-    from sqlalchemy.orm import selectinload
     result = await db.execute(
         select(EmploymentContract).options(
             selectinload(EmploymentContract.company),
+            selectinload(EmploymentContract.position),
+            selectinload(EmploymentContract.department),
+            selectinload(EmploymentContract.user),
         ).where(EmploymentContract.id == contract_id)
     )
     contract = result.scalars().first()
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
+
+    sections = []
+    clauses = []
+    if contract.template_id:
+        from backend.database.models import (
+            ContractTemplate,
+            ContractTemplateClause,
+            ContractTemplateSection,
+            ContractTemplateVersion,
+            ClauseTemplate,
+        )
+        template = await db.get(ContractTemplate, contract.template_id)
+        if template:
+            ver_result = await db.execute(
+                select(ContractTemplateVersion).where(
+                    ContractTemplateVersion.template_id == contract.template_id,
+                    ContractTemplateVersion.is_current,
+                )
+            )
+            current_version = ver_result.scalar_one_or_none()
+            if current_version:
+                sec_result = await db.execute(
+                    select(ContractTemplateSection)
+                    .where(ContractTemplateSection.version_id == current_version.id)
+                    .order_by(ContractTemplateSection.order_index)
+                )
+                sections = sec_result.scalars().all()
+
+        clause_result = await db.execute(
+            select(ContractTemplateClause)
+            .where(ContractTemplateClause.template_id == contract.template_id)
+            .order_by(ContractTemplateClause.order_index)
+        )
+        template_clause_links = clause_result.scalars().all()
+        for link in template_clause_links:
+            clause = await db.get(ClauseTemplate, link.clause_id)
+            if clause:
+                clauses.append(clause)
+
+    if contract.clause_ids:
+        import json
+        try:
+            extra_ids = json.loads(contract.clause_ids)
+            existing_ids = {c.id for c in clauses}
+            from backend.database.models import ClauseTemplate
+            for cid in extra_ids:
+                if cid not in existing_ids:
+                    c = await db.get(ClauseTemplate, cid)
+                    if c:
+                        clauses.append(c)
+        except (json.JSONDecodeError, TypeError):
+            pass
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=50, rightMargin=50, topMargin=50, bottomMargin=50)
@@ -585,6 +637,11 @@ async def export_contract_pdf(
         styles.add(styles["Normal"].clone("Italic"))
         styles["Italic"].fontName = DEFAULT_FONT
 
+    Normal = styles["Normal"]
+    Title = styles["Title"]
+    Heading2 = styles["Heading2"]
+    Italic = styles["Italic"]
+
     contract_type_display = {
         "full_time": "ТРУДОВ ДОГОВОР ЗА НЕОПРЕДЕЛЕНО РАБОТНО ВРЕМЕ",
         "part_time": "ТРУДОВ ДОГОВОР ЗА ОПРЕДЕЛЕНО РАБОТНО ВРЕМЕ",
@@ -592,61 +649,262 @@ async def export_contract_pdf(
         "internship": "ДОГОВОР ЗА СТАЖ",
     }.get(contract.contract_type, "ТРУДОВ ДОГОВОР")
 
-    elements.append(Paragraph("ИМЕТО НА РАБОТОДАТЕЛЯ", styles["Normal"]))
+    contract_num = contract.contract_number or "______"
+    sign_date = contract.start_date.strftime("%d.%m.%Y") if contract.start_date else "................"
+
+    elements.append(Paragraph(f"<b>Т Р У Д О В Д О Г О В О Р № {contract_num}</b>", Title))
+    elements.append(Spacer(1, 18))
+
+    elements.append(Paragraph(
+        f"Днес, {sign_date} между следните страни:",
+        Normal,
+    ))
     elements.append(Spacer(1, 12))
 
-    if contract.company:
-        elements.append(Paragraph(f"<b>{contract.company.name}</b>", styles["Heading2"]))
-        if contract.company.address:
-            elements.append(Paragraph(f"Адрес: {contract.company.address}", styles["Normal"]))
-        if contract.company.mol_name:
-            elements.append(Paragraph(f"Представляван от: {contract.company.mol_name}", styles["Normal"]))
-        if contract.company.eik:
-            elements.append(Paragraph(f"ЕИК: {contract.company.eik}", styles["Normal"]))
-
-    elements.append(Spacer(1, 24))
-    elements.append(Paragraph(f"<b>{contract_type_display}</b>", styles["Title"]))
+    company = contract.company
+    elements.append(Paragraph("<b>РАБОТОДАТЕЛ:</b>", Heading2))
+    if company:
+        elements.append(Paragraph(f"<b>{company.name}</b>", Normal))
+        if company.address:
+            elements.append(Paragraph(f"Адрес: {company.address}", Normal))
+        if company.eik:
+            elements.append(Paragraph(f"ЕИК по Булстат: {company.eik}", Normal))
+        if company.mol_name:
+            elements.append(Paragraph(f"Представлявано от: {company.mol_name}, Управител", Normal))
     elements.append(Spacer(1, 12))
 
-    if contract.contract_number:
-        elements.append(Paragraph(f"<b>Договор №:</b> {contract.contract_number}", styles["Normal"]))
-    elements.append(Paragraph(f"<b>Дата на сключване:</b> {contract.start_date.strftime('%d.%m.%Y') if contract.start_date else 'N/A'}", styles["Normal"]))
+    elements.append(Paragraph("от една страна, наричана за краткост по-долу <b>РАБОТОДАТЕЛ</b>, и", Normal))
+    elements.append(Spacer(1, 12))
+
+    employee = contract.user
+    emp_name = contract.employee_name or (f"{employee.first_name or ''} {employee.surname or ''} {employee.last_name or ''}".strip() if employee else "................................")
+    emp_egn = contract.employee_egn or (employee.egn if employee else "............")
+    emp_address = (employee.address if employee and employee.address else "................................")
+
+    elements.append(Paragraph("<b>РАБОТНИК:</b>", Heading2))
+    elements.append(Paragraph(f"{emp_name}, ЕГН: {emp_egn}", Normal))
+    elements.append(Paragraph(f"Адрес: {emp_address}", Normal))
+    if employee:
+        if employee.phone_number:
+            elements.append(Paragraph(f"Телефон: {employee.phone_number}", Normal))
+    elements.append(Spacer(1, 6))
+
+    elements.append(Paragraph(
+        "наричан за краткост по-долу <b>РАБОТНИК</b>, на основание чл. 67, ал. 1, т. 1 от Кодекса на труда "
+        "се сключи настоящият трудов договор.",
+        Normal,
+    ))
+    elements.append(Spacer(1, 12))
+
+    elements.append(Paragraph(
+        "Работодателят възлага, а работникът приема да изпълнява трудовите си задължения при следните условия:",
+        Normal,
+    ))
+    elements.append(Spacer(1, 12))
+
+    section_num = 1
+
+    position = contract.position
+    dept = contract.department
+    pos_title = position.title if position else "................................"
+    dept_name = dept.name if dept else "................................"
+
+    elements.append(Paragraph(
+        f"<b>{section_num}. Длъжност:</b> „{pos_title}",
+        Normal,
+    ))
+    elements.append(Paragraph(f"Отдел: {dept_name}", Normal))
+    elements.append(Paragraph(
+        "По длъжностна характеристика, с която работникът е запознат и му е връчен екземпляр от нея.",
+        Normal,
+    ))
+    elements.append(Spacer(1, 8))
+    section_num += 1
+
+    salary = contract.base_salary
+    salary_str = f"{salary} лв." if salary else "................ лв."
+    elements.append(Paragraph(
+        f"<b>{section_num}. Основно месечно трудово възнаграждение</b> в размер на {salary_str}",
+        Normal,
+    ))
+    if contract.salary_calculation_type:
+        elements.append(Paragraph(
+            f"Тип изчисление: {contract.salary_calculation_type}",
+            Normal,
+        ))
+    elements.append(Spacer(1, 8))
+    section_num += 1
+
+    elements.append(Paragraph(
+        f"<b>{section_num}. Допълнителни трудови възнаграждения</b> в съответствие с разпоредбите на Кодекса на труда.",
+        Normal,
+    ))
+    if contract.night_work_rate and contract.night_work_rate > 0:
+        elements.append(Paragraph(
+            f"- Нощен труд: +{int(float(contract.night_work_rate) * 100)}% надбавка",
+            Normal,
+        ))
+    if contract.overtime_rate and contract.overtime_rate > 1:
+        pct = int((float(contract.overtime_rate) - 1) * 100)
+        elements.append(Paragraph(
+            f"- Извънреден труд: +{pct}% множител",
+            Normal,
+        ))
+    if contract.holiday_rate and contract.holiday_rate > 1:
+        pct = int((float(contract.holiday_rate) - 1) * 100)
+        elements.append(Paragraph(
+            f"- Работа на официални празници: +{pct}% множител",
+            Normal,
+        ))
+    if contract.work_class:
+        elements.append(Paragraph(
+            f"- Трудов клас: {contract.work_class}",
+            Normal,
+        ))
+    if contract.dangerous_work:
+        elements.append(Paragraph(
+            "- Вредни условия на труд: Да",
+            Normal,
+        ))
+    elements.append(Spacer(1, 8))
+    section_num += 1
+
+    payment_day = contract.payment_day or 25
+    elements.append(Paragraph(
+        f"<b>{section_num}. Възнагражденията се изплащат</b> еднократно всеки месец, до {payment_day}-то число на месеца, следващ този, за който се дължат.",
+        Normal,
+    ))
+    elements.append(Spacer(1, 8))
+    section_num += 1
+
+    hours = contract.work_hours_per_week or 40
+    daily = hours / 5
+    hours_label = "Пълно работно време" if hours >= 40 else "Непълно работно време"
+    elements.append(Paragraph(
+        f"<b>{section_num}. Продължителност, разпределение и отчитане на работното време:</b>",
+        Normal,
+    ))
+    elements.append(Paragraph(
+        f"- {hours_label}: {daily:.1f} часа дневно, {hours} часа седмично;",
+        Normal,
+    ))
+    elements.append(Paragraph(
+        "- Разпределение на работното време: от понеделник до петък;",
+        Normal,
+    ))
+    elements.append(Paragraph(
+        "- Почивки: в съответствие с разпоредбите на Кодекса на труда.",
+        Normal,
+    ))
+    elements.append(Spacer(1, 8))
+    section_num += 1
+
     if contract.end_date:
-        elements.append(Paragraph(f"<b>Срок до:</b> {contract.end_date.strftime('%d.%m.%Y')}", styles["Normal"]))
-
-    elements.append(Spacer(1, 24))
-    elements.append(Paragraph("<b>РАБОТНИК</b>", styles["Heading2"]))
+        duration_text = f"за определен срок до {contract.end_date.strftime('%d.%m.%Y')}"
+    else:
+        duration_text = "за неопределено време"
+    probation_text = f", със срок на изпитване {contract.probation_months} месеца" if contract.probation_months and contract.probation_months > 0 else ""
+    elements.append(Paragraph(
+        f"<b>{section_num}. Трудовият договор се сключва</b> {duration_text}{probation_text}.",
+        Normal,
+    ))
     elements.append(Spacer(1, 8))
-
-    employee_name = contract.employee_name or (f"{current_user.first_name} {current_user.last_name}" if contract.user_id == current_user.id else "N/A")
-    employee_egn = contract.employee_egn or (current_user.egn if contract.user_id == current_user.id else "N/A")
-
-    elements.append(Paragraph(f"<b>Име:</b> {employee_name}", styles["Normal"]))
-    elements.append(Paragraph(f"<b>ЕГН:</b> {employee_egn}", styles["Normal"]))
-
-    elements.append(Spacer(1, 24))
-    elements.append(Paragraph("<b>УСЛОВИЯ НА ТРУД</b>", styles["Heading2"]))
-    elements.append(Spacer(1, 8))
-
-    work_hours_display = {40: "Пълно работно време (40 часа седмично)", 20: "Непълно работно време (20 часа седмично)"}.get(contract.work_hours_per_week or 40, f"{contract.work_hours_per_week} часа седмично")
-    elements.append(Paragraph(f"<b>Работно време:</b> {work_hours_display}", styles["Normal"]))
-
-    if contract.base_salary:
-        elements.append(Paragraph(f"<b>Основна заплата:</b> {contract.base_salary} €", styles["Normal"]))
+    section_num += 1
 
     if contract.probation_months and contract.probation_months > 0:
-        elements.append(Paragraph(f"<b>Изпитателен срок:</b> {contract.probation_months} месеца", styles["Normal"]))
+        beneficiary_label = "работника" if contract.probation_beneficiary == "employee" else "работодателя"
+        elements.append(Paragraph(
+            f"<b>{section_num}. Срокът на изпитване</b> по трудовия договор е уговорен в полза на {beneficiary_label}.",
+            Normal,
+        ))
+        elements.append(Spacer(1, 4))
+        section_num += 1
+        elements.append(Paragraph(
+            f"<b>{section_num}.</b> До изтичане на срока на изпитване страната, в чиято полза е уговорен, може да прекрати договора без да дължи предизвестие.",
+            Normal,
+        ))
+        elements.append(Spacer(1, 4))
+        section_num += 1
+        notice_days = contract.notice_period_days or 30
+        elements.append(Paragraph(
+            f"<b>{section_num}.</b> След изтичане на срока на изпитване, трудовият договор се смята за окончателно сключен и продължава действието си, като се прекратява съгласно общите разпоредби на Кодекса на труда и с еднакъв срок на предизвестие за двете страни от {notice_days} дни.",
+            Normal,
+        ))
+        elements.append(Spacer(1, 8))
+        section_num += 1
 
-    elements.append(Spacer(1, 24))
-    elements.append(Paragraph("<b>ПОДПИСИ</b>", styles["Heading2"]))
+    elements.append(Paragraph(
+        f"<b>{section_num}. Основен платен годишен отпуск</b> на основание чл. 155 от Кодекса на труда — 20 работни дни.",
+        Normal,
+    ))
+    elements.append(Spacer(1, 8))
+    section_num += 1
+
+    elements.append(Paragraph(
+        f"<b>{section_num}. Работникът ще постъпи на работа на:</b> {contract.start_date.strftime('%d.%m.%Y') if contract.start_date else '................'}",
+        Normal,
+    ))
+    elements.append(Spacer(1, 12))
+    section_num += 1
+
+    for sec in sections:
+        elements.append(Paragraph(
+            f"<b>{section_num}. {sec.title}</b>",
+            Normal,
+        ))
+        if sec.content:
+            elements.append(Paragraph(sec.content, Normal))
+        elements.append(Spacer(1, 8))
+        section_num += 1
+
+    for clause in clauses:
+        elements.append(Paragraph(
+            f"<b>{section_num}. {clause.title}</b>",
+            Normal,
+        ))
+        if clause.content:
+            elements.append(Paragraph(clause.content, Normal))
+        elements.append(Spacer(1, 8))
+        section_num += 1
+
+    elements.append(Spacer(1, 12))
+    elements.append(Paragraph(
+        "Настоящият трудов договор се сключи в два еднообразни екземпляра, по един за всяка от страните. "
+        "За неуредените в настоящия трудов договор условия се прилагат общите разпоредби на Кодекса на труда "
+        "и нормативните актове на българското законодателство.",
+        Normal,
+    ))
     elements.append(Spacer(1, 36))
 
-    elements.append(Paragraph("_" * 40 + "            " + "_" * 40, styles["Normal"]))
-    elements.append(Paragraph("Работодател                                      Работник", styles["Normal"]))
+    sign_table = Table(
+        [
+            [Paragraph("<b>РАБОТОДАТЕЛ:</b>", Normal), Paragraph("", Normal), Paragraph("<b>РАБОТНИК:</b>", Normal)],
+            [Paragraph("________________________", Normal), Paragraph("", Normal), Paragraph("________________________", Normal)],
+            [Paragraph(f"{company.mol_name if company and company.mol_name else ''}", Normal), Paragraph("", Normal), Paragraph(f"{emp_name}", Normal)],
+        ],
+        colWidths=[200, 60, 200],
+    )
+    sign_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+    ]))
+    elements.append(sign_table)
+    elements.append(Spacer(1, 24))
+
+    elements.append(Paragraph(
+        "Екземпляр от трудовия договор, заверено Уведомление по чл. 62, ал. 5 от Кодекса на труда до ТД на НАП "
+        "и длъжностна характеристика са връчени на работника преди постъпване на работа.",
+        Normal,
+    ))
     elements.append(Spacer(1, 12))
+    elements.append(Paragraph(
+        f"Работникът постъпи на работа на: {contract.start_date.strftime('%d.%m.%Y') if contract.start_date else '................'}",
+        Normal,
+    ))
 
     if contract.signed_at:
-        elements.append(Paragraph(f"<i>Подписан на: {contract.signed_at.strftime('%d.%m.%Y %H:%M')}</i>", styles["Normal"]))
+        elements.append(Spacer(1, 12))
+        elements.append(Paragraph(f"<i>Подписан на: {contract.signed_at.strftime('%d.%m.%Y %H:%M')}</i>", Italic))
 
     doc.build(elements)
 

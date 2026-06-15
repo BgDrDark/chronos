@@ -56,6 +56,8 @@ class EmploymentContract:
     base_salary: strawberry.auto
     work_hours_per_week: strawberry.auto
     probation_months: strawberry.auto
+    probation_beneficiary: strawberry.auto
+    notice_period_days: strawberry.auto
     is_active: strawberry.auto
     salary_calculation_type: strawberry.auto
     salary_installments_count: strawberry.auto

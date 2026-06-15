@@ -12,6 +12,9 @@ export const GET_EMPLOYMENT_CONTRACTS = gql`
       endDate
       baseSalary
       workHoursPerWeek
+      probationMonths
+      probationBeneficiary
+      noticePeriodDays
       status
       signedAt
       userId
@@ -63,6 +66,16 @@ export const GET_ORG_DATA_FOR_CONTRACT = gql`
 export const CREATE_EMPLOYMENT_CONTRACT = gql`
   mutation CreateEmploymentContract($input: EmploymentContractCreateInput!) {
     createEmploymentContract(input: $input) {
+      id
+      employeeName
+      status
+    }
+  }
+`;
+
+export const UPDATE_EMPLOYMENT_CONTRACT = gql`
+  mutation UpdateEmploymentContract($id: Int!, $input: EmploymentContractUpdateInput!) {
+    updateEmploymentContract(id: $id, input: $input) {
       id
       employeeName
       status

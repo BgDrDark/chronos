@@ -1550,6 +1550,8 @@ class EmploymentContract(Base):
     base_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=True)
     work_hours_per_week: Mapped[int] = mapped_column(Integer, default=40)
     probation_months: Mapped[int] = mapped_column(Integer, default=0)
+    probation_beneficiary: Mapped[str | None] = mapped_column(String(20), nullable=True)  # "employer" or "employee"
+    notice_period_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     salary_calculation_type: Mapped[str] = mapped_column(String(20), default="gross")  # 'gross', 'net'
     salary_installments_count: Mapped[int] = mapped_column(Integer, default=1)  # Брой плащания (вноски) на заплатата

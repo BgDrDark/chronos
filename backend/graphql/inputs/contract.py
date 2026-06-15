@@ -20,6 +20,8 @@ class EmploymentContractCreateInput:
     work_hours_per_week: int = 40
     job_description: str | None = None
     probation_months: int | None = None
+    probation_beneficiary: str | None = "employer"
+    notice_period_days: int | None = 30
     salary_calculation_type: str | None = "gross"
     payment_day: int | None = 25
     night_work_rate: float | None = 0.5
@@ -38,12 +40,15 @@ class EmploymentContractUpdateInput:
     position_id: int | None = None
     template_id: int | None = None
     contract_number: str | None = None
+    contract_type: str | None = None
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
     base_salary: float | None = None
     work_hours_per_week: int | None = None
     job_description: str | None = None
     probation_months: int | None = None
+    probation_beneficiary: str | None = None
+    notice_period_days: int | None = None
     salary_calculation_type: str | None = None
     payment_day: int | None = None
     night_work_rate: float | None = None

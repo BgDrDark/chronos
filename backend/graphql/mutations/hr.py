@@ -78,6 +78,12 @@ class HRMutation:
             probation_months=input.probation_months
             if input.probation_months is not None
             else (template.probation_months if template else None),
+            probation_beneficiary=input.probation_beneficiary
+            if input.probation_beneficiary is not None
+            else "employer",
+            notice_period_days=input.notice_period_days
+            if input.notice_period_days is not None
+            else 30,
             salary_calculation_type=input.salary_calculation_type
             or (template.salary_calculation_type if template else "gross"),
             payment_day=input.payment_day
@@ -96,6 +102,71 @@ class HRMutation:
         )
 
         db.add(contract)
+        await db.commit()
+        await db.refresh(contract, ["company", "position", "department"])
+
+        return types.EmploymentContract.from_pydantic(
+            schemas.EmploymentContract.model_validate(contract)
+        )
+
+    @strawberry.mutation
+    async def update_employment_contract(
+        self, id: int, input: inputs.EmploymentContractUpdateInput, info: strawberry.Info
+    ) -> types.EmploymentContract:
+        if not info:
+            raise InvalidOperationException.info_required()
+        db = info.context["db"]
+        get_current_user(info)
+
+        from backend.database.models import EmploymentContract
+
+        contract = await db.get(EmploymentContract, id)
+        if not contract:
+            raise NotFoundException.record("Договор")
+
+        if input.employee_name is not None:
+            contract.employee_name = input.employee_name
+        if input.employee_egn is not None:
+            contract.employee_egn = input.employee_egn
+        if input.company_id is not None:
+            contract.company_id = input.company_id
+        if input.department_id is not None:
+            contract.department_id = input.department_id
+        if input.position_id is not None:
+            contract.position_id = input.position_id
+        if input.template_id is not None:
+            contract.template_id = input.template_id
+        if input.contract_number is not None:
+            contract.contract_number = input.contract_number
+        if input.contract_type is not None:
+            contract.contract_type = input.contract_type
+        if input.start_date is not None:
+            contract.start_date = input.start_date
+        if input.end_date is not None:
+            contract.end_date = input.end_date
+        if input.base_salary is not None:
+            contract.base_salary = input.base_salary
+        if input.work_hours_per_week is not None:
+            contract.work_hours_per_week = input.work_hours_per_week
+        if input.probation_months is not None:
+            contract.probation_months = input.probation_months
+        if input.probation_beneficiary is not None:
+            contract.probation_beneficiary = input.probation_beneficiary
+        if input.notice_period_days is not None:
+            contract.notice_period_days = input.notice_period_days
+        if input.salary_calculation_type is not None:
+            contract.salary_calculation_type = input.salary_calculation_type
+        if input.payment_day is not None:
+            contract.payment_day = input.payment_day
+        if input.night_work_rate is not None:
+            contract.night_work_rate = input.night_work_rate
+        if input.overtime_rate is not None:
+            contract.overtime_rate = input.overtime_rate
+        if input.holiday_rate is not None:
+            contract.holiday_rate = input.holiday_rate
+        if input.work_class is not None:
+            contract.work_class = input.work_class
+
         await db.commit()
         await db.refresh(contract, ["company", "position", "department"])
 

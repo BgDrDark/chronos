@@ -1214,6 +1214,9 @@ export interface LaborContract {
   endDate: string | null;
   baseSalary: number | null;
   workHoursPerWeek: number;
+  probationMonths: number | null;
+  probationBeneficiary: string | null;
+  noticePeriodDays: number | null;
   status: ContractStatus;
   signedAt: string | null;
   userId: number | null;
@@ -1254,6 +1257,8 @@ export interface LaborContractFormData {
   workHoursPerWeek: string;
   jobDescription: string;
   clauseIds: number[];
+  probationBeneficiary: 'employer' | 'employee';
+  noticePeriodDays: string;
 }
 
 export interface LaborContractListFilters {

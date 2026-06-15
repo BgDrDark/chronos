@@ -15,6 +15,8 @@ class EmploymentContract(CustomBaseModel):
     base_salary: Decimal | None = None
     work_hours_per_week: int = 40
     probation_months: int = 0
+    probation_beneficiary: str | None = "employer"
+    notice_period_days: int | None = 30
     is_active: bool = True
     salary_calculation_type: str = "gross"
     salary_installments_count: int = 1

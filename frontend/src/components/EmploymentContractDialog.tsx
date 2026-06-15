@@ -7,6 +7,7 @@ import {
 import { useMutation, useQuery, gql } from '@apollo/client';
 import {
   CREATE_EMPLOYMENT_CONTRACT,
+  UPDATE_EMPLOYMENT_CONTRACT,
   GENERATE_CONTRACT_NUMBER,
   GET_ORG_DATA_FOR_CONTRACT
 } from '../graphql/contracts';
@@ -84,7 +85,9 @@ const initialFormData: LaborContractFormData = {
   baseSalary: '',
   workHoursPerWeek: '40',
   jobDescription: '',
-  clauseIds: []
+  clauseIds: [],
+  probationBeneficiary: 'employer',
+  noticePeriodDays: '30'
 };
 
 interface OrgData {
@@ -161,7 +164,9 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
           baseSalary: contract.baseSalary?.toString() || '',
           workHoursPerWeek: contract.workHoursPerWeek?.toString() || '40',
           jobDescription: '',
-          clauseIds: contract.clauseIds || []
+          clauseIds: contract.clauseIds || [],
+          probationBeneficiary: (contract.probationBeneficiary as 'employer' | 'employee') || 'employer',
+          noticePeriodDays: contract.noticePeriodDays?.toString() || '30'
         });
       } else {
         setFormData({
@@ -224,7 +229,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
     return true;
   };
 
-  const [createContract, { loading }] = useMutation(CREATE_EMPLOYMENT_CONTRACT, {
+  const [createContract, { loading: creatingLoading }] = useMutation(CREATE_EMPLOYMENT_CONTRACT, {
     onCompleted: () => {
       onSuccess();
     },
@@ -232,6 +237,17 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
       setApiError(getErrorMessage(err));
     }
   });
+
+  const [updateContract, { loading: updatingLoading }] = useMutation(UPDATE_EMPLOYMENT_CONTRACT, {
+    onCompleted: () => {
+      onSuccess();
+    },
+    onError: (err) => {
+      setApiError(getErrorMessage(err));
+    }
+  });
+
+  const loading = creatingLoading || updatingLoading;
 
   const [generateNumber, { loading: generatingNumber }] = useMutation(GENERATE_CONTRACT_NUMBER, {
     onCompleted: (data) => {
@@ -265,7 +281,9 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
       endDate: formData.endDate || null,
       baseSalary: formData.baseSalary ? parseFloat(formData.baseSalary) : null,
       workHoursPerWeek: parseInt(formData.workHoursPerWeek, 10) || 40,
-      jobDescription: formData.jobDescription || null
+      jobDescription: formData.jobDescription || null,
+      probationBeneficiary: formData.probationBeneficiary,
+      noticePeriodDays: formData.noticePeriodDays ? parseInt(formData.noticePeriodDays, 10) : 30
     };
 
     if (formData.templateId) {
@@ -280,7 +298,11 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
       input.clauseIds = JSON.stringify(formData.clauseIds);
     }
 
-    createContract({ variables: { input } });
+    if (contract) {
+      updateContract({ variables: { id: contract.id, input } });
+    } else {
+      createContract({ variables: { input } });
+    }
   };
 
   return (
@@ -465,6 +487,29 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
               onChange={handleTextChange('baseSalary')}
               size="small"
               slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={userFieldsHelp.baseSalary} /></InputAdornment> } }}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Изпитателен срок - в полза на</InputLabel>
+              <Select
+                value={formData.probationBeneficiary}
+                label="Изпитателен срок - в полза на"
+                onChange={handleSelectChange('probationBeneficiary')}
+              >
+                <MenuItem value="employer">Работодателя</MenuItem>
+                <MenuItem value="employee">Работника</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <TextField
+              fullWidth
+              label="Срок на предизвестие (дни)"
+              type="number"
+              value={formData.noticePeriodDays}
+              onChange={handleTextChange('noticePeriodDays')}
+              size="small"
             />
           </Grid>
           <Grid size={{ xs: 12 }}>
