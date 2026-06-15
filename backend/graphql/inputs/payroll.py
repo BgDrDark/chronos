@@ -14,7 +14,7 @@ class BonusCreateInput:
 
 @strawberry.input
 class CreatePaymentBatchInput:
-    company_id: int
+    company_id: int | None = None
     period_start: datetime.date
     period_end: datetime.date
     payment_date: datetime.datetime

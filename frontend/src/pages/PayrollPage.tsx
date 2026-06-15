@@ -1467,7 +1467,6 @@ const PaymentBatchesSection: React.FC = () => {
 
   const { data: usersData } = useQuery(GET_DATA_QUERY);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-  const [amounts, setAmounts] = useState<Record<string, string>>({});
 
   const handleCreateBatch = async () => {
     if (!periodStart || !periodEnd || !paymentDate) {
@@ -1505,22 +1504,17 @@ const PaymentBatchesSection: React.FC = () => {
       return;
     }
     try {
-      const items = selectedUsers.map(userId => ({
-        userId: parseInt(userId),
-        amount: parseFloat(amounts[userId] || '0'),
-      }));
       await addItems({
         variables: {
           input: {
             batchId: selectedBatchId,
-            items,
+            userIds: selectedUsers.map(id => parseInt(id)),
           },
         },
       });
       alert('Служителите са добавени успешно');
       setOpenAddItemsDialog(false);
       setSelectedUsers([]);
-      setAmounts({});
       setSelectedBatchId(null);
       refetch();
     } catch (e) {
@@ -1596,14 +1590,14 @@ const PaymentBatchesSection: React.FC = () => {
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6" color="primary">
-            Платежни Батчове
+            Платежни нареждания
           </Typography>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => setOpenCreateDialog(true)}
           >
-            Нов Батч
+            Ново платежно
           </Button>
         </Box>
 
@@ -1743,11 +1737,11 @@ const PaymentBatchesSection: React.FC = () => {
       </Dialog>
 
       <Dialog open={openAddItemsDialog} onClose={() => setOpenAddItemsDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Добави Служители към Батч</DialogTitle>
+        <DialogTitle>Добави Служители към Платежно</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 1 }}>
             <Typography variant="body2" color="text.secondary" gutterBottom>
-              Изберете служители и въведете суми за всеки:
+              Изберете служители за добавяне към платежното нареждане:
             </Typography>
             {usersData?.users?.users.map((user: User) => (
               <Box key={user.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
@@ -1764,15 +1758,6 @@ const PaymentBatchesSection: React.FC = () => {
                 <Typography sx={{ flex: 1 }}>
                   {user.firstName} {user.lastName}
                 </Typography>
-                <TextField
-                  label="Сума"
-                  type="number"
-                  size="small"
-                  value={amounts[String(user.id)] || ''}
-                  onChange={e => setAmounts({ ...amounts, [String(user.id)]: e.target.value })}
-                  disabled={!selectedUsers.includes(String(user.id))}
-                  sx={{ width: 120 }}
-                />
               </Box>
             ))}
           </Box>

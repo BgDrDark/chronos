@@ -540,17 +540,22 @@ class PayrollMutation:
     ) -> types.SalaryPaymentBatchType:
         from backend.services.salary_payment_service import SalaryPaymentService
         db = info.context["db"]
-        get_current_user(info)
+        user = get_current_user(info)
         await require_permission(info, "payroll:update")
+
+        company_id = input.company_id or user.company_id
+        if not company_id:
+            from backend.exceptions import ValidationException
+            raise ValidationException("Не е зададена фирма")
 
         service = SalaryPaymentService(db)
         batch = await service.create_batch(
-            company_id=input.company_id,
+            company_id=company_id,
             period_start=input.period_start,
             period_end=input.period_end,
             payment_date=input.payment_date,
             payment_method=input.payment_method,
-            paid_by=info.context["user"].id,
+            paid_by=user.id,
             payment_reference=input.payment_reference,
             notes=input.notes,
         )

@@ -80,6 +80,10 @@ class User:
         return Position.from_pydantic(result) if result else None
 
     @strawberry.field
+    async def full_name(self) -> str:
+        return f"{self.first_name or ''} {self.last_name or ''}".strip()
+
+    @strawberry.field
     async def company_name(self, info: strawberry.Info) -> str | None:
         if not self.company_id:
             return None
