@@ -58,7 +58,7 @@ class SettingsRepository(BaseRepository):
             return True
         return False
 
-    async def get_api_keys(self, db: AsyncSession, is_active: bool = None) -> list:
+    async def get_api_keys(self, db: AsyncSession, is_active: bool | None = None) -> list:
         """Връща API ключове, опционално филтрирани по is_active"""
         from backend.database.models import APIKey
         query = select(APIKey)

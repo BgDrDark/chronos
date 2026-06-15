@@ -3,7 +3,7 @@ import {
   Container, Typography, Grid, Card, CardContent, Avatar, Box, 
   Chip, Tab, Tabs, List, ListItem, ListItemIcon, ListItemText,
   Paper, CircularProgress, Alert, IconButton, Divider, TextField, Button,
-  FormControlLabel, Switch
+  FormControlLabel, Switch, MenuItem
 } from '@mui/material';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { useParams } from 'react-router-dom';
@@ -19,6 +19,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import FingerprintIcon from '@mui/icons-material/Fingerprint';
 import ReceiptIcon from '@mui/icons-material/Receipt';
+import PaidIcon from '@mui/icons-material/Paid';
 import axios from 'axios';
 import { useCurrency } from '../currencyContext';
 import { useAppTheme } from '../themeContext';
@@ -104,11 +105,107 @@ const GENERATE_PAYSLIP_MUTATION = gql`
       insuranceAmount
       totalRegularHours
       totalOvertimeHours
-      sickDays
       leaveDays
+      sickDays
     }
   }
 `;
+
+const GET_MY_PAYMENT_HISTORY = gql`
+  query MyPaymentHistory($year: Int) {
+    myPaymentHistory(year: $year) {
+      id
+      amount
+      paidAt
+      payslip {
+        id
+        totalAmount
+        grossSalary
+        periodStart
+        periodEnd
+        regularAmount
+        overtimeAmount
+        bonusAmount
+        taxAmount
+        insuranceAmount
+      }
+    }
+  }
+`;
+
+const PaymentHistorySection: React.FC<{ userId: number }> = ({ userId }) => {
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const { data, loading } = useQuery(GET_MY_PAYMENT_HISTORY, {
+    variables: { year: selectedYear },
+  });
+  const { currency } = useCurrency();
+
+  const payments = data?.myPaymentHistory || [];
+  const totalForYear = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+
+  if (loading) return <CircularProgress />;
+
+  return (
+    <Card variant="outlined" sx={{ borderRadius: 3 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PaidIcon color="primary" /> История на плащанията
+          </Typography>
+          <TextField
+            select
+            size="small"
+            label="Година"
+            value={selectedYear}
+            onChange={e => setSelectedYear(parseInt(e.target.value))}
+            sx={{ width: 120 }}
+          >
+            {[currentYear, currentYear - 1, currentYear - 2, currentYear - 3].map(year => (
+              <MenuItem key={year} value={year}>{year}</MenuItem>
+            ))}
+          </TextField>
+        </Box>
+
+        <Box sx={{ mb: 3, p: 2, bgcolor: 'success.light', color: 'white', borderRadius: 2, textAlign: 'center' }}>
+          <Typography variant="caption" sx={{ opacity: 0.9 }}>ОБЩО ПОЛУЧЕНО ЗА {selectedYear}</Typography>
+          <Typography variant="h5" fontWeight="bold">{totalForYear.toFixed(2)} {currency}</Typography>
+        </Box>
+
+        {payments.length === 0 ? (
+          <Alert severity="info">Няма намерени плащания за {selectedYear} г.</Alert>
+        ) : (
+          <List>
+            {payments.map((payment: any) => (
+              <React.Fragment key={payment.id}>
+                <ListItem>
+                  <ListItemIcon>
+                    <ReceiptIcon color="primary" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={`${formatDate(payment.payslip?.periodStart)} - ${formatDate(payment.payslip?.periodEnd)}`}
+                    secondary={`Платено на: ${formatDate(payment.paidAt)}`}
+                  />
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="h6" color="success.main" fontWeight="bold">
+                      {Number(payment.amount).toFixed(2)} {currency}
+                    </Typography>
+                    {payment.payslip && (
+                      <Typography variant="caption" color="text.secondary">
+                        Бруто: {Number(payment.payslip.grossSalary).toFixed(2)} {currency}
+                      </Typography>
+                    )}
+                  </Box>
+                </ListItem>
+                <Divider />
+              </React.Fragment>
+            ))}
+          </List>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 const PersonalDataSection: React.FC<{ user: any }> = ({ user }) => {
     const maskData = (val: string, showFirst: number = 4) => {
@@ -314,6 +411,9 @@ const ProfilePage: React.FC = () => {
 
     const canSeeFinance = isOwnProfile || isAdmin;
 
+    const paymentsTabIndex = 3;
+    const settingsTabIndex = canSeeFinance ? 4 : 3;
+
     return (
         <Container maxWidth="lg" sx={{ mt: 4, mb: 8 }}>
             {/* Header / Avatar Section */}
@@ -363,6 +463,7 @@ const ProfilePage: React.FC = () => {
                     <Tab icon={<PersonIcon />} label="Лични данни" iconPosition="start" />
                     <Tab icon={<ContractIcon />} label="Трудов договор" iconPosition="start" />
                     <Tab icon={<DescriptionIcon />} label="Документи" iconPosition="start" />
+                    {canSeeFinance && <Tab icon={<PaidIcon />} label="Заплати" iconPosition="start" />}
                     <Tab icon={<SettingsIcon />} label="Настройки и Сигурност" iconPosition="start" />
                 </Tabs>
             </Box>
@@ -455,8 +556,13 @@ const ProfilePage: React.FC = () => {
                 <DocumentManager userId={user.id} isAdmin={isAdmin} />
             )}
 
-            {/* TAB 3: Settings & Security */}
-            {activeTab === 3 && isOwnProfile && (
+            {/* TAB 3: Payment History (conditional) */}
+            {activeTab === paymentsTabIndex && canSeeFinance && (
+                <PaymentHistorySection userId={user.id} />
+            )}
+
+            {/* TAB 3 or 4: Settings & Security */}
+            {activeTab === settingsTabIndex && isOwnProfile && (
                 <Grid container spacing={3}>
                     {/* Dashboard Settings */}
                     <Grid size={{ xs: 12 }}>

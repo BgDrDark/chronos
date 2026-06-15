@@ -1,5 +1,6 @@
 import calendar
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -35,7 +36,6 @@ class PayrollCalculator:
         if cache_key in self._working_days_cache:
             return self._working_days_cache[cache_key]
 
-        # 0. Check for Manual Override in MonthlyWorkDays
         res = await self.db.execute(
             select(MonthlyWorkDays)
             .where(MonthlyWorkDays.year == year)
@@ -46,7 +46,6 @@ class PayrollCalculator:
             self._working_days_cache[cache_key] = override.days_count
             return override.days_count
 
-        # 1. Fetch Holidays for this month
         from backend.database.models import PublicHoliday
         month_start = date(year, month, 1)
         month_end = date(year, month, calendar.monthrange(year, month)[1])
@@ -58,20 +57,7 @@ class PayrollCalculator:
         )
         holidays_set = {row[0] for r in hol_result.all() for row in [r]}
 
-        # 2. Get User Schedule (Weekends worked)
-        from backend.database.models import WorkSchedule
-        sched_result = await self.db.execute(
-            select(WorkSchedule.date)
-            .where(WorkSchedule.user_id == user_id)
-            .where(WorkSchedule.date >= month_start)
-            .where(WorkSchedule.date <= month_end),
-        )
-        {row[0] for r in sched_result.all() for row in [r]}
-
         num_days = calendar.monthrange(year, month)[1]
-
-        # Logic for Rate Calculation:
-        # Return strict business days (Mon-Fri minus Holidays).
 
         total_business_days = 0
         for d in range(1, num_days + 1):
@@ -81,6 +67,64 @@ class PayrollCalculator:
 
         self._working_days_cache[cache_key] = total_business_days
         return total_business_days
+
+    async def _preload_working_days(
+        self, user_id: int, start_date: date, end_date: date,
+    ) -> dict[tuple, int]:
+        months = set()
+        d = start_date
+        while d <= end_date:
+            months.add((d.year, d.month))
+            d += timedelta(days=1)
+
+        from backend.database.models import PublicHoliday
+
+        uncached = [(y, m) for y, m in months if (user_id, y, m) not in self._working_days_cache]
+        if not uncached:
+            return self._working_days_cache
+
+        month_starts = [date(y, m, 1) for y, m in uncached]
+        month_ends = [date(y, m, calendar.monthrange(y, m)[1]) for y, m in uncached]
+        global_start = min(month_starts)
+        global_end = max(month_ends)
+
+        overrides = {}
+        override_result = await self.db.execute(
+            select(MonthlyWorkDays)
+            .where(MonthlyWorkDays.year >= start_date.year)
+            .where(
+                (MonthlyWorkDays.year > start_date.year)
+                | (MonthlyWorkDays.month >= start_date.month),
+            )
+            .where(
+                (MonthlyWorkDays.year < end_date.year)
+                | (MonthlyWorkDays.month <= end_date.month),
+            ),
+        )
+        for ov in override_result.scalars().all():
+            overrides[(ov.year, ov.month)] = ov.days_count
+
+        hol_result = await self.db.execute(
+            select(PublicHoliday.date)
+            .where(PublicHoliday.date >= global_start)
+            .where(PublicHoliday.date <= global_end),
+        )
+        all_holidays = {row[0] for r in hol_result.all() for row in [r]}
+
+        for year, month in uncached:
+            cache_key = (user_id, year, month)
+            if (year, month) in overrides:
+                self._working_days_cache[cache_key] = overrides[(year, month)]
+                continue
+            num_days = calendar.monthrange(year, month)[1]
+            count = 0
+            for dnum in range(1, num_days + 1):
+                curr = date(year, month, dnum)
+                if curr.weekday() < 5 and curr not in all_holidays:
+                    count += 1
+            self._working_days_cache[cache_key] = count
+
+        return self._working_days_cache
 
     async def calculate(self, user_id: int, start_date: datetime, end_date: datetime) -> dict[str, Any]:
         """Calculates the payroll for a user within a given period using Interval Logic and Smart Break Deduction.
@@ -101,8 +145,8 @@ class PayrollCalculator:
             )
 
         # Get monthly_salary OUTSIDE the loop for use throughout
-        monthly_salary = float(config.monthly_salary) if config.monthly_salary else 0.0
-        hourly_rate = float(config.hourly_rate) if config.hourly_rate else 0.0
+        monthly_salary = Decimal(str(config.monthly_salary)) if config.monthly_salary else Decimal(0)
+        hourly_rate = Decimal(str(config.hourly_rate)) if config.hourly_rate else Decimal(0)
 
         # 2. Get TimeLogs and Schedules
         logs = await crud.get_timelogs_by_user_and_period(self.db, user_id, start_date, end_date)
@@ -123,8 +167,8 @@ class PayrollCalculator:
 
         total_reg_hours = 0.0
         total_ot_hours = 0.0
-        regular_amount = 0.0
-        overtime_amount = 0.0
+        regular_amount = Decimal(0)
+        overtime_amount = Decimal(0)
 
         sick_days_count = 0
         leave_days_count = 0
@@ -135,6 +179,9 @@ class PayrollCalculator:
 
         from backend.database.models import ShiftType
 
+        # Preload working days for ALL months in the period (Fix #1: N+1)
+        await self._preload_working_days(user_id, sd_date, ed_date)
+
         for day in sorted_dates:
             day_logs = logs_by_day.get(day, [])
 
@@ -142,14 +189,14 @@ class PayrollCalculator:
             shift_start_dt = None
             shift_end_dt = None
             shift_type = ShiftType.REGULAR.value
-            multiplier = 1.0
+            multiplier = Decimal(1)
             break_hours = 0.0
             daily_standard = float(config.standard_hours_per_day) if config.standard_hours_per_day else 8.0
 
             if day in schedule_map and schedule_map[day].shift:
                 s = schedule_map[day].shift
                 shift_type = s.shift_type
-                multiplier = float(s.pay_multiplier) if s.pay_multiplier is not None else 1.0
+                multiplier = Decimal(str(s.pay_multiplier)) if s.pay_multiplier is not None else Decimal(1)
                 break_hours = (s.break_duration_minutes or 0) / 60.0
 
                 # Construct shift timestamps
@@ -224,8 +271,8 @@ class PayrollCalculator:
 
                 # 2. Calculate Actual Work Sum (Net of manual breaks stored in DB)
                 total_worked_net = sum([
-max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((getattr(log_item, "break_duration_minutes", 0) or 0)/60.0))
-        for log_item in day_logs
+        max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((getattr(log_item, "break_duration_minutes", 0) or 0)/60.0))
+                for log_item in day_logs
                 ])
 
                 # 3. Check for Mandatory Break Deduction
@@ -247,27 +294,23 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
             # --- Financial Calculation for Day ---
             day_working_days = await self.get_total_working_days_for_month(user_id, day.year, day.month)
 
-            day_pay = 0.0
+            day_pay = Decimal(0)
 
             # Regular Pay
             if day_working_days > 0 and monthly_salary > 0:
-                daily_rate = monthly_salary / day_working_days
+                daily_rate = monthly_salary / Decimal(str(day_working_days))
                 if daily_standard > 0:
-                    fraction = min(1.0, final_daily_reg / daily_standard)
+                    fraction = min(Decimal(1), Decimal(str(final_daily_reg)) / Decimal(str(daily_standard)))
                     day_pay = daily_rate * fraction
             elif hourly_rate > 0:
-                 day_pay = final_daily_reg * hourly_rate
+                 day_pay = Decimal(str(final_daily_reg)) * hourly_rate
 
             day_pay *= multiplier
             regular_amount += day_pay
 
             # Overtime Pay
-            ot_mult = float(config.overtime_multiplier) if config.overtime_multiplier else 1
-            overtime_amount += daily_pure_ot * hourly_rate * ot_mult
-
-        # Define monthly_salary and hourly_rate OUTSIDE the loop for use in leave calculation
-        monthly_salary = float(config.monthly_salary) if config.monthly_salary else 0.0
-        hourly_rate = float(config.hourly_rate) if config.hourly_rate else 0.0
+            ot_mult = Decimal(str(config.overtime_multiplier)) if config.overtime_multiplier else Decimal(1)
+            overtime_amount += Decimal(str(daily_pure_ot)) * hourly_rate * ot_mult
 
         # --- 3. Calculate Bonuses ---
         # Fetch bonuses that fall within the requested period
@@ -278,7 +321,7 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
             .where(Bonus.date <= ed_date),
         )
         bonuses = bonus_result.scalars().all()
-        bonus_amount = sum(float(b.amount) for b in bonuses)
+        bonus_amount = sum(Decimal(str(b.amount)) for b in bonuses)
 
         # --- 3.1. Calculate Leave Days ---
         leave_result = await self.db.execute(
@@ -293,10 +336,17 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
         paid_leave_days = 0
         unpaid_leave_days = 0
         sick_leave_days = 0
+        paid_leave_by_month: dict[tuple[int, int], int] = {}
 
         for lr in leave_requests:
             if lr.leave_type in ["annual_paid", "paid_leave"]:
-                paid_leave_days += (lr.end_date - lr.start_date).days + 1
+                days = (lr.end_date - lr.start_date).days + 1
+                paid_leave_days += days
+                d = lr.start_date
+                while d <= lr.end_date:
+                    key = (d.year, d.month)
+                    paid_leave_by_month[key] = paid_leave_by_month.get(key, 0) + 1
+                    d += timedelta(days=1)
             elif lr.leave_type == "unpaid":
                 unpaid_leave_days += (lr.end_date - lr.start_date).days + 1
             elif lr.leave_type in ["sick", "sick_leave"]:
@@ -305,15 +355,13 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
         leave_days_count = paid_leave_days
         sick_days_count = sick_leave_days
 
-        # Calculate working days count for leave pay calculation
-        year = sd_date.year
-        month = sd_date.month
-        working_days_count = await self.get_total_working_days_for_month(user_id, year, month)
-
-        # Add leave pay to regular amount (paid leave days get full daily rate)
-        if paid_leave_days > 0 and working_days_count > 0 and monthly_salary > 0:
-            daily_rate = monthly_salary / working_days_count
-            leave_pay = daily_rate * paid_leave_days
+        # Add leave pay grouped by month (Fix #3: cross-month)
+        leave_pay = Decimal(0)
+        if paid_leave_days > 0 and monthly_salary > 0:
+            for (yr, mo), days in paid_leave_by_month.items():
+                wd = await self.get_total_working_days_for_month(user_id, yr, mo)
+                if wd > 0:
+                    leave_pay += monthly_salary / Decimal(str(wd)) * Decimal(str(days))
             regular_amount += leave_pay
 
         gross_salary = regular_amount + overtime_amount + bonus_amount
@@ -340,24 +388,24 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
             has_income_tax = contract.has_income_tax if contract.has_income_tax is not None else True
 
         # --- 5. Deductions (Tax & Insurance) ---
-        tax_pct = float(config.tax_percent) if hasattr(config, "tax_percent") and config.tax_percent is not None else 10.0
-        health_pct = float(config.health_insurance_percent) if hasattr(config, "health_insurance_percent") and config.health_insurance_percent is not None else 13.78
+        tax_pct = Decimal(str(config.tax_percent)) if hasattr(config, "tax_percent") and config.tax_percent is not None else Decimal("10.0")
+        health_pct = Decimal(str(config.health_insurance_percent)) if hasattr(config, "health_insurance_percent") and config.health_insurance_percent is not None else Decimal("13.78")
 
-        deductions = 0.0
+        deductions = Decimal(0)
 
         # 5.1 Health Insurance (Deducted from Gross) - only if insurance_contributor
-        health_amount = 0.0
+        health_amount = Decimal(0)
         if insurance_contributor and tax_resident:
-            health_amount = gross_salary * (health_pct / 100.0)
+            health_amount = gross_salary * (health_pct / Decimal(100))
             deductions += health_amount
 
         # 5.2 Taxable Base = Gross - Health Insurance
-        taxable_base = max(0.0, gross_salary - health_amount)
+        taxable_base = max(Decimal(0), gross_salary - health_amount)
 
         # 5.3 Income Tax (Deducted from Taxable Base) - only if has_income_tax
-        tax_amount = 0.0
+        tax_amount = Decimal(0)
         if has_income_tax and tax_resident:
-            tax_amount = taxable_base * (tax_pct / 100.0)
+            tax_amount = taxable_base * (tax_pct / Decimal(100))
             deductions += tax_amount
 
         net_salary = gross_salary - deductions
@@ -368,17 +416,18 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
             "period_end": end_date,
             "total_regular_hours": round(total_reg_hours, 2),
             "total_overtime_hours": round(total_ot_hours, 2),
-            "regular_amount": round(regular_amount, 2),
-            "overtime_amount": round(overtime_amount, 2),
-            "bonus_amount": round(bonus_amount, 2),
+            "regular_amount": float(regular_amount.quantize(Decimal("0.01"))),
+            "overtime_amount": float(overtime_amount.quantize(Decimal("0.01"))),
+            "bonus_amount": float(bonus_amount.quantize(Decimal("0.01"))),
             "leave_days": leave_days_count,
             "paid_leave_days": paid_leave_days,
             "sick_days": sick_days_count,
-            "tax_amount": round(tax_amount, 2),
-            "insurance_amount": round(health_amount, 2),
-            "taxable_base": round(taxable_base, 2),
-            "total_amount": round(net_salary, 2),
+            "tax_amount": float(tax_amount.quantize(Decimal("0.01"))),
+            "insurance_amount": float(health_amount.quantize(Decimal("0.01"))),
+            "taxable_base": float(taxable_base.quantize(Decimal("0.01"))),
+            "total_amount": float(net_salary.quantize(Decimal("0.01"))),
             "hourly_rate": float(config.hourly_rate) if config.hourly_rate else 0.0,
+            "schedules": schedules,
         }
 
     async def generate_and_save_payslip(self, user_id: int, start_date: datetime, end_date: datetime) -> Payslip:
@@ -410,7 +459,6 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
     async def get_weekly_summary(self, user_id: int, ref_date: date, target_weekly_hours: float = 40.0) -> dict[str, Any]:
         """Calculates Net Balance (Overtime - Debt) in real-time based on Schedule vs Actual Logs.
         """
-        crud = _get_crud()
         start_of_week = ref_date - timedelta(days=ref_date.weekday())
         end_of_week = start_of_week + timedelta(days=6)
 
@@ -431,7 +479,7 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
         # 2. Calculate Expected (Target) Hours up to NOW based on Schedule
         expected_hours_so_far = 0.0
 
-        schedules = await crud.get_user_schedules(self.db, user_id, start_of_week, end_of_week)
+        schedules = stats.get("schedules", [])
         sched_map = {s.date: s for s in schedules}
 
         loop_date = start_of_week
@@ -502,30 +550,42 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
 
     async def get_daily_stats(self, user_id: int, start_date: date, end_date: date) -> list[dict[str, Any]]:
         crud = _get_crud()
+        start_dt = datetime.combine(start_date, time.min)
+        end_dt = datetime.combine(end_date, time.max)
+
+        # Pre-fetch all logs and schedules once for the whole period (Fix #10: N+1)
+        all_logs = await crud.get_timelogs_by_user_and_period(self.db, user_id, start_dt, end_dt)
+        all_schedules = await crud.get_user_schedules(self.db, user_id, start_date, end_date)
+        sched_map = {s.date: s for s in all_schedules}
+
+        logs_by_day: dict[date, list[TimeLog]] = {}
+        for log in all_logs:
+            day = log.start_time.date()
+            if day not in logs_by_day:
+                logs_by_day[day] = []
+            logs_by_day[day].append(log)
+
         stats_list = []
         loop_date = start_date
         while loop_date <= end_date:
-            start_dt = datetime.combine(loop_date, time.min)
-            end_dt = datetime.combine(loop_date, time.max)
+            day_start_dt = datetime.combine(loop_date, time.min)
+            day_end_dt = datetime.combine(loop_date, time.max)
 
-            day_stats = await self.calculate(user_id, start_dt, end_dt)
+            day_stats = await self.calculate(user_id, day_start_dt, day_end_dt)
 
-            # Get Logs for this day to find arrival/departure
-            logs = await crud.get_timelogs_by_user_and_period(self.db, user_id, start_dt, end_dt)
+            day_logs = logs_by_day.get(loop_date, [])
             arrival = None
             departure = None
-            if logs:
-                sorted_logs = sorted(logs, key=lambda log_item: log_item.start_time)
+            if day_logs:
+                sorted_logs = sorted(day_logs, key=lambda l: l.start_time)
                 arrival = sorted_logs[0].start_time
-                # Only show departure if last log is closed
                 if sorted_logs[-1].end_time:
                     departure = sorted_logs[-1].end_time
 
-            # Get Shift Name for UI
-            schedules = await crud.get_user_schedules(self.db, user_id, loop_date, loop_date)
             shift_name = None
-            if schedules and schedules[0].shift:
-                shift_name = schedules[0].shift.name
+            sched = sched_map.get(loop_date)
+            if sched and sched.shift:
+                shift_name = sched.shift.name
 
             stats_list.append({
                 "date": loop_date,
@@ -565,15 +625,16 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
         forecast_regular_pay = actual_stats["regular_amount"]
         forecast_ot_pay = actual_stats["overtime_amount"]
 
+        crud = _get_crud()
+        config = await crud.get_payroll_config(self.db, user_id)
+
         # 2. Future Data (Scheduled)
         if end_date > now:
             future_start = max(start_date, now + timedelta(seconds=1))
             # Just look at schedule, assume perfect attendance
             fs_date = future_start if isinstance(future_start, date) else future_start.date()
             ed_date_forecast = end_date if isinstance(end_date, date) else end_date.date()
-            crud = _get_crud()
             schedules = await crud.get_user_schedules(self.db, user_id, fs_date, ed_date_forecast)
-            config = await crud.get_payroll_config(self.db, user_id)
 
             # Basic defaults
             hourly_rate = float(config.hourly_rate) if config and config.hourly_rate else 0.0
@@ -615,8 +676,6 @@ max(0, ((log_item.end_time - log_item.start_time).total_seconds()/3600.0) - ((ge
         gross = forecast_regular_pay + forecast_ot_pay + actual_stats["bonus_amount"]
 
         # Deductions (re-using logic)
-        crud = _get_crud()
-        config = await crud.get_payroll_config(self.db, user_id)
         if not config: return 0.0
 
         tax_pct = float(config.tax_percent) if config.tax_percent is not None else 10.0

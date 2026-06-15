@@ -1102,3 +1102,29 @@ async def export_cash_journal_xlsx(
         },
     )
 
+
+@router.get("/payment-batch/{batch_id}/csv")
+async def export_payment_batch_csv(
+    batch_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(jwt_utils.get_current_user),
+):
+    if current_user.role.name not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Само администратори могат да експортират платежни батчове")
+
+    from backend.services.salary_payment_service import SalaryPaymentService
+
+    service = SalaryPaymentService(db)
+    csv_content = await service.export_batch(batch_id, format="csv")
+
+    filename = f"payment-batch-{batch_id}.csv"
+    encoded_filename = quote(filename)
+
+    return Response(
+        content=csv_content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{encoded_filename}",
+        },
+    )
+

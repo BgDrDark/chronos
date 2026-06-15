@@ -28,7 +28,7 @@ class ProductionRepository(BaseRepository):
     async def get_active_orders(
         self,
         db: AsyncSession,
-        company_id: int = None,
+        company_id: int | None = None,
     ) -> list[ProductionOrder]:
         """Връща активните производствени поръчки"""
         query = select(ProductionOrder).where(
@@ -44,8 +44,8 @@ class ProductionRepository(BaseRepository):
     async def get_recipes(
         self,
         db: AsyncSession,
-        company_id: int = None,
-        category: str = None,
+        company_id: int | None = None,
+        category: str | None = None,
         is_active: bool = True,
     ) -> list[Recipe]:
         """Връща рецепти"""
@@ -71,8 +71,8 @@ class ProductionRepository(BaseRepository):
     async def get_batches(
         self,
         db: AsyncSession,
-        recipe_id: int = None,
-        status: str = None,
+        recipe_id: int | None = None,
+        status: str | None = None,
         limit: int = 100,
     ) -> list[Batch]:
         """Връща партиди"""
@@ -90,7 +90,7 @@ class ProductionRepository(BaseRepository):
     async def get_workstations(
         self,
         db: AsyncSession,
-        company_id: int = None,
+        company_id: int | None = None,
     ) -> list[Workstation]:
         """Връща работни станции"""
         query = select(Workstation)
@@ -147,8 +147,8 @@ class ProductionRepository(BaseRepository):
     async def get_all_recipes(
         self,
         db: AsyncSession,
-        company_id: int = None,
-        is_active: bool = None,
+        company_id: int | None = None,
+        is_active: bool | None = None,
     ) -> list[Recipe]:
         """Връща всички рецепти с опционални филтри"""
         query = select(Recipe)
@@ -205,7 +205,7 @@ class ProductionRepository(BaseRepository):
         self,
         db: AsyncSession,
         company_id: int,
-        status: str,
+        status: str | None,
     ) -> list[ProductionOrder]:
         """Връща поръчки по статус"""
         query = select(ProductionOrder).where(
@@ -285,7 +285,7 @@ class ProductionRepository(BaseRepository):
         self,
         db: AsyncSession,
         user_id: int,
-        status: str = None,
+        status: str | None = None,
     ) -> list[ProductionTask]:
         """Връща задачи по потребител"""
         query = select(ProductionTask).where(ProductionTask.assigned_user_id == user_id)

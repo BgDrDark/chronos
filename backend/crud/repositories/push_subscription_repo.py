@@ -31,7 +31,7 @@ class PushSubscriptionRepository(BaseRepository):
             sql_delete(PushSubscription).where(PushSubscription.endpoint == endpoint),
         )
         await db.flush()
-        return result.rowcount
+        return getattr(result, "rowcount", 0)
 
     async def delete_by_user_and_endpoint(
         self,
@@ -45,7 +45,7 @@ class PushSubscriptionRepository(BaseRepository):
             .where(PushSubscription.endpoint == endpoint),
         )
         await db.flush()
-        return result.rowcount
+        return getattr(result, "rowcount", 0)
 
     async def get_all_subscriptions(self, db: AsyncSession) -> list[PushSubscription]:
         result = await db.execute(select(PushSubscription))

@@ -4,7 +4,8 @@ import {
   Typography, Box, TextField, Button, MenuItem, Container,
   Alert, CircularProgress, Card, CardContent, Divider, Grid, Link, FormControlLabel, Checkbox,
   Switch, type SelectChangeEvent, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
-  InputLabel, Select, FormControl, InputAdornment
+  InputLabel, Select, FormControl, InputAdornment,
+  Table, TableHead, TableBody, TableRow, TableCell
 } from '@mui/material';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import PaidIcon from '@mui/icons-material/Paid';
@@ -37,6 +38,7 @@ import PrintIcon from '@mui/icons-material/Print';
 import SecurityIcon from '@mui/icons-material/Security';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloudSyncIcon from '@mui/icons-material/CloudSync';
+import ExportIcon from '@mui/icons-material/FileDownload';
 
 // --- GraphQL Queries & Mutations ---
 const GET_PAYROLL_LEGAL_SETTINGS = gql`
@@ -1366,6 +1368,426 @@ const AdvanceLoanManager: React.FC = () => {
     );
 };
 
+const GET_PAYMENT_BATCHES = gql`
+  query GetPaymentBatches($companyId: Int, $status: String) {
+    paymentBatches(companyId: $companyId, status: $status) {
+      id
+      periodStart
+      periodEnd
+      paymentDate
+      totalAmount
+      status
+      paymentMethod
+      paymentReference
+      createdAt
+      paidByUser {
+        id
+        fullName
+      }
+      items {
+        id
+        userId
+        amount
+        user {
+          id
+          fullName
+        }
+      }
+    }
+  }
+`;
+
+const CREATE_PAYMENT_BATCH = gql`
+  mutation CreatePaymentBatch($input: CreatePaymentBatchInput!) {
+    createPaymentBatch(input: $input) {
+      id
+      periodStart
+      periodEnd
+      paymentDate
+      totalAmount
+      status
+      paymentMethod
+    }
+  }
+`;
+
+const ADD_ITEMS_TO_BATCH = gql`
+  mutation AddItemsToBatch($input: AddItemsToBatchInput!) {
+    addItemsToBatch(input: $input) {
+      id
+      totalAmount
+      status
+      items {
+        id
+        userId
+        amount
+        user {
+          id
+          fullName
+        }
+      }
+    }
+  }
+`;
+
+const COMPLETE_PAYMENT_BATCH = gql`
+  mutation CompletePaymentBatch($batchId: Int!) {
+    completePaymentBatch(batchId: $batchId) {
+      id
+      status
+    }
+  }
+`;
+
+const CANCEL_PAYMENT_BATCH = gql`
+  mutation CancelPaymentBatch($batchId: Int!) {
+    cancelPaymentBatch(batchId: $batchId) {
+      id
+      status
+    }
+  }
+`;
+
+const PaymentBatchesSection: React.FC = () => {
+  const { data, loading, refetch } = useQuery(GET_PAYMENT_BATCHES);
+  const [createBatch] = useMutation(CREATE_PAYMENT_BATCH);
+  const [addItems] = useMutation(ADD_ITEMS_TO_BATCH);
+  const [completeBatch] = useMutation(COMPLETE_PAYMENT_BATCH);
+  const [cancelBatch] = useMutation(CANCEL_PAYMENT_BATCH);
+
+  const [openCreateDialog, setOpenCreateDialog] = useState(false);
+  const [openAddItemsDialog, setOpenAddItemsDialog] = useState(false);
+  const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
+
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('bank_transfer');
+  const [paymentReference, setPaymentReference] = useState('');
+
+  const { data: usersData } = useQuery(GET_DATA_QUERY);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+
+  const handleCreateBatch = async () => {
+    if (!periodStart || !periodEnd || !paymentDate) {
+      alert('Моля, попълнете всички задължителни полета');
+      return;
+    }
+    try {
+      await createBatch({
+        variables: {
+          input: {
+            periodStart,
+            periodEnd,
+            paymentDate,
+            paymentMethod,
+            paymentReference: paymentReference || undefined,
+          },
+        },
+      });
+      alert('Батчът е създаден успешно');
+      setOpenCreateDialog(false);
+      setPeriodStart('');
+      setPeriodEnd('');
+      setPaymentDate('');
+      setPaymentMethod('bank_transfer');
+      setPaymentReference('');
+      refetch();
+    } catch (e) {
+      alert('Грешка: ' + (e instanceof Error ? e.message : ''));
+    }
+  };
+
+  const handleAddItems = async () => {
+    if (!selectedBatchId || selectedUsers.length === 0) {
+      alert('Моля, изберете поне един служител');
+      return;
+    }
+    try {
+      const items = selectedUsers.map(userId => ({
+        userId: parseInt(userId),
+        amount: parseFloat(amounts[userId] || '0'),
+      }));
+      await addItems({
+        variables: {
+          input: {
+            batchId: selectedBatchId,
+            items,
+          },
+        },
+      });
+      alert('Служителите са добавени успешно');
+      setOpenAddItemsDialog(false);
+      setSelectedUsers([]);
+      setAmounts({});
+      setSelectedBatchId(null);
+      refetch();
+    } catch (e) {
+      alert('Грешка: ' + (e instanceof Error ? e.message : ''));
+    }
+  };
+
+  const handleCompleteBatch = async (batchId: number) => {
+    if (!confirm('Сигурни ли сте, че искате да завършите този батч?')) return;
+    try {
+      await completeBatch({ variables: { batchId } });
+      alert('Батчът е завършен успешно');
+      refetch();
+    } catch (e) {
+      alert('Грешка: ' + (e instanceof Error ? e.message : ''));
+    }
+  };
+
+  const handleCancelBatch = async (batchId: number) => {
+    if (!confirm('Сигурни ли сте, че искате да отмените този батч?')) return;
+    try {
+      await cancelBatch({ variables: { batchId } });
+      alert('Батчът е отменен успешно');
+      refetch();
+    } catch (e) {
+      alert('Грешка: ' + (e instanceof Error ? e.message : ''));
+    }
+  };
+
+  const handleExportBatch = async (batchId: number) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/export/payment-batch/${batchId}/csv`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to export');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payment-batch-${batchId}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Грешка при експорт: ' + (e instanceof Error ? e.message : ''));
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'draft': return 'default';
+      case 'completed': return 'success';
+      case 'cancelled': return 'error';
+      default: return 'default';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'draft': return 'Чернова';
+      case 'completed': return 'Завършен';
+      case 'cancelled': return 'Отменен';
+      default: return status;
+    }
+  };
+
+  if (loading) return <CircularProgress />;
+
+  const batches = data?.paymentBatches || [];
+
+  return (
+    <Card variant="outlined" sx={{ mb: 3 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6" color="primary">
+            Платежни Батчове
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setOpenCreateDialog(true)}
+          >
+            Нов Батч
+          </Button>
+        </Box>
+
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Период</TableCell>
+              <TableCell>Дата на плащане</TableCell>
+              <TableCell>Метод</TableCell>
+              <TableCell>Сума</TableCell>
+              <TableCell>Служители</TableCell>
+              <TableCell>Статус</TableCell>
+              <TableCell>Действия</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {batches.map((batch: any) => (
+              <TableRow key={batch.id}>
+                <TableCell>
+                  {formatDate(batch.periodStart)} - {formatDate(batch.periodEnd)}
+                </TableCell>
+                <TableCell>{formatDate(batch.paymentDate)}</TableCell>
+                <TableCell>{batch.paymentMethod}</TableCell>
+                <TableCell>{batch.totalAmount?.toFixed(2)} лв.</TableCell>
+                <TableCell>{batch.items?.length || 0}</TableCell>
+                <TableCell>
+                  <Chip
+                    label={getStatusLabel(batch.status)}
+                    color={getStatusColor(batch.status) as any}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>
+                  {batch.status === 'draft' && (
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setSelectedBatchId(batch.id);
+                          setOpenAddItemsDialog(true);
+                        }}
+                      >
+                        Добави
+                      </Button>
+                      <Button
+                        size="small"
+                        color="success"
+                        onClick={() => handleCompleteBatch(batch.id)}
+                      >
+                        Завърши
+                      </Button>
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() => handleCancelBatch(batch.id)}
+                      >
+                        Отмени
+                      </Button>
+                    </Box>
+                  )}
+                  {batch.status === 'completed' && (
+                    <Button
+                      size="small"
+                      startIcon={<ExportIcon />}
+                      onClick={() => handleExportBatch(batch.id)}
+                    >
+                      Експорт
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+            {batches.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  Няма платежни батчове
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+
+      <Dialog open={openCreateDialog} onClose={() => setOpenCreateDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Създай Нов Платежен Батч</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="Начало на периода"
+              type="date"
+              value={periodStart}
+              onChange={e => setPeriodStart(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              label="Край на периода"
+              type="date"
+              value={periodEnd}
+              onChange={e => setPeriodEnd(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              label="Дата на плащане"
+              type="date"
+              value={paymentDate}
+              onChange={e => setPaymentDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              select
+              label="Метод на плащане"
+              value={paymentMethod}
+              onChange={e => setPaymentMethod(e.target.value)}
+              fullWidth
+            >
+              <MenuItem value="bank_transfer">Банков превод</MenuItem>
+              <MenuItem value="cash">В брой</MenuItem>
+              <MenuItem value="card">Карта</MenuItem>
+            </TextField>
+            <TextField
+              label="Референция (по избор)"
+              value={paymentReference}
+              onChange={e => setPaymentReference(e.target.value)}
+              fullWidth
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenCreateDialog(false)}>Отказ</Button>
+          <Button variant="contained" onClick={handleCreateBatch}>
+            Създай
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openAddItemsDialog} onClose={() => setOpenAddItemsDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Добави Служители към Батч</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Изберете служители и въведете суми за всеки:
+            </Typography>
+            {usersData?.users?.users.map((user: User) => (
+              <Box key={user.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                <Checkbox
+                  checked={selectedUsers.includes(String(user.id))}
+                  onChange={e => {
+                    if (e.target.checked) {
+                      setSelectedUsers([...selectedUsers, String(user.id)]);
+                    } else {
+                      setSelectedUsers(selectedUsers.filter(id => id !== String(user.id)));
+                    }
+                  }}
+                />
+                <Typography sx={{ flex: 1 }}>
+                  {user.firstName} {user.lastName}
+                </Typography>
+                <TextField
+                  label="Сума"
+                  type="number"
+                  size="small"
+                  value={amounts[String(user.id)] || ''}
+                  onChange={e => setAmounts({ ...amounts, [String(user.id)]: e.target.value })}
+                  disabled={!selectedUsers.includes(String(user.id))}
+                  sx={{ width: 120 }}
+                />
+              </Box>
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAddItemsDialog(false)}>Отказ</Button>
+          <Button variant="contained" onClick={handleAddItems}>
+            Добави
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Card>
+  );
+};
+
 const PayrollSettings: React.FC = () => {
   const { data, loading } = useQuery(GET_DATA_QUERY);
   const { data: globalData } = useQuery(GET_GLOBAL_CONFIG_QUERY);
@@ -1990,7 +2412,9 @@ const HolidaySettings: React.FC = () => {
             </Box>
         )}
         {tab === 'payments' && (
-            <Box sx={{ maxWidth: 900 }}>
+            <Box sx={{ maxWidth: 1200 }}>
+                <PaymentBatchesSection />
+                <Divider sx={{ my: 4 }} />
                 <PayrollSettings />
                 <Divider sx={{ my: 4 }} />
                 <AdvanceLoanManager />

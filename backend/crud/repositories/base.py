@@ -14,7 +14,7 @@ class BaseRepository(Generic[T]):
     async def get_by_id(self, db: AsyncSession, id: int) -> T | None:
         """Връща запис по ID"""
         result = await db.execute(
-            select(self.model).where(self.model.id == id),
+            select(self.model).where(getattr(self.model, "id") == id),
         )
         return result.scalar_one_or_none()
 
@@ -23,8 +23,8 @@ class BaseRepository(Generic[T]):
         db: AsyncSession,
         limit: int = 100,
         offset: int = 0,
-        filters: dict = None,
-        order_by: str = None,
+        filters: dict | None = None,
+        order_by: str | None = None,
         order_desc: bool = False,
     ) -> list[T]:
         """Връща всички записи с pagination"""
@@ -43,9 +43,9 @@ class BaseRepository(Generic[T]):
         result = await db.execute(query)
         return list(result.scalars().all())
 
-    async def count(self, db: AsyncSession, filters: dict = None) -> int:
+    async def count(self, db: AsyncSession, filters: dict | None = None) -> int:
         """Брой на записите"""
-        query = select(func.count(self.model.id))
+        query = select(func.count(getattr(self.model, "id")))
 
         if filters:
             for key, value in filters.items():
@@ -86,7 +86,7 @@ class BaseRepository(Generic[T]):
     async def exists(self, db: AsyncSession, id: int) -> bool:
         """Проверява дали записът съществува"""
         result = await db.execute(
-            select(func.count(self.model.id)).where(self.model.id == id),
+            select(func.count(getattr(self.model, "id"))).where(getattr(self.model, "id") == id),
         )
         return (result.scalar() or 0) > 0
 
@@ -106,10 +106,10 @@ class BaseRepository(Generic[T]):
     async def get_many_by(
         self,
         db: AsyncSession,
-        filters: dict = None,
+        filters: dict | None = None,
         limit: int = 100,
         offset: int = 0,
-        order_by: str = None,
+        order_by: str | None = None,
         order_desc: bool = False,
     ) -> list[T]:
         """Връща много записи по филтри"""

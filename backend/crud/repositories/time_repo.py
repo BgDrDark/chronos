@@ -67,8 +67,8 @@ class TimeTrackingRepository(BaseRepository):
         self,
         db: AsyncSession,
         user_id: int,
-        start_date: date = None,
-        end_date: date = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
         limit: int = 100,
     ) -> list[TimeLog]:
         """Връща всички TimeLog за потребител"""
@@ -109,11 +109,11 @@ class TimeTrackingRepository(BaseRepository):
     async def get_all_shifts(
         self,
         db: AsyncSession,
-        company_id: int = None,
+        company_id: int | None = None,
     ) -> list[Shift]:
         """Връща всички смени"""
         query = select(Shift)
-        if company_id:
+        if company_id is not None:
             query = query.where(Shift.company_id == company_id)
         result = await db.execute(query)
         return list(result.scalars().all())
@@ -122,11 +122,11 @@ class TimeTrackingRepository(BaseRepository):
         self,
         db: AsyncSession,
         user_id: int,
-        status: str = None,
+        status: str | None = None,
     ) -> list[LeaveRequest]:
         """Връща заявки за отпуска на потребител"""
         query = select(LeaveRequest).where(LeaveRequest.user_id == user_id)
-        if status:
+        if status is not None:
             query = query.where(LeaveRequest.status == status)
         query = query.order_by(LeaveRequest.start_date.desc())
         result = await db.execute(query)
@@ -136,11 +136,11 @@ class TimeTrackingRepository(BaseRepository):
         self,
         db: AsyncSession,
         user_id: int,
-        year: int = None,
+        year: int | None = None,
     ) -> list[LeaveBalance]:
         """Връща баланс на отпуски"""
         query = select(LeaveBalance).where(LeaveBalance.user_id == user_id)
-        if year:
+        if year is not None:
             query = query.where(LeaveBalance.year == year)
         result = await db.execute(query)
         return list(result.scalars().all())
@@ -184,14 +184,14 @@ class TimeTrackingRepository(BaseRepository):
         self,
         db: AsyncSession,
         shift_id: int,
-        name: str = None,
-        start_time: datetime.time = None,
-        end_time: datetime.time = None,
-        tolerance_minutes: int = None,
-        break_duration_minutes: int = None,
-        pay_multiplier: float = None,
-        shift_type: str = None,
-        overnight: bool = None,
+        name: str | None = None,
+        start_time: datetime.time | None = None,
+        end_time: datetime.time | None = None,
+        tolerance_minutes: int | None = None,
+        break_duration_minutes: int | None = None,
+        pay_multiplier: float | None = None,
+        shift_type: str | None = None,
+        overnight: bool | None = None,
     ) -> Shift | None:
         """Обновява смяна"""
         shift = await self.get_shift_by_id(db, shift_id)
@@ -252,8 +252,8 @@ class TimeTrackingRepository(BaseRepository):
         self,
         db: AsyncSession,
         role_id: int,
-        name: str = None,
-        description: str = None,
+        name: str | None = None,
+        description: str | None = None,
     ) -> Role | None:
         """Обновява роля"""
         role = await self.get_role_by_id(db, role_id)
@@ -283,8 +283,8 @@ class TimeTrackingRepository(BaseRepository):
         db: AsyncSession,
         name: str,
         company_id: int,
-        description: str = None,
-        items: list[dict] = None,
+        description: str | None = None,
+        items: list[dict] | None = None,
     ) -> ScheduleTemplate:
         """Създава шаблон за график"""
         template = ScheduleTemplate(name=name, company_id=company_id, description=description)
@@ -323,14 +323,14 @@ class TimeTrackingRepository(BaseRepository):
     async def get_leave_requests(
         self,
         db: AsyncSession,
-        user_id: int = None,
-        status: str = None,
+        user_id: int | None = None,
+        status: str | None = None,
     ) -> list[LeaveRequest]:
         """Връща заявки за отпуска"""
         query = select(LeaveRequest).options(selectinload(LeaveRequest.user)).order_by(LeaveRequest.created_at.desc())
-        if user_id:
+        if user_id is not None:
             query = query.where(LeaveRequest.user_id == user_id)
-        if status:
+        if status is not None:
             query = query.where(LeaveRequest.status == status)
         result = await db.execute(query)
         return list(result.scalars().all())
@@ -342,7 +342,7 @@ class TimeTrackingRepository(BaseRepository):
         start_time: datetime,
         end_time: datetime,
         break_duration_minutes: int = 0,
-        notes: str = None,
+        notes: str | None = None,
         is_manual: bool = True,
     ) -> TimeLog:
         """Създава ръчен запис за време"""
@@ -373,7 +373,7 @@ class TimeTrackingRepository(BaseRepository):
         end_time: datetime = None,
         is_manual: bool = False,
         break_duration_minutes: int = 0,
-        notes: str = None,
+        notes: str | None = None,
     ) -> TimeLog | None:
         """Обновява запис за време"""
         log = await db.get(TimeLog, log_id)
@@ -412,9 +412,9 @@ class TimeTrackingRepository(BaseRepository):
         self,
         db: AsyncSession,
         user_id: int,
-        latitude: float = None,
-        longitude: float = None,
-        custom_time: datetime = None,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        custom_time: datetime | None = None,
     ) -> TimeLog:
         """Започва работно време"""
         from zoneinfo import ZoneInfo
@@ -443,10 +443,10 @@ class TimeTrackingRepository(BaseRepository):
         self,
         db: AsyncSession,
         user_id: int,
-        latitude: float = None,
-        longitude: float = None,
-        notes: str = None,
-        custom_time: datetime = None,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        notes: str | None = None,
+        custom_time: datetime | None = None,
     ) -> TimeLog | None:
         """Приключва работно време"""
         from zoneinfo import ZoneInfo
@@ -467,7 +467,8 @@ class TimeTrackingRepository(BaseRepository):
         active_log.end_time = end_time
         active_log.latitude = latitude or active_log.latitude
         active_log.longitude = longitude or active_log.longitude
-        active_log.notes = notes
+        if notes is not None:
+            active_log.notes = notes
 
         await db.flush()
         await db.refresh(active_log)
@@ -485,7 +486,7 @@ class TimeTrackingRepository(BaseRepository):
         db: AsyncSession,
         request_id: int,
         status: str,
-        admin_comment: str = None,
+        admin_comment: str | None = None,
         employer_top_up: bool = False,
     ) -> LeaveRequest | None:
         """Обновява статуса на заявка за отпуск"""
@@ -529,14 +530,14 @@ class TimeTrackingRepository(BaseRepository):
         db: AsyncSession,
         start_date: date,
         end_date: date,
-        company_id: int = None,
+        company_id: int | None = None,
     ) -> list[WorkSchedule]:
         """Връща графици за период"""
         query = select(WorkSchedule).options(selectinload(WorkSchedule.shift)).where(
             WorkSchedule.date >= start_date,
             WorkSchedule.date <= end_date,
         )
-        if company_id:
+        if company_id is not None:
             from backend.database.models import User
             query = query.join(User).where(User.company_id == company_id)
         result = await db.execute(query.order_by(WorkSchedule.date))
@@ -689,7 +690,7 @@ class TimeTrackingRepository(BaseRepository):
         shift_id: int,
         start_date: date,
         end_date: date,
-        days_of_week: list[int] = None,
+        days_of_week: list[int] | None = None,
     ) -> int:
         """Създава масово графици"""
         from datetime import timedelta
@@ -758,7 +759,7 @@ class TimeTrackingRepository(BaseRepository):
         db: AsyncSession,
         swap_id: int,
         new_status: str,
-        admin_user_id: int = None,
+        admin_user_id: int | None = None,
     ) -> ShiftSwapRequest | None:
         """Обновява статуса на размяна"""
         swap = await self.get_swap_request(db, swap_id)
@@ -814,13 +815,13 @@ class TimeTrackingRepository(BaseRepository):
     async def get_schedule_templates(
         self,
         db: AsyncSession,
-        company_id: int = None,
+        company_id: int | None = None,
     ) -> list[ScheduleTemplate]:
         """Връща шаблони за графици"""
         stmt = select(ScheduleTemplate).options(
             selectinload(ScheduleTemplate.items).selectinload(ScheduleTemplateItem.shift),
         )
-        if company_id:
+        if company_id is not None:
             stmt = stmt.where(ScheduleTemplate.company_id == company_id)
         res = await db.execute(stmt)
         return list(res.scalars().all())
@@ -829,13 +830,13 @@ class TimeTrackingRepository(BaseRepository):
         self,
         db: AsyncSession,
         template_id: int,
-        company_id: int = None,
+        company_id: int | None = None,
     ) -> ScheduleTemplate | None:
         """Връща шаблон по ID"""
         stmt = select(ScheduleTemplate).where(ScheduleTemplate.id == template_id).options(
             selectinload(ScheduleTemplate.items).selectinload(ScheduleTemplateItem.shift),
         )
-        if company_id:
+        if company_id is not None:
             stmt = stmt.where(ScheduleTemplate.company_id == company_id)
         res = await db.execute(stmt)
         return res.scalars().first()
@@ -918,7 +919,7 @@ class TimeTrackingRepository(BaseRepository):
         self,
         db: AsyncSession,
         template_id: int,
-        company_id: int,
+        company_id: int | None,
         name: str | None = None,
         description: str | None = None,
         items: list[dict] | None = None,

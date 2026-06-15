@@ -86,7 +86,7 @@ class TRZRepository(BaseRepository):
         self,
         db: AsyncSession,
         company_id: int,
-        status: str = None,
+        status: str | None = None,
         limit: int = 100,
     ) -> list[EmploymentContract]:
         """Връща договорите на компания"""

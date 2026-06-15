@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.crud.repositories import payroll_repo, settings_repo
@@ -118,6 +119,100 @@ class PayrollService:
             is_paid=True,
             payment_date=payment_date or sofia_now(),
         )
+
+    async def generate_payslip(
+        self,
+        user_id: int,
+        start_date: datetime,
+        end_date: datetime,
+        admin_user_id: int | None = None,
+    ) -> Payslip:
+        existing = await self.repo.get_payslips_by_user(
+            self.db, user_id, start_date, end_date,
+        )
+        if existing:
+            return existing[0]
+
+        calculator = PayrollCalculator(self.db)
+        result = await calculator.calculate(user_id, start_date, end_date)
+
+        payslip = await self.repo.create_payslip(
+            self.db,
+            user_id=result["user_id"],
+            period_start=result["period_start"],
+            period_end=result["period_end"],
+            total_regular_hours=Decimal(str(result["total_regular_hours"])),
+            total_overtime_hours=Decimal(str(result["total_overtime_hours"])),
+            regular_amount=Decimal(str(result["regular_amount"])),
+            overtime_amount=Decimal(str(result["overtime_amount"])),
+            bonus_amount=Decimal(str(result["bonus_amount"])),
+            tax_amount=Decimal(str(result["tax_amount"])),
+            insurance_amount=Decimal(str(result["insurance_amount"])),
+            sick_days=result.get("sick_days", 0),
+            leave_days=result.get("leave_days", 0),
+            total_amount=Decimal(str(result["total_amount"])),
+            generated_at=sofia_now(),
+        )
+        return payslip
+
+    async def generate_all_payslips(
+        self,
+        company_id: int,
+        start_date: datetime,
+        end_date: datetime,
+        admin_user_id: int | None = None,
+    ) -> list[Payslip]:
+        from backend.database.models import User as DbUser
+
+        result = await self.db.execute(
+            select(DbUser)
+            .where(DbUser.company_id == company_id, DbUser.is_active),
+        )
+        users = result.scalars().all()
+
+        payslips = []
+        for user in users:
+            existing = await self.repo.get_payslips_by_user(
+                self.db, user.id, start_date, end_date,
+            )
+            if existing:
+                payslips.append(existing[0])
+                continue
+
+            payslip = await self.generate_payslip(
+                user.id, start_date, end_date, admin_user_id,
+            )
+            payslips.append(payslip)
+
+        return payslips
+
+    async def generate_sepa_xml(
+        self,
+        payslip_ids: list[int],
+    ) -> str:
+        payslips = []
+        for pid in payslip_ids:
+            p = await self.repo.get_payslip_by_id(self.db, pid)
+            if p:
+                payslips.append(p)
+
+        lines = ['<?xml version="1.0" encoding="UTF-8"?>']
+        lines.append('<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.03">')
+        lines.append("  <CstmrCdtTrfInitn>")
+        lines.append("    <GrpHdr>")
+        lines.append(f"      <MsgId>PAYROLL-{sofia_now().strftime('%Y%m%d%H%M%S')}</MsgId>")
+        lines.append(f"      <NbOfTxs>{len(payslips)}</NbOfTxs>")
+        lines.append("    </GrpHdr>")
+
+        for _i, p in enumerate(payslips):
+            lines.append("    <PmtInf>")
+            lines.append(f"      <PmtInfId>PAY-{p.id}</PmtInfId>")
+            lines.append(f"      <Amt Ccy='EUR'>{float(p.total_amount):.2f}</Amt>")
+            lines.append("    </PmtInf>")
+
+        lines.append("  </CstmrCdtTrfInitn>")
+        lines.append("</Document>")
+        return "\n".join(lines)
 
     async def set_monthly_work_days(
         self,

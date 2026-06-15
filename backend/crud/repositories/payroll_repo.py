@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,12 +30,9 @@ class PayrollRepository(BaseRepository):
         self,
         db: AsyncSession,
         user_id: int,
-        year: int = None,
-        month: int = None,
     ) -> list[Payroll]:
         """Връща Payroll записи за потребител"""
         query = select(Payroll).where(Payroll.user_id == user_id)
-
         query = query.order_by(Payroll.id.desc())
         result = await db.execute(query)
         return list(result.scalars().all())
@@ -122,15 +120,17 @@ class PayrollRepository(BaseRepository):
         self,
         db: AsyncSession,
         user_id: int,
-        amount: float,
-        request_date: date = None,
+        amount: Decimal,
+        payment_date: date | None = None,
+        description: str | None = None,
     ) -> AdvancePayment:
         """Създава авансово плащане"""
         advance = AdvancePayment(
             user_id=user_id,
             amount=amount,
-            request_date=request_date or date.today(),
-            status="pending",
+            payment_date=payment_date or date.today(),
+            description=description,
+            is_processed=False,
         )
         db.add(advance)
         await db.flush()

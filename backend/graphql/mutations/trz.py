@@ -13,7 +13,6 @@ from backend.database.models import (
     PublicHoliday,
     WorkOnHoliday,
 )
-from backend.exceptions import InvalidOperationException
 from backend.graphql import types
 from backend.graphql.utils.permission_checker import get_current_user
 
@@ -147,16 +146,14 @@ class TrzMutation:
     @strawberry.mutation
     async def create_night_work_bonus(
         self,
+        info: strawberry.Info,
         user_id: int,
         date: datetime.date,
         hours: float,
         hourly_rate: float,
         period_id: int | None = None,
         notes: str | None = None,
-        info: strawberry.Info = None,
     ) -> types.NightWorkBonus:
-        if not info:
-            raise InvalidOperationException.info_required()
         db = info.context["db"]
         get_current_user(info)
 
@@ -164,7 +161,7 @@ class TrzMutation:
 
         from backend.database.models import NightWorkBonus
 
-        amount = Decimal(str(hours)) * Decimal(str(hourly_rate)) * Decimal("1.5")  # 50% надбавка
+        amount = Decimal(str(hours)) * Decimal(str(hourly_rate)) * Decimal("1.5")
 
         night_work = NightWorkBonus(
             user_id=user_id,
@@ -184,6 +181,7 @@ class TrzMutation:
     @strawberry.mutation
     async def create_overtime_work(
         self,
+        info: strawberry.Info,
         user_id: int,
         date: datetime.date,
         hours: float,
@@ -191,10 +189,7 @@ class TrzMutation:
         multiplier: float = 1.5,
         period_id: int | None = None,
         notes: str | None = None,
-        info: strawberry.Info = None,
     ) -> types.OvertimeWork:
-        if not info:
-            raise InvalidOperationException.info_required()
         db = info.context["db"]
         get_current_user(info)
 
@@ -223,6 +218,7 @@ class TrzMutation:
     @strawberry.mutation
     async def create_business_trip(
         self,
+        info: strawberry.Info,
         user_id: int,
         destination: str,
         start_date: datetime.date,
@@ -234,10 +230,7 @@ class TrzMutation:
         department_id: int | None = None,
         period_id: int | None = None,
         notes: str | None = None,
-        info: strawberry.Info = None,
     ) -> types.BusinessTrip:
-        if not info:
-            raise InvalidOperationException.info_required()
         db = info.context["db"]
         get_current_user(info)
 
@@ -272,6 +265,7 @@ class TrzMutation:
     @strawberry.mutation
     async def create_work_experience(
         self,
+        info: strawberry.Info,
         user_id: int,
         company_name: str,
         start_date: datetime.date,
@@ -282,10 +276,7 @@ class TrzMutation:
         class_level: str | None = None,
         is_current: bool = False,
         notes: str | None = None,
-        info: strawberry.Info = None,
     ) -> types.WorkExperience:
-        if not info:
-            raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = get_current_user(info)
 

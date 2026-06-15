@@ -21,7 +21,7 @@ class NotificationRepository(BaseRepository):
     ) -> list[Notification]:
         query = select(Notification).where(Notification.user_id == user_id)
         if unread_only:
-            query = query.where(not Notification.is_read)
+            query = query.where(~Notification.is_read)
         query = query.order_by(Notification.created_at.desc()).limit(limit)
         result = await db.execute(query)
         return list(result.scalars().all())
@@ -57,7 +57,7 @@ class NotificationRepository(BaseRepository):
         result = await db.execute(
             select(Notification).where(
                 Notification.user_id == user_id,
-                not Notification.is_read,
+                ~Notification.is_read,
             ),
         )
         notifications = result.scalars().all()
@@ -73,7 +73,7 @@ class NotificationRepository(BaseRepository):
         result = await db.execute(
             select(func.count(Notification.id)).where(
                 Notification.user_id == user_id,
-                not Notification.is_read,
+                ~Notification.is_read,
             ),
         )
         return result.scalar() or 0

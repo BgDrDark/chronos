@@ -73,8 +73,8 @@ class CompanyRepository(BaseRepository):
         self,
         db: AsyncSession,
         name: str,
-        eik: str = None,
-        vat_number: str = None,
+        eik: str | None,
+        vat_number: str | None = None,
         **kwargs,
     ) -> Company:
         """Създава нова компания"""
@@ -108,7 +108,7 @@ class CompanyRepository(BaseRepository):
         db: AsyncSession,
         name: str,
         company_id: int,
-        manager_id: int = None,
+        manager_id: int | None = None,
         **kwargs,
     ) -> Department:
         """Създава нов департамент"""

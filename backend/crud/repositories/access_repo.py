@@ -54,7 +54,7 @@ class AccessRepository(BaseRepository):
     async def get_online_gateways(
         self,
         db: AsyncSession,
-        company_id: int = None,
+        company_id: int | None = None,
     ) -> list[Gateway]:
         query = select(Gateway).where(Gateway.is_online)
 
@@ -436,7 +436,7 @@ class AccessRepository(BaseRepository):
         self,
         db: AsyncSession,
         id: int,
-        end_time: datetime = None,
+        end_time: datetime | None = None,
     ) -> TerminalSession | None:
         instance = await db.execute(
             select(TerminalSession).where(TerminalSession.id == id),
@@ -451,11 +451,11 @@ class AccessRepository(BaseRepository):
     async def get_active_sessions(
         self,
         db: AsyncSession,
-        terminal_id: int = None,
+        terminal_id: int | None = None,
     ) -> list[TerminalSession]:
         query = select(TerminalSession).where(TerminalSession.end_time.is_(None))
 
-        if terminal_id:
+        if terminal_id is not None:
             query = query.where(TerminalSession.terminal_id == terminal_id)
 
         result = await db.execute(query)

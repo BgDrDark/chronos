@@ -64,6 +64,9 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         self.overtime_calc = OvertimeCalculator()
         self.business_trip_calc = BusinessTripCalculator()
 
+        # Кеш за feature flags (Fix #11)
+        self._trz_flags: dict[str, bool] | None = None
+
     async def calculate_enhanced_payroll(self) -> dict[str, Any]:
         """Calculate complete payroll with all new components"""
         start_date = datetime.combine(self.calculation_period["start_date"], datetime.min.time())
@@ -316,6 +319,22 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         trip_res = await self.db.execute(trip_query)
         self.business_trips = trip_res.scalars().all()
 
+        # Preload TRZ feature flags in one query (Fix #11)
+        await self._preload_trz_feature_flags()
+
+    async def _preload_trz_feature_flags(self) -> None:
+        from backend import crud
+        flags = [
+            "trz_night_work_enabled",
+            "trz_overtime_enabled",
+            "trz_holiday_work_enabled",
+            "trz_business_trips_enabled",
+        ]
+        self._trz_flags = {}
+        for key in flags:
+            val = await crud.get_global_setting(self.db, key)
+            self._trz_flags[key] = val.lower() == "true" if val else False
+
     async def _get_payment_date(self) -> date:
         """Determine payment date according to company/contract settings"""
         # Приоритет 1: Ден в индивидуалния договор
@@ -330,14 +349,13 @@ class EnhancedPayrollCalculator(PayrollCalculator):
             # Default: 25-то число на следващия месец
             target_day = 25
             end_month = self.calculation_period["end_date"].month
-            target_month = (int(end_month) if hasattr(end_month, "__int__") else end_month) + 1
+            target_month = end_month + 1
 
         end_year = self.calculation_period["end_date"].year
-        target_year = int(end_year) if hasattr(end_year, "__int__") else end_year
+        target_year = end_year
 
-        month_val = int(target_month) if hasattr(target_month, "__int__") else target_month
-        if month_val > 12:
-            target_month = month_val - 12
+        if target_month > 12:
+            target_month -= 12
             target_year += 1
 
         # Предпазване от невалидни дати (напр. 31 февруари)
@@ -351,68 +369,78 @@ class EnhancedPayrollCalculator(PayrollCalculator):
 
     async def _calculate_additional_deductions(self) -> Decimal:
         """Calculate all applicable additional deductions"""
+        base_salary = await self._get_base_salary()
         total_deduction = Decimal(0)
 
         for deduction in self.additional_deductions:
             if bool(deduction.apply_to_all) is True or (deduction.employee_ids is not None and self.user_id in deduction.employee_ids) and str(deduction.deduction_type) == "fixed":
                 total_deduction += Decimal(str(deduction.amount))
-            elif str(deduction.deduction_type) == "percentage":
-                base_salary = await self._get_base_salary()
-                if base_salary:
-                    percentage_amount = base_salary * (Decimal(str(deduction.percentage)) / Decimal(100))
-                    total_deduction += percentage_amount
+            elif str(deduction.deduction_type) == "percentage" and base_salary:
+                percentage_amount = base_salary * (Decimal(str(deduction.percentage)) / Decimal(100))
+                total_deduction += percentage_amount
 
         return total_deduction
 
     async def _calculate_sick_leave_payments(self) -> Decimal:
         """Calculate sick leave payments according to Bulgarian law"""
-        total_sick_payment = Decimal(0)
+        from backend import crud
 
+        # Preload settings once (Fix #12)
+        noi_perc_str = await crud.get_global_setting(self.db, "payroll_noi_compensation_percent")
+        emp_days_str = await crud.get_global_setting(self.db, "payroll_employer_paid_sick_days")
+        noi_percent = (Decimal(noi_perc_str) if noi_perc_str else Decimal("80.0")) / Decimal(100)
+        employer_days_global = int(emp_days_str) if emp_days_str else 3
+
+        # Preload employer top-up flags for all sick records
+        start_dates = [r.start_date for r in self.sick_leave_records]
+        top_up_map: dict[date, bool] = {}
+        if start_dates:
+            lr_query = select(LeaveRequest.start_date).where(
+                and_(
+                    LeaveRequest.user_id == self.user_id,
+                    LeaveRequest.start_date.in_(start_dates),
+                    LeaveRequest.leave_type == "sick_leave",
+                    LeaveRequest.employer_top_up.is_(True),
+                ),
+            )
+            lr_res = await self.db.execute(lr_query)
+            for row in lr_res.all():
+                top_up_map[row[0]] = True
+
+        daily_gross = await self._get_daily_gross_salary()
+        if not daily_gross:
+            return Decimal(0)
+
+        total_sick_payment = Decimal(0)
         for record in self.sick_leave_records:
-            payment = await self._calculate_single_sick_leave_payment(record)
+            payment = await self._calculate_single_sick_leave_payment(
+                record, daily_gross, noi_percent, employer_days_global, top_up_map.get(record.start_date, False),
+            )
             total_sick_payment += payment
 
         return total_sick_payment
 
-    async def _calculate_single_sick_leave_payment(self, sick_record: SickLeaveRecord) -> Decimal:
-        """Calculate payment using dynamic legal settings from database"""
-        from backend import crud
-        daily_gross = await self._get_daily_gross_salary()
-        if not daily_gross: return Decimal(0)
-
-        # Load dynamic settings
-        noi_perc_str = await crud.get_global_setting(self.db, "payroll_noi_compensation_percent")
-        emp_days_str = await crud.get_global_setting(self.db, "payroll_employer_paid_sick_days")
-
-        NOI_PERCENT = (Decimal(noi_perc_str) if noi_perc_str else Decimal("80.0")) / Decimal(100)  # noqa: N806
-        EMPLOYER_DAYS = int(emp_days_str) if emp_days_str else 3  # noqa: N806
-
+    async def _calculate_single_sick_leave_payment(
+        self,
+        sick_record: SickLeaveRecord,
+        daily_gross: Decimal,
+        noi_percent: Decimal,
+        employer_days_global: int,
+        has_employer_top_up: bool,
+    ) -> Decimal:
+        """Calculate payment using preloaded settings"""
         total_payment = Decimal(0)
 
         if str(sick_record.sick_leave_type) == "general":
-            # 1. Employer days (usually first 3)
-            employer_days = min(EMPLOYER_DAYS, sick_record.total_days)
-            # Typically employer pays 70% or 75% for these days in BG
+            employer_days = min(employer_days_global, sick_record.total_days)
             emp_rate = Decimal(str(sick_record.employer_payment_percentage or 70.0)) / Decimal(100)
             total_payment += Decimal(str(employer_days)) * daily_gross * emp_rate
 
-            # 2. NOI days (the rest)
             noi_days = max(0, sick_record.total_days - employer_days)
-            noi_payment = Decimal(str(noi_days)) * daily_gross * NOI_PERCENT
+            noi_payment = Decimal(str(noi_days)) * daily_gross * noi_percent
             total_payment += noi_payment
 
-            # 3. Employer Top-up (if requested)
-            leave_req_query = select(LeaveRequest).where(
-                and_(
-                    LeaveRequest.user_id == self.user_id,
-                    LeaveRequest.start_date == sick_record.start_date,
-                    LeaveRequest.leave_type == "sick_leave",
-                    LeaveRequest.employer_top_up,
-                ),
-            )
-            lr_res = await self.db.execute(leave_req_query)
-            if lr_res.scalar_one_or_none():
-                # Top up the difference to 100%
+            if has_employer_top_up:
                 full_potential = Decimal(str(sick_record.total_days)) * daily_gross
                 total_payment = full_potential
 
@@ -616,9 +644,9 @@ class EnhancedPayrollCalculator(PayrollCalculator):
 
         if payroll and payroll.monthly_salary is not None:
             return Decimal(str(payroll.monthly_salary))
-            if payroll.hourly_rate is not None:
-                monthly_hours = Decimal(160)
-                return Decimal(str(payroll.hourly_rate)) * monthly_hours
+        if payroll and payroll.hourly_rate is not None:
+            monthly_hours = Decimal(160)
+            return Decimal(str(payroll.hourly_rate)) * monthly_hours
 
         return None
 
@@ -785,26 +813,23 @@ class EnhancedPayrollCalculator(PayrollCalculator):
         # ==================== ТРЗ Калкулатори ====================
 
     async def _is_trz_feature_enabled(self, feature_key: str) -> bool:
-        """Проверява дали ТРЗ функцията е включена"""
-        from backend import crud
-        value = await crud.get_global_setting(self.db, feature_key)
-        return value.lower() == "true" if value else False
+        """Проверява дали ТРЗ функцията е включена (from cache)"""
+        if self._trz_flags is not None:
+            return self._trz_flags.get(feature_key, False)
+        return False
 
     async def _calculate_night_work(self) -> Decimal:
         """Изчислява сумата за нощен труд"""
-        # Проверяваме дали функцията е включена
-        if not self._is_trz_feature_enabled("trz_night_work_enabled"):
+        if not await self._is_trz_feature_enabled("trz_night_work_enabled"):
             return Decimal(0)
 
         total_amount = Decimal(0)
 
-        # Вземаме ставката от договора или използваме подразбиращата се
-        night_rate = Decimal("0.5")  # 50% надбавка
+        night_rate = Decimal("0.5")
         if self.employment_contract and self.employment_contract.night_work_rate:
             night_rate = self.employment_contract.night_work_rate
 
         for record in self.night_work_records:
-            # Сума = часове * ставка * (1 + надбавка)
             hours = Decimal(str(record.hours))
             rate = Decimal(str(record.hourly_rate))
             amount = hours * rate * (Decimal(1) + night_rate)
@@ -814,8 +839,7 @@ class EnhancedPayrollCalculator(PayrollCalculator):
 
     async def _calculate_overtime(self) -> Decimal:
         """Изчислява сумата за извънреден труд"""
-        # Проверяваме дали функцията е включена
-        if not self._is_trz_feature_enabled("trz_overtime_enabled"):
+        if not await self._is_trz_feature_enabled("trz_overtime_enabled"):
             return Decimal(0)
 
         total_amount = Decimal(0)
@@ -831,8 +855,7 @@ class EnhancedPayrollCalculator(PayrollCalculator):
 
     async def _calculate_work_on_holidays(self) -> Decimal:
         """Изчислява сумата за труд по празници"""
-        # Проверяваме дали функцията е включена
-        if not self._is_trz_feature_enabled("trz_holiday_work_enabled"):
+        if not await self._is_trz_feature_enabled("trz_holiday_work_enabled"):
             return Decimal(0)
 
         total_amount = Decimal(0)
@@ -848,8 +871,7 @@ class EnhancedPayrollCalculator(PayrollCalculator):
 
     async def _calculate_business_trips(self) -> Decimal:
         """Изчислява сумата за командировки"""
-        # Проверяваме дали функцията е включена
-        if not self._is_trz_feature_enabled("trz_business_trips_enabled"):
+        if not await self._is_trz_feature_enabled("trz_business_trips_enabled"):
             return Decimal(0)
 
         total_amount = Decimal(0)
@@ -1195,7 +1217,7 @@ class EnhancedPayrollCalculator(PayrollCalculator):
             "sick_leave_amount": float(sick_leave),
             "maternity_leave_amount": float(maternity_leave),
             "paternity_leave_amount": float(paternity_leave),
-            "unpaid_leave_days": unpaid_leave,
+            "unpaid_leave_amount": unpaid_leave,
             "total_leave_amount": float(
                 annual_leave + sick_leave + maternity_leave + paternity_leave,
             ),
