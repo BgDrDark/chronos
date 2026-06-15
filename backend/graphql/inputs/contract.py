@@ -11,6 +11,7 @@ class EmploymentContractCreateInput:
     department_id: int | None = None
     position_id: int | None = None
     template_id: int | None = None
+    user_id: int | None = None
     contract_type: str
     contract_number: str | None = None
     start_date: datetime.date

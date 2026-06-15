@@ -1242,6 +1242,7 @@ export interface LaborContractFormData {
   companyId: number | null;
   departmentId: number | null;
   positionId: number | null;
+  userId: number | null;
   templateId: number | null;
   employeeName: string;
   employeeEgn: string;

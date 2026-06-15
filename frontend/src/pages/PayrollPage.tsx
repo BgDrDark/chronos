@@ -340,6 +340,16 @@ const GET_CONTRACT_TEMPLATES = gql`
         id
         version
         isCurrent
+        baseSalary
+        contractType
+        workHoursPerWeek
+        probationMonths
+        salaryCalculationType
+        paymentDay
+        nightWorkRate
+        overtimeRate
+        holidayRate
+        workClass
         createdBy
         createdAt
         changeNote
@@ -2458,6 +2468,7 @@ const TemplatesSettings: React.FC = () => {
   const [editingItem, setEditingItem] = useState<ContractTemplate | AnnexTemplate | ClauseTemplate | null>(null);
   const [openSectionDialog, setOpenSectionDialog] = useState<boolean>(false);
   const [editingSection, setEditingSection] = useState<{ id?: number; title: string; content: string; orderIndex: number; isRequired: boolean } | null>(null);
+  const [sectionTemplateId, setSectionTemplateId] = useState<number | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<ContractTemplate | AnnexTemplate | null>(null);
   const [selectedClauses, setSelectedClauses] = useState<string[]>([]);
 
@@ -2532,8 +2543,9 @@ const TemplatesSettings: React.FC = () => {
     }
   };
 
-  const handleOpenSectionDialog = (section?: { id?: number; title: string; content: string; orderIndex: number; isRequired: boolean }) => {
+  const handleOpenSectionDialog = (section?: { id?: number; title: string; content: string; orderIndex: number; isRequired: boolean }, templateId?: number | null) => {
     setEditingSection(section || { title: '', content: '', orderIndex: 0, isRequired: false });
+    setSectionTemplateId(templateId ?? null);
     setOpenSectionDialog(true);
   };
 
@@ -2815,7 +2827,7 @@ const TemplatesSettings: React.FC = () => {
                       </Box>
                       <Box sx={{ display: 'flex', gap: 1 }}>
                         <Button size="small" variant="outlined" onClick={() => setPreviewTemplate(template)}>Преглед</Button>
-                        <Button size="small" variant="outlined" onClick={() => handleOpenSectionDialog()}>Добав секция</Button>
+                        <Button size="small" variant="outlined" onClick={() => handleOpenSectionDialog(undefined, template.id)}>Добав секция</Button>
                         <Button size="small" color="error" onClick={() => handleDelete(template.id)}>Изтрий</Button>
                       </Box>
                     </Box>
@@ -2845,7 +2857,7 @@ const TemplatesSettings: React.FC = () => {
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button size="small" variant="outlined" onClick={() => handleOpenSectionDialog()}>Добав секция</Button>
+                        <Button size="small" variant="outlined" onClick={() => handleOpenSectionDialog(undefined, template.id)}>Добав секция</Button>
                         <Button size="small" color="error" onClick={() => handleDelete(template.id)}>Изтрий</Button>
                       </Box>
                     </Box>
@@ -2939,11 +2951,8 @@ const TemplatesSettings: React.FC = () => {
                   Отказ
                 </Button>
                 <Button variant="contained" onClick={() => {
-                  const selectedTemplate = templateType === 'contracts' 
-                    ? contractData?.contractTemplates?.[0] 
-                    : annexData?.annexTemplates?.[0];
-                  if (selectedTemplate?.id) {
-                    handleSaveSection(selectedTemplate.id);
+                  if (sectionTemplateId) {
+                    handleSaveSection(sectionTemplateId);
                   }
                 }}>
                   Запиши

@@ -13,6 +13,7 @@ import {
 import { type LaborContract, type LaborContractFormData, getErrorMessage } from '../types';
 import { InfoIcon } from './ui/InfoIcon';
 import { userFieldsHelp } from './ui/fieldsHelpText';
+import { GET_USERS_QUERY } from '../graphql/queries';
 
 const GET_CONTRACT_TEMPLATES = gql`
   query GetContractTemplatesForDialog {
@@ -31,7 +32,19 @@ const GET_CONTRACT_TEMPLATES = gql`
       position { id title }
       department { id name }
       clauses {
-        clause { id title category }
+        clause { id title content category }
+      }
+      currentVersion {
+        id
+        baseSalary
+        workHoursPerWeek
+        probationMonths
+        salaryCalculationType
+        paymentDay
+        nightWorkRate
+        overtimeRate
+        holidayRate
+        workClass
       }
     }
   }
@@ -42,6 +55,7 @@ const GET_CLAUSE_TEMPLATES = gql`
     clauseTemplates {
       id
       title
+      content
       category
     }
   }
@@ -59,6 +73,7 @@ const initialFormData: LaborContractFormData = {
   companyId: null,
   departmentId: null,
   positionId: null,
+  userId: null,
   templateId: null,
   employeeName: '',
   employeeEgn: '',
@@ -93,9 +108,11 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
   const { data: orgData } = useQuery<OrgData>(GET_ORG_DATA_FOR_CONTRACT);
   const { data: templatesData } = useQuery(GET_CONTRACT_TEMPLATES);
   const { data: clausesData } = useQuery(GET_CLAUSE_TEMPLATES);
+  const { data: usersData } = useQuery(GET_USERS_QUERY, { variables: { limit: 1000 } });
 
   const templates = templatesData?.contractTemplates || [];
   const availableClauses = clausesData?.clauseTemplates || [];
+  const companyUsers = usersData?.users?.users || [];
 
   // Функция за импорт на данни от шаблон
   const handleTemplateSelect = (templateId: string) => {
@@ -254,6 +271,10 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
       input.templateId = formData.templateId;
     }
 
+    if (formData.userId) {
+      input.userId = formData.userId;
+    }
+
     if (formData.clauseIds && formData.clauseIds.length > 0) {
       input.clauseIds = JSON.stringify(formData.clauseIds);
     }
@@ -317,6 +338,23 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
               >
                 {filteredPositions.map((p) => (
                   <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Потребител (свързване)</InputLabel>
+              <Select
+                value={formData.userId ?? ''}
+                label="Потребител (свързване)"
+                onChange={handleSelectChange('userId')}
+              >
+                <MenuItem value="">-- Без потребител --</MenuItem>
+                {companyUsers.map((u: { id: number; firstName: string; lastName: string; email: string }) => (
+                  <MenuItem key={u.id} value={u.id}>
+                    {u.firstName} {u.lastName} ({u.email})
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>

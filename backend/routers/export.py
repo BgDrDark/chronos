@@ -557,13 +557,15 @@ async def export_contract_pdf(
     if current_user.role.name not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Only admins can export contracts")
 
-    result = await db.execute(select(EmploymentContract).where(EmploymentContract.id == contract_id))
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(EmploymentContract).options(
+            selectinload(EmploymentContract.company),
+        ).where(EmploymentContract.id == contract_id)
+    )
     contract = result.scalars().first()
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
-
-    company_result = await db.execute(select(User.company_rel).where(User.id == current_user.id))
-    company_result.scalars().first()
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=50, rightMargin=50, topMargin=50, bottomMargin=50)

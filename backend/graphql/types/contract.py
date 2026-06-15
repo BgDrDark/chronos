@@ -1,4 +1,3 @@
-
 import strawberry
 from sqlalchemy import select
 from strawberry.experimental import pydantic as sp
@@ -40,7 +39,9 @@ class ContractAnnex:
     async def position(self, info: strawberry.Info) -> Position | None:
         if not self.position_id:
             return None
-        return await info.context["dataloaders"]["position_by_id"].load(self.position_id)
+        return await info.context["dataloaders"]["position_by_id"].load(
+            self.position_id
+        )
 
 
 @sp.type(schemas.EmploymentContract)
@@ -84,40 +85,56 @@ class EmploymentContract:
     async def company(self, info: strawberry.Info) -> Company | None:
         if not self.company_id:
             return None
-        result = await info.context["dataloaders"]["company_by_id"].load(self.company_id)
+        result = await info.context["dataloaders"]["company_by_id"].load(
+            self.company_id
+        )
         return Company.from_pydantic(result) if result else None
 
     @strawberry.field
     async def department(self, info: strawberry.Info) -> Department | None:
         if not self.department_id:
             return None
-        result = await info.context["dataloaders"]["department_by_id"].load(self.department_id)
+        result = await info.context["dataloaders"]["department_by_id"].load(
+            self.department_id
+        )
         return Department.from_pydantic(result) if result else None
 
     @strawberry.field
     async def position(self, info: strawberry.Info) -> Position | None:
         if not self.position_id:
             return None
-        result = await info.context["dataloaders"]["position_by_id"].load(self.position_id)
+        result = await info.context["dataloaders"]["position_by_id"].load(
+            self.position_id
+        )
         return Position.from_pydantic(result) if result else None
 
     @strawberry.field
     async def position_title(self, info: strawberry.Info) -> str | None:
         if not self.position_id:
             return None
-        result = await info.context["dataloaders"]["position_by_id"].load(self.position_id)
+        result = await info.context["dataloaders"]["position_by_id"].load(
+            self.position_id
+        )
         return result.title if result else None
 
     @strawberry.field
     async def annexes(self, info: strawberry.Info) -> list["ContractAnnex"]:
         from backend.database.models import ContractAnnex as ModelContractAnnex
+
         db = info.context["db"]
-        stmt = select(ModelContractAnnex).where(
-            ModelContractAnnex.contract_id == self.id,
-        ).order_by(ModelContractAnnex.effective_date.desc())
+        stmt = (
+            select(ModelContractAnnex)
+            .where(
+                ModelContractAnnex.contract_id == self.id,
+            )
+            .order_by(ModelContractAnnex.effective_date.desc())
+        )
         result = await db.execute(stmt)
         annexes = result.scalars().all()
-        return [ContractAnnex.from_pydantic(schemas.ContractAnnex.model_validate(a)) for a in annexes]
+        return [
+            ContractAnnex.from_pydantic(schemas.ContractAnnex.model_validate(a))
+            for a in annexes
+        ]
 
 
 @sp.type(schemas.ContractTemplateSection)
@@ -155,9 +172,19 @@ class ContractTemplateVersion:
 
     @strawberry.field
     async def sections(self, info: strawberry.Info) -> list[ContractTemplateSection]:
+        cache = info.context.get("_tmpl")
+        if cache:
+            cached = cache.get(f"ver_sec:{self.id}")
+            if cached is not None:
+                return [ContractTemplateSection.from_pydantic(s) for s in cached]
         from backend.database.models import ContractTemplateSection as ModelSection
+
         db = info.context["db"]
-        stmt = select(ModelSection).where(ModelSection.version_id == self.id).order_by(ModelSection.order_index)
+        stmt = (
+            select(ModelSection)
+            .where(ModelSection.version_id == self.id)
+            .order_by(ModelSection.order_index)
+        )
         result = await db.execute(stmt)
         sections = result.scalars().all()
         return [ContractTemplateSection.from_pydantic(s) for s in sections]
@@ -172,9 +199,19 @@ class ContractTemplateClauseGQL:
 
     @strawberry.field
     async def clause(self, info: strawberry.Info) -> "ClauseTemplate | None":
+        cache = info.context.get("_tmpl")
+        if cache:
+            cached = cache.get(f"cl:{self.clause_id}")
+            if cached is not None:
+                return ClauseTemplate.from_pydantic(
+                    schemas.ClauseTemplate.model_validate(cached)
+                )
         from backend.database.models import ClauseTemplate as ModelClauseTemplate
+
         db = info.context["db"]
-        stmt = select(ModelClauseTemplate).where(ModelClauseTemplate.id == self.clause_id)
+        stmt = select(ModelClauseTemplate).where(
+            ModelClauseTemplate.id == self.clause_id
+        )
         result = await db.execute(stmt)
         obj = result.scalar_one_or_none()
         if not obj:
@@ -208,35 +245,69 @@ class ContractTemplate:
     async def position(self, info: strawberry.Info) -> Position | None:
         if not self.position_id:
             return None
-        result = await info.context["dataloaders"]["position_by_id"].load(self.position_id)
+        result = await info.context["dataloaders"]["position_by_id"].load(
+            self.position_id
+        )
         return Position.from_pydantic(result) if result else None
 
     @strawberry.field
     async def department(self, info: strawberry.Info) -> Department | None:
         if not self.department_id:
             return None
-        result = await info.context["dataloaders"]["department_by_id"].load(self.department_id)
+        result = await info.context["dataloaders"]["department_by_id"].load(
+            self.department_id
+        )
         return Department.from_pydantic(result) if result else None
 
     @strawberry.field
     async def clauses(self, info: strawberry.Info) -> list[ContractTemplateClauseGQL]:
+        cache = info.context.get("_tmpl")
+        if cache:
+            cached = cache.get(f"ct_cl:{self.id}")
+            if cached is not None:
+                return cached
         from backend.database.models import ContractTemplateClause as ModelClause
+
         db = info.context["db"]
-        stmt = select(ModelClause).where(
-            ModelClause.template_id == self.id,
-        ).order_by(ModelClause.order_index)
+        stmt = (
+            select(ModelClause)
+            .where(
+                ModelClause.template_id == self.id,
+            )
+            .order_by(ModelClause.order_index)
+        )
         result = await db.execute(stmt)
         items = result.scalars().all()
-        return [ContractTemplateClauseGQL(id=c.id, template_id=c.template_id, clause_id=c.clause_id, order_index=c.order_index) for c in items]
+        return [
+            ContractTemplateClauseGQL(
+                id=c.id,
+                template_id=c.template_id,
+                clause_id=c.clause_id,
+                order_index=c.order_index,
+            )
+            for c in items
+        ]
 
     @strawberry.field
-    async def current_version(self, info: strawberry.Info) -> ContractTemplateVersion | None:
+    async def current_version(
+        self, info: strawberry.Info
+    ) -> ContractTemplateVersion | None:
+        cache = info.context.get("_tmpl")
+        if cache:
+            cached = cache.get(f"ct_ver:{self.id}")
+            if cached is not None:
+                return ContractTemplateVersion.from_pydantic(cached)
         from backend.database.models import ContractTemplateVersion as ModelVersion
+
         db = info.context["db"]
-        stmt = select(ModelVersion).where(
-            ModelVersion.template_id == self.id,
-            ModelVersion.is_current,
-        ).order_by(ModelVersion.version.desc())
+        stmt = (
+            select(ModelVersion)
+            .where(
+                ModelVersion.template_id == self.id,
+                ModelVersion.is_current,
+            )
+            .order_by(ModelVersion.version.desc())
+        )
         result = await db.execute(stmt)
         version = result.scalar_one_or_none()
         if not version:
@@ -273,9 +344,19 @@ class AnnexTemplateVersion:
 
     @strawberry.field
     async def sections(self, info: strawberry.Info) -> list[AnnexTemplateSection]:
+        cache = info.context.get("_tmpl")
+        if cache:
+            cached = cache.get(f"aver_sec:{self.id}")
+            if cached is not None:
+                return [AnnexTemplateSection.from_pydantic(s) for s in cached]
         from backend.database.models import AnnexTemplateSection as ModelSection
+
         db = info.context["db"]
-        stmt = select(ModelSection).where(ModelSection.version_id == self.id).order_by(ModelSection.order_index)
+        stmt = (
+            select(ModelSection)
+            .where(ModelSection.version_id == self.id)
+            .order_by(ModelSection.order_index)
+        )
         result = await db.execute(stmt)
         sections = result.scalars().all()
         return [AnnexTemplateSection.from_pydantic(s) for s in sections]
@@ -298,13 +379,25 @@ class AnnexTemplate:
     updated_at: strawberry.auto
 
     @strawberry.field
-    async def current_version(self, info: strawberry.Info) -> AnnexTemplateVersion | None:
+    async def current_version(
+        self, info: strawberry.Info
+    ) -> AnnexTemplateVersion | None:
+        cache = info.context.get("_tmpl")
+        if cache:
+            cached = cache.get(f"at_ver:{self.id}")
+            if cached is not None:
+                return AnnexTemplateVersion.from_pydantic(cached)
         from backend.database.models import AnnexTemplateVersion as ModelVersion
+
         db = info.context["db"]
-        stmt = select(ModelVersion).where(
-            ModelVersion.template_id == self.id,
-            ModelVersion.is_current,
-        ).order_by(ModelVersion.version.desc())
+        stmt = (
+            select(ModelVersion)
+            .where(
+                ModelVersion.template_id == self.id,
+                ModelVersion.is_current,
+            )
+            .order_by(ModelVersion.version.desc())
+        )
         result = await db.execute(stmt)
         version = result.scalar_one_or_none()
         if not version:

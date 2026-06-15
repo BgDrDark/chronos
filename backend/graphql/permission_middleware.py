@@ -546,6 +546,13 @@ class PermissionGuardMiddleware(SchemaExtension):
                         },
                     )
         
+        # Super-admin bypass — no permission check needed
+        if current_user.role and current_user.role.name == "super_admin":
+            result = next_(root, info, *args, **kwargs)
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
         # Check permission using PermissionService
         permission_service = PermissionService(db)
         # Self-scoped operations: user always acts on themselves

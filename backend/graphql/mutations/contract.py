@@ -8,6 +8,7 @@ from backend import schemas
 from backend.database import models
 from backend.exceptions import (
     NotFoundException,
+    PermissionDeniedException,
     ValidationException,
 )
 from backend.graphql import inputs, types
@@ -19,44 +20,6 @@ logger = logging.getLogger(__name__)
 @strawberry.type
 class ContractMutation:
     @strawberry.mutation
-    async def add_section_to_annex_template(
-        self,
-        template_id: int,
-        section: inputs.AnnexTemplateSectionInput,
-        info: strawberry.Info,
-    ) -> types.AnnexTemplateSection:
-        db = info.context["db"]
-        get_current_user(info)
-
-        template = await db.get(models.AnnexTemplate, template_id)
-        if not template:
-            raise NotFoundException.record("Template")
-
-        stmt = select(models.AnnexTemplateVersion).where(
-            models.AnnexTemplateVersion.template_id == template_id,
-            models.AnnexTemplateVersion.is_current,
-        )
-        result = await db.execute(stmt)
-        current_version = result.scalar_one_or_none()
-
-        if not current_version:
-            raise NotFoundException.record("Version")
-
-        new_section = models.AnnexTemplateSection(
-            template_id=template_id,
-            version_id=current_version.id,
-            title=section.title,
-            content=section.content,
-            order_index=section.order_index,
-            is_required=section.is_required,
-        )
-        db.add(new_section)
-        await db.commit()
-        await db.refresh(new_section)
-
-        return types.AnnexTemplateSection.from_pydantic(schemas.AnnexTemplateSection.model_validate(new_section))
-
-    @strawberry.mutation
     async def add_section_to_contract_template(
         self,
         template_id: int,
@@ -64,11 +27,18 @@ class ContractMutation:
         info: strawberry.Info,
     ) -> types.ContractTemplateSection:
         db = info.context["db"]
-        get_current_user(info)
+        current_user = get_current_user(info)
 
         template = await db.get(models.ContractTemplate, template_id)
         if not template:
             raise NotFoundException.record("Template")
+        if (
+            template.company_id != current_user.company_id
+            and current_user.role.name != "super_admin"
+        ):
+            raise PermissionDeniedException.for_action(
+                "Този шаблон не принадлежи на вашата компания"
+            )
 
         stmt = select(models.ContractTemplateVersion).where(
             models.ContractTemplateVersion.template_id == template_id,
@@ -92,7 +62,9 @@ class ContractMutation:
         await db.commit()
         await db.refresh(new_section)
 
-        return types.ContractTemplateSection.from_pydantic(schemas.ContractTemplateSection.model_validate(new_section))
+        return types.ContractTemplateSection.from_pydantic(
+            schemas.ContractTemplateSection.model_validate(new_section)
+        )
 
     @strawberry.mutation
     async def sign_contract_annex(
@@ -142,7 +114,9 @@ class ContractMutation:
 
         await db.commit()
         await db.refresh(annex)
-        return types.ContractAnnex.from_pydantic(schemas.ContractAnnex.model_validate(annex))
+        return types.ContractAnnex.from_pydantic(
+            schemas.ContractAnnex.model_validate(annex)
+        )
 
     @strawberry.mutation
     async def sign_employment_contract(
@@ -161,7 +135,10 @@ class ContractMutation:
             raise ValidationException.field("Договор", "Вече е подписан")
 
         if contract.status == "linked":
-            raise ValidationException.field("Договор", "Договорът е линкнат към потребител и не може да бъде подписван отново")
+            raise ValidationException.field(
+                "Договор",
+                "Договорът е линкнат към потребител и не може да бъде подписван отново",
+            )
 
         contract.status = "signed"
         contract.signed_at = datetime.datetime.now()
@@ -169,7 +146,9 @@ class ContractMutation:
         await db.commit()
         await db.refresh(contract, ["company", "position", "department"])
 
-        return types.EmploymentContract.from_pydantic(schemas.EmploymentContract.model_validate(contract))
+        return types.EmploymentContract.from_pydantic(
+            schemas.EmploymentContract.model_validate(contract)
+        )
 
     @strawberry.mutation
     async def reject_contract_annex(
@@ -190,7 +169,9 @@ class ContractMutation:
 
         await db.commit()
         await db.refresh(annex)
-        return types.ContractAnnex.from_pydantic(schemas.ContractAnnex.model_validate(annex))
+        return types.ContractAnnex.from_pydantic(
+            schemas.ContractAnnex.model_validate(annex)
+        )
 
     @strawberry.mutation
     async def restore_contract_template_version(
@@ -232,7 +213,9 @@ class ContractMutation:
 
         await db.commit()
         await db.refresh(template)
-        return types.ContractTemplate.from_pydantic(schemas.ContractTemplate.model_validate(template))
+        return types.ContractTemplate.from_pydantic(
+            schemas.ContractTemplate.model_validate(template)
+        )
 
     @strawberry.mutation
     async def link_employment_contract_to_user(
@@ -256,7 +239,9 @@ class ContractMutation:
             raise ValidationException.field("Договор", "Трябва първо да бъде подписан")
 
         if contract.user_id == user_id and contract.status == "linked":
-            raise ValidationException.field("Договор", "Вече е линкнат към този потребител")
+            raise ValidationException.field(
+                "Договор", "Вече е линкнат към този потребител"
+            )
 
         contract.user_id = user_id
         contract.status = "linked"
@@ -269,4 +254,6 @@ class ContractMutation:
         await db.commit()
         await db.refresh(contract, ["company", "position", "department"])
 
-        return types.EmploymentContract.from_pydantic(schemas.EmploymentContract.model_validate(contract))
+        return types.EmploymentContract.from_pydantic(
+            schemas.EmploymentContract.model_validate(contract)
+        )
