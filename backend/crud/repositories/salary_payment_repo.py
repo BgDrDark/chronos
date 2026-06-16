@@ -112,7 +112,10 @@ class SalaryPaymentRepository(BaseRepository):
         result = await db.execute(
             select(SalaryPaymentItem)
             .where(SalaryPaymentItem.batch_id == batch_id)
-            .options(selectinload(SalaryPaymentItem.user)),
+            .options(
+                selectinload(SalaryPaymentItem.user),
+                selectinload(SalaryPaymentItem.payslip),
+            ),
         )
         return list(result.scalars().all())
 
