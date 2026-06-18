@@ -31,7 +31,7 @@ class OrganizationalHealth:
             stmt = (
                 select(
                     func.avg(BehavioralProfile.burnout_risk).label("avg_burnout"),
-                    func.avg(BehavioralProfile.engagement_score).label("avg_engagement"),
+                    func.avg(BehavioralProfile.attendance_score).label("avg_attendance"),
                     func.avg(BehavioralProfile.efficiency_score).label("avg_efficiency"),
                     func.avg(BehavioralProfile.punctuality_score).label("avg_punctuality"),
                     func.count(BehavioralProfile.id).label("count"),
@@ -54,7 +54,7 @@ class OrganizationalHealth:
                     period_start=period_start,
                     period_end=period_end,
                     avg_burnout_risk=float(row.avg_burnout or 0),
-                    avg_engagement=float(row.avg_engagement or 0),
+                    avg_attendance=float(row.avg_attendance or 0),
                     avg_efficiency=float(row.avg_efficiency or 0),
                     avg_punctuality=float(row.avg_punctuality or 0),
                     anomaly_count=0,

@@ -5,6 +5,7 @@ from decimal import Decimal
 import strawberry
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import and_, delete, insert, select
+from sqlalchemy.orm import selectinload
 
 from backend import schemas
 from backend.auth.rbac_service import PermissionService
@@ -111,7 +112,9 @@ class UserMutation:
             db.add(contract)
 
         await db.commit()
-        await db.refresh(db_user)
+        stmt = select(DbUser).where(DbUser.id == db_user.id).options(selectinload(DbUser.role))
+        result = await db.execute(stmt)
+        db_user = result.scalar_one()
         return types.User.from_pydantic(schemas.User.model_validate(db_user))
 
     @strawberry.mutation
@@ -251,6 +254,9 @@ class UserMutation:
                 )
                 db.add(contract)
 
+        stmt = select(DbUser).where(DbUser.id == db_user.id).options(selectinload(DbUser.role))
+        result = await db.execute(stmt)
+        db_user = result.scalar_one()
         return types.User.from_pydantic(schemas.User.model_validate(db_user))
 
     @strawberry.mutation

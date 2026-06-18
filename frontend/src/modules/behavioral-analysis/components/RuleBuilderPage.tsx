@@ -19,7 +19,7 @@ const metricOptions = [
   { value: 'overtime_score', label: 'Извънреден труд' },
   { value: 'burnout_risk', label: 'Риск от прегаряне' },
   { value: 'financial_stress_score', label: 'Финансов стрес' },
-  { value: 'engagement_score', label: 'Ангажираност' },
+  { value: 'attendance_score', label: 'Присъствие' },
   { value: 'scrap_rate', label: 'Бракуване' },
 ];
 

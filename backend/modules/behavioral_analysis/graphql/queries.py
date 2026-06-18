@@ -3,16 +3,19 @@ import strawberry
 from backend.database.models import User
 from backend.modules.behavioral_analysis.graphql.types import (
     BehavioralAnomalyType,
+    BehavioralPersonalityProfileType,
     BehavioralProfileType,
     BehavioralRecommendationType,
     BehavioralRuleType,
     BehavioralSettingsType,
     BehavioralSystemHealthType,
     BiasReportType,
+    ManagerEffectivenessType,
     OrganizationalHealthType,
 )
 from backend.modules.behavioral_analysis.models import (
     BehavioralAnomaly,
+    BehavioralPersonalityProfile,
     BehavioralProfile,
     BehavioralRecommendation,
     BehavioralRetentionSettings,
@@ -20,6 +23,7 @@ from backend.modules.behavioral_analysis.models import (
     BehavioralSystemHealth,
     BiasReport,
     DepartmentHealthReport,
+    ManagerEffectiveness,
 )
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -64,6 +68,7 @@ class BehavioralQuery:
                 overtime_score=p.overtime_score,
                 burnout_risk=p.burnout_risk,
                 financial_stress_score=p.financial_stress_score,
+                attendance_score=p.attendance_score,
                 engagement_score=p.engagement_score,
                 scrap_rate=p.scrap_rate,
                 peer_group_percentile=p.peer_group_percentile,
@@ -259,7 +264,7 @@ class BehavioralQuery:
                 department_id=r.department_id,
                 department_name=f"Department {r.department_id}",
                 avg_burnout_risk=r.avg_burnout_risk,
-                avg_engagement=r.avg_engagement,
+                avg_attendance=r.avg_attendance,
                 avg_efficiency=r.avg_efficiency,
                 avg_punctuality=r.avg_punctuality,
                 anomaly_count=r.anomaly_count,
@@ -294,6 +299,70 @@ class BehavioralQuery:
                 generated_at=rep.generated_at,
             )
             for rep in reports
+        ]
+
+    @strawberry.field
+    async def personality_profiles(
+        self, info: Info, user_id: int | None = None,
+    ) -> list[BehavioralPersonalityProfileType]:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+
+        stmt = select(BehavioralPersonalityProfile).order_by(BehavioralPersonalityProfile.completed_at.desc())
+
+        if current_user.role.name not in ["admin", "super_admin"]:
+            stmt = stmt.where(BehavioralPersonalityProfile.user_id == current_user.id)
+        elif user_id:
+            stmt = stmt.where(BehavioralPersonalityProfile.user_id == user_id)
+
+        result = await db.execute(stmt)
+        return [
+            BehavioralPersonalityProfileType(
+                id=p.id, user_id=p.user_id, company_id=p.company_id,
+                template_id=p.template_id, completed_at=p.completed_at,
+                openness=p.openness, conscientiousness=p.conscientiousness,
+                extraversion=p.extraversion, agreeableness=p.agreeableness,
+                neuroticism=p.neuroticism,
+                openness_raw=p.openness_raw, conscientiousness_raw=p.conscientiousness_raw,
+                extraversion_raw=p.extraversion_raw, agreeableness_raw=p.agreeableness_raw,
+                neuroticism_raw=p.neuroticism_raw,
+                interpretation=p.interpretation,
+            )
+            for p in result.scalars().all()
+        ]
+
+    @strawberry.field
+    async def manager_effectiveness(
+        self, info: Info, manager_id: int | None = None,
+    ) -> list[ManagerEffectivenessType]:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+
+        stmt = select(ManagerEffectiveness).where(
+            ManagerEffectiveness.company_id == current_user.company_id,
+        ).order_by(ManagerEffectiveness.computed_at.desc())
+
+        if manager_id:
+            stmt = stmt.where(ManagerEffectiveness.manager_id == manager_id)
+        elif current_user.role.name not in ["admin", "super_admin"]:
+            stmt = stmt.where(ManagerEffectiveness.manager_id == current_user.id)
+
+        result = await db.execute(stmt)
+        return [
+            ManagerEffectivenessType(
+                id=m.id, manager_id=m.manager_id, company_id=m.company_id,
+                period_start=m.period_start, period_end=m.period_end,
+                team_avg_attendance=m.team_avg_attendance,
+                team_avg_engagement=m.team_avg_engagement,
+                team_avg_burnout=m.team_avg_burnout,
+                team_burnout_variance=m.team_burnout_variance,
+                team_turnover_rate=m.team_turnover_rate,
+                team_size=m.team_size, team_anomaly_count=m.team_anomaly_count,
+                manager_effectiveness_score=m.manager_effectiveness_score,
+                sentiment_score=m.sentiment_score, trend_direction=m.trend_direction,
+                computed_at=m.computed_at,
+            )
+            for m in result.scalars().all()
         ]
 
     @strawberry.field

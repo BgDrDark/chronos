@@ -73,11 +73,11 @@ const OrganizationalHealthPage: React.FC = () => {
 
                   <Box sx={{ mb: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="body2">Engagement</Typography>
-                      <Typography variant="body2">{dept.avgEngagement.toFixed(0)}</Typography>
+                      <Typography variant="body2">Attendance</Typography>
+                      <Typography variant="body2">{dept.avgAttendance.toFixed(0)}</Typography>
                     </Box>
                     <Box sx={{ height: 8, bgcolor: '#e0e0e0', borderRadius: 1 }}>
-                      <Box sx={{ height: '100%', bgcolor: getEngagementColor(dept.avgEngagement), borderRadius: 1, width: `${dept.avgEngagement}%` }} />
+                      <Box sx={{ height: '100%', bgcolor: getEngagementColor(dept.avgAttendance), borderRadius: 1, width: `${dept.avgAttendance}%` }} />
                     </Box>
                   </Box>
 

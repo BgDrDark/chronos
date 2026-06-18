@@ -6,6 +6,7 @@ import strawberry
 from sqlalchemy import select
 
 from backend import schemas
+from backend.crud.repositories.settings_repo import settings_repo
 from backend.database import models
 from backend.exceptions import NotFoundException, ValidationException
 from backend.graphql import types
@@ -680,3 +681,42 @@ class PayrollMutation:
         xml_content = await svc.generate_sepa_xml(payslip_ids)
 
         return xml_content
+
+    @strawberry.mutation
+    async def update_payroll_legal_settings(
+        self,
+        info: strawberry.Info,
+        max_insurance_base: float,
+        employee_insurance_rate: float,
+        income_tax_rate: float,
+        civil_contract_costs_rate: float,
+        noi_compensation_percent: float,
+        employer_paid_sick_days: int,
+        default_tax_resident: bool,
+        trz_compliance_strict_mode: bool,
+    ) -> types.PayrollLegalSettings:
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "system:manage_settings")
+
+        await settings_repo.set_setting(db, "payroll_max_insurance_base", str(max_insurance_base))
+        await settings_repo.set_setting(db, "payroll_employee_insurance_rate", str(employee_insurance_rate))
+        await settings_repo.set_setting(db, "payroll_income_tax_rate", str(income_tax_rate))
+        await settings_repo.set_setting(db, "payroll_civil_contract_costs_rate", str(civil_contract_costs_rate))
+        await settings_repo.set_setting(db, "payroll_noi_compensation_percent", str(noi_compensation_percent))
+        await settings_repo.set_setting(db, "payroll_employer_paid_sick_days", str(employer_paid_sick_days))
+        await settings_repo.set_setting(db, "payroll_default_tax_resident", str(default_tax_resident).lower())
+        await settings_repo.set_setting(db, "trz_compliance_strict_mode", str(trz_compliance_strict_mode).lower())
+
+        await db.commit()
+
+        return types.PayrollLegalSettings(
+            max_insurance_base=max_insurance_base,
+            employee_insurance_rate=employee_insurance_rate,
+            income_tax_rate=income_tax_rate,
+            civil_contract_costs_rate=civil_contract_costs_rate,
+            noi_compensation_percent=noi_compensation_percent,
+            employer_paid_sick_days=employer_paid_sick_days,
+            default_tax_resident=default_tax_resident,
+            trz_compliance_strict_mode=trz_compliance_strict_mode,
+        )

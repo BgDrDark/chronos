@@ -1,27 +1,58 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import strawberry
 from backend.database.models import User
 from backend.exceptions import NotFoundException, PermissionDeniedException
 from backend.modules.behavioral_analysis.feedback_loop import FeedbackLoop
 from backend.modules.behavioral_analysis.graphql.types import (
+    BehavioralPersonalityProfileType,
+    BehavioralPulseSurveyType,
     BehavioralRecommendationType,
     BehavioralRuleType,
     BehavioralSettingsType,
     BiasReportType,
+    ManagerEffectivenessType,
     OrganizationalHealthType,
     RecommendationFeedbackType,
 )
 from backend.modules.behavioral_analysis.models import (
+    BehavioralAnomaly,
+    BehavioralPersonalityProfile,
+    BehavioralPersonalityTestTemplate,
+    BehavioralProfile,
+    BehavioralPulseSurvey,
     BehavioralRecommendation,
     BehavioralRetentionSettings,
     BehavioralRule,
+    ManagerEffectiveness,
 )
+from backend.modules.behavioral_analysis.personality import (
+    generate_interpretation,
+    get_questions_by_ids,
+    score_ipip,
+)
+from backend.database.models import User as DbUser, Department
 from backend.modules.behavioral_analysis.organizational_health import (
     OrganizationalHealth,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 from strawberry.types import Info
+
+
+@strawberry.input
+class PersonalityTestAnswers:
+    template_id: int
+    answers: list[int]
+
+
+@strawberry.input
+class PulseSurveyInput:
+    burnout_feeling: int | None = None
+    engagement_feeling: int | None = None
+    stress_level: int | None = None
+    energy_level: int | None = None
+    work_satisfaction: int | None = None
+    notes: str | None = None
 
 
 @strawberry.input
@@ -341,7 +372,7 @@ class BehavioralMutation:
                 department_id=r.department_id,
                 department_name=f"Department {r.department_id}",
                 avg_burnout_risk=r.avg_burnout_risk,
-                avg_engagement=r.avg_engagement,
+                avg_attendance=r.avg_attendance,
                 avg_efficiency=r.avg_efficiency,
                 avg_punctuality=r.avg_punctuality,
                 anomaly_count=r.anomaly_count,
@@ -377,4 +408,216 @@ class BehavioralMutation:
             findings=report.findings,
             overall_bias_detected=report.overall_bias_detected,
             generated_at=report.generated_at,
+        )
+
+    @strawberry.mutation
+    async def compute_manager_effectiveness(
+        self, info: Info, manager_id: int,
+        period_start: str | None = None, period_end: str | None = None,
+    ) -> ManagerEffectivenessType:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+
+        manager_result = await db.execute(
+            select(DbUser).where(
+                DbUser.id == manager_id,
+                DbUser.company_id == current_user.company_id,
+            ),
+        )
+        manager = manager_result.scalar_one_or_none()
+        if not manager:
+            raise NotFoundException.resource("User", id=manager_id)
+
+        start = date.fromisoformat(period_start) if period_start else date.today().replace(day=1)
+        end = date.fromisoformat(period_end) if period_end else date.today()
+
+        team_result = await db.execute(
+            select(DbUser).where(
+                DbUser.company_id == manager.company_id,
+                DbUser.department_id == manager.department_id,
+                DbUser.is_active,
+                DbUser.id != manager_id,
+            ),
+        )
+        team = team_result.scalars().all()
+        team_ids = [u.id for u in team]
+        team_size = len(team_ids)
+
+        if team_size == 0:
+            raise ValueError("Manager has no team members in their department")
+
+        profiles_result = await db.execute(
+            select(
+                func.avg(BehavioralProfile.attendance_score).label("avg_att"),
+                func.avg(BehavioralProfile.engagement_score).label("avg_eng"),
+                func.avg(BehavioralProfile.burnout_risk).label("avg_burn"),
+            ).where(
+                BehavioralProfile.user_id.in_(team_ids),
+                BehavioralProfile.period_start >= start,
+                BehavioralProfile.period_end <= end,
+            ),
+        )
+        row = profiles_result.first()
+        team_avg_att = float(row.avg_att) if row and row.avg_att else 80.0
+        team_avg_eng = float(row.avg_eng) if row and row.avg_eng else 0.0
+        team_avg_burn = float(row.avg_burn) if row and row.avg_burn else 0.0
+
+        all_burn = await db.execute(
+            select(BehavioralProfile.burnout_risk).where(
+                BehavioralProfile.user_id.in_(team_ids),
+                BehavioralProfile.period_start >= start,
+                BehavioralProfile.period_end <= end,
+            ),
+        )
+        burn_values = [float(r[0]) for r in all_burn.all() if r[0] is not None]
+        burnout_var = sum((x - team_avg_burn)**2 for x in burn_values) / len(burn_values) if len(burn_values) > 1 else 0.0
+
+        inactive_result = await db.execute(
+            select(func.count(DbUser.id)).where(
+                DbUser.company_id == manager.company_id,
+                DbUser.department_id == manager.department_id,
+                DbUser.is_active == False,
+                DbUser.updated_at >= datetime.combine(start, datetime.min.time()),
+            ),
+        )
+        turnover_count = inactive_result.scalar() or 0
+        turnover_rate = turnover_count / (team_size + turnover_count) if (team_size + turnover_count) > 0 else 0.0
+
+        anomaly_result = await db.execute(
+            select(func.count(BehavioralAnomaly.id)).where(
+                BehavioralAnomaly.user_id.in_(team_ids),
+            ),
+        )
+        anomaly_count = anomaly_result.scalar() or 0
+
+        att_score = team_avg_att
+        eng_score = team_avg_eng
+        burn_penalty = max(0.0, 100.0 - (team_avg_burn * 150.0))
+        turn_penalty = max(0.0, 100.0 - (turnover_rate * 500.0))
+        anom_penalty = max(0.0, 100.0 - ((anomaly_count / team_size) * 50.0)) if team_size > 0 else 0.0
+
+        effectiveness = (
+            att_score * 0.15 + eng_score * 0.25 +
+            burn_penalty * 0.20 + turn_penalty * 0.25 + anom_penalty * 0.15
+        )
+
+        me = ManagerEffectiveness(
+            manager_id=manager_id,
+            company_id=current_user.company_id,
+            period_start=start, period_end=end,
+            team_avg_attendance=team_avg_att,
+            team_avg_engagement=team_avg_eng,
+            team_avg_burnout=team_avg_burn,
+            team_burnout_variance=burnout_var,
+            team_turnover_rate=turnover_rate,
+            team_size=team_size,
+            team_anomaly_count=anomaly_count,
+            manager_effectiveness_score=round(effectiveness, 2),
+        )
+        db.add(me)
+        await db.commit()
+        await db.refresh(me)
+
+        return ManagerEffectivenessType(
+            id=me.id, manager_id=me.manager_id,
+            company_id=me.company_id,
+            period_start=me.period_start, period_end=me.period_end,
+            team_avg_attendance=me.team_avg_attendance,
+            team_avg_engagement=me.team_avg_engagement,
+            team_avg_burnout=me.team_avg_burnout,
+            team_burnout_variance=me.team_burnout_variance,
+            team_turnover_rate=me.team_turnover_rate,
+            team_size=me.team_size,
+            team_anomaly_count=me.team_anomaly_count,
+            manager_effectiveness_score=me.manager_effectiveness_score,
+            sentiment_score=me.sentiment_score,
+            trend_direction=me.trend_direction,
+            computed_at=me.computed_at,
+        )
+
+    @strawberry.mutation
+    async def submit_personality_test(
+        self, info: Info, input: PersonalityTestAnswers,
+    ) -> BehavioralPersonalityProfileType:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+
+        template_result = await db.execute(
+            select(BehavioralPersonalityTestTemplate).where(
+                BehavioralPersonalityTestTemplate.id == input.template_id,
+            ),
+        )
+        template = template_result.scalar_one_or_none()
+        if not template:
+            raise NotFoundException.resource("TestTemplate", id=input.template_id)
+
+        questions = get_questions_by_ids(template.selected_question_ids)
+        scores = score_ipip(input.answers, questions)
+
+        profile = BehavioralPersonalityProfile(
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            template_id=input.template_id,
+            openness=scores["openness"]["sten"],
+            conscientiousness=scores["conscientiousness"]["sten"],
+            extraversion=scores["extraversion"]["sten"],
+            agreeableness=scores["agreeableness"]["sten"],
+            neuroticism=scores["neuroticism"]["sten"],
+            openness_raw=scores["openness"]["raw"],
+            conscientiousness_raw=scores["conscientiousness"]["raw"],
+            extraversion_raw=scores["extraversion"]["raw"],
+            agreeableness_raw=scores["agreeableness"]["raw"],
+            neuroticism_raw=scores["neuroticism"]["raw"],
+            interpretation=generate_interpretation(scores),
+        )
+        db.add(profile)
+        await db.commit()
+        await db.refresh(profile)
+
+        return BehavioralPersonalityProfileType(
+            id=profile.id, user_id=profile.user_id,
+            company_id=profile.company_id, template_id=profile.template_id,
+            completed_at=profile.completed_at,
+            openness=profile.openness, conscientiousness=profile.conscientiousness,
+            extraversion=profile.extraversion, agreeableness=profile.agreeableness,
+            neuroticism=profile.neuroticism,
+            openness_raw=profile.openness_raw, conscientiousness_raw=profile.conscientiousness_raw,
+            extraversion_raw=profile.extraversion_raw, agreeableness_raw=profile.agreeableness_raw,
+            neuroticism_raw=profile.neuroticism_raw,
+            interpretation=profile.interpretation,
+        )
+
+    @strawberry.mutation
+    async def submit_pulse_survey(
+        self, info: Info, input: PulseSurveyInput,
+    ) -> BehavioralPulseSurveyType:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+
+        survey = BehavioralPulseSurvey(
+            user_id=current_user.id,
+            company_id=current_user.company_id,
+            burnout_feeling=input.burnout_feeling,
+            engagement_feeling=input.engagement_feeling,
+            stress_level=input.stress_level,
+            energy_level=input.energy_level,
+            work_satisfaction=input.work_satisfaction,
+            notes=input.notes,
+        )
+        db.add(survey)
+        await db.commit()
+        await db.refresh(survey)
+
+        return BehavioralPulseSurveyType(
+            id=survey.id,
+            user_id=survey.user_id,
+            company_id=survey.company_id,
+            submitted_at=survey.submitted_at,
+            burnout_feeling=survey.burnout_feeling,
+            engagement_feeling=survey.engagement_feeling,
+            stress_level=survey.stress_level,
+            energy_level=survey.energy_level,
+            work_satisfaction=survey.work_satisfaction,
+            survey_version=survey.survey_version,
+            notes=survey.notes,
         )

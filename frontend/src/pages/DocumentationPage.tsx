@@ -75,16 +75,17 @@ const DocumentationPage: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 8 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, gap: 2 }}>
-        <HelpOutlineIcon color="primary" sx={{ fontSize: 40 }} />
-        <Typography variant="h4" fontWeight="bold">Документация</Typography>
+    <Container maxWidth="lg" sx={{ mt: { xs: 2, md: 4 }, mb: 8, px: { xs: 1, sm: 2, md: 3 } }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: { xs: 2, md: 4 }, gap: 2 }}>
+        <HelpOutlineIcon color="primary" sx={{ fontSize: { xs: 28, md: 40 } }} />
+        <Typography sx={{ typography: { xs: 'h5', md: 'h4' } }} fontWeight="bold">Документация</Typography>
       </Box>
 
-      <Paper sx={{ p: 2, mb: 3 }}>
+      <Paper sx={{ p: { xs: 1, md: 2 }, mb: 3 }}>
         <TextField
           fullWidth
           placeholder="Търсене в документацията..."
+          size="small"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           InputProps={{
@@ -98,34 +99,47 @@ const DocumentationPage: React.FC = () => {
       </Paper>
 
       <Paper sx={{ borderRadius: 3 }}>
-        <Tabs 
-          value={tabValue} 
-          onChange={handleTabChange} 
-          variant="scrollable"
-          scrollButtons="auto"
-          sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
-        >
-          {filteredCategories.map((category: any, index: number) => (
-            <Tab 
-              key={category.id}
-              icon={getIconComponent(category.icon)} 
-              label={category.title} 
-              iconPosition="start" 
-            />
-          ))}
-        </Tabs>
+        <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <Tabs 
+            value={tabValue} 
+            onChange={handleTabChange} 
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            sx={{ 
+              borderBottom: 1, borderColor: 'divider', px: { xs: 1, md: 2 },
+              '& .MuiTab-root': { 
+                minHeight: { xs: 48, md: 72 },
+                py: { xs: 1, md: 1.5 },
+                fontSize: { xs: '0.75rem', md: '0.875rem' },
+              },
+              '& .MuiTab-iconWrapper': { 
+                display: { xs: 'none', sm: 'inline-flex' },
+              },
+            }}
+          >
+            {filteredCategories.map((category: any, index: number) => (
+              <Tab 
+                key={category.id}
+                icon={getIconComponent(category.icon)} 
+                label={category.title} 
+                iconPosition="start" 
+              />
+            ))}
+          </Tabs>
+        </Box>
 
-        <Box sx={{ p: 3 }}>
+        <Box sx={{ p: { xs: 1.5, md: 3 } }}>
           {filteredCategories.map((category: any, index: number) => (
             <TabPanel key={category.id} value={tabValue} index={index}>
-              <Typography variant="h5" gutterBottom color="primary" fontWeight="bold">
+              <Typography sx={{ typography: { xs: 'h6', md: 'h5' } }} gutterBottom color="primary" fontWeight="bold">
                 {category.title}
               </Typography>
               
               {category.articles?.map((article: any) => (
                 <Accordion key={article.id} sx={{ mb: 2 }}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography variant="h6" fontWeight="bold">{article.title}</Typography>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ '& .MuiAccordionSummary-content': { flexWrap: 'wrap' } }}>
+                    <Typography sx={{ typography: { xs: 'subtitle1', md: 'h6' }, wordBreak: 'break-word' }} fontWeight="bold">{article.title}</Typography>
                   </AccordionSummary>
                   <AccordionDetails>
                     <Box 
@@ -163,20 +177,20 @@ const DocumentationPage: React.FC = () => {
         </Box>
       </Paper>
 
-      <Box sx={{ mt: 4, p: 3, bgcolor: 'primary.light', color: 'primary.contrastText', borderRadius: 2 }}>
-        <Typography variant="h6" gutterBottom>📞 Нужда от помощ?</Typography>
-        <Typography variant="body1">
+      <Box sx={{ mt: { xs: 3, md: 4 }, p: { xs: 2, md: 3 }, bgcolor: 'primary.light', color: 'primary.contrastText', borderRadius: 2 }}>
+        <Typography sx={{ typography: { xs: 'subtitle1', md: 'h6' } }} gutterBottom>📞 Нужда от помощ?</Typography>
+        <Typography variant="body2" sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}>
           Ако имате проблеми или въпроси, свържете се с:
         </Typography>
-        <Typography variant="body1" sx={{ mt: 1 }}>
+        <Typography variant="body2" sx={{ mt: 1, fontSize: { xs: '0.875rem', md: '1rem' } }}>
           • Вашия ръководител<br />
           • Системния администратор<br />
           • Имейл: admin@example.com
         </Typography>
       </Box>
 
-      <Box sx={{ mt: 4, p: 2, bgcolor: 'action.hover', borderRadius: 2 }}>
-        <Typography variant="subtitle2" color="text.secondary" align="center">
+      <Box sx={{ mt: { xs: 3, md: 4 }, p: 2, bgcolor: 'action.hover', borderRadius: 2 }}>
+        <Typography variant="caption" color="text.secondary" align="center" display="block">
             © {new Date().getFullYear()} Chronos - Работно Време. Всички права запазени.
         </Typography>
       </Box>

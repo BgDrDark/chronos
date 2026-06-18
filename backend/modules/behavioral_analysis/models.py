@@ -33,12 +33,15 @@ class BehavioralProfile(Base):
     overtime_score: Mapped[float] = mapped_column(Float, default=0.0)
     burnout_risk: Mapped[float] = mapped_column(Float, default=0.0)
     financial_stress_score: Mapped[float] = mapped_column(Float, default=0.0)
-    engagement_score: Mapped[float] = mapped_column(Float, default=100.0)
+    attendance_score: Mapped[float] = mapped_column(Float, default=100.0)
+    engagement_score: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     scrap_rate: Mapped[float] = mapped_column(Float, default=0.0)
     peer_group_percentile: Mapped[float] = mapped_column(Float, default=50.0)
     trend_direction: Mapped[str] = mapped_column(String(20), default="stable")
     status: Mapped[str] = mapped_column(String(20), default="stable")
     confidence_score: Mapped[float] = mapped_column(Float, default=1.0)
+    anomaly_severity_score: Mapped[float] = mapped_column(Float, default=0.0)
+    anomaly_severity_label: Mapped[str] = mapped_column(String(20), default="normal")
 
     contribution_factors: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     rule_engine_version: Mapped[str] = mapped_column(String(20), default="v1.0.0")
@@ -46,7 +49,48 @@ class BehavioralProfile(Base):
     computed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     version: Mapped[int] = mapped_column(Integer, default=1)
 
+    personality_profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("behavioral_personality_profiles.id"), nullable=True,
+    )
+
     anomalies: Mapped[list["BehavioralAnomaly"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
+
+
+class BehavioralPersonalityTestTemplate(Base):
+    __tablename__ = "behavioral_personality_test_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    selected_question_ids: Mapped[list] = mapped_column(JSON)
+    shuffle: Mapped[bool] = mapped_column(default=True)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class BehavioralPersonalityProfile(Base):
+    __tablename__ = "behavioral_personality_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("behavioral_personality_test_templates.id"))
+    completed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    openness: Mapped[int] = mapped_column(Integer)
+    conscientiousness: Mapped[int] = mapped_column(Integer)
+    extraversion: Mapped[int] = mapped_column(Integer)
+    agreeableness: Mapped[int] = mapped_column(Integer)
+    neuroticism: Mapped[int] = mapped_column(Integer)
+
+    openness_raw: Mapped[float] = mapped_column(Float)
+    conscientiousness_raw: Mapped[float] = mapped_column(Float)
+    extraversion_raw: Mapped[float] = mapped_column(Float)
+    agreeableness_raw: Mapped[float] = mapped_column(Float)
+    neuroticism_raw: Mapped[float] = mapped_column(Float)
+
+    interpretation: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
 
 class BehavioralAnomaly(Base):
@@ -190,6 +234,48 @@ class BehavioralComputationSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class BehavioralPulseSurvey(Base):
+    __tablename__ = "behavioral_pulse_surveys"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    burnout_feeling: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    engagement_feeling: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stress_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    energy_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    work_satisfaction: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    survey_version: Mapped[str] = mapped_column(String(10), default="v1")
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class ManagerEffectiveness(Base):
+    __tablename__ = "manager_effectiveness"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    manager_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+
+    team_avg_attendance: Mapped[float] = mapped_column(Float)
+    team_avg_engagement: Mapped[float] = mapped_column(Float, default=0.0)
+    team_avg_burnout: Mapped[float] = mapped_column(Float)
+    team_burnout_variance: Mapped[float] = mapped_column(Float, default=0.0)
+    team_turnover_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    team_size: Mapped[int] = mapped_column(Integer)
+    team_anomaly_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    manager_effectiveness_score: Mapped[float] = mapped_column(Float)
+    sentiment_score: Mapped[float] = mapped_column(Float, default=0.0)
+    trend_direction: Mapped[str] = mapped_column(String(20), default="stable")
+
+    computed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class BehavioralMetricWeights(Base):
     __tablename__ = "behavioral_metric_weights"
 
@@ -249,7 +335,8 @@ class DepartmentHealthReport(Base):
     period_start: Mapped[date] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date)
     avg_burnout_risk: Mapped[float] = mapped_column(Float)
-    avg_engagement: Mapped[float] = mapped_column(Float)
+    avg_attendance: Mapped[float] = mapped_column(Float)
+    avg_engagement: Mapped[float | None] = mapped_column(Float, nullable=True)
     avg_efficiency: Mapped[float] = mapped_column(Float)
     avg_punctuality: Mapped[float] = mapped_column(Float)
     anomaly_count: Mapped[int] = mapped_column(Integer)

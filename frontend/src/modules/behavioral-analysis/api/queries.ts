@@ -17,6 +17,7 @@ export const GET_BEHAVIORAL_PROFILES = gql`
       overtimeScore
       burnoutRisk
       financialStressScore
+      attendanceScore
       engagementScore
       scrapRate
       peerGroupPercentile
@@ -134,7 +135,7 @@ export const GET_ORGANIZATIONAL_HEALTH = gql`
       departmentId
       departmentName
       avgBurnoutRisk
-      avgEngagement
+      avgAttendance
       avgEfficiency
       avgPunctuality
       anomalyCount

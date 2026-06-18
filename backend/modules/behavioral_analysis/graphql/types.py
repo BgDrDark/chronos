@@ -5,6 +5,23 @@ from backend.utils.json_type import JSONScalar
 
 
 @strawberry.type
+class BehavioralPulseSurveyType:
+    id: int
+    user_id: int
+    company_id: int
+    submitted_at: datetime
+
+    burnout_feeling: int | None = None
+    engagement_feeling: int | None = None
+    stress_level: int | None = None
+    energy_level: int | None = None
+    work_satisfaction: int | None = None
+
+    survey_version: str = "v1"
+    notes: str | None = None
+
+
+@strawberry.type
 class BehavioralProfileType:
     id: int
     user_id: int
@@ -21,7 +38,8 @@ class BehavioralProfileType:
     overtime_score: float
     burnout_risk: float
     financial_stress_score: float
-    engagement_score: float
+    attendance_score: float
+    engagement_score: float | None = None
     scrap_rate: float
     peer_group_percentile: float
     trend_direction: str
@@ -32,6 +50,52 @@ class BehavioralProfileType:
     rule_engine_version: str
     computed_at: datetime
     version: int
+
+
+@strawberry.type
+class BehavioralPersonalityProfileType:
+    id: int
+    user_id: int
+    company_id: int
+    template_id: int
+    completed_at: datetime
+
+    openness: int
+    conscientiousness: int
+    extraversion: int
+    agreeableness: int
+    neuroticism: int
+
+    openness_raw: float
+    conscientiousness_raw: float
+    extraversion_raw: float
+    agreeableness_raw: float
+    neuroticism_raw: float
+
+    interpretation: str | None = None
+
+
+@strawberry.type
+class ManagerEffectivenessType:
+    id: int
+    manager_id: int
+    company_id: int
+    period_start: date
+    period_end: date
+
+    team_avg_attendance: float
+    team_avg_engagement: float
+    team_avg_burnout: float
+    team_burnout_variance: float
+    team_turnover_rate: float
+    team_size: int
+    team_anomaly_count: int
+
+    manager_effectiveness_score: float
+    sentiment_score: float
+    trend_direction: str
+
+    computed_at: datetime
 
 
 @strawberry.type
@@ -124,7 +188,7 @@ class OrganizationalHealthType:
     department_id: int
     department_name: str
     avg_burnout_risk: float
-    avg_engagement: float
+    avg_attendance: float
     avg_efficiency: float
     avg_punctuality: float
     anomaly_count: int

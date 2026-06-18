@@ -1,3 +1,4 @@
+import ast
 import logging
 from typing import Any
 
@@ -12,6 +13,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
+
+
+ALLOWED_AST_NODES = {
+    ast.Expression, ast.Module,
+    ast.BinOp, ast.UnaryOp, ast.Compare, ast.BoolOp,
+    ast.Constant, ast.Name, ast.Load,
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod,
+    ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+    ast.And, ast.Or, ast.Not, ast.USub, ast.UAdd,
+}
+
+
+class _SafeExpressionValidator(ast.NodeVisitor):
+    def visit(self, node: ast.AST) -> None:
+        if type(node) not in ALLOWED_AST_NODES:
+            raise ValueError(f"Забранен възел в израза: {type(node).__name__}")
+        self.generic_visit(node)
+
+
+SAFE_CONTEXT: dict[str, Any] = {
+    "min": min, "max": max, "abs": abs, "round": round,
+}
+
+
+def safe_eval(expression: str, context: dict[str, Any]) -> Any:
+    tree = ast.parse(expression, mode="eval")
+    _SafeExpressionValidator().visit(tree)
+    code = compile(tree, "<safe>", "eval")
+    merged = dict(SAFE_CONTEXT)
+    merged.update(context)
+    return eval(code, {"__builtins__": {}}, merged)
 
 class RuleEngine:
     """Layer 3: Rule Engine - Evaluates rules against profiles and generates recommendations"""
@@ -133,18 +165,16 @@ class RuleEngine:
     def _evaluate_custom_expression(self, config: dict[str, Any], profile: BehavioralProfile) -> bool:
         expression = config.get("expression", "")
         try:
-            safe_vars = {
+            context = {
                 "punctuality": profile.punctuality_score,
                 "efficiency": profile.efficiency_score,
                 "overtime": profile.overtime_score,
                 "burnout": profile.burnout_risk,
                 "financial_stress": profile.financial_stress_score,
-                "engagement": profile.engagement_score,
+                "attendance": profile.attendance_score,
                 "scrap_rate": profile.scrap_rate,
             }
-            for key, val in safe_vars.items():
-                expression = expression.replace(key, str(val))
-            return bool(eval(expression, {"__builtins__": {}}, {}))
+            return bool(safe_eval(expression, context))
         except Exception as e:
             logger.error(f"Custom expression evaluation failed: {e}")
             return False
@@ -188,7 +218,7 @@ class RuleEngine:
             ("efficiency_score", 60.0, "low"),
             ("burnout_risk", 0.7, "high"),
             ("financial_stress_score", 0.6, "high"),
-            ("engagement_score", 50.0, "low"),
+            ("attendance_score", 50.0, "low"),
             ("scrap_rate", 10.0, "high"),
         ]
 

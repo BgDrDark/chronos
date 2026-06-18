@@ -13,7 +13,8 @@ export interface BehavioralProfile {
   overtimeScore: number;
   burnoutRisk: number;
   financialStressScore: number;
-  engagementScore: number;
+  attendanceScore: number;
+  engagementScore?: number | null;
   scrapRate: number;
   peerGroupPercentile: number;
   trendDirection: string;
@@ -110,7 +111,7 @@ export interface OrganizationalHealth {
   departmentId: number;
   departmentName: string;
   avgBurnoutRisk: number;
-  avgEngagement: number;
+  avgAttendance: number;
   avgEfficiency: number;
   avgPunctuality: number;
   anomalyCount: number;

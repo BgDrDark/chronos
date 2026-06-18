@@ -238,7 +238,7 @@ const MyBehavioralProfilePage: React.FC = () => {
                   <MetricCard label="Ефективност" value={profile.efficiencyScore} />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                  <MetricCard label="Ангажираност" value={profile.engagementScore} />
+                  <MetricCard label="Присъствие" value={profile.attendanceScore} />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                   <MetricCard

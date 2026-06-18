@@ -78,7 +78,7 @@ const EmployeeProfilePage: React.FC = () => {
                 {[
                   { label: 'Точност', value: profile.punctualityScore, color: profile.punctualityScore > 80 ? 'success' : 'error' },
                   { label: 'Ефективност', value: profile.efficiencyScore, color: profile.efficiencyScore > 70 ? 'success' : 'warning' },
-                  { label: 'Ангажираност', value: profile.engagementScore, color: profile.engagementScore > 60 ? 'success' : 'warning' },
+                  { label: 'Присъствие', value: profile.attendanceScore, color: profile.attendanceScore > 60 ? 'success' : 'warning' },
                   { label: 'Риск прегаряне', value: profile.burnoutRisk * 100, color: profile.burnoutRisk < 0.4 ? 'success' : 'error' },
                 ].map((metric) => (
                   <Grid size={{ xs: 12, sm: 6 }} key={metric.label}>
