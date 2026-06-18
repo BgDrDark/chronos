@@ -7,7 +7,7 @@ import strawberry
 @strawberry.input
 class BonusCreateInput:
     user_id: int
-    amount: Decimal
+    amount: float
     date: datetime.date
     description: str | None = None
 

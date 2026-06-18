@@ -5,7 +5,7 @@ from decimal import Decimal
 import strawberry
 from sqlalchemy import select
 
-from backend import schemas
+from backend import crud, schemas
 from backend.crud.repositories.settings_repo import settings_repo
 from backend.database import models
 from backend.exceptions import NotFoundException, ValidationException
@@ -370,7 +370,7 @@ class PayrollMutation:
             info: strawberry.Info,
             input: BonusCreateInput | None = None,
             user_id: int | None = None,
-            amount: Decimal | None = None,
+            amount: float | None = None,
             date: datetime.date | None = None,
             description: str | None = None,
     ) -> types.Bonus:
@@ -719,4 +719,55 @@ class PayrollMutation:
             employer_paid_sick_days=employer_paid_sick_days,
             default_tax_resident=default_tax_resident,
             trz_compliance_strict_mode=trz_compliance_strict_mode,
+        )
+
+    @strawberry.mutation
+    async def update_global_payroll_config(
+        self,
+        info: strawberry.Info,
+        hourly_rate: Decimal,
+        monthly_salary: Decimal,
+        overtime_multiplier: Decimal,
+        standard_hours_per_day: int,
+        currency: str,
+        annual_leave_days: int,
+        tax_percent: Decimal,
+        health_insurance_percent: Decimal,
+        has_tax_deduction: bool,
+        has_health_insurance: bool,
+        qr_regen_interval_minutes: int,
+    ) -> types.GlobalPayrollConfig:
+        db = info.context["db"]
+        current_user = get_current_user(info)
+        await require_permission(info, "system:manage_settings")
+
+        await crud.update_global_payroll_config(
+            db,
+            hourly_rate=float(hourly_rate),
+            monthly_salary=float(monthly_salary),
+            overtime_multiplier=float(overtime_multiplier),
+            standard_hours_per_day=standard_hours_per_day,
+            currency=currency,
+            annual_leave_days=annual_leave_days,
+            tax_percent=float(tax_percent),
+            health_insurance_percent=float(health_insurance_percent),
+            has_tax_deduction=has_tax_deduction,
+            has_health_insurance=has_health_insurance,
+            admin_user_id=current_user.id,
+        )
+
+        await db.commit()
+
+        return types.GlobalPayrollConfig(
+            hourly_rate=hourly_rate,
+            monthly_salary=monthly_salary,
+            overtime_multiplier=overtime_multiplier,
+            standard_hours_per_day=standard_hours_per_day,
+            currency=currency,
+            annual_leave_days=annual_leave_days,
+            tax_percent=tax_percent,
+            health_insurance_percent=health_insurance_percent,
+            has_tax_deduction=has_tax_deduction,
+            has_health_insurance=has_health_insurance,
+            qr_regen_interval_minutes=qr_regen_interval_minutes,
         )
