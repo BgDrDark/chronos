@@ -25,8 +25,8 @@ class Payroll(CustomBaseModel):
     @field_validator("hourly_rate")
     @classmethod
     def validate_hourly_rate(cls, v):
-        if v <= 0:
-            raise ValueError("Часовата ставка трябва да бъде положителна")
+        if v < 0:
+            raise ValueError("Часовата ставка не може да бъде отрицателна")
         if v > 10000:
             raise ValueError("Часовата ставка не може да надвишава 10000")
         return v
@@ -152,7 +152,7 @@ class ServiceLoan(CustomBaseModel):
     remaining_amount: Decimal
     installments_count: int
     installments_paid: int = 0
-    start_date: date
+    start_date: datetime
     description: str | None = None
     is_active: bool = True
     created_at: datetime

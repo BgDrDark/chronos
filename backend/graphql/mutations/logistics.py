@@ -117,9 +117,9 @@ class LogisticsMutation:
             raise InvalidOperationException.info_required()
         db = info.context["db"]
         current_user = get_current_user(info)
-        check_company_access(db, current_user, "User", user_id)
+        await check_company_access(db, current_user, "User", user_id)
 
         loan = await payroll_repo.create_service_loan(
-            db, user_id=user_id, amount=total_amount, months=installments_count
+            db, user_id=user_id, amount=total_amount, months=installments_count, start_date=start_date
         )
         return types.ServiceLoan.from_pydantic(schemas.ServiceLoan.model_validate(loan))

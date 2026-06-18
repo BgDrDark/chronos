@@ -143,6 +143,7 @@ class PayrollRepository(BaseRepository):
         user_id: int,
         amount: float,
         months: int,
+        start_date: date | None = None,
         interest_rate: float = 0.0,
     ) -> ServiceLoan:
         """Създава служебна заема"""
@@ -157,7 +158,7 @@ class PayrollRepository(BaseRepository):
             remaining_amount=total,
             installments_count=months,
             installments_paid=0,
-            start_date=datetime.now(),
+            start_date=start_date or datetime.now(),
             description=f"Loan of {amount} for {months} months at {interest_rate}%",
             is_active=True,
         )
