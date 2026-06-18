@@ -722,6 +722,82 @@ class PayrollMutation:
         )
 
     @strawberry.mutation
+    async def update_user_payroll(
+        self,
+        info: strawberry.Info,
+        user_id: int,
+        hourly_rate: float,
+        overtime_multiplier: float,
+        standard_hours_per_day: int,
+        monthly_salary: float | None = None,
+        annual_leave_days: int | None = None,
+        currency: str | None = None,
+        tax_percent: float | None = None,
+        health_insurance_percent: float | None = None,
+        has_tax_deduction: bool | None = None,
+        has_health_insurance: bool | None = None,
+    ) -> types.Payroll:
+        db = info.context["db"]
+        current_user = get_current_user(info)
+        await require_permission(info, "payroll:update")
+
+        config = await crud.update_payroll_config(
+            db, user_id=user_id,
+            hourly_rate=Decimal(str(hourly_rate)),
+            overtime_multiplier=Decimal(str(overtime_multiplier)),
+            standard_hours_per_day=standard_hours_per_day,
+            monthly_salary=Decimal(str(monthly_salary)) if monthly_salary else None,
+            annual_leave_days=annual_leave_days,
+            currency=currency,
+            tax_percent=Decimal(str(tax_percent)) if tax_percent else None,
+            health_insurance_percent=Decimal(str(health_insurance_percent)) if health_insurance_percent else None,
+            has_tax_deduction=has_tax_deduction,
+            has_health_insurance=has_health_insurance,
+            admin_user_id=current_user.id,
+        )
+
+        await db.commit()
+        return types.Payroll.from_pydantic(schemas.Payroll.model_validate(config))
+
+    @strawberry.mutation
+    async def update_position_payroll(
+        self,
+        info: strawberry.Info,
+        position_id: int,
+        hourly_rate: float,
+        overtime_multiplier: float,
+        standard_hours_per_day: int,
+        monthly_salary: float | None = None,
+        annual_leave_days: int | None = None,
+        currency: str | None = None,
+        tax_percent: float | None = None,
+        health_insurance_percent: float | None = None,
+        has_tax_deduction: bool | None = None,
+        has_health_insurance: bool | None = None,
+    ) -> types.Payroll:
+        db = info.context["db"]
+        current_user = get_current_user(info)
+        await require_permission(info, "payroll:update")
+
+        config = await crud.update_position_payroll_config(
+            db, position_id=position_id,
+            hourly_rate=Decimal(str(hourly_rate)),
+            overtime_multiplier=Decimal(str(overtime_multiplier)),
+            standard_hours_per_day=standard_hours_per_day,
+            monthly_salary=Decimal(str(monthly_salary)) if monthly_salary else None,
+            annual_leave_days=annual_leave_days,
+            currency=currency,
+            tax_percent=Decimal(str(tax_percent)) if tax_percent else None,
+            health_insurance_percent=Decimal(str(health_insurance_percent)) if health_insurance_percent else None,
+            has_tax_deduction=has_tax_deduction,
+            has_health_insurance=has_health_insurance,
+            admin_user_id=current_user.id,
+        )
+
+        await db.commit()
+        return types.Payroll.from_pydantic(schemas.Payroll.model_validate(config))
+
+    @strawberry.mutation
     async def update_global_payroll_config(
         self,
         info: strawberry.Info,
