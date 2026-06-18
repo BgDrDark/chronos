@@ -837,7 +837,7 @@ class AccountingMutation:
         from backend.crud.repositories import payroll_repo
 
         advance = await payroll_repo.create_advance_payment(
-            db, user_id=user_id, amount=amount, request_date=payment_date
+            db, user_id=user_id, amount=Decimal(str(amount)), payment_date=payment_date
         )
         return types.AdvancePayment.from_pydantic(schemas.AdvancePayment.model_validate(advance))
 
