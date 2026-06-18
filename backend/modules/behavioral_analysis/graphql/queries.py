@@ -12,10 +12,13 @@ from backend.modules.behavioral_analysis.graphql.types import (
     BiasReportType,
     ManagerEffectivenessType,
     OrganizationalHealthType,
+    PersonalityQuestionType,
+    PersonalityTestTemplateType,
 )
 from backend.modules.behavioral_analysis.models import (
     BehavioralAnomaly,
     BehavioralPersonalityProfile,
+    BehavioralPersonalityTestTemplate,
     BehavioralProfile,
     BehavioralRecommendation,
     BehavioralRetentionSettings,
@@ -25,6 +28,7 @@ from backend.modules.behavioral_analysis.models import (
     DepartmentHealthReport,
     ManagerEffectiveness,
 )
+from backend.modules.behavioral_analysis.personality import load_all_questions
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from strawberry.types import Info
@@ -299,6 +303,54 @@ class BehavioralQuery:
                 generated_at=rep.generated_at,
             )
             for rep in reports
+        ]
+
+    @strawberry.field
+    async def personality_templates(self, info: Info) -> list[PersonalityTestTemplateType]:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+
+        stmt = select(BehavioralPersonalityTestTemplate).where(
+            BehavioralPersonalityTestTemplate.company_id == current_user.company_id,
+        )
+        result = await db.execute(stmt)
+        return [
+            PersonalityTestTemplateType(
+                id=t.id, company_id=t.company_id, name=t.name,
+                selected_question_ids=t.selected_question_ids,
+                shuffle=t.shuffle, is_active=t.is_active,
+                created_by=t.created_by, created_at=t.created_at,
+            )
+            for t in result.scalars().all()
+        ]
+
+    @strawberry.field
+    async def personality_questions(
+        self, info: Info, template_id: int | None = None,
+    ) -> list[PersonalityQuestionType]:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+
+        all_questions = load_all_questions()
+
+        if template_id is not None:
+            result = await db.execute(
+                select(BehavioralPersonalityTestTemplate).where(
+                    BehavioralPersonalityTestTemplate.id == template_id,
+                    BehavioralPersonalityTestTemplate.company_id == current_user.company_id,
+                ),
+            )
+            template = result.scalar_one_or_none()
+            if template:
+                ids = set(template.selected_question_ids)
+                all_questions = [q for q in all_questions if q["id"] in ids]
+
+        return [
+            PersonalityQuestionType(
+                id=q["id"], bg=q["bg"], en=q["en"],
+                factor=q["factor"], direction=q["direction"],
+            )
+            for q in all_questions
         ]
 
     @strawberry.field

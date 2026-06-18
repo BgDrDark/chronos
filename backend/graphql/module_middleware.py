@@ -152,6 +152,13 @@ MODULE_MAPPING = {
     "organizationalHealth": "behavioral_analysis",
     "biasReports": "behavioral_analysis",
     "computeBehavioralProfiles": "behavioral_analysis",
+    "personalityProfiles": "behavioral_analysis",
+    "personalityTemplates": "behavioral_analysis",
+    "personalityQuestions": "behavioral_analysis",
+    "managerEffectiveness": "behavioral_analysis",
+    "submitPersonalityTest": "behavioral_analysis",
+    "submitPulseSurvey": "behavioral_analysis",
+    "computeManagerEffectiveness": "behavioral_analysis",
 }
 
 # Throttling Configuration: {field_name: seconds_between_calls}

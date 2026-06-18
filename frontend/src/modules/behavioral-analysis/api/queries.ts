@@ -161,6 +161,79 @@ export const GET_BIAS_REPORTS = gql`
   }
 `;
 
+export const GET_PERSONALITY_TEMPLATES = gql`
+  query GetPersonalityTemplates {
+    personalityTemplates {
+      id
+      companyId
+      name
+      selectedQuestionIds
+      shuffle
+      isActive
+      createdBy
+      createdAt
+    }
+  }
+`;
+
+export const GET_PERSONALITY_QUESTIONS = gql`
+  query GetPersonalityQuestions($templateId: Int) {
+    personalityQuestions(templateId: $templateId) {
+      id
+      bg
+      en
+      factor
+      direction
+    }
+  }
+`;
+
+export const GET_PERSONALITY_PROFILES = gql`
+  query GetPersonalityProfiles($userId: Int) {
+    personalityProfiles(userId: $userId) {
+      id
+      userId
+      companyId
+      templateId
+      completedAt
+      openness
+      conscientiousness
+      extraversion
+      agreeableness
+      neuroticism
+      opennessRaw
+      conscientiousnessRaw
+      extraversionRaw
+      agreeablenessRaw
+      neuroticismRaw
+      interpretation
+    }
+  }
+`;
+
+export const GET_MANAGER_EFFECTIVENESS = gql`
+  query GetManagerEffectiveness($managerId: Int) {
+    managerEffectiveness(managerId: $managerId) {
+      id
+      managerId
+      companyId
+      periodStart
+      periodEnd
+      teamAvgAttendance
+      teamAvgEngagement
+      teamAvgBurnout
+      teamBurnoutVariance
+      teamTurnoverRate
+      teamSize
+      teamAnomalyCount
+      managerEffectivenessScore
+      sentimentScore
+      trendDirection
+      computedAt
+    }
+  }
+`;
+
 export const GET_SYSTEM_HEALTH = gql`
   query GetSystemHealth {
     behavioralSystemHealth {

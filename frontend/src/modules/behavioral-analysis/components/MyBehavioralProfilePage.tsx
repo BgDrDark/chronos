@@ -1,16 +1,36 @@
 import React, { useState } from 'react';
-import { Container, Typography, Box, Paper, Grid, Card, CardContent, Chip, LinearProgress, Alert } from '@mui/material';
-import { useQuery } from '@apollo/client';
-import { GET_BEHAVIORAL_PROFILES, GET_BEHAVIORAL_RECOMMENDATIONS, GET_BEHAVIORAL_ANOMALIES } from '../api/queries';
-import { BehavioralProfile, BehavioralRecommendation, BehavioralAnomaly } from '../types';
+import { Container, Typography, Box, Paper, Grid, Card, CardContent, Chip, LinearProgress, Alert, Button } from '@mui/material';
+import { useQuery, useMutation, gql } from '@apollo/client';
+import {
+  GET_BEHAVIORAL_PROFILES, GET_BEHAVIORAL_RECOMMENDATIONS, GET_BEHAVIORAL_ANOMALIES,
+  GET_PERSONALITY_PROFILES, GET_PERSONALITY_TEMPLATES, GET_PERSONALITY_QUESTIONS,
+  GET_MANAGER_EFFECTIVENESS,
+} from '../api/queries';
+import { SUBMIT_PERSONALITY_TEST, SUBMIT_PULSE_SURVEY, COMPUTE_MANAGER_EFFECTIVENESS } from '../api/mutations';
+import { BehavioralProfile, BehavioralRecommendation, BehavioralAnomaly, BehavioralPersonalityProfile } from '../types';
 import CoachingTips from './coaching/CoachingTips';
 import DisputeForm from './coaching/DisputeForm';
+import PersonalityTestForm from './PersonalityTestForm';
+import PersonalityRadarChart from './PersonalityRadarChart';
+import PulseSurveyForm from './PulseSurveyForm';
+import ManagerEffectivenessCard from './ManagerEffectivenessCard';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import TrendingFlatIcon from '@mui/icons-material/TrendingFlat';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import FeedbackIcon from '@mui/icons-material/Feedback';
+
+const GET_ME = gql`
+  query GetMe {
+    me {
+      id
+      role { name }
+    }
+  }
+`;
 
 const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'info' | 'default' => {
   switch (status) {
@@ -110,14 +130,58 @@ const MetricCard: React.FC<{
 const MyBehavioralProfilePage: React.FC = () => {
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [selectedRecId, setSelectedRecId] = useState<number | null>(null);
+  const [testFormOpen, setTestFormOpen] = useState(false);
+  const [pulseSurveyOpen, setPulseSurveyOpen] = useState(false);
+
+  const { data: meData } = useQuery(GET_ME);
+
+  const currentUserId: number | undefined = (meData as any)?.me?.id;
+  const userRole: string | undefined = (meData as any)?.me?.role?.name;
 
   const { data: profilesData, loading: profilesLoading } = useQuery(GET_BEHAVIORAL_PROFILES);
   const { data: recsData, loading: recsLoading, refetch: refetchRecs } = useQuery(GET_BEHAVIORAL_RECOMMENDATIONS);
   const { data: anomaliesData, loading: anomaliesLoading } = useQuery(GET_BEHAVIORAL_ANOMALIES);
 
+  const { data: personalityData, refetch: refetchPersonality } = useQuery(GET_PERSONALITY_PROFILES);
+  const { data: templatesData } = useQuery(GET_PERSONALITY_TEMPLATES);
+  const { data: questionsData, loading: questionsLoading } = useQuery(GET_PERSONALITY_QUESTIONS, {
+    variables: { templateId: templatesData?.personalityTemplates?.[0]?.id },
+    skip: !templatesData?.personalityTemplates?.length,
+  });
+
+  const { data: mgrData, refetch: refetchMgr } = useQuery(GET_MANAGER_EFFECTIVENESS);
+
+  const [submitTest, { loading: testSubmitting }] = useMutation(SUBMIT_PERSONALITY_TEST);
+  const [submitSurvey, { loading: surveySubmitting }] = useMutation(SUBMIT_PULSE_SURVEY);
+  const [computeMgr] = useMutation(COMPUTE_MANAGER_EFFECTIVENESS);
+
   const profile: BehavioralProfile | undefined = profilesData?.behavioralProfiles?.[0];
   const recommendations: BehavioralRecommendation[] = recsData?.behavioralRecommendations || [];
   const anomalies: BehavioralAnomaly[] = anomaliesData?.behavioralAnomalies || [];
+
+  const personalityProfiles: BehavioralPersonalityProfile[] = personalityData?.personalityProfiles || [];
+  const latestPersonality = personalityProfiles[0] || null;
+
+  const templates = templatesData?.personalityTemplates || [];
+  const activeTemplate = templates[0] || null;
+  const questions = questionsData?.personalityQuestions || [];
+  const managerData = mgrData?.managerEffectiveness?.[0] || null;
+
+  const isManager: boolean = !!(userRole && ['admin', 'super_admin'].includes(userRole));
+
+  const handleSubmitTest = async (templateId: number, answers: number[]) => {
+    await submitTest({ variables: { input: { templateId, answers } } });
+    await refetchPersonality();
+  };
+
+  const handleSubmitPulse = async (input: any) => {
+    await submitSurvey({ variables: { input } });
+  };
+
+  const handleComputeMgr = async () => {
+    await computeMgr({ variables: { managerId: currentUserId || 0 } });
+    await refetchMgr();
+  };
 
   if (profilesLoading || recsLoading || anomaliesLoading) {
     return <Box sx={{ p: 3, textAlign: 'center' }}>Зареждане...</Box>;
@@ -271,6 +335,90 @@ const MyBehavioralProfilePage: React.FC = () => {
           </Card>
         </Grid>
 
+        {/* Personality Profile (IPIP-50) */}
+        <Grid size={{ xs: 12 }}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography variant="h6">
+                  <PsychologyIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  Психологически профил (Big Five)
+                </Typography>
+                {!latestPersonality && activeTemplate && (
+                  <Button variant="contained" size="small" startIcon={<AssignmentIcon />} onClick={() => setTestFormOpen(true)}>
+                    Попълни теста
+                  </Button>
+                )}
+                {latestPersonality && (
+                  <Button variant="outlined" size="small" onClick={() => setTestFormOpen(true)}>
+                      Попълни отново
+                  </Button>
+                )}
+              </Box>
+              {questionsLoading ? (
+                <Typography>Зареждане на въпросите...</Typography>
+              ) : latestPersonality ? (
+                <PersonalityRadarChart
+                  openness={latestPersonality.openness}
+                  conscientiousness={latestPersonality.conscientiousness}
+                  extraversion={latestPersonality.extraversion}
+                  agreeableness={latestPersonality.agreeableness}
+                  neuroticism={latestPersonality.neuroticism}
+                  interpretation={latestPersonality.interpretation}
+                />
+              ) : questions.length > 0 ? (
+                <Typography color="text.secondary">
+                  Попълнете теста, за да видите вашия Big Five профил.
+                </Typography>
+              ) : (
+                <Typography color="text.secondary">
+                  Няма активен тестов шаблон. Свържете се с администратор.
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Pulse Survey */}
+        <Grid size={{ xs: 12 }}>
+          <Paper sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                <FeedbackIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Как се чувствате?
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Споделете как сте напоследък — това помага за по-точна оценка на рисковете
+              </Typography>
+            </Box>
+            <Button variant="contained" onClick={() => setPulseSurveyOpen(true)}>
+              Попълни анкетата
+            </Button>
+          </Paper>
+        </Grid>
+
+        {/* Manager Effectiveness */}
+        {isManager && managerData && (
+          <Grid size={{ xs: 12 }}>
+            <ManagerEffectivenessCard data={managerData} />
+          </Grid>
+        )}
+        {isManager && !managerData && (
+          <Grid size={{ xs: 12 }}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>Ефективност на мениджъра</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Кликнете за да изчислите вашата ефективност като мениджър.
+                </Typography>
+                <Button variant="contained" onClick={handleComputeMgr}>
+                  Изчисли
+                </Button>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
+
         {/* Recommendations */}
         <Grid size={{ xs: 12 }}>
           <Paper sx={{ p: 3 }}>
@@ -358,6 +506,20 @@ const MyBehavioralProfilePage: React.FC = () => {
         onClose={() => setDisputeOpen(false)}
         recommendationId={selectedRecId || 0}
         onSuccess={() => refetchRecs()}
+      />
+
+      <PersonalityTestForm
+        open={testFormOpen}
+        onClose={() => setTestFormOpen(false)}
+        questions={questions}
+        templateId={activeTemplate?.id || 0}
+        onSubmit={handleSubmitTest}
+      />
+
+      <PulseSurveyForm
+        open={pulseSurveyOpen}
+        onClose={() => setPulseSurveyOpen(false)}
+        onSubmit={handleSubmitPulse}
       />
     </Container>
   );

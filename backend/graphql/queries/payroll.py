@@ -338,3 +338,45 @@ class PayrollQuery:
             payslip_id=item.payslip_id, user_id=item.user_id,
             amount=float(item.amount), paid_at=item.paid_at,
         ) for item in items]
+
+    @strawberry.field
+    async def user_advances(
+        self,
+        info: strawberry.Info,
+        user_id: int,
+    ) -> list[types.AdvancePayment]:
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "payroll:read")
+
+        from backend.database.models import AdvancePayment
+        from sqlalchemy import desc
+
+        stmt = (
+            select(AdvancePayment)
+            .where(AdvancePayment.user_id == user_id)
+            .order_by(desc(AdvancePayment.payment_date), desc(AdvancePayment.created_at))
+        )
+        result = await db.execute(stmt)
+        return [types.AdvancePayment.from_pydantic(a) for a in result.scalars().all()]
+
+    @strawberry.field
+    async def user_loans(
+        self,
+        info: strawberry.Info,
+        user_id: int,
+    ) -> list[types.ServiceLoan]:
+        db = info.context["db"]
+        get_current_user(info)
+        await require_permission(info, "payroll:read")
+
+        from backend.database.models import ServiceLoan
+        from sqlalchemy import desc
+
+        stmt = (
+            select(ServiceLoan)
+            .where(ServiceLoan.user_id == user_id)
+            .order_by(desc(ServiceLoan.created_at))
+        )
+        result = await db.execute(stmt)
+        return [types.ServiceLoan.from_pydantic(s) for s in result.scalars().all()]

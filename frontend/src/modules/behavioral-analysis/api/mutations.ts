@@ -128,6 +128,70 @@ export const COMPUTE_ORGANIZATIONAL_HEALTH = gql`
   }
 `;
 
+export const SUBMIT_PERSONALITY_TEST = gql`
+  mutation SubmitPersonalityTest($input: PersonalityTestAnswers!) {
+    submitPersonalityTest(input: $input) {
+      id
+      userId
+      companyId
+      templateId
+      completedAt
+      openness
+      conscientiousness
+      extraversion
+      agreeableness
+      neuroticism
+      opennessRaw
+      conscientiousnessRaw
+      extraversionRaw
+      agreeablenessRaw
+      neuroticismRaw
+      interpretation
+    }
+  }
+`;
+
+export const SUBMIT_PULSE_SURVEY = gql`
+  mutation SubmitPulseSurvey($input: PulseSurveyInput!) {
+    submitPulseSurvey(input: $input) {
+      id
+      userId
+      companyId
+      submittedAt
+      burnoutFeeling
+      engagementFeeling
+      stressLevel
+      energyLevel
+      workSatisfaction
+      surveyVersion
+      notes
+    }
+  }
+`;
+
+export const COMPUTE_MANAGER_EFFECTIVENESS = gql`
+  mutation ComputeManagerEffectiveness($managerId: Int!, $periodStart: String, $periodEnd: String) {
+    computeManagerEffectiveness(managerId: $managerId, periodStart: $periodStart, periodEnd: $periodEnd) {
+      id
+      managerId
+      companyId
+      periodStart
+      periodEnd
+      teamAvgAttendance
+      teamAvgEngagement
+      teamAvgBurnout
+      teamBurnoutVariance
+      teamTurnoverRate
+      teamSize
+      teamAnomalyCount
+      managerEffectivenessScore
+      sentimentScore
+      trendDirection
+      computedAt
+    }
+  }
+`;
+
 export const COMPUTE_BIAS_REPORT = gql`
   mutation ComputeBiasReport($periodStart: String, $periodEnd: String) {
     computeBiasReport(periodStart: $periodStart, periodEnd: $periodEnd) {

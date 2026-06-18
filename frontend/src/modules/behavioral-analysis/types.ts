@@ -130,3 +130,55 @@ export interface BiasReport {
   overallBiasDetected: boolean;
   generatedAt: string;
 }
+
+export interface BehavioralPersonalityProfile {
+  id: number;
+  userId: number;
+  companyId: number;
+  templateId: number;
+  completedAt: string;
+  openness: number;
+  conscientiousness: number;
+  extraversion: number;
+  agreeableness: number;
+  neuroticism: number;
+  opennessRaw: number;
+  conscientiousnessRaw: number;
+  extraversionRaw: number;
+  agreeablenessRaw: number;
+  neuroticismRaw: number;
+  interpretation: string | null;
+}
+
+export interface BehavioralPulseSurvey {
+  id: number;
+  userId: number;
+  companyId: number;
+  submittedAt: string;
+  burnoutFeeling: number | null;
+  engagementFeeling: number | null;
+  stressLevel: number | null;
+  energyLevel: number | null;
+  workSatisfaction: number | null;
+  surveyVersion: string;
+  notes: string | null;
+}
+
+export interface ManagerEffectiveness {
+  id: number;
+  managerId: number;
+  companyId: number;
+  periodStart: string;
+  periodEnd: string;
+  teamAvgAttendance: number;
+  teamAvgEngagement: number;
+  teamAvgBurnout: number;
+  teamBurnoutVariance: number;
+  teamTurnoverRate: number;
+  teamSize: number;
+  teamAnomalyCount: number;
+  managerEffectivenessScore: number;
+  sentimentScore: number;
+  trendDirection: string;
+  computedAt: string;
+}

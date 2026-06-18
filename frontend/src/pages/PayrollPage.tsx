@@ -317,6 +317,35 @@ const GET_MONTHLY_WORK_DAYS = gql`
   }
 `;
 
+const GET_USER_ADVANCES = gql`
+  query GetUserAdvances($userId: Int!) {
+    userAdvances(userId: $userId) {
+      id
+      amount
+      paymentDate
+      description
+      isProcessed
+      createdAt
+    }
+  }
+`;
+
+const GET_USER_LOANS = gql`
+  query GetUserLoans($userId: Int!) {
+    userLoans(userId: $userId) {
+      id
+      totalAmount
+      installmentAmount
+      remainingAmount
+      installmentsCount
+      installmentsPaid
+      startDate
+      description
+      isActive
+    }
+  }
+`;
+
 // --- TRZ Templates Queries & Mutations ---
 const GET_CONTRACT_TEMPLATES = gql`
   query GetContractTemplates {
@@ -1262,8 +1291,8 @@ const GlobalPayrollSettings: React.FC = () => {
 // --- Component: Payroll Settings (User & Position) ---
 const AdvanceLoanManager: React.FC = () => {
     const { data: usersData } = useQuery(GET_DATA_QUERY);
-    const [createAdvance] = useMutation(CREATE_ADVANCE_MUTATION);
-    const [createLoan] = useMutation(CREATE_LOAN_MUTATION);
+    const [createAdvance] = useMutation(CREATE_ADVANCE_MUTATION, { refetchQueries: [GET_USER_ADVANCES, GET_USER_LOANS] });
+    const [createLoan] = useMutation(CREATE_LOAN_MUTATION, { refetchQueries: [GET_USER_ADVANCES, GET_USER_LOANS] });
     
     const [userId, setUserId] = useState<string>('');
     const [mode, setMode] = useState<'advance' | 'loan'>('advance');
@@ -1272,6 +1301,17 @@ const AdvanceLoanManager: React.FC = () => {
     const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [desc, setDesc] = useState<string>('');
     const [loading, setLoading] = useState(false);
+
+    const { data: advancesData, loading: advancesLoading } = useQuery(GET_USER_ADVANCES, {
+        variables: { userId: parseInt(userId) },
+        skip: !userId,
+        fetchPolicy: 'network-only',
+    });
+    const { data: loansData, loading: loansLoading } = useQuery(GET_USER_LOANS, {
+        variables: { userId: parseInt(userId) },
+        skip: !userId,
+        fetchPolicy: 'network-only',
+    });
 
     const handleSubmit = async () => {
         if (!userId || !amount || !date) return;
@@ -1308,73 +1348,171 @@ const AdvanceLoanManager: React.FC = () => {
     };
 
     return (
-        <Card variant="outlined" sx={{ mb: 3, border: '1px solid #1976d2' }}>
-            <CardContent>
-                <Typography variant="h6" gutterBottom color="primary">Управление на Аванси и Заеми</Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                    Добавете еднократен аванс за текущия месец или дългосрочен заем, който ще се удържа автоматично на равни вноски.
-                </Typography>
-                <Grid container spacing={2} alignItems="flex-start">
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                        <TextField
-                            select fullWidth label="Служител" size="small"
-                            value={userId} onChange={e => setUserId(e.target.value)}
-                        >
-                            {usersData?.users?.users.map((u: User) => (
-                                <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>
-                            ))}
-                        </TextField>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                        <TextField
-                            select fullWidth label="Тип" size="small"
-                            value={mode} onChange={e => setMode(e.target.value as 'advance' | 'loan')}
-                        >
-                            <MenuItem value="advance">Еднократен аванс</MenuItem>
-                            <MenuItem value="loan">Служебен аванс (на вноски)</MenuItem>
-                        </TextField>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                        <TextField
-                            fullWidth label={mode === 'advance' ? "Сума" : "Обща сума на заема"} 
-                            type="number" size="small"
-                            value={amount} onChange={e => setAmount(e.target.value)}
-                        />
-                    </Grid>
-                    {mode === 'loan' && (
+        <Box sx={{ mb: 3 }}>
+            <Card variant="outlined" sx={{ border: '1px solid #1976d2' }}>
+                <CardContent>
+                    <Typography variant="h6" gutterBottom color="primary">Управление на Аванси и Заеми</Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                        Добавете еднократен аванс за текущия месец или дългосрочен заем, който ще се удържа автоматично на равни вноски.
+                    </Typography>
+                    <Grid container spacing={2} alignItems="flex-start">
                         <Grid size={{ xs: 12, sm: 4 }}>
                             <TextField
-                                fullWidth label="Брой вноски (месеци)" 
+                                select fullWidth label="Служител" size="small"
+                                value={userId} onChange={e => setUserId(e.target.value)}
+                            >
+                                {usersData?.users?.users.map((u: User) => (
+                                    <MenuItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</MenuItem>
+                                ))}
+                            </TextField>
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 4 }}>
+                            <TextField
+                                select fullWidth label="Тип" size="small"
+                                value={mode} onChange={e => setMode(e.target.value as 'advance' | 'loan')}
+                            >
+                                <MenuItem value="advance">Еднократен аванс</MenuItem>
+                                <MenuItem value="loan">Служебен аванс (на вноски)</MenuItem>
+                            </TextField>
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 4 }}>
+                            <TextField
+                                fullWidth label={mode === 'advance' ? "Сума" : "Обща сума на заема"} 
                                 type="number" size="small"
-                                value={installments} onChange={e => setInstallments(e.target.value)}
+                                value={amount} onChange={e => setAmount(e.target.value)}
                             />
                         </Grid>
-                    )}
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                        <TextField
-                            fullWidth label="Начална дата" 
-                            type="date" size="small" InputLabelProps={{ shrink: true }}
-                            value={date} onChange={e => setDate(e.target.value)}
-                        />
+                        {mode === 'loan' && (
+                            <Grid size={{ xs: 12, sm: 4 }}>
+                                <TextField
+                                    fullWidth label="Брой вноски (месеци)" 
+                                    type="number" size="small"
+                                    value={installments} onChange={e => setInstallments(e.target.value)}
+                                />
+                            </Grid>
+                        )}
+                        <Grid size={{ xs: 12, sm: 4 }}>
+                            <TextField
+                                fullWidth label="Начална дата" 
+                                type="date" size="small" InputLabelProps={{ shrink: true }}
+                                value={date} onChange={e => setDate(e.target.value)}
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 4 }}>
+                            <TextField
+                                fullWidth label="Коментар / Описание" 
+                                size="small"
+                                value={desc} onChange={e => setDesc(e.target.value)}
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12 }}>
+                            <Button 
+                                variant="contained" color="primary" 
+                                onClick={handleSubmit} disabled={loading || !userId || !amount}
+                            >
+                                {loading ? 'Запис...' : 'Добави'}
+                            </Button>
+                        </Grid>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                        <TextField
-                            fullWidth label="Коментар / Описание" 
-                            size="small"
-                            value={desc} onChange={e => setDesc(e.target.value)}
-                        />
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                        <Button 
-                            variant="contained" color="primary" 
-                            onClick={handleSubmit} disabled={loading || !userId || !amount}
-                        >
-                            {loading ? 'Запис...' : 'Добави'}
-                        </Button>
-                    </Grid>
-                </Grid>
-            </CardContent>
-        </Card>
+                </CardContent>
+            </Card>
+
+            {userId && (
+                <Box sx={{ mt: 3 }}>
+                    <Card variant="outlined" sx={{ mb: 2 }}>
+                        <CardContent>
+                            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                                Аванси
+                            </Typography>
+                            {advancesLoading ? <CircularProgress size={24} /> : (
+                                <Table size="small">
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell>Дата</TableCell>
+                                            <TableCell>Сума</TableCell>
+                                            <TableCell>Описание</TableCell>
+                                            <TableCell>Статус</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {(!advancesData?.userAdvances || advancesData.userAdvances.length === 0) ? (
+                                            <TableRow>
+                                                <TableCell colSpan={4} align="center">Няма аванси</TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            advancesData.userAdvances.map((a: any) => (
+                                                <TableRow key={a.id}>
+                                                    <TableCell>{formatDate(a.paymentDate)}</TableCell>
+                                                    <TableCell>{Number(a.amount).toFixed(2)} лв.</TableCell>
+                                                    <TableCell>{a.description || '-'}</TableCell>
+                                                    <TableCell>
+                                                        <Chip
+                                                            label={a.isProcessed ? 'Обработен' : 'Чакащ'}
+                                                            color={a.isProcessed ? 'success' : 'warning'}
+                                                            size="small"
+                                                        />
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card variant="outlined">
+                        <CardContent>
+                            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                                Заеми
+                            </Typography>
+                            {loansLoading ? <CircularProgress size={24} /> : (
+                                <Table size="small">
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell>Начална дата</TableCell>
+                                            <TableCell>Обща сума</TableCell>
+                                            <TableCell>Вноска</TableCell>
+                                            <TableCell>Платени</TableCell>
+                                            <TableCell>Остават</TableCell>
+                                            <TableCell>Остатък</TableCell>
+                                            <TableCell>Статус</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {(!loansData?.userLoans || loansData.userLoans.length === 0) ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} align="center">Няма заеми</TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            loansData.userLoans.map((l: any) => (
+                                                <TableRow key={l.id}>
+                                                    <TableCell>{formatDate(l.startDate)}</TableCell>
+                                                    <TableCell>{Number(l.totalAmount).toFixed(2)} лв.</TableCell>
+                                                    <TableCell>{Number(l.installmentAmount).toFixed(2)} лв.</TableCell>
+                                                    <TableCell>{l.installmentsPaid}</TableCell>
+                                                    <TableCell sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                                                        {l.installmentsCount - l.installmentsPaid}
+                                                    </TableCell>
+                                                    <TableCell>{Number(l.remainingAmount).toFixed(2)} лв.</TableCell>
+                                                    <TableCell>
+                                                        <Chip
+                                                            label={l.isActive ? 'Активен' : 'Приключен'}
+                                                            color={l.isActive ? 'info' : 'default'}
+                                                            size="small"
+                                                        />
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </CardContent>
+                    </Card>
+                </Box>
+            )}
+        </Box>
     );
 };
 

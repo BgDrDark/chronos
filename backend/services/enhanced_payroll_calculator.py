@@ -634,10 +634,7 @@ class EnhancedPayrollCalculator(PayrollCalculator):
 
         # Fallback to existing payroll configuration
         payroll_query = select(Payroll).where(
-            and_(
-                Payroll.user_id == self.user_id,
-                Payroll.company_id == self.company_id,
-            ),
+            Payroll.user_id == self.user_id,
         )
         payroll_result = await self.db.execute(payroll_query)
         payroll = payroll_result.scalar_one_or_none()

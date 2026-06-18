@@ -53,6 +53,27 @@ class BehavioralProfileType:
 
 
 @strawberry.type
+class PersonalityQuestionType:
+    id: int
+    bg: str
+    en: str
+    factor: str
+    direction: str
+
+
+@strawberry.type
+class PersonalityTestTemplateType:
+    id: int
+    company_id: int
+    name: str
+    selected_question_ids: list[int]
+    shuffle: bool
+    is_active: bool
+    created_by: int
+    created_at: datetime
+
+
+@strawberry.type
 class BehavioralPersonalityProfileType:
     id: int
     user_id: int
