@@ -106,12 +106,12 @@ class LogisticsMutation:
     @strawberry.mutation
     async def create_service_loan(
             self,
+            info: strawberry.Info,
             user_id: int,
             total_amount: float,
             installments_count: int,
             start_date: datetime.date,
-            description: str,
-            info: strawberry.Info | None = None
+            description: str | None = None,
     ) -> types.ServiceLoan:
         if not info:
             raise InvalidOperationException.info_required()
