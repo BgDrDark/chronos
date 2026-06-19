@@ -164,6 +164,23 @@ export interface BehavioralPulseSurvey {
   notes: string | null;
 }
 
+export interface PersonalityQuestion {
+  id: number;
+  bg: string;
+  en: string;
+  factor: string;
+  direction: string;
+}
+
+export interface PersonalityTestTemplate {
+  id: number;
+  name: string;
+  selectedQuestionIds: number[];
+  shuffle: boolean;
+  isActive: boolean;
+  createdAt: string;
+}
+
 export interface ManagerEffectiveness {
   id: number;
   managerId: number;

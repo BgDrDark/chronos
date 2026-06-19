@@ -205,3 +205,35 @@ export const COMPUTE_BIAS_REPORT = gql`
     }
   }
 `;
+
+export const CREATE_PERSONALITY_TEMPLATE = gql`
+  mutation CreatePersonalityTemplate($input: CreatePersonalityTemplateInput!) {
+    createPersonalityTemplate(input: $input) {
+      id
+      name
+      selectedQuestionIds
+      shuffle
+      isActive
+      createdAt
+    }
+  }
+`;
+
+export const UPDATE_PERSONALITY_TEMPLATE = gql`
+  mutation UpdatePersonalityTemplate($input: UpdatePersonalityTemplateInput!) {
+    updatePersonalityTemplate(input: $input) {
+      id
+      name
+      selectedQuestionIds
+      shuffle
+      isActive
+      createdAt
+    }
+  }
+`;
+
+export const DELETE_PERSONALITY_TEMPLATE = gql`
+  mutation DeletePersonalityTemplate($id: Int!) {
+    deletePersonalityTemplate(id: $id)
+  }
+`;

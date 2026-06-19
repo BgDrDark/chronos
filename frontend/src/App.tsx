@@ -50,6 +50,7 @@ import BiasMonitorPage from './modules/behavioral-analysis/components/BiasMonito
 import EmployeeProfilePage from './modules/behavioral-analysis/components/EmployeeProfilePage';
 import SystemHealthPage from './modules/behavioral-analysis/components/SystemHealthPage';
 import MyBehavioralProfilePage from './modules/behavioral-analysis/components/MyBehavioralProfilePage';
+import PersonalityTemplateManager from './modules/behavioral-analysis/components/PersonalityTemplateManager';
 import { useQuery } from '@apollo/client';
 import { ME_QUERY } from './graphql/queries';
 import { usePeriodicSync } from './hooks/usePeriodicSync';
@@ -380,6 +381,7 @@ function App() {
         <Route path="/admin/behavioral-analysis/bias" element={<AdminRoute><BiasMonitorPage /></AdminRoute>} />
         <Route path="/admin/behavioral-analysis/employee/:id" element={<AdminRoute><EmployeeProfilePage /></AdminRoute>} />
           <Route path="/admin/behavioral-analysis/system" element={<AdminRoute><SystemHealthPage /></AdminRoute>} />
+          <Route path="/admin/behavioral-analysis/templates" element={<AdminRoute><PersonalityTemplateManager /></AdminRoute>} />
           <Route path="/documents/view" element={<DocumentViewerPage />} />
           <Route path="/share" element={<SharePage />} />
         </Routes>

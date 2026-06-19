@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 
 import strawberry
 from backend.database.models import User
-from backend.exceptions import NotFoundException, PermissionDeniedException
+from backend.exceptions import NotFoundException, PermissionDeniedException, ValidationException
 from backend.modules.behavioral_analysis.feedback_loop import FeedbackLoop
 from backend.modules.behavioral_analysis.graphql.types import (
     BehavioralPersonalityProfileType,
@@ -13,6 +13,7 @@ from backend.modules.behavioral_analysis.graphql.types import (
     BiasReportType,
     ManagerEffectivenessType,
     OrganizationalHealthType,
+    PersonalityTestTemplateType,
     RecommendationFeedbackType,
 )
 from backend.modules.behavioral_analysis.models import (
@@ -79,6 +80,23 @@ class BehavioralSettingsInput:
     auto_cleanup_enabled: bool = True
     cleanup_schedule: str = "nightly"
     anonymize_instead_of_delete: bool = False
+
+
+@strawberry.input
+class CreatePersonalityTemplateInput:
+    name: str
+    selected_question_ids: list[int]
+    shuffle: bool = True
+    is_active: bool = True
+
+
+@strawberry.input
+class UpdatePersonalityTemplateInput:
+    id: int
+    name: str | None = None
+    selected_question_ids: list[int] | None = None
+    shuffle: bool | None = None
+    is_active: bool | None = None
 
 
 @strawberry.type
@@ -621,3 +639,88 @@ class BehavioralMutation:
             survey_version=survey.survey_version,
             notes=survey.notes,
         )
+
+    @strawberry.mutation
+    async def create_personality_template(
+        self, info: Info, input: CreatePersonalityTemplateInput,
+    ) -> PersonalityTestTemplateType:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+        if current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("create personality template")
+        if len(input.selected_question_ids) != 50:
+            raise ValidationException("Трябва да изберете точно 50 въпроса.")
+        template = BehavioralPersonalityTestTemplate(
+            company_id=current_user.company_id,
+            name=input.name,
+            selected_question_ids=input.selected_question_ids,
+            shuffle=input.shuffle,
+            is_active=input.is_active,
+            created_by=current_user.id,
+        )
+        db.add(template)
+        await db.commit()
+        await db.refresh(template)
+        return PersonalityTestTemplateType(
+            id=template.id, company_id=template.company_id,
+            name=template.name, selected_question_ids=template.selected_question_ids,
+            shuffle=template.shuffle, is_active=template.is_active,
+            created_by=template.created_by, created_at=template.created_at,
+        )
+
+    @strawberry.mutation
+    async def update_personality_template(
+        self, info: Info, input: UpdatePersonalityTemplateInput,
+    ) -> PersonalityTestTemplateType:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+        if current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("update personality template")
+        result = await db.execute(
+            select(BehavioralPersonalityTestTemplate).where(
+                BehavioralPersonalityTestTemplate.id == input.id,
+                BehavioralPersonalityTestTemplate.company_id == current_user.company_id,
+            ),
+        )
+        template = result.scalar_one_or_none()
+        if not template:
+            raise NotFoundException.resource("PersonalityTestTemplate", id=input.id)
+        if input.name is not None:
+            template.name = input.name
+        if input.selected_question_ids is not None:
+            if len(input.selected_question_ids) != 50:
+                raise ValidationException("Трябва да изберете точно 50 въпроса.")
+            template.selected_question_ids = input.selected_question_ids
+        if input.shuffle is not None:
+            template.shuffle = input.shuffle
+        if input.is_active is not None:
+            template.is_active = input.is_active
+        await db.commit()
+        await db.refresh(template)
+        return PersonalityTestTemplateType(
+            id=template.id, company_id=template.company_id,
+            name=template.name, selected_question_ids=template.selected_question_ids,
+            shuffle=template.shuffle, is_active=template.is_active,
+            created_by=template.created_by, created_at=template.created_at,
+        )
+
+    @strawberry.mutation
+    async def delete_personality_template(
+        self, info: Info, id: int,
+    ) -> bool:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+        if current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("delete personality template")
+        result = await db.execute(
+            select(BehavioralPersonalityTestTemplate).where(
+                BehavioralPersonalityTestTemplate.id == id,
+                BehavioralPersonalityTestTemplate.company_id == current_user.company_id,
+            ),
+        )
+        template = result.scalar_one_or_none()
+        if not template:
+            raise NotFoundException.resource("PersonalityTestTemplate", id=id)
+        await db.delete(template)
+        await db.commit()
+        return True
