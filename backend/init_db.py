@@ -9,6 +9,7 @@ from backend.auth.rbac_service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
 from backend.config import SeedSettings
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database.database import AsyncSessionLocal, engine
+from backend.seed_documentation import seed_documentation
 from backend.database.models import (
     AnnexTemplate,
     AnnexTemplateSection,
@@ -197,7 +198,11 @@ async def init_db():
         else:
             session.add(GlobalSetting(key="seed_version", value=str(seed_cfg.SEED_VERSION)))
         await session.commit()
-        logger.info(f"Seed версия {seed_cfg.SEED_VERSION} приложена. Базата данни е напълно готова.")
+        logger.info(f"Seed версия {seed_cfg.SEED_VERSION} приложена.")
+
+    # 13. Documentation
+    await seed_documentation()
+    logger.info("Документацията е попълнена успешно.")
 
 
 async def ensure_workstations_for_company(company_id: int, session: AsyncSession | None = None):
