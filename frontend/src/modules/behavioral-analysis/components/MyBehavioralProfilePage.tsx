@@ -208,18 +208,14 @@ const MyBehavioralProfilePage: React.FC = () => {
     return <Box sx={{ p: 3, textAlign: 'center' }}>Зареждане...</Box>;
   }
 
-  if (!profile) {
-    return (
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Alert severity="info">
-          Няма наличен поведенчески профил. Данните се изчисляват нощно.
-        </Alert>
-      </Container>
-    );
-  }
-
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      {!profile ? (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Няма наличен поведенчески профил. Данните се изчисляват нощно.
+        </Alert>
+      ) : (
+        <>
       <Typography variant="h4" gutterBottom>
         Моят поведенчески профил
       </Typography>
@@ -228,6 +224,8 @@ const MyBehavioralProfilePage: React.FC = () => {
         <Alert severity="warning" sx={{ mb: 3 }}>
           Недостатъчно данни за пълен анализ. Профилът ще бъде обновен след като имаме повече информация.
         </Alert>
+      )}
+        </>
       )}
 
       {activeAssignment && (
@@ -247,6 +245,7 @@ const MyBehavioralProfilePage: React.FC = () => {
         </Alert>
       )}
 
+      {profile && (
       <Grid container spacing={3}>
         {/* Status & Confidence */}
         <Grid size={{ xs: 12, md: 4 }}>
@@ -538,6 +537,7 @@ const MyBehavioralProfilePage: React.FC = () => {
           </Paper>
         </Grid>
       </Grid>
+      )}
 
       <DisputeForm
         open={disputeOpen}
