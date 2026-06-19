@@ -347,6 +347,21 @@ class DepartmentHealthReport(Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class BehavioralPersonalityTestAssignment(Base):
+    __tablename__ = "behavioral_personality_test_assignments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("behavioral_personality_test_templates.id"))
+    assigned_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    due_by: Mapped[datetime] = mapped_column(DateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | completed | overdue
+    notified_overdue: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class BiasReport(Base):
     __tablename__ = "bias_reports"
 

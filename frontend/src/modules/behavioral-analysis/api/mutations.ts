@@ -237,3 +237,35 @@ export const DELETE_PERSONALITY_TEMPLATE = gql`
     deletePersonalityTemplate(id: $id)
   }
 `;
+
+export const ASSIGN_PERSONALITY_TEST = gql`
+  mutation AssignPersonalityTest($userIds: [Int!]!, $templateId: Int!, $dueBy: DateTime!) {
+    assignPersonalityTest(userIds: $userIds, templateId: $templateId, dueBy: $dueBy) {
+      id
+      userId
+      userName
+      userEmail
+      templateId
+      templateName
+      dueBy
+      status
+      assignedAt
+    }
+  }
+`;
+
+export const REASSIGN_PERSONALITY_TEST = gql`
+  mutation ReassignPersonalityTest($assignmentId: Int!, $dueBy: DateTime, $templateId: Int) {
+    reassignPersonalityTest(assignmentId: $assignmentId, dueBy: $dueBy, templateId: $templateId) {
+      id
+      userId
+      userName
+      userEmail
+      templateId
+      templateName
+      dueBy
+      status
+      completedAt
+    }
+  }
+`;

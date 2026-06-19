@@ -260,3 +260,22 @@ class BehavioralSystemHealthType:
     last_successful_profile_date: datetime | None = None
     triggered_alerts_today: int = 0
     last_bias_check: datetime | None = None
+
+
+@strawberry.type
+class PersonalityTestAssignmentType:
+    id: int
+    user_id: int
+    company_id: int
+    template_id: int
+    assigned_by: int
+    assigned_at: datetime
+    due_by: datetime
+    completed_at: datetime | None = None
+    status: str = "pending"
+    notified_overdue: bool = False
+
+    user_name: str = ""
+    user_email: str = ""
+    template_name: str = ""
+    assigner_name: str = ""

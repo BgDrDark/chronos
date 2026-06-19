@@ -13,12 +13,14 @@ from backend.modules.behavioral_analysis.graphql.types import (
     BiasReportType,
     ManagerEffectivenessType,
     OrganizationalHealthType,
+    PersonalityTestAssignmentType,
     PersonalityTestTemplateType,
     RecommendationFeedbackType,
 )
 from backend.modules.behavioral_analysis.models import (
     BehavioralAnomaly,
     BehavioralPersonalityProfile,
+    BehavioralPersonalityTestAssignment,
     BehavioralPersonalityTestTemplate,
     BehavioralProfile,
     BehavioralPulseSurvey,
@@ -589,6 +591,20 @@ class BehavioralMutation:
             interpretation=generate_interpretation(scores),
         )
         db.add(profile)
+
+        # Mark pending test assignment as completed
+        assign_result = await db.execute(
+            select(BehavioralPersonalityTestAssignment).where(
+                BehavioralPersonalityTestAssignment.user_id == current_user.id,
+                BehavioralPersonalityTestAssignment.template_id == input.template_id,
+                BehavioralPersonalityTestAssignment.status.in_(["pending", "overdue"]),
+            ).order_by(BehavioralPersonalityTestAssignment.assigned_at.desc()).limit(1),
+        )
+        assignment = assign_result.scalar_one_or_none()
+        if assignment:
+            assignment.status = "completed"
+            assignment.completed_at = datetime.utcnow()
+
         await db.commit()
         await db.refresh(profile)
 
@@ -724,3 +740,140 @@ class BehavioralMutation:
         await db.delete(template)
         await db.commit()
         return True
+
+    @strawberry.mutation
+    async def assign_personality_test(
+        self,
+        info: Info,
+        user_ids: list[int],
+        template_id: int,
+        due_by: datetime,
+    ) -> list[PersonalityTestAssignmentType]:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+        if current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("assign personality test")
+
+        template_result = await db.execute(
+            select(BehavioralPersonalityTestTemplate).where(
+                BehavioralPersonalityTestTemplate.id == template_id,
+                BehavioralPersonalityTestTemplate.company_id == current_user.company_id,
+            ),
+        )
+        template = template_result.scalar_one_or_none()
+        if not template:
+            raise NotFoundException.resource("PersonalityTestTemplate", id=template_id)
+
+        if not user_ids:
+            all_users = await db.execute(
+                select(User.id).where(User.company_id == current_user.company_id, User.is_active.is_(True)),
+            )
+            user_ids = [u.id for u in all_users.scalars().all()]
+
+        due_by_naive = due_by.replace(tzinfo=None) if due_by.tzinfo else due_by
+
+        created: list[PersonalityTestAssignmentType] = []
+        for uid in user_ids:
+            assign = BehavioralPersonalityTestAssignment(
+                company_id=current_user.company_id,
+                user_id=uid,
+                template_id=template_id,
+                assigned_by=current_user.id,
+                due_by=due_by_naive,
+                status="pending",
+            )
+            db.add(assign)
+            await db.flush()
+
+            user_result = await db.execute(
+                select(User.first_name, User.last_name, User.email).where(User.id == uid),
+            )
+            u = user_result.one_or_none()
+
+            created.append(PersonalityTestAssignmentType(
+                id=assign.id,
+                user_id=uid,
+                company_id=current_user.company_id,
+                template_id=template_id,
+                assigned_by=current_user.id,
+                assigned_at=assign.assigned_at,
+                due_by=due_by,
+                completed_at=None,
+                status="pending",
+                notified_overdue=False,
+                user_name=f"{u.first_name or ''} {u.last_name or ''}".strip() if u else "",
+                user_email=u.email if u else "",
+                template_name=template.name,
+                assigner_name=f"{current_user.first_name or ''} {current_user.last_name or ''}".strip(),
+            ))
+        await db.commit()
+        return created
+
+    @strawberry.mutation
+    async def reassign_personality_test(
+        self,
+        info: Info,
+        assignment_id: int,
+        due_by: datetime | None = None,
+        template_id: int | None = None,
+    ) -> PersonalityTestAssignmentType:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+        if current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("reassign personality test")
+
+        result = await db.execute(
+            select(BehavioralPersonalityTestAssignment).where(
+                BehavioralPersonalityTestAssignment.id == assignment_id,
+                BehavioralPersonalityTestAssignment.company_id == current_user.company_id,
+            ),
+        )
+        assign = result.scalar_one_or_none()
+        if not assign:
+            raise NotFoundException.resource("PersonalityTestAssignment", id=assignment_id)
+
+        if due_by:
+            assign.due_by = due_by.replace(tzinfo=None) if due_by.tzinfo else due_by
+        if template_id:
+            template_result = await db.execute(
+                select(BehavioralPersonalityTestTemplate).where(
+                    BehavioralPersonalityTestTemplate.id == template_id,
+                    BehavioralPersonalityTestTemplate.company_id == current_user.company_id,
+                ),
+            )
+            tpl = template_result.scalar_one_or_none()
+            if not tpl:
+                raise NotFoundException.resource("PersonalityTestTemplate", id=template_id)
+            assign.template_id = template_id
+        assign.status = "pending"
+        assign.completed_at = None
+        await db.commit()
+        await db.refresh(assign)
+
+        user_result = await db.execute(
+            select(User.first_name, User.last_name, User.email).where(User.id == assign.user_id),
+        )
+        u = user_result.one_or_none()
+        template_result2 = await db.execute(
+            select(BehavioralPersonalityTestTemplate.name).where(
+                BehavioralPersonalityTestTemplate.id == assign.template_id,
+            ),
+        )
+        tpl_name = template_result2.scalar_one_or_none() or ""
+
+        return PersonalityTestAssignmentType(
+            id=assign.id,
+            user_id=assign.user_id,
+            company_id=assign.company_id,
+            template_id=assign.template_id,
+            assigned_by=assign.assigned_by,
+            assigned_at=assign.assigned_at,
+            due_by=assign.due_by,
+            completed_at=assign.completed_at,
+            status=assign.status,
+            notified_overdue=assign.notified_overdue,
+            user_name=f"{u.first_name or ''} {u.last_name or ''}".strip() if u else "",
+            user_email=u.email if u else "",
+            template_name=tpl_name,
+            assigner_name=f"{current_user.first_name or ''} {current_user.last_name or ''}".strip(),
+        )

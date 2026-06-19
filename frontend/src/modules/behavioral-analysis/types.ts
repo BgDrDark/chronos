@@ -181,6 +181,23 @@ export interface PersonalityTestTemplate {
   createdAt: string;
 }
 
+export interface PersonalityTestAssignment {
+  id: number;
+  userId: number;
+  companyId: number;
+  templateId: number;
+  assignedBy: number;
+  assignedAt: string;
+  dueBy: string;
+  completedAt: string | null;
+  status: string;
+  notifiedOverdue: boolean;
+  userName: string;
+  userEmail: string;
+  templateName: string;
+  assignerName: string;
+}
+
 export interface ManagerEffectiveness {
   id: number;
   managerId: number;

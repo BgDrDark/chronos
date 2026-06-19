@@ -13,11 +13,13 @@ from backend.modules.behavioral_analysis.graphql.types import (
     ManagerEffectivenessType,
     OrganizationalHealthType,
     PersonalityQuestionType,
+    PersonalityTestAssignmentType,
     PersonalityTestTemplateType,
 )
 from backend.modules.behavioral_analysis.models import (
     BehavioralAnomaly,
     BehavioralPersonalityProfile,
+    BehavioralPersonalityTestAssignment,
     BehavioralPersonalityTestTemplate,
     BehavioralProfile,
     BehavioralRecommendation,
@@ -449,3 +451,62 @@ class BehavioralQuery:
             triggered_alerts_today=health.triggered_alerts_today,
             last_bias_check=health.last_bias_check,
         )
+
+    @strawberry.field
+    async def personality_test_assignments(
+        self,
+        info: Info,
+        user_id: int | None = None,
+        status: str | None = None,
+    ) -> list[PersonalityTestAssignmentType]:
+        db = info.context["db"]
+        current_user: User = info.context["current_user"]
+        stmt = (
+            select(BehavioralPersonalityTestAssignment)
+            .where(BehavioralPersonalityTestAssignment.company_id == current_user.company_id)
+        )
+        if user_id:
+            stmt = stmt.where(BehavioralPersonalityTestAssignment.user_id == user_id)
+        if status:
+            stmt = stmt.where(BehavioralPersonalityTestAssignment.status == status)
+        stmt = stmt.order_by(BehavioralPersonalityTestAssignment.assigned_at.desc())
+        result = await db.execute(stmt)
+        assignments = result.scalars().all()
+
+        user_ids = {a.user_id for a in assignments}
+        assigner_ids = {a.assigned_by for a in assignments}
+        template_ids = {a.template_id for a in assignments}
+
+        all_users_result = await db.execute(
+            select(User.id, User.first_name, User.last_name, User.email).where(User.id.in_(user_ids | assigner_ids)),
+        )
+        users = all_users_result.all()
+        user_name_map = {u.id: f"{u.first_name or ''} {u.last_name or ''}".strip() for u in users}
+        user_email_map = {u.id: u.email for u in users}
+
+        templates_result = await db.execute(
+            select(BehavioralPersonalityTestTemplate.id, BehavioralPersonalityTestTemplate.name).where(
+                BehavioralPersonalityTestTemplate.id.in_(template_ids),
+            ),
+        )
+        template_map = {t.id: t.name for t in templates_result.all()}
+
+        result_list: list[PersonalityTestAssignmentType] = []
+        for a in assignments:
+            result_list.append(PersonalityTestAssignmentType(
+                id=a.id,
+                user_id=a.user_id,
+                company_id=a.company_id,
+                template_id=a.template_id,
+                assigned_by=a.assigned_by,
+                assigned_at=a.assigned_at,
+                due_by=a.due_by,
+                completed_at=a.completed_at,
+                status=a.status,
+                notified_overdue=a.notified_overdue,
+                user_name=user_name_map.get(a.user_id, ""),
+                user_email=user_email_map.get(a.user_id, ""),
+                template_name=template_map.get(a.template_id, ""),
+                assigner_name=user_name_map.get(a.assigned_by, ""),
+            ))
+        return result_list

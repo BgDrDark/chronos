@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
-import { Container, Typography, Box, Paper, Grid, Card, CardContent, Chip, LinearProgress, Alert, Button } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import {
+  Container, Typography, Box, Paper, Grid, Card, CardContent, Chip, LinearProgress,
+  Alert, Button, Dialog, DialogTitle, DialogContent, DialogActions,
+} from '@mui/material';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import {
   GET_BEHAVIORAL_PROFILES, GET_BEHAVIORAL_RECOMMENDATIONS, GET_BEHAVIORAL_ANOMALIES,
   GET_PERSONALITY_PROFILES, GET_PERSONALITY_TEMPLATES, GET_PERSONALITY_QUESTIONS,
-  GET_MANAGER_EFFECTIVENESS,
+  GET_MANAGER_EFFECTIVENESS, GET_PERSONALITY_TEST_ASSIGNMENTS,
 } from '../api/queries';
 import { SUBMIT_PERSONALITY_TEST, SUBMIT_PULSE_SURVEY, COMPUTE_MANAGER_EFFECTIVENESS } from '../api/mutations';
-import { BehavioralProfile, BehavioralRecommendation, BehavioralAnomaly, BehavioralPersonalityProfile } from '../types';
+import { BehavioralProfile, BehavioralRecommendation, BehavioralAnomaly, BehavioralPersonalityProfile, PersonalityTestAssignment, PersonalityTestTemplate } from '../types';
 import CoachingTips from './coaching/CoachingTips';
 import DisputeForm from './coaching/DisputeForm';
 import PersonalityTestForm from './PersonalityTestForm';
@@ -132,6 +135,7 @@ const MyBehavioralProfilePage: React.FC = () => {
   const [selectedRecId, setSelectedRecId] = useState<number | null>(null);
   const [testFormOpen, setTestFormOpen] = useState(false);
   const [pulseSurveyOpen, setPulseSurveyOpen] = useState(false);
+  const [postponeDialog, setPostponeDialog] = useState<'idle' | 'open' | 'dismissed'>('idle');
 
   const { data: meData } = useQuery(GET_ME);
 
@@ -144,12 +148,12 @@ const MyBehavioralProfilePage: React.FC = () => {
 
   const { data: personalityData, refetch: refetchPersonality } = useQuery(GET_PERSONALITY_PROFILES);
   const { data: templatesData } = useQuery(GET_PERSONALITY_TEMPLATES);
-  const { data: questionsData, loading: questionsLoading } = useQuery(GET_PERSONALITY_QUESTIONS, {
-    variables: { templateId: templatesData?.personalityTemplates?.[0]?.id },
-    skip: !templatesData?.personalityTemplates?.length,
-  });
-
   const { data: mgrData, refetch: refetchMgr } = useQuery(GET_MANAGER_EFFECTIVENESS);
+
+  const { data: assignmentsData } = useQuery(GET_PERSONALITY_TEST_ASSIGNMENTS, {
+    variables: { userId: currentUserId, status: "pending" },
+    skip: !currentUserId,
+  });
 
   const [submitTest, { loading: testSubmitting }] = useMutation(SUBMIT_PERSONALITY_TEST);
   const [submitSurvey, { loading: surveySubmitting }] = useMutation(SUBMIT_PULSE_SURVEY);
@@ -162,12 +166,29 @@ const MyBehavioralProfilePage: React.FC = () => {
   const personalityProfiles: BehavioralPersonalityProfile[] = personalityData?.personalityProfiles || [];
   const latestPersonality = personalityProfiles[0] || null;
 
-  const templates = templatesData?.personalityTemplates || [];
-  const activeTemplate = templates[0] || null;
+  const templates: PersonalityTestTemplate[] = templatesData?.personalityTemplates || [];
+  const pendingAssignments: PersonalityTestAssignment[] = assignmentsData?.personalityTestAssignments || [];
+  const activeAssignment = pendingAssignments[0] || null;
+
+  const activeTemplate = activeAssignment
+    ? templates.find(t => t.id === activeAssignment.templateId) || templates[0] || null
+    : templates[0] || null;
+
+  const { data: questionsData, loading: questionsLoading } = useQuery(GET_PERSONALITY_QUESTIONS, {
+    variables: { templateId: activeTemplate?.id },
+    skip: !activeTemplate?.id,
+  });
+
   const questions = questionsData?.personalityQuestions || [];
   const managerData = mgrData?.managerEffectiveness?.[0] || null;
 
   const isManager: boolean = !!(userRole && ['admin', 'super_admin'].includes(userRole));
+
+  useEffect(() => {
+    if (activeAssignment && postponeDialog === 'idle') {
+      setPostponeDialog('open');
+    }
+  }, [activeAssignment, postponeDialog]);
 
   const handleSubmitTest = async (templateId: number, answers: number[]) => {
     await submitTest({ variables: { input: { templateId, answers } } });
@@ -206,6 +227,23 @@ const MyBehavioralProfilePage: React.FC = () => {
       {profile.status === 'insufficient_data' && (
         <Alert severity="warning" sx={{ mb: 3 }}>
           Недостатъчно данни за пълен анализ. Профилът ще бъде обновен след като имаме повече информация.
+        </Alert>
+      )}
+
+      {activeAssignment && (
+        <Alert
+          severity={new Date(activeAssignment.dueBy) < new Date() ? 'error' : 'info'}
+          sx={{ mb: 3 }}
+          action={
+            <Button color="inherit" size="small" variant="outlined" onClick={() => setTestFormOpen(true)}>
+              Към теста
+            </Button>
+          }
+        >
+          {new Date(activeAssignment.dueBy) < new Date()
+            ? `Имате просрочен личностен тест! Срокът беше ${new Date(activeAssignment.dueBy).toLocaleDateString('bg-BG')}. Моля, попълнете го.`
+            : `Имате назначен личностен тест. Моля, попълнете го до ${new Date(activeAssignment.dueBy).toLocaleDateString('bg-BG')}.`
+          }
         </Alert>
       )}
 
@@ -521,6 +559,40 @@ const MyBehavioralProfilePage: React.FC = () => {
         onClose={() => setPulseSurveyOpen(false)}
         onSubmit={handleSubmitPulse}
       />
+
+      <Dialog open={postponeDialog === 'open'} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {activeAssignment && new Date(activeAssignment.dueBy) < new Date()
+            ? 'Просрочен личностен тест'
+            : 'Назначен личностен тест'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2 }}>
+            {activeAssignment && new Date(activeAssignment.dueBy) < new Date()
+              ? `Имате просрочен личностен тест. Срокът изтече на ${new Date(activeAssignment.dueBy).toLocaleDateString('bg-BG')}.`
+              : `Имате назначен личностен тест${activeAssignment ? ` с шаблон "${activeAssignment.templateName}"` : ''}.`}
+          </Typography>
+          {activeAssignment && new Date(activeAssignment.dueBy) >= new Date() && (
+            <Typography>
+              Краен срок: <strong>{new Date(activeAssignment.dueBy).toLocaleDateString('bg-BG')}</strong>
+            </Typography>
+          )}
+          <Typography sx={{ mt: 2 }} color="text.secondary">
+            Тестът отнема около 10-15 минути. Можете да го отложите за по-късно.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setPostponeDialog('dismissed'); }} color="inherit">
+            Отложи за по-късно
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => { setPostponeDialog('dismissed'); setTestFormOpen(true); }}
+          >
+            Изпълни сега
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

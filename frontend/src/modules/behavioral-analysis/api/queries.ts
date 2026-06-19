@@ -211,6 +211,27 @@ export const GET_PERSONALITY_PROFILES = gql`
   }
 `;
 
+export const GET_PERSONALITY_TEST_ASSIGNMENTS = gql`
+  query GetPersonalityTestAssignments($userId: Int, $status: String) {
+    personalityTestAssignments(userId: $userId, status: $status) {
+      id
+      userId
+      companyId
+      templateId
+      assignedBy
+      assignedAt
+      dueBy
+      completedAt
+      status
+      notifiedOverdue
+      userName
+      userEmail
+      templateName
+      assignerName
+    }
+  }
+`;
+
 export const GET_MANAGER_EFFECTIVENESS = gql`
   query GetManagerEffectiveness($managerId: Int) {
     managerEffectiveness(managerId: $managerId) {

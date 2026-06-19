@@ -330,6 +330,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
         { text: 'Организационно здраве', path: '/admin/behavioral-analysis/health', visible: true },
         { text: 'Bias Monitor', path: '/admin/behavioral-analysis/bias', visible: true },
         { text: 'Шаблони тестове', path: '/admin/behavioral-analysis/templates', visible: true },
+        { text: 'Назначаване на тестове', path: '/admin/behavioral-analysis/test-assignments', visible: true },
         { text: 'System Health', path: '/admin/behavioral-analysis/system', visible: true },
         { text: 'Настройки', path: '/admin/behavioral-analysis/settings', visible: true },
       ]
