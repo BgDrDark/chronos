@@ -498,6 +498,128 @@ export const BULK_SET_SCHEDULE_MUTATION = gql`
   }
 `;
 
+export const GET_APPROVED_LEAVES_IN_RANGE = gql`
+  query GetApprovedLeavesInRange($startDate: Date!, $endDate: Date!) {
+    approvedLeaveRequestsInRange(startDate: $startDate, endDate: $endDate) {
+      id
+      user {
+        id
+        firstName
+        lastName
+        email
+      }
+      startDate
+      endDate
+      leaveType
+      status
+    }
+  }
+`;
+
+export const GET_MY_SCHEDULES_QUERY = gql`
+  query GetMySchedules($startDate: Date!, $endDate: Date!) {
+    mySchedules(startDate: $startDate, endDate: $endDate) {
+      id
+      date
+      shift {
+        id
+        name
+        startTime
+        endTime
+        shiftType
+      }
+    }
+  }
+`;
+
+export const REQUEST_LEAVE_MUTATION = gql`
+  mutation RequestLeave($startDate: Date!, $endDate: Date!, $leaveType: String!, $reason: String) {
+    requestLeave(leaveInput: {startDate: $startDate, endDate: $endDate, leaveType: $leaveType, reason: $reason}) {
+      id
+      status
+    }
+  }
+`;
+
+export const GET_SWAP_DATA = gql`
+  query GetSwapData {
+    me {
+      id
+      email
+      firstName
+      lastName
+      role { name }
+    }
+    users(limit: 1000) {
+      users { id firstName lastName email }
+    }
+    mySwapRequests {
+      id
+      status
+      createdAt
+      requestor { id firstName lastName }
+      targetUser { id firstName lastName }
+      requestorScheduleId
+      targetScheduleId
+      requestorSchedule { id date shift { name } }
+      targetSchedule { id date shift { name } }
+    }
+    pendingAdminSwaps {
+      id
+      status
+      requestor { firstName lastName }
+      targetUser { firstName lastName }
+      requestorSchedule { date shift { name } }
+      targetSchedule { date shift { name } }
+    }
+  }
+`;
+
+export const MY_FUTURE_SCHEDULES = gql`
+  query MyFutureSchedules($startDate: Date!, $endDate: Date!) {
+    mySchedules(startDate: $startDate, endDate: $endDate) {
+      id
+      date
+      shift { name }
+    }
+  }
+`;
+
+export const USER_FUTURE_SCHEDULES = gql`
+  query UserFutureSchedules($startDate: Date!, $endDate: Date!) {
+    workSchedules(startDate: $startDate, endDate: $endDate) {
+      id
+      date
+      user { id }
+      shift { name }
+    }
+  }
+`;
+
+export const CREATE_SWAP_MUTATION = gql`
+  mutation CreateSwap($reqSchedId: Int!, $targetUserId: Int!, $targetSchedId: Int!) {
+    createSwapRequest(requestorScheduleId: $reqSchedId, targetUserId: $targetUserId, targetScheduleId: $targetSchedId) {
+      id
+    }
+  }
+`;
+
+export const RESPOND_SWAP_MUTATION = gql`
+  mutation RespondSwap($swapId: Int!, $accept: Boolean!) {
+    respondToSwap(swapId: $swapId, accept: $accept) {
+      id
+    }
+  }
+`;
+
+export const APPROVE_SWAP_MUTATION = gql`
+  mutation ApproveSwap($swapId: Int!, $approve: Boolean!) {
+    approveSwap(swapId: $swapId, approve: $approve) {
+      id
+    }
+  }
+`;
+
 export const GET_MONTHLY_WORK_DAYS = gql`
   query GetMonthlyWorkDays($year: Int!, $month: Int!) {
     monthlyWorkDays(year: $year, month: $month) { id daysCount }

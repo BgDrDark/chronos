@@ -20,7 +20,36 @@ import {
   COPY_SCHEDULES_FROM_MONTH,
   GET_USERS_QUERY,
   GET_PUBLIC_HOLIDAYS_QUERY,
+  GET_APPROVED_LEAVES_IN_RANGE,
 } from '../graphql/queries';
+
+const LeaveTypeColors: Record<string, string> = {
+  annual_paid: '#2196F3',
+  paid_leave: '#2196F3',
+  sick: '#f44336',
+  sick_leave: '#f44336',
+  unpaid: '#9e9e9e',
+  unpaid_leave: '#9e9e9e',
+  maternity: '#9c27b0',
+  paternity: '#9c27b0',
+  parental: '#e91e63',
+  child_care: '#ff9800',
+  study: '#009688',
+};
+
+const LeaveTypeLabels: Record<string, string> = {
+  annual_paid: 'Пл',
+  paid_leave: 'Пл',
+  sick: 'Б',
+  sick_leave: 'Б',
+  unpaid: 'Н',
+  unpaid_leave: 'Н',
+  maternity: 'М',
+  paternity: 'Бщ',
+  parental: 'Р',
+  child_care: 'Гр',
+  study: 'Уч',
+};
 
 interface ScheduleGridProps {
   onOpenTemplatePreview: () => void;
@@ -44,6 +73,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({ onOpenTemplatePreview }) =>
     variables: { startDate, endDate }, fetchPolicy: 'network-only'
   });
   const { data: holidaysData } = useQuery(GET_PUBLIC_HOLIDAYS_QUERY, { variables: { year } });
+  const { data: leavesData } = useQuery(GET_APPROVED_LEAVES_IN_RANGE, { variables: { startDate, endDate } });
   const { data: statsData } = useQuery(GET_SCHEDULE_STATS, { variables: { month, year } });
 
   const [setSchedule] = useMutation(SET_WORK_SCHEDULE);
@@ -75,6 +105,21 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({ onOpenTemplatePreview }) =>
     holidaysData?.publicHolidays?.forEach((h: any) => map.set(h.date, h.localName || h.name));
     return map;
   }, [holidaysData]);
+
+  const leavesMap = useMemo(() => {
+    const map = new Map<string, { leaveType: string; label: string; color: string }>();
+    leavesData?.approvedLeaveRequestsInRange?.forEach((l: any) => {
+      const start = new Date(l.startDate);
+      const end = new Date(l.endDate);
+      const color = LeaveTypeColors[l.leaveType] || '#757575';
+      const label = LeaveTypeLabels[l.leaveType] || l.leaveType.charAt(0).toUpperCase();
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        map.set(`${l.user.id}-${dateStr}`, { leaveType: l.leaveType, label, color });
+      }
+    });
+    return map;
+  }, [leavesData]);
 
   const filteredUsers = useMemo(() => {
     const users = usersData?.users?.users || [];
@@ -205,6 +250,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({ onOpenTemplatePreview }) =>
                 </TableCell>
                 {daysArray.map((day) => {
                   const entry = schedulesMap.get(`${user.id}-${day.dateStr}`);
+                  const leave = leavesMap.get(`${user.id}-${day.dateStr}`);
                   const isEditing = editingCell?.userId === user.id && editingCell?.date === day.dateStr;
 
                   return (
@@ -221,6 +267,10 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({ onOpenTemplatePreview }) =>
                       ) : entry ? (
                         <Tooltip title={`${entry.shift.name} (${entry.shift.startTime.substring(0, 5)} - ${entry.shift.endTime.substring(0, 5)})`} arrow>
                           <Box sx={{ width: 26, height: 26, borderRadius: '50%', margin: '0 auto', backgroundColor: ShiftTypeColors[entry.shift.shiftType] || '#999', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold' }}>{entry.shift.name.charAt(0).toUpperCase()}</Box>
+                        </Tooltip>
+                      ) : leave ? (
+                        <Tooltip title={LeaveTypeLabels[leave.leaveType] || leave.leaveType} arrow>
+                          <Box sx={{ width: 26, height: 26, borderRadius: '4px', margin: '0 auto', backgroundColor: leave.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold' }}>{leave.label}</Box>
                         </Tooltip>
                       ) : (
                         <Box sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#ccc', margin: '0 auto' }} />

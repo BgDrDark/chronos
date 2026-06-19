@@ -1,3 +1,5 @@
+import datetime
+
 import strawberry
 from sqlalchemy import select
 
@@ -51,6 +53,32 @@ class LeaveQuery:
         if status:
             stmt = stmt.where(DbLeaveRequest.status == status)
         stmt = stmt.order_by(DbLeaveRequest.created_at.desc())
+        result = await db.execute(stmt)
+        return [types.LeaveRequest.from_pydantic(item) for item in result.scalars().all()]
+
+    @strawberry.field
+    async def approved_leave_requests_in_range(
+        self, info: strawberry.Info, start_date: datetime.date, end_date: datetime.date
+    ) -> list[types.LeaveRequest]:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        from backend.database.models import LeaveRequest as DbLeaveRequest
+        from backend.database.models import User
+        stmt = (
+            select(DbLeaveRequest)
+            .join(User, DbLeaveRequest.user_id == User.id)
+            .where(DbLeaveRequest.status == "approved")
+            .where(DbLeaveRequest.start_date <= end_date)
+            .where(DbLeaveRequest.end_date >= start_date)
+        )
+        if current_user.role.name not in ["admin", "super_admin"]:
+            stmt = stmt.where(DbLeaveRequest.user_id == current_user.id)
+        else:
+            stmt = stmt.where(User.company_id == current_user.company_id)
+        stmt = stmt.order_by(DbLeaveRequest.start_date)
         result = await db.execute(stmt)
         return [types.LeaveRequest.from_pydantic(item) for item in result.scalars().all()]
 

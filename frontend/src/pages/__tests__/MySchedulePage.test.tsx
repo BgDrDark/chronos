@@ -3,8 +3,18 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { MockedProvider } from '@apollo/client/testing';
-import { gql } from '@apollo/client';
+import { ErrorProvider } from '../../context/ErrorContext';
 import MySchedulePage from '../MySchedulePage';
+import {
+  GET_MY_SCHEDULES_QUERY,
+  GET_PUBLIC_HOLIDAYS_QUERY,
+  GET_ORTHODOX_HOLIDAYS_QUERY,
+  REQUEST_LEAVE_MUTATION,
+  GET_SWAP_DATA,
+  MY_FUTURE_SCHEDULES,
+  USER_FUTURE_SCHEDULES,
+  GET_APPROVED_LEAVES_IN_RANGE,
+} from '../../graphql/queries';
 
 vi.mock('@fullcalendar/react', () => ({
   default: ({ dateClick, eventClick, events }: any) => (
@@ -19,7 +29,7 @@ vi.mock('@fullcalendar/react', () => ({
           event: {
             startStr: '2024-01-15',
             title: 'Дневна смяна',
-            extendedProps: { shiftType: 'regular', shiftName: 'Дневна смяна', startTime: '08:00', endTime: '16:00' }
+            extendedProps: { scheduleId: 1, shiftType: 'regular', shiftName: 'Дневна смяна', startTime: '08:00', endTime: '16:00' }
           }
         })}
       >
@@ -29,46 +39,19 @@ vi.mock('@fullcalendar/react', () => ({
   ),
 }));
 
-vi.mock('../components/ShiftLegend', () => ({
+vi.mock('../../components/ShiftLegend', () => ({
   default: () => <div data-testid="shift-legend">Shift Legend</div>,
 }));
 
-vi.mock('../components/ShiftEventContent', () => ({
+vi.mock('../../components/ShiftEventContent', () => ({
   default: () => <div data-testid="shift-event-content">Event Content</div>,
 }));
-
-const GET_MY_SCHEDULES_QUERY = gql`
-  query GetMySchedules($startDate: Date!, $endDate: Date!) {
-    mySchedules(startDate: $startDate, endDate: $endDate) {
-      id date shift { id name startTime endTime shiftType }
-    }
-  }
-`;
-
-const GET_PUBLIC_HOLIDAYS_QUERY = gql`
-  query GetPublicHolidays($year: Int) {
-    publicHolidays(year: $year) { id date name localName }
-  }
-`;
-
-const GET_ORTHODOX_HOLIDAYS_QUERY = gql`
-  query GetOrthodoxHolidays($year: Int) {
-    orthodoxHolidays(year: $year) { id date name localName }
-  }
-`;
-
-const REQUEST_LEAVE_MUTATION = gql`
-  mutation RequestLeave($startDate: Date!, $endDate: Date!, $leaveType: String!, $reason: String) {
-    requestLeave(leaveInput: {startDate: $startDate, endDate: $endDate, leaveType: $leaveType, reason: $reason}) {
-      id status
-    }
-  }
-`;
 
 const createMocks = () => {
   const today = new Date();
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
   const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+  const nextMonth = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   return [
     {
@@ -112,16 +95,47 @@ const createMocks = () => {
         data: { requestLeave: { id: 1, status: 'pending' } },
       },
     },
+    {
+      request: { query: GET_SWAP_DATA },
+      result: {
+        data: {
+          me: { id: 1, email: 'test@test.com', firstName: 'Test', lastName: 'User', role: { name: 'user' } },
+          users: { users: [{ id: 2, firstName: 'Other', lastName: 'User', email: 'other@test.com' }] },
+          mySwapRequests: [],
+          pendingAdminSwaps: [],
+        },
+      },
+    },
+    {
+      request: { query: MY_FUTURE_SCHEDULES, variables: { startDate: startOfMonth, endDate: nextMonth } },
+      result: {
+        data: { mySchedules: [] },
+      },
+    },
+    {
+      request: { query: USER_FUTURE_SCHEDULES, variables: { startDate: startOfMonth, endDate: nextMonth } },
+      result: {
+        data: { workSchedules: [] },
+      },
+    },
+    {
+      request: { query: GET_APPROVED_LEAVES_IN_RANGE, variables: { startDate: startOfMonth, endDate: endOfMonth } },
+      result: {
+        data: { approvedLeaveRequestsInRange: [] },
+      },
+    },
   ];
 };
 
 const renderMySchedule = (mocks: unknown[] = createMocks()) => {
   render(
-    <MockedProvider mocks={mocks as any} addTypename={true}>
-      <BrowserRouter>
-        <MySchedulePage />
-      </BrowserRouter>
-    </MockedProvider>
+    <ErrorProvider>
+      <MockedProvider mocks={mocks as any} addTypename={true}>
+        <BrowserRouter>
+          <MySchedulePage />
+        </BrowserRouter>
+      </MockedProvider>
+    </ErrorProvider>
   );
 };
 
@@ -153,7 +167,7 @@ describe('MySchedulePage', () => {
       expect(screen.getByText(/моят график/i)).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/2 events/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 events/i)).toBeInTheDocument();
   });
 
   test('opens details dialog when date is clicked', async () => {
@@ -218,11 +232,30 @@ describe('MySchedulePage', () => {
     const today = new Date();
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+    const nextMonth = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const errorMocks = [{
-      request: { query: GET_MY_SCHEDULES_QUERY, variables: { startDate: startOfMonth, endDate: endOfMonth } },
-      error: new Error('Failed to load schedule'),
-    }];
+    const errorMocks = [
+      {
+        request: { query: GET_MY_SCHEDULES_QUERY, variables: { startDate: startOfMonth, endDate: endOfMonth } },
+        error: new Error('Failed to load schedule'),
+      },
+      {
+        request: { query: GET_SWAP_DATA },
+        result: { data: { me: { id: 1, email: 'test@test.com', firstName: 'Test', lastName: 'User', role: { name: 'user' } }, users: { users: [] }, mySwapRequests: [], pendingAdminSwaps: [] } },
+      },
+      {
+        request: { query: MY_FUTURE_SCHEDULES, variables: { startDate: startOfMonth, endDate: nextMonth } },
+        result: { data: { mySchedules: [] } },
+      },
+      {
+        request: { query: USER_FUTURE_SCHEDULES, variables: { startDate: startOfMonth, endDate: nextMonth } },
+        result: { data: { workSchedules: [] } },
+      },
+      {
+        request: { query: GET_APPROVED_LEAVES_IN_RANGE, variables: { startDate: startOfMonth, endDate: endOfMonth } },
+        result: { data: { approvedLeaveRequestsInRange: [] } },
+      },
+    ];
 
     renderMySchedule(errorMocks);
 

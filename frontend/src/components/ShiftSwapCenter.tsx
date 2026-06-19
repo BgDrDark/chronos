@@ -4,97 +4,27 @@ import {
   MenuItem, TextField, Chip, List, Paper,
   CircularProgress
 } from '@mui/material';
-import { useQuery, useMutation, gql } from '@apollo/client';
+import { useQuery, useMutation } from '@apollo/client';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import SendIcon from '@mui/icons-material/Send';
+import { useError, extractErrorMessage } from '../context/ErrorContext';
+import {
+  GET_SWAP_DATA,
+  MY_FUTURE_SCHEDULES,
+  USER_FUTURE_SCHEDULES,
+  CREATE_SWAP_MUTATION,
+  RESPOND_SWAP_MUTATION,
+  APPROVE_SWAP_MUTATION
+} from '../graphql/queries';
 import { type User, type WorkSchedule, type SwapRequest } from '../types';
 
-const GET_SWAP_DATA = gql`
-  query GetSwapData {
-    me {
-      id
-      email
-      firstName
-      lastName
-      role { name }
-    }
-    users(limit: 1000) {
-      users { id firstName lastName email }
-    }
-    mySwapRequests {
-      id
-      status
-      createdAt
-      requestor { id firstName lastName }
-      targetUser { id firstName lastName }
-      requestorScheduleId
-      targetScheduleId
-      requestorSchedule { id date shift { name } }
-      targetSchedule { id date shift { name } }
-    }
-    pendingAdminSwaps {
-      id
-      status
-      requestor { firstName lastName }
-      targetUser { firstName lastName }
-      requestorSchedule { date shift { name } }
-      targetSchedule { date shift { name } }
-    }
-  }
-`;
-
-const MY_FUTURE_SCHEDULES = gql`
-  query MyFutureSchedules($startDate: Date!, $endDate: Date!) {
-    mySchedules(startDate: $startDate, endDate: $endDate) {
-      id
-      date
-      shift { name }
-    }
-  }
-`;
-
-const USER_FUTURE_SCHEDULES = gql`
-  query UserFutureSchedules($startDate: Date!, $endDate: Date!) {
-    workSchedules(startDate: $startDate, endDate: $endDate) {
-      id
-      date
-      user { id }
-      shift { name }
-    }
-  }
-`;
-
-const CREATE_SWAP_MUTATION = gql`
-  mutation CreateSwap($reqSchedId: Int!, $targetUserId: Int!, $targetSchedId: Int!) {
-    createSwapRequest(requestorScheduleId: $reqSchedId, targetUserId: $targetUserId, targetScheduleId: $targetSchedId) {
-      id
-    }
-  }
-`;
-
-const RESPOND_SWAP_MUTATION = gql`
-  mutation RespondSwap($swapId: Int!, $accept: Boolean!) {
-    respondToSwap(swapId: $swapId, accept: $accept) {
-      id
-    }
-  }
-`;
-
-const APPROVE_SWAP_MUTATION = gql`
-  mutation ApproveSwap($swapId: Int!, $approve: Boolean!) {
-    approveSwap(swapId: $swapId, approve: $approve) {
-      id
-    }
-  }
-`;
-
 const ShiftSwapCenter: React.FC = () => {
+    const { showSuccess, showError } = useError();
     const { data, loading, refetch } = useQuery(GET_SWAP_DATA);
     const [createSwap] = useMutation(CREATE_SWAP_MUTATION);
     const [respondSwap] = useMutation(RESPOND_SWAP_MUTATION);
     const [approveSwap] = useMutation(APPROVE_SWAP_MUTATION);
 
-    // Form State
     const [mySchedId, setMySchedId] = useState('');
     const [targetUserId, setTargetUserId] = useState('');
     const [targetSchedId, setTargetSchedId] = useState('');
@@ -126,32 +56,31 @@ const ShiftSwapCenter: React.FC = () => {
                     targetSchedId: parseInt(targetSchedId)
                 }
             });
-            alert("Заявката е изпратена!");
+            showSuccess('Заявката е изпратена!');
             setMySchedId(''); setTargetUserId(''); setTargetSchedId('');
             refetch();
-        } catch (err: unknown) { 
-            if (err instanceof Error) alert(err.message);
-            else alert('Възникна грешка');
+        } catch (err: unknown) {
+            showError(extractErrorMessage(err));
         }
     };
 
     const handleRespond = async (id: number, accept: boolean) => {
         try {
             await respondSwap({ variables: { swapId: id, accept } });
+            showSuccess(accept ? 'Заявката е приета!' : 'Заявката е отказана.');
             refetch();
-        } catch (err: unknown) { 
-            if (err instanceof Error) alert(err.message);
-            else alert('Възникна грешка');
+        } catch (err: unknown) {
+            showError(extractErrorMessage(err));
         }
     };
 
     const handleApprove = async (id: number, approve: boolean) => {
         try {
             await approveSwap({ variables: { swapId: id, approve } });
+            showSuccess(approve ? 'Размяната е одобрена!' : 'Размяната е отхвърлена.');
             refetch();
-        } catch (err: unknown) { 
-            if (err instanceof Error) alert(err.message);
-            else alert('Възникна грешка');
+        } catch (err: unknown) {
+            showError(extractErrorMessage(err));
         }
     };
 
@@ -168,7 +97,6 @@ const ShiftSwapCenter: React.FC = () => {
             </Typography>
 
             <Grid container spacing={3}>
-                {/* 1. Create Request */}
                 <Grid size={{ xs: 12, md: 4 }}>
                     <Card variant="outlined" sx={{ height: '100%' }}>
                         <CardContent>
@@ -215,7 +143,6 @@ const ShiftSwapCenter: React.FC = () => {
                     </Card>
                 </Grid>
 
-                {/* 2. My Requests List */}
                 <Grid size={{ xs: 12, md: 8 }}>
                     <Card variant="outlined" sx={{ height: '100%' }}>
                         <CardContent>
@@ -260,7 +187,6 @@ const ShiftSwapCenter: React.FC = () => {
                     </Card>
                 </Grid>
 
-                {/* 3. Admin Approval Section */}
                 {isAdmin && adminPending.length > 0 && (
                     <Grid size={{ xs: 12 }}>
                         <Card variant="outlined" sx={{ border: '2px solid #2196f3' }}>

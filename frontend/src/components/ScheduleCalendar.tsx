@@ -32,7 +32,36 @@ import {
   DELETE_SCHEDULE_MUTATION,
   GET_TEMPLATES_FOR_PREVIEW,
   APPLY_SCHEDULE_TEMPLATE,
+  GET_APPROVED_LEAVES_IN_RANGE,
 } from '../graphql/queries';
+
+const LeaveTypeColors: Record<string, string> = {
+  annual_paid: '#2196F3',
+  paid_leave: '#2196F3',
+  sick: '#f44336',
+  sick_leave: '#f44336',
+  unpaid: '#9e9e9e',
+  unpaid_leave: '#9e9e9e',
+  maternity: '#9c27b0',
+  paternity: '#9c27b0',
+  parental: '#e91e63',
+  child_care: '#ff9800',
+  study: '#009688',
+};
+
+const LeaveTypeLabels: Record<string, string> = {
+  annual_paid: 'Платен',
+  paid_leave: 'Платен',
+  sick: 'Болничен',
+  sick_leave: 'Болничен',
+  unpaid: 'Неплатен',
+  unpaid_leave: 'Неплатен',
+  maternity: 'Материнство',
+  paternity: 'Бащинство',
+  parental: 'Родителски',
+  child_care: 'Грижа',
+  study: 'Учебен',
+};
 
 const ScheduleCalendar: React.FC = () => {
   const theme = useTheme();
@@ -65,6 +94,7 @@ const ScheduleCalendar: React.FC = () => {
   const includeOrthodox = localStorage.getItem('include_orthodox_holidays') === 'true';
   const { data: orthodoxHolidaysData } = useQuery(GET_ORTHODOX_HOLIDAYS_QUERY, { variables: { year }, skip: !includeOrthodox });
   const { data: normData } = useQuery(GET_MONTHLY_WORK_DAYS, { variables: { year, month } });
+  const { data: leavesData } = useQuery(GET_APPROVED_LEAVES_IN_RANGE, { variables: { startDate, endDate } });
   const { data: schedData, refetch: refetchSched } = useQuery(GET_SCHEDULES_QUERY, { variables: { startDate, endDate } });
 
   const [setSchedule] = useMutation(SET_SCHEDULE_MUTATION);
@@ -90,6 +120,8 @@ const ScheduleCalendar: React.FC = () => {
   };
 
   const handleEventClick = (arg: any) => {
+    if (arg.event.extendedProps.isLeave) return;
+    if (arg.event.extendedProps.isHoliday) return;
     const props = arg.event.extendedProps;
     setSelectedDate(arg.event.startStr);
     setSelectedUser(props.userId.toString());
@@ -191,7 +223,28 @@ const ScheduleCalendar: React.FC = () => {
     allDay: true,
   })) || []) : [];
 
-  const events = [...scheduleEvents, ...holidayEvents, ...orthodoxHolidayEvents];
+  const leaveEvents = leavesData?.approvedLeaveRequestsInRange.flatMap((l: any) => {
+    const color = LeaveTypeColors[l.leaveType] || '#757575';
+    const label = LeaveTypeLabels[l.leaveType] || l.leaveType;
+    const userName = l.user?.firstName ? `${l.user.firstName} ${l.user.lastName || ''}` : (l.user?.email || '');
+    const start = new Date(l.startDate);
+    const end = new Date(l.endDate);
+    const days: any[] = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().split('T')[0];
+      days.push({
+        title: `${userName} — ${label}`,
+        date: dateStr,
+        backgroundColor: color,
+        borderColor: color,
+        textColor: '#fff',
+        extendedProps: { isLeave: true, leaveId: l.id, leaveType: l.leaveType, userId: l.user?.id },
+      });
+    }
+    return days;
+  }) || [];
+
+  const events = [...scheduleEvents, ...leaveEvents, ...holidayEvents, ...orthodoxHolidayEvents];
 
   return (
     <Box sx={{ mt: 3, '& .fc': { borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper', p: isMobile ? 1 : 2, boxShadow: 1 } }}>

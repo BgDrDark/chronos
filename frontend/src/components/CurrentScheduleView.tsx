@@ -13,6 +13,7 @@ import {
 import dayjs from 'dayjs';
 import { ShiftTypeColors } from '../utils/shiftUtils';
 import { type User, type Shift, type WorkSchedule, type PublicHoliday } from '../types';
+import { GET_PUBLIC_HOLIDAYS_QUERY, GET_ORTHODOX_HOLIDAYS_QUERY } from '../graphql/queries';
 
 // --- QUERIES ---
 const GET_SCHEDULES_QUERY = gql`
@@ -46,28 +47,6 @@ const GET_USERS_QUERY = gql`
           title
         }
       }
-    }
-  }
-`;
-
-const GET_PUBLIC_HOLIDAYS_QUERY = gql`
-  query GetPublicHolidaysForView($year: Int) {
-    publicHolidays(year: $year) {
-      id
-      date
-      name
-      localName
-    }
-  }
-`;
-
-const GET_ORTHODOX_HOLIDAYS_QUERY = gql`
-  query GetOrthodoxHolidaysForView($year: Int) {
-    orthodoxHolidays(year: $year) {
-      id
-      date
-      name
-      localName
     }
   }
 `;
