@@ -214,6 +214,7 @@ docker-compose-dev-commands.md
 *seed*.py.bak
 scripts/seed_*
 backend/seed*
+!backend/seed_documentation.py
 backend/scripts/seed_*
 
 # ==========================================

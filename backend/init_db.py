@@ -9,12 +9,7 @@ from backend.auth.rbac_service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
 from backend.config import SeedSettings
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database.database import AsyncSessionLocal, engine
-try:
-    from backend.seed_documentation import seed_documentation
-    _seed_doc_available = True
-except ModuleNotFoundError:
-    _seed_doc_available = False
-    seed_documentation = None
+from backend.seed_documentation import seed_documentation
 from backend.database.models import (
     AnnexTemplate,
     AnnexTemplateSection,
@@ -206,11 +201,8 @@ async def init_db():
         logger.info(f"Seed версия {seed_cfg.SEED_VERSION} приложена.")
 
     # 13. Documentation
-    if _seed_doc_available and seed_documentation:
-        await seed_documentation()
-        logger.info("Документацията е попълнена успешно.")
-    else:
-        logger.info("Документацията не е налична (seed_documentation.py не е включен).")
+    await seed_documentation()
+    logger.info("Документацията е попълнена успешно.")
 
 
 async def ensure_workstations_for_company(company_id: int, session: AsyncSession | None = None):
