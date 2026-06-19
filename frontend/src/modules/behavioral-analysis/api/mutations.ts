@@ -116,7 +116,7 @@ export const COMPUTE_ORGANIZATIONAL_HEALTH = gql`
       departmentId
       departmentName
       avgBurnoutRisk
-      avgEngagement
+      avgAttendance
       avgEfficiency
       avgPunctuality
       anomalyCount

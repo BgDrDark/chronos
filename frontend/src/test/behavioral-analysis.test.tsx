@@ -186,7 +186,7 @@ const mockHealthData = [
     departmentId: 1,
     departmentName: 'Sales',
     avgBurnoutRisk: 0.4,
-    avgEngagement: 80.0,
+    avgAttendance: 80.0,
     avgEfficiency: 85.0,
     avgPunctuality: 90.0,
     anomalyCount: 2,

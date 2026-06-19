@@ -189,6 +189,11 @@ export type AccountingEntryInput = {
   vatAmount?: Scalars['Decimal']['input'];
 };
 
+export type AddItemsToBatchInput = {
+  batchId: Scalars['Int']['input'];
+  userIds: Array<Scalars['Int']['input']>;
+};
+
 export type AdvancePayment = {
   amount: Scalars['Decimal']['output'];
   createdAt: Scalars['DateTime']['output'];
@@ -413,7 +418,27 @@ export type BehavioralAnomalyType = {
   userId: Scalars['Int']['output'];
 };
 
+export type BehavioralPersonalityProfileType = {
+  agreeableness: Scalars['Int']['output'];
+  agreeablenessRaw: Scalars['Float']['output'];
+  companyId: Scalars['Int']['output'];
+  completedAt: Scalars['DateTime']['output'];
+  conscientiousness: Scalars['Int']['output'];
+  conscientiousnessRaw: Scalars['Float']['output'];
+  extraversion: Scalars['Int']['output'];
+  extraversionRaw: Scalars['Float']['output'];
+  id: Scalars['Int']['output'];
+  interpretation?: Maybe<Scalars['String']['output']>;
+  neuroticism: Scalars['Int']['output'];
+  neuroticismRaw: Scalars['Float']['output'];
+  openness: Scalars['Int']['output'];
+  opennessRaw: Scalars['Float']['output'];
+  templateId: Scalars['Int']['output'];
+  userId: Scalars['Int']['output'];
+};
+
 export type BehavioralProfileType = {
+  attendanceScore: Scalars['Float']['output'];
   burnoutRisk: Scalars['Float']['output'];
   companyId: Scalars['Int']['output'];
   computedAt: Scalars['DateTime']['output'];
@@ -422,7 +447,7 @@ export type BehavioralProfileType = {
   dataCompleteness: Scalars['Float']['output'];
   efficiencyScore: Scalars['Float']['output'];
   employeeType: Scalars['String']['output'];
-  engagementScore: Scalars['Float']['output'];
+  engagementScore?: Maybe<Scalars['Float']['output']>;
   financialStressScore: Scalars['Float']['output'];
   id: Scalars['Int']['output'];
   overtimeScore: Scalars['Float']['output'];
@@ -438,6 +463,20 @@ export type BehavioralProfileType = {
   trendDirection: Scalars['String']['output'];
   userId: Scalars['Int']['output'];
   version: Scalars['Int']['output'];
+};
+
+export type BehavioralPulseSurveyType = {
+  burnoutFeeling?: Maybe<Scalars['Int']['output']>;
+  companyId: Scalars['Int']['output'];
+  energyLevel?: Maybe<Scalars['Int']['output']>;
+  engagementFeeling?: Maybe<Scalars['Int']['output']>;
+  id: Scalars['Int']['output'];
+  notes?: Maybe<Scalars['String']['output']>;
+  stressLevel?: Maybe<Scalars['Int']['output']>;
+  submittedAt: Scalars['DateTime']['output'];
+  surveyVersion: Scalars['String']['output'];
+  userId: Scalars['Int']['output'];
+  workSatisfaction?: Maybe<Scalars['Int']['output']>;
 };
 
 export type BehavioralRecommendationType = {
@@ -562,7 +601,7 @@ export type Bonus = {
 };
 
 export type BonusCreateInput = {
-  amount: Scalars['Decimal']['input'];
+  amount: Scalars['Float']['input'];
   date: Scalars['Date']['input'];
   description?: InputMaybe<Scalars['String']['input']>;
   userId: Scalars['Int']['input'];
@@ -864,6 +903,16 @@ export type CostCenterInput = {
   name: Scalars['String']['input'];
 };
 
+export type CreatePaymentBatchInput = {
+  companyId?: InputMaybe<Scalars['Int']['input']>;
+  notes?: InputMaybe<Scalars['String']['input']>;
+  paymentDate: Scalars['DateTime']['input'];
+  paymentMethod?: Scalars['String']['input'];
+  paymentReference?: InputMaybe<Scalars['String']['input']>;
+  periodEnd: Scalars['Date']['input'];
+  periodStart: Scalars['Date']['input'];
+};
+
 export type DailyStat = {
   actualArrival?: Maybe<Scalars['DateTime']['output']>;
   actualDeparture?: Maybe<Scalars['DateTime']['output']>;
@@ -986,11 +1035,13 @@ export type EmploymentContract = {
   isActive: Scalars['Boolean']['output'];
   monthlyAdvanceAmount: Scalars['Decimal']['output'];
   nightWorkRate: Scalars['Decimal']['output'];
+  noticePeriodDays?: Maybe<Scalars['Int']['output']>;
   overtimeRate: Scalars['Decimal']['output'];
   paymentDay: Scalars['Int']['output'];
   position?: Maybe<Position>;
   positionId?: Maybe<Scalars['Int']['output']>;
   positionTitle?: Maybe<Scalars['String']['output']>;
+  probationBeneficiary?: Maybe<Scalars['String']['output']>;
   probationMonths: Scalars['Int']['output'];
   salaryCalculationType: Scalars['String']['output'];
   salaryInstallmentsCount: Scalars['Int']['output'];
@@ -1018,15 +1069,43 @@ export type EmploymentContractCreateInput = {
   holidayRate?: InputMaybe<Scalars['Float']['input']>;
   jobDescription?: InputMaybe<Scalars['String']['input']>;
   nightWorkRate?: InputMaybe<Scalars['Float']['input']>;
+  noticePeriodDays?: InputMaybe<Scalars['Int']['input']>;
   overtimeRate?: InputMaybe<Scalars['Float']['input']>;
   paymentDay?: InputMaybe<Scalars['Int']['input']>;
   positionId?: InputMaybe<Scalars['Int']['input']>;
+  probationBeneficiary?: InputMaybe<Scalars['String']['input']>;
   probationMonths?: InputMaybe<Scalars['Int']['input']>;
   salaryCalculationType?: InputMaybe<Scalars['String']['input']>;
   startDate: Scalars['Date']['input'];
   templateId?: InputMaybe<Scalars['Int']['input']>;
+  userId?: InputMaybe<Scalars['Int']['input']>;
   workClass?: InputMaybe<Scalars['String']['input']>;
   workHoursPerWeek?: Scalars['Int']['input'];
+};
+
+export type EmploymentContractUpdateInput = {
+  baseSalary?: InputMaybe<Scalars['Float']['input']>;
+  companyId?: InputMaybe<Scalars['Int']['input']>;
+  contractNumber?: InputMaybe<Scalars['String']['input']>;
+  contractType?: InputMaybe<Scalars['String']['input']>;
+  departmentId?: InputMaybe<Scalars['Int']['input']>;
+  employeeEgn?: InputMaybe<Scalars['String']['input']>;
+  employeeName?: InputMaybe<Scalars['String']['input']>;
+  endDate?: InputMaybe<Scalars['Date']['input']>;
+  holidayRate?: InputMaybe<Scalars['Float']['input']>;
+  jobDescription?: InputMaybe<Scalars['String']['input']>;
+  nightWorkRate?: InputMaybe<Scalars['Float']['input']>;
+  noticePeriodDays?: InputMaybe<Scalars['Int']['input']>;
+  overtimeRate?: InputMaybe<Scalars['Float']['input']>;
+  paymentDay?: InputMaybe<Scalars['Int']['input']>;
+  positionId?: InputMaybe<Scalars['Int']['input']>;
+  probationBeneficiary?: InputMaybe<Scalars['String']['input']>;
+  probationMonths?: InputMaybe<Scalars['Int']['input']>;
+  salaryCalculationType?: InputMaybe<Scalars['String']['input']>;
+  startDate?: InputMaybe<Scalars['Date']['input']>;
+  templateId?: InputMaybe<Scalars['Int']['input']>;
+  workClass?: InputMaybe<Scalars['String']['input']>;
+  workHoursPerWeek?: InputMaybe<Scalars['Int']['input']>;
 };
 
 export type FefoSuggestion = {
@@ -1366,6 +1445,25 @@ export type ManagementStats = {
   overtimeByMonth: Array<OvertimeStat>;
 };
 
+export type ManagerEffectivenessType = {
+  companyId: Scalars['Int']['output'];
+  computedAt: Scalars['DateTime']['output'];
+  id: Scalars['Int']['output'];
+  managerEffectivenessScore: Scalars['Float']['output'];
+  managerId: Scalars['Int']['output'];
+  periodEnd: Scalars['Date']['output'];
+  periodStart: Scalars['Date']['output'];
+  sentimentScore: Scalars['Float']['output'];
+  teamAnomalyCount: Scalars['Int']['output'];
+  teamAvgAttendance: Scalars['Float']['output'];
+  teamAvgBurnout: Scalars['Float']['output'];
+  teamAvgEngagement: Scalars['Float']['output'];
+  teamBurnoutVariance: Scalars['Float']['output'];
+  teamSize: Scalars['Int']['output'];
+  teamTurnoverRate: Scalars['Float']['output'];
+  trendDirection: Scalars['String']['output'];
+};
+
 export type Module = {
   code: Scalars['String']['output'];
   description?: Maybe<Scalars['String']['output']>;
@@ -1437,6 +1535,7 @@ export type Mutation = {
   addBatch: Batch;
   addBonus: Bonus;
   addInventoryItem: InventoryItem;
+  addItemsToBatch: SalaryPaymentBatchType;
   addSectionToAnnexTemplate: AnnexTemplateSection;
   addSectionToContractTemplate: ContractTemplateSection;
   adminClockIn: TimeLog;
@@ -1458,11 +1557,14 @@ export type Mutation = {
   calculateRecipeCost: RecipeCostResult;
   cancelLeaveRequest: LeaveRequest;
   cancelMaintenance: Scalars['Boolean']['output'];
+  cancelPaymentBatch: SalaryPaymentBatchType;
   changePassword: Scalars['Boolean']['output'];
   clockIn: TimeLog;
   clockOut: TimeLog;
   completeInventorySession: InventorySession;
+  completePaymentBatch: SalaryPaymentBatchType;
   computeBiasReport: BiasReportType;
+  computeManagerEffectiveness: ManagerEffectivenessType;
   computeOrganizationalHealth: Array<OrganizationalHealthType>;
   confirmProductionOrder: ProductionOrder;
   consumeFromBatch: Batch;
@@ -1498,6 +1600,7 @@ export type Mutation = {
   createManualTimeLog: TimeLog;
   createNightWorkBonus: NightWorkBonus;
   createOvertimeWork: OvertimeWork;
+  createPaymentBatch: SalaryPaymentBatchType;
   createPosition: Position;
   createProductionOrder: ProductionOrder;
   createProformaInvoice: ProformaInvoice;
@@ -1611,6 +1714,8 @@ export type Mutation = {
   signContractAnnex: ContractAnnex;
   signEmploymentContract: EmploymentContract;
   startInventorySession: InventorySession;
+  submitPersonalityTest: BehavioralPersonalityProfileType;
+  submitPulseSurvey: BehavioralPulseSurveyType;
   subscribeToPush: Scalars['Boolean']['output'];
   syncHolidays: Scalars['Int']['output'];
   syncOrthodoxHolidays: Scalars['Int']['output'];
@@ -1634,7 +1739,9 @@ export type Mutation = {
   updateDocumentationArticle: DocumentationArticle;
   updateDocumentationCategory: DocumentationCategory;
   updateDoorTerminal: AccessDoor;
+  updateEmploymentContract: EmploymentContract;
   updateGateway: Gateway;
+  updateGlobalPayrollConfig: GlobalPayrollConfig;
   updateGoogleCalendarSettings: Scalars['Boolean']['output'];
   updateIngredient: Ingredient;
   updateInvoice: Invoice;
@@ -1643,7 +1750,9 @@ export type Mutation = {
   updateLeaveRequestStatus: LeaveRequest;
   updateOfficeLocation: OfficeLocation;
   updatePasswordSettings: PasswordSettings;
+  updatePayrollLegalSettings: PayrollLegalSettings;
   updatePosition: Position;
+  updatePositionPayroll: Payroll;
   updateProductionOrderQuantity: ProductionOrder;
   updateProductionOrderStatus: ProductionOrder;
   updateProductionTaskStatus: ProductionTask;
@@ -1662,6 +1771,7 @@ export type Mutation = {
   updateTerminal: Terminal;
   updateTimeLog: TimeLog;
   updateUser: User;
+  updateUserPayroll: Payroll;
   updateVehicle: Vehicle;
   updateVehicleDriver: VehicleDriver;
   updateVehicleFuel: VehicleFuel;
@@ -1680,7 +1790,7 @@ export type MutationAddBatchArgs = {
 
 
 export type MutationAddBonusArgs = {
-  amount?: InputMaybe<Scalars['Decimal']['input']>;
+  amount?: InputMaybe<Scalars['Float']['input']>;
   date?: InputMaybe<Scalars['Date']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   input?: InputMaybe<BonusCreateInput>;
@@ -1692,6 +1802,11 @@ export type MutationAddInventoryItemArgs = {
   foundQuantity: Scalars['Float']['input'];
   ingredientId: Scalars['Int']['input'];
   sessionId: Scalars['Int']['input'];
+};
+
+
+export type MutationAddItemsToBatchArgs = {
+  input: AddItemsToBatchInput;
 };
 
 
@@ -1824,6 +1939,11 @@ export type MutationCancelLeaveRequestArgs = {
 };
 
 
+export type MutationCancelPaymentBatchArgs = {
+  batchId: Scalars['Int']['input'];
+};
+
+
 export type MutationChangePasswordArgs = {
   newPassword: Scalars['String']['input'];
   oldPassword: Scalars['String']['input'];
@@ -1850,7 +1970,19 @@ export type MutationCompleteInventorySessionArgs = {
 };
 
 
+export type MutationCompletePaymentBatchArgs = {
+  batchId: Scalars['Int']['input'];
+};
+
+
 export type MutationComputeBiasReportArgs = {
+  periodEnd?: InputMaybe<Scalars['String']['input']>;
+  periodStart?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type MutationComputeManagerEffectivenessArgs = {
+  managerId: Scalars['Int']['input'];
   periodEnd?: InputMaybe<Scalars['String']['input']>;
   periodStart?: InputMaybe<Scalars['String']['input']>;
 };
@@ -2105,6 +2237,11 @@ export type MutationCreateOvertimeWorkArgs = {
 };
 
 
+export type MutationCreatePaymentBatchArgs = {
+  input: CreatePaymentBatchInput;
+};
+
+
 export type MutationCreatePositionArgs = {
   departmentId?: InputMaybe<Scalars['Int']['input']>;
   title: Scalars['String']['input'];
@@ -2151,7 +2288,7 @@ export type MutationCreateScheduleTemplateArgs = {
 
 
 export type MutationCreateServiceLoanArgs = {
-  description: Scalars['String']['input'];
+  description?: InputMaybe<Scalars['String']['input']>;
   installmentsCount: Scalars['Int']['input'];
   startDate: Scalars['Date']['input'];
   totalAmount: Scalars['Float']['input'];
@@ -2706,6 +2843,16 @@ export type MutationSignEmploymentContractArgs = {
 };
 
 
+export type MutationSubmitPersonalityTestArgs = {
+  input: PersonalityTestAnswers;
+};
+
+
+export type MutationSubmitPulseSurveyArgs = {
+  input: PulseSurveyInput;
+};
+
+
 export type MutationSubscribeToPushArgs = {
   preferencesJson: Scalars['String']['input'];
   subscriptionJson: Scalars['String']['input'];
@@ -2848,10 +2995,31 @@ export type MutationUpdateDoorTerminalArgs = {
 };
 
 
+export type MutationUpdateEmploymentContractArgs = {
+  id: Scalars['Int']['input'];
+  input: EmploymentContractUpdateInput;
+};
+
+
 export type MutationUpdateGatewayArgs = {
   alias?: InputMaybe<Scalars['String']['input']>;
   companyId?: InputMaybe<Scalars['Int']['input']>;
   id: Scalars['Int']['input'];
+};
+
+
+export type MutationUpdateGlobalPayrollConfigArgs = {
+  annualLeaveDays: Scalars['Int']['input'];
+  currency: Scalars['String']['input'];
+  hasHealthInsurance: Scalars['Boolean']['input'];
+  hasTaxDeduction: Scalars['Boolean']['input'];
+  healthInsurancePercent: Scalars['Decimal']['input'];
+  hourlyRate: Scalars['Decimal']['input'];
+  monthlySalary: Scalars['Decimal']['input'];
+  overtimeMultiplier: Scalars['Decimal']['input'];
+  qrRegenIntervalMinutes: Scalars['Int']['input'];
+  standardHoursPerDay: Scalars['Int']['input'];
+  taxPercent: Scalars['Decimal']['input'];
 };
 
 
@@ -2909,10 +3077,37 @@ export type MutationUpdatePasswordSettingsArgs = {
 };
 
 
+export type MutationUpdatePayrollLegalSettingsArgs = {
+  civilContractCostsRate: Scalars['Float']['input'];
+  defaultTaxResident: Scalars['Boolean']['input'];
+  employeeInsuranceRate: Scalars['Float']['input'];
+  employerPaidSickDays: Scalars['Int']['input'];
+  incomeTaxRate: Scalars['Float']['input'];
+  maxInsuranceBase: Scalars['Float']['input'];
+  noiCompensationPercent: Scalars['Float']['input'];
+  trzComplianceStrictMode: Scalars['Boolean']['input'];
+};
+
+
 export type MutationUpdatePositionArgs = {
   departmentId: Scalars['Int']['input'];
   id: Scalars['Int']['input'];
   title: Scalars['String']['input'];
+};
+
+
+export type MutationUpdatePositionPayrollArgs = {
+  annualLeaveDays?: InputMaybe<Scalars['Int']['input']>;
+  currency?: InputMaybe<Scalars['String']['input']>;
+  hasHealthInsurance?: InputMaybe<Scalars['Boolean']['input']>;
+  hasTaxDeduction?: InputMaybe<Scalars['Boolean']['input']>;
+  healthInsurancePercent?: InputMaybe<Scalars['Decimal']['input']>;
+  hourlyRate: Scalars['Decimal']['input'];
+  monthlySalary?: InputMaybe<Scalars['Decimal']['input']>;
+  overtimeMultiplier: Scalars['Decimal']['input'];
+  positionId: Scalars['Int']['input'];
+  standardHoursPerDay: Scalars['Int']['input'];
+  taxPercent?: InputMaybe<Scalars['Decimal']['input']>;
 };
 
 
@@ -3034,6 +3229,21 @@ export type MutationUpdateTimeLogArgs = {
 
 export type MutationUpdateUserArgs = {
   userInput: UpdateUserInput;
+};
+
+
+export type MutationUpdateUserPayrollArgs = {
+  annualLeaveDays?: InputMaybe<Scalars['Int']['input']>;
+  currency?: InputMaybe<Scalars['String']['input']>;
+  hasHealthInsurance?: InputMaybe<Scalars['Boolean']['input']>;
+  hasTaxDeduction?: InputMaybe<Scalars['Boolean']['input']>;
+  healthInsurancePercent?: InputMaybe<Scalars['Decimal']['input']>;
+  hourlyRate: Scalars['Decimal']['input'];
+  monthlySalary?: InputMaybe<Scalars['Decimal']['input']>;
+  overtimeMultiplier: Scalars['Decimal']['input'];
+  standardHoursPerDay: Scalars['Int']['input'];
+  taxPercent?: InputMaybe<Scalars['Decimal']['input']>;
+  userId: Scalars['Int']['input'];
 };
 
 
@@ -3160,9 +3370,9 @@ export type OperationLogType = {
 
 export type OrganizationalHealthType = {
   anomalyCount: Scalars['Int']['output'];
+  avgAttendance: Scalars['Float']['output'];
   avgBurnoutRisk: Scalars['Float']['output'];
   avgEfficiency: Scalars['Float']['output'];
-  avgEngagement: Scalars['Float']['output'];
   avgPunctuality: Scalars['Float']['output'];
   departmentId: Scalars['Int']['output'];
   departmentName: Scalars['String']['output'];
@@ -3220,6 +3430,15 @@ export type PasswordSettingsInput = {
   newPassword: Scalars['String']['input'];
 };
 
+export type PaymentStatisticsType = {
+  averagePaymentPerEmployee: Scalars['Float']['output'];
+  byMethod?: Maybe<Scalars['JSONScalar']['output']>;
+  byStatus?: Maybe<Scalars['JSONScalar']['output']>;
+  totalAmount: Scalars['Float']['output'];
+  totalBatches: Scalars['Int']['output'];
+  totalEmployeesPaid: Scalars['Int']['output'];
+};
+
 export type Payroll = {
   annualLeaveDays: Scalars['Int']['output'];
   currency: Scalars['String']['output'];
@@ -3272,6 +3491,7 @@ export type PayrollSummaryItem = {
 
 export type Payslip = {
   actualPaymentDate?: Maybe<Scalars['DateTime']['output']>;
+  batchId?: Maybe<Scalars['Int']['output']>;
   benefitAmount: Scalars['Decimal']['output'];
   bonusAmount: Scalars['Decimal']['output'];
   dooEmployee: Scalars['Decimal']['output'];
@@ -3306,6 +3526,30 @@ export type Payslip = {
   voucherAmount: Scalars['Decimal']['output'];
   zoEmployee: Scalars['Decimal']['output'];
   zoEmployer: Scalars['Decimal']['output'];
+};
+
+export type PersonalityQuestionType = {
+  bg: Scalars['String']['output'];
+  direction: Scalars['String']['output'];
+  en: Scalars['String']['output'];
+  factor: Scalars['String']['output'];
+  id: Scalars['Int']['output'];
+};
+
+export type PersonalityTestAnswers = {
+  answers: Array<Scalars['Int']['input']>;
+  templateId: Scalars['Int']['input'];
+};
+
+export type PersonalityTestTemplateType = {
+  companyId: Scalars['Int']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  createdBy: Scalars['Int']['output'];
+  id: Scalars['Int']['output'];
+  isActive: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  selectedQuestionIds: Array<Scalars['Int']['output']>;
+  shuffle: Scalars['Boolean']['output'];
 };
 
 export type Position = {
@@ -3474,6 +3718,15 @@ export type PublicHoliday = {
   name: Scalars['String']['output'];
 };
 
+export type PulseSurveyInput = {
+  burnoutFeeling?: InputMaybe<Scalars['Int']['input']>;
+  energyLevel?: InputMaybe<Scalars['Int']['input']>;
+  engagementFeeling?: InputMaybe<Scalars['Int']['input']>;
+  notes?: InputMaybe<Scalars['String']['input']>;
+  stressLevel?: InputMaybe<Scalars['Int']['input']>;
+  workSatisfaction?: InputMaybe<Scalars['Int']['input']>;
+};
+
 export type Query = {
   accessCodes: Array<AccessCode>;
   accessDoors: Array<AccessDoor>;
@@ -3541,6 +3794,7 @@ export type Query = {
   leaveBalance: LeaveBalance;
   maintenanceStatus: MaintenanceStatus;
   managementStats: ManagementStats;
+  managerEffectiveness: Array<ManagerEffectivenessType>;
   me: User;
   modules: Array<Module>;
   monthlySummaries: Array<MonthlySummaryType>;
@@ -3548,6 +3802,7 @@ export type Query = {
   myDailyStats: Array<DailyStat>;
   myLeaveRequests: Array<LeaveRequest>;
   myNotifications: Array<Notification>;
+  myPaymentHistory: Array<SalaryPaymentItemType>;
   mySchedules: Array<WorkSchedule>;
   mySwapRequests: Array<ShiftSwapRequest>;
   notificationSetting?: Maybe<NotificationSetting>;
@@ -3558,11 +3813,17 @@ export type Query = {
   orthodoxHolidays: Array<OrthodoxHoliday>;
   overdueProductionOrders: Array<ProductionOrder>;
   passwordSettings: PasswordSettings;
+  paymentBatch?: Maybe<SalaryPaymentBatchType>;
+  paymentBatches: Array<SalaryPaymentBatchType>;
+  paymentStatistics?: Maybe<PaymentStatisticsType>;
   payrollForecast: PayrollForecast;
   payrollLegalSettings: PayrollLegalSettings;
   payrollSummary: Array<PayrollSummaryItem>;
   pendingAdminSwaps: Array<ShiftSwapRequest>;
   pendingLeaveRequests: Array<LeaveRequest>;
+  personalityProfiles: Array<BehavioralPersonalityProfileType>;
+  personalityQuestions: Array<PersonalityQuestionType>;
+  personalityTemplates: Array<PersonalityTestTemplateType>;
   positions: Array<Position>;
   priceHistory: Array<PriceHistory>;
   printers: Array<Printer>;
@@ -3592,7 +3853,10 @@ export type Query = {
   timeLogs: Array<TimeLog>;
   updateSchedule?: Maybe<UpdateScheduleType>;
   user?: Maybe<User>;
+  userAdvances: Array<AdvancePayment>;
   userDailyStats: Array<DailyStat>;
+  userLoans: Array<ServiceLoan>;
+  userPaymentHistory: Array<SalaryPaymentItemType>;
   userPresences: Array<UserPresence>;
   users: PaginatedUsers;
   vapidPublicKey?: Maybe<Scalars['String']['output']>;
@@ -3889,6 +4153,11 @@ export type QueryLeaveBalanceArgs = {
 };
 
 
+export type QueryManagerEffectivenessArgs = {
+  managerId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
 export type QueryMonthlySummariesArgs = {
   endYear?: InputMaybe<Scalars['Int']['input']>;
   startYear?: InputMaybe<Scalars['Int']['input']>;
@@ -3909,6 +4178,11 @@ export type QueryMyDailyStatsArgs = {
 
 export type QueryMyNotificationsArgs = {
   unreadOnly?: Scalars['Boolean']['input'];
+};
+
+
+export type QueryMyPaymentHistoryArgs = {
+  year?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -3948,6 +4222,26 @@ export type QueryOrthodoxHolidaysArgs = {
 };
 
 
+export type QueryPaymentBatchArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type QueryPaymentBatchesArgs = {
+  companyId?: InputMaybe<Scalars['Int']['input']>;
+  periodEnd?: InputMaybe<Scalars['Date']['input']>;
+  periodStart?: InputMaybe<Scalars['Date']['input']>;
+  status?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryPaymentStatisticsArgs = {
+  companyId: Scalars['Int']['input'];
+  month?: InputMaybe<Scalars['Int']['input']>;
+  year: Scalars['Int']['input'];
+};
+
+
 export type QueryPayrollForecastArgs = {
   month: Scalars['Int']['input'];
   year: Scalars['Int']['input'];
@@ -3958,6 +4252,16 @@ export type QueryPayrollSummaryArgs = {
   endDate: Scalars['Date']['input'];
   startDate: Scalars['Date']['input'];
   userIds?: InputMaybe<Array<Scalars['Int']['input']>>;
+};
+
+
+export type QueryPersonalityProfilesArgs = {
+  userId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+export type QueryPersonalityQuestionsArgs = {
+  templateId?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -4073,10 +4377,26 @@ export type QueryUserArgs = {
 };
 
 
+export type QueryUserAdvancesArgs = {
+  userId: Scalars['Int']['input'];
+};
+
+
 export type QueryUserDailyStatsArgs = {
   endDate: Scalars['Date']['input'];
   startDate: Scalars['Date']['input'];
   userId: Scalars['Int']['input'];
+};
+
+
+export type QueryUserLoansArgs = {
+  userId: Scalars['Int']['input'];
+};
+
+
+export type QueryUserPaymentHistoryArgs = {
+  userId: Scalars['Int']['input'];
+  year?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -4389,6 +4709,32 @@ export type SalaryInstallments = {
   count: Scalars['Int']['output'];
 };
 
+export type SalaryPaymentBatchType = {
+  companyId: Scalars['Int']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  id: Scalars['Int']['output'];
+  items: Array<SalaryPaymentItemType>;
+  notes?: Maybe<Scalars['String']['output']>;
+  paidByUser?: Maybe<User>;
+  paymentDate: Scalars['DateTime']['output'];
+  paymentMethod: Scalars['String']['output'];
+  paymentReference?: Maybe<Scalars['String']['output']>;
+  periodEnd: Scalars['Date']['output'];
+  periodStart: Scalars['Date']['output'];
+  status: Scalars['String']['output'];
+  totalAmount: Scalars['Float']['output'];
+};
+
+export type SalaryPaymentItemType = {
+  amount: Scalars['Float']['output'];
+  batchId: Scalars['Int']['output'];
+  id: Scalars['Int']['output'];
+  paidAt?: Maybe<Scalars['DateTime']['output']>;
+  payslipId?: Maybe<Scalars['Int']['output']>;
+  user?: Maybe<User>;
+  userId: Scalars['Int']['output'];
+};
+
 export type ScheduleStat = {
   assignedDays: Scalars['Int']['output'];
   isComplete: Scalars['Boolean']['output'];
@@ -4465,7 +4811,7 @@ export type ServiceLoan = {
   installmentsPaid: Scalars['Int']['output'];
   isActive: Scalars['Boolean']['output'];
   remainingAmount: Scalars['Decimal']['output'];
-  startDate: Scalars['Date']['output'];
+  startDate: Scalars['DateTime']['output'];
   totalAmount: Scalars['Decimal']['output'];
   user: User;
   userId: Scalars['Int']['output'];
@@ -4756,6 +5102,7 @@ export type User = {
   email?: Maybe<Scalars['String']['output']>;
   employmentContract?: Maybe<EmploymentContract>;
   firstName?: Maybe<Scalars['String']['output']>;
+  fullName: Scalars['String']['output'];
   iban?: Maybe<Scalars['String']['output']>;
   id: Scalars['Int']['output'];
   isActive: Scalars['Boolean']['output'];

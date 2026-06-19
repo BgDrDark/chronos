@@ -76,7 +76,7 @@ class OrganizationalHealth:
         departments = depts_result.scalars().all()
 
         if len(departments) < 2:
-            return BiasReport(
+            report = BiasReport(
                 company_id=company_id,
                 period_start=period_start,
                 period_end=period_end,
@@ -84,6 +84,9 @@ class OrganizationalHealth:
                 overall_bias_detected=False,
                 generated_at=datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None),
             )
+            self.db.add(report)
+            await self.db.commit()
+            return report
 
         for i in range(len(departments)):
             for j in range(i + 1, len(departments)):
