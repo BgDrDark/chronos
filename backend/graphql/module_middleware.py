@@ -159,6 +159,9 @@ MODULE_MAPPING = {
     "submitPersonalityTest": "behavioral_analysis",
     "submitPulseSurvey": "behavioral_analysis",
     "computeManagerEffectiveness": "behavioral_analysis",
+    "personalityTestAssignments": "behavioral_analysis",
+    "assignPersonalityTest": "behavioral_analysis",
+    "reassignPersonalityTest": "behavioral_analysis",
 }
 
 # Throttling Configuration: {field_name: seconds_between_calls}
