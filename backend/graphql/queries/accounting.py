@@ -614,6 +614,67 @@ class AccountingQuery:
         return types.AccountingEntry.from_pydantic(entry)
 
     @strawberry.field
+    async def bank_accounts(
+        self,
+        info: strawberry.Info,
+        is_active: bool | None = None,
+    ) -> list[types.BankAccount]:
+        """Get all bank accounts"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
+
+        from backend.database.models import BankAccount
+        stmt = select(BankAccount)
+
+        if current_user.role.name != "super_admin":
+            stmt = stmt.where(BankAccount.company_id == current_user.company_id)
+
+        if is_active is not None:
+            stmt = stmt.where(BankAccount.is_active == is_active)
+
+        stmt = stmt.order_by(BankAccount.bank_name.asc(), BankAccount.iban.asc())
+
+        res = await db.execute(stmt)
+        return [types.BankAccount.from_pydantic(i) for i in res.scalars().all()]
+
+    @strawberry.field
+    async def bank_transactions(
+        self,
+        info: strawberry.Info,
+        bank_account_id: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        matched: bool | None = None,
+    ) -> list[types.BankTransaction]:
+        """Get all bank transactions"""
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if not current_user: raise AuthenticationException(detail=authenticate_msg)
+
+        import datetime
+
+        from backend.database.models import BankTransaction
+        stmt = select(BankTransaction)
+
+        if current_user.role.name != "super_admin":
+            stmt = stmt.where(BankTransaction.company_id == current_user.company_id)
+
+        if bank_account_id is not None:
+            stmt = stmt.where(BankTransaction.bank_account_id == bank_account_id)
+        if start_date:
+            stmt = stmt.where(BankTransaction.date >= datetime.date.fromisoformat(start_date))
+        if end_date:
+            stmt = stmt.where(BankTransaction.date <= datetime.date.fromisoformat(end_date))
+        if matched is not None:
+            stmt = stmt.where(BankTransaction.matched == matched)
+
+        stmt = stmt.order_by(BankTransaction.date.desc(), BankTransaction.id.desc())
+
+        res = await db.execute(stmt)
+        return [types.BankTransaction.from_pydantic(i) for i in res.scalars().all()]
+
+    @strawberry.field
     async def vat_registers(
         self,
         info: strawberry.Info,

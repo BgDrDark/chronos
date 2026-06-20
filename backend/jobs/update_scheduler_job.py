@@ -1,6 +1,7 @@
 """Background job за проверка на насрочени актуализации"""
+
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -13,14 +14,16 @@ from backend.services.update_service import update_service
 logger = logging.getLogger(__name__)
 
 _update_check_count = 0
+_weekly_already_run_date: date | None = None
+_WEEKLY_WINDOW_MINUTES = 10
 
 
 async def check_scheduled_update():
     """Проверява дали е време за насрочена актуализация.
-    
+
     Работи само ако enabled=True в UpdateSchedule.
     """
-    global _update_check_count
+    global _update_check_count, _weekly_already_run_date
     _update_check_count += 1
 
     try:
@@ -39,20 +42,38 @@ async def check_scheduled_update():
             now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
             should_run = False
 
-            if schedule.schedule_type == "once" and schedule.scheduled_at and schedule.scheduled_at <= now:
-                should_run = True
-            elif schedule.schedule_type == "weekly" and schedule.day_of_week is not None:
-                    current_day = now.weekday()
-                    if (current_day == schedule.day_of_week and
-                            now.hour == schedule.hour and
-                            now.minute == schedule.minute):
+            if schedule.schedule_type == "once" and schedule.scheduled_at:
+                scheduled = schedule.scheduled_at
+                if scheduled.tzinfo:
+                    scheduled = scheduled.astimezone(
+                        ZoneInfo(settings.TIMEZONE)
+                    ).replace(tzinfo=None)
+                if scheduled <= now:
+                    should_run = True
+
+            elif (
+                schedule.schedule_type == "weekly" and schedule.day_of_week is not None
+            ):
+                today = now.date()
+                if (
+                    _weekly_already_run_date != today
+                    and now.weekday() == schedule.day_of_week
+                ):
+                    target_minutes = schedule.hour * 60 + schedule.minute
+                    current_minutes = now.hour * 60 + now.minute
+                    if abs(current_minutes - target_minutes) <= _WEEKLY_WINDOW_MINUTES:
                         should_run = True
 
             if not should_run and _update_check_count % 120 == 0:
                 logger.debug("Update scheduler check OK (not yet time)")
                 return
 
-            logger.warning(f"🔄 Scheduled auto-update triggered (type={schedule.schedule_type})")
+            if not should_run:
+                return
+
+            logger.warning(
+                f"🔄 Scheduled auto-update triggered (type={schedule.schedule_type})"
+            )
 
             service = update_service(db)
             result = await service.execute_update()
@@ -63,6 +84,8 @@ async def check_scheduled_update():
 
             if schedule.schedule_type == "once":
                 schedule.enabled = False
+            elif schedule.schedule_type == "weekly":
+                _weekly_already_run_date = now.date()
 
             await db.commit()
             logger.info(f"Auto-update completed: status={result.get('status')}")

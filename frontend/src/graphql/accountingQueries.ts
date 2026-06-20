@@ -546,7 +546,7 @@ export const GET_VAT_REGISTERS = gql`
 
 export const GENERATE_SAFT_FILE = gql`
   mutation GenerateSAFTFile($companyId: Int!, $year: Int!, $month: Int!, $saftType: String) {
-    generateSAFTFile(companyId: $companyId, year: $year, month: $month, saftType: $saftType) {
+    generateSaftFile(companyId: $companyId, year: $year, month: $month, saftType: $saftType) {
       xmlContent
       fileSize
       fileName

@@ -5,7 +5,8 @@ import { getErrorMessage } from '../types';
 import { 
   Container, Typography, Card, CardContent, Grid, TextField, Button, 
   Alert, Box, CircularProgress, Switch, FormControlLabel, Divider, InputAdornment,
-  LinearProgress
+  LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions,
+  List, ListItem, ListItemButton, ListItemText, Radio, Chip, IconButton
 } from '@mui/material';
 import { InfoIcon } from '../components/ui/InfoIcon';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
@@ -15,6 +16,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import HistoryIcon from '@mui/icons-material/History';
 import GoogleIcon from '@mui/icons-material/Google';
 import SystemUpdateIcon from '@mui/icons-material/SystemUpdate';
+import CloseIcon from '@mui/icons-material/Close';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import AuditLogViewer from '../components/AuditLogViewer';
 import ApiKeyManager from '../components/ApiKeyManager';
@@ -799,22 +801,172 @@ const SystemSettings: React.FC = () => {
     );
 };
 
+interface VersionInfo {
+    tag: string;
+    version: string;
+    releaseNotes: string;
+    publishedAt: string;
+}
+
+const VersionSelectorDialog: React.FC<{
+    open: boolean;
+    onClose: () => void;
+    versions: VersionInfo[];
+    currentVersion: string;
+    selectedVersion: string | null;
+    onSelect: (tag: string) => void;
+    onDeploy: () => void;
+    deploying: boolean;
+    deployProgress: string;
+    deployOutput: string;
+    deployResult: 'success' | 'failed' | 'rolled_back' | null;
+}> = ({
+    open, onClose, versions, currentVersion, selectedVersion,
+    onSelect, onDeploy, deploying, deployProgress, deployOutput, deployResult
+}) => {
+    const logEndRef = useRef<HTMLDivElement>(null);
+
+    React.useEffect(() => {
+        logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [deployOutput]);
+
+    return (
+        <Dialog open={open} onClose={deploying ? undefined : onClose} maxWidth="sm" fullWidth>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <SystemUpdateIcon />
+                    {deploying ? 'Обновяване...' : deployResult ? 'Резултат' : 'Избери версия'}
+                </Box>
+                {!deploying && (
+                    <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
+                )}
+            </DialogTitle>
+
+            <DialogContent dividers>
+                {deploying && (
+                    <Box>
+                        <LinearProgress sx={{ mb: 2 }} />
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            {deployProgress || 'Deploy в процес...'}
+                        </Typography>
+                        {deployOutput && (
+                            <Box sx={{
+                                maxHeight: 250, overflowY: 'auto', bgcolor: 'grey.900',
+                                color: 'grey.100', p: 1.5, borderRadius: 1, fontFamily: 'monospace', fontSize: '0.7rem'
+                            }}>
+                                {deployOutput.split('\n').map((line, i) => (
+                                    <Box key={i} sx={{
+                                        color: line.includes('SUCCESS') ? '#4caf50' :
+                                               line.includes('FAILED') || line.includes('ERROR') ? '#f44336' :
+                                               line.includes('ROLLBACK') ? '#ff9800' : 'inherit'
+                                    }}>{line}</Box>
+                                ))}
+                                <div ref={logEndRef} />
+                            </Box>
+                        )}
+                    </Box>
+                )}
+
+                {deployResult && !deploying && (
+                    <Alert severity={deployResult === 'success' ? 'success' : 'error'}>
+                        {deployResult === 'success'
+                            ? `Успешно обновяване до ${selectedVersion}!`
+                            : deployResult === 'rolled_back'
+                                ? `Deploy неуспешен — автоматичен rollback към предишна версия.`
+                                : `Deploy неуспешен. Провери логовете.`}
+                    </Alert>
+                )}
+
+                {!deploying && !deployResult && (
+                    <Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                            Текуща версия: <strong>{currentVersion}</strong>
+                        </Typography>
+                        {versions.length === 0 ? (
+                            <Alert severity="info">Използвате най-новата версия.</Alert>
+                        ) : (
+                            <List disablePadding>
+                                {versions.map((v) => (
+                                    <ListItem key={v.tag} disablePadding sx={{ mb: 1 }}>
+                                        <ListItemButton
+                                            selected={selectedVersion === v.tag}
+                                            onClick={() => onSelect(v.tag)}
+                                            sx={{ borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
+                                        >
+                                            <Radio checked={selectedVersion === v.tag} sx={{ mr: 1 }} />
+                                            <ListItemText
+                                                primary={
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                        <Typography fontWeight="bold">{v.version}</Typography>
+                                                        {v.tag === versions[0]?.tag && (
+                                                            <Chip label="latest" size="small" color="success" variant="outlined" />
+                                                        )}
+                                                    </Box>
+                                                }
+                                                secondary={
+                                                    <Box sx={{ mt: 0.5 }}>
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            {v.publishedAt ? new Date(v.publishedAt).toLocaleDateString('bg-BG') : ''}
+                                                        </Typography>
+                                                        {v.releaseNotes && (
+                                                            <Typography
+                                                                variant="body2"
+                                                                sx={{ whiteSpace: 'pre-wrap', mt: 0.5, maxHeight: 100, overflowY: 'auto' }}
+                                                            >
+                                                                {v.releaseNotes.length > 300
+                                                                    ? v.releaseNotes.substring(0, 300) + '...'
+                                                                    : v.releaseNotes}
+                                                            </Typography>
+                                                        )}
+                                                    </Box>
+                                                }
+                                            />
+                                        </ListItemButton>
+                                    </ListItem>
+                                ))}
+                            </List>
+                        )}
+                    </Box>
+                )}
+            </DialogContent>
+
+            <DialogActions sx={{ p: 2 }}>
+                {deployResult ? (
+                    <Button variant="contained" onClick={onClose}>Затвори</Button>
+                ) : !deploying && versions.length > 0 ? (
+                    <Button
+                        variant="contained"
+                        color="warning"
+                        onClick={onDeploy}
+                        disabled={!selectedVersion}
+                        startIcon={<SystemUpdateIcon />}
+                    >
+                        Обнови до {selectedVersion?.replace(/^v/, '')}
+                    </Button>
+                ) : null}
+            </DialogActions>
+        </Dialog>
+    );
+};
+
 const DeploymentSettings: React.FC = () => {
     const [deploying, setDeploying] = useState(false);
     const [checking, setChecking] = useState(false);
     const [msg, setMsg] = useState<{type: 'success'|'error'|'info', text: string} | null>(null);
     const [lastCheck, setLastCheck] = useState<string | null>(null);
-    const [updateAvailable, setUpdateAvailable] = useState<{available: boolean, version: string, releaseNotes?: string} | null>(null);
     const [currentVersion, setCurrentVersion] = useState<string>('loading...');
     const [deployLog, setDeployLog] = useState<string[]>([]);
     const [showLog, setShowLog] = useState(false);
     const [loadingLog, setLoadingLog] = useState(false);
     const [deployProgress, setDeployProgress] = useState<string>('');
     const [deployOutput, setDeployOutput] = useState<string>('');
-    
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [versions, setVersions] = useState<VersionInfo[]>([]);
+    const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+    const [deployResult, setDeployResult] = useState<'success' | 'failed' | 'rolled_back' | null>(null);
+
     const API_URL = getApiUrl();
     const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || 'BgDrDark/chronos';
-
     const FALLBACK_VERSION = '3.6.1.0';
 
     const isNewerVersion = (latest: string, current: string): boolean => {
@@ -828,7 +980,7 @@ const DeploymentSettings: React.FC = () => {
         }
         return false;
     };
-    
+
     React.useEffect(() => {
         fetch(`${API_URL}/webhook/health`)
             .then(res => res.json())
@@ -836,33 +988,29 @@ const DeploymentSettings: React.FC = () => {
             .catch(() => setCurrentVersion(FALLBACK_VERSION));
     }, [API_URL]);
 
-    // Poll deploy status when deploying
     React.useEffect(() => {
         if (!deploying) return;
-        
+
         const pollInterval = setInterval(async () => {
             try {
                 const res = await fetch(`${API_URL}/webhook/deploy-status`);
                 if (res.ok) {
                     const data = await res.json();
                     setDeployProgress(data.progress || '');
-                    if (data.output) {
-                        setDeployOutput(data.output);
-                    }
+                    if (data.output) setDeployOutput(data.output);
                     if (!data.is_deploying) {
                         clearInterval(pollInterval);
                         setDeploying(false);
                         if (data.status === 'success') {
-                            setMsg({ type: 'success', text: `Успешно обновяване! ${data.progress}` });
-                            // Refresh current version
+                            setDeployResult('success');
                             fetch(`${API_URL}/webhook/health`)
                                 .then(r => r.json())
                                 .then(d => setCurrentVersion(d.version || FALLBACK_VERSION))
                                 .catch(() => {});
                         } else if (data.status === 'rolled_back') {
-                            setMsg({ type: 'error', text: `Deploy failed - автоматичен rollback: ${data.progress}` });
+                            setDeployResult('rolled_back');
                         } else {
-                            setMsg({ type: 'error', text: `Deploy failed: ${data.progress}` });
+                            setDeployResult('failed');
                         }
                     }
                 }
@@ -870,7 +1018,7 @@ const DeploymentSettings: React.FC = () => {
                 // Ignore polling errors
             }
         }, 2000);
-        
+
         return () => clearInterval(pollInterval);
     }, [deploying, API_URL]);
 
@@ -879,9 +1027,7 @@ const DeploymentSettings: React.FC = () => {
         if (!showLog && deployLog.length === 0) {
             setLoadingLog(true);
             try {
-                const res = await fetch(`${API_URL}/webhook/deploy-log?lines=50`, {
-                    credentials: 'include',
-                });
+                const res = await fetch(`${API_URL}/webhook/deploy-log?lines=50`, { credentials: 'include' });
                 if (res.ok) {
                     const data = await res.json();
                     setDeployLog(data.log || []);
@@ -896,58 +1042,38 @@ const DeploymentSettings: React.FC = () => {
 
     const handleCheckUpdate = async () => {
         setChecking(true);
-        setUpdateAvailable(null);
         setMsg(null);
-        
+        setDeployResult(null);
+
         try {
-            let latestVersion = 'unknown';
-            let releaseNotes = '';
-            
-            try {
-                // Check tags directly (more reliable than releases)
-                const tagsResponse = await fetch(
-                    `https://api.github.com/repos/${GITHUB_REPO}/tags`,
-                    { headers: { 'Accept': 'application/vnd.github.v3+json' } }
-                );
-                if (tagsResponse.ok) {
-                    const tags = await tagsResponse.json();
-                    if (tags.length > 0) {
-                        latestVersion = tags[0].name.replace(/^v/, '');
-                    }
-                } else {
-                    // Fallback to releases
-                    const response = await fetch(
-                        `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-                        { headers: { 'Accept': 'application/vnd.github.v3+json' } }
-                    );
-                    if (response.ok) {
-                        const release = await response.json();
-                        latestVersion = release.tag_name?.replace(/^v/, '') || 'unknown';
-                        releaseNotes = release.body || '';
-                    }
-                }
-            } catch {
+            const releasesRes = await fetch(
+                `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=20`,
+                { headers: { 'Accept': 'application/vnd.github.v3+json' } }
+            );
+
+            if (!releasesRes.ok) {
                 setMsg({ type: 'error', text: 'GitHub API недостъпен. Проверете ръчно на GitHub.' });
                 setChecking(false);
                 return;
             }
-            
-            if (latestVersion === 'unknown') {
-                setMsg({ type: 'error', text: 'Не може да се определи версията' });
-            } else {
-                const hasUpdate = isNewerVersion(latestVersion, currentVersion);
-                setUpdateAvailable({ 
-                    available: hasUpdate, 
-                    version: latestVersion,
-                    releaseNotes: hasUpdate ? releaseNotes : undefined
-                });
-                setLastCheck(new Date().toLocaleString('bg-BG'));
-                
-                if (hasUpdate) {
-                    setMsg({ type: 'success', text: `Налична е нова версия: ${latestVersion}` });
-                } else {
-                    setMsg({ type: 'info', text: 'Използвате най-новата версия' });
-                }
+
+            const releases = await releasesRes.json();
+            const newer: VersionInfo[] = releases
+                .filter((r: any) => isNewerVersion(r.tag_name?.replace(/^v/, '') || '', currentVersion))
+                .map((r: any) => ({
+                    tag: r.tag_name,
+                    version: r.tag_name?.replace(/^v/, '') || 'unknown',
+                    releaseNotes: r.body || '',
+                    publishedAt: r.published_at || '',
+                }));
+
+            setVersions(newer);
+            setSelectedVersion(newer.length > 0 ? newer[0].tag : null);
+            setLastCheck(new Date().toLocaleString('bg-BG'));
+            setDialogOpen(true);
+
+            if (newer.length === 0) {
+                setMsg({ type: 'info', text: 'Използвате най-новата версия' });
             }
         } catch (err: any) {
             setMsg({ type: 'error', text: err.message || 'Грешка при проверка' });
@@ -957,34 +1083,36 @@ const DeploymentSettings: React.FC = () => {
     };
 
     const handleDeploy = async () => {
-        const targetVersion = updateAvailable?.available ? `v${updateAvailable.version}` : null;
-        const confirmMsg = targetVersion 
-            ? `Сигурен ли си, че искаш да обновиш до версия ${targetVersion}?`
-            : 'Сигурен ли си, че искаш да обновиш приложението?';
-        
-        if (!window.confirm(confirmMsg)) return;
+        if (!selectedVersion) return;
 
         setDeploying(true);
-        setMsg(null);
+        setDeployResult(null);
         setDeployProgress('Starting deployment...');
         setDeployOutput('');
-        
+
         try {
             const res = await fetchWithAuth(`${API_URL}/webhook/deploy`, {
                 method: 'POST',
-                body: JSON.stringify({ version: targetVersion || undefined })
+                body: JSON.stringify({ version: selectedVersion })
             });
-            
-            const data = await res.json();
-            
+
             if (!res.ok) {
+                const data = await res.json();
                 setMsg({ type: 'error', text: data.detail || 'Грешка при обновяване' });
                 setDeploying(false);
+                setDialogOpen(false);
             }
-            // Status polling will handle success/failure display
         } catch (err: any) {
             setMsg({ type: 'error', text: err.message || 'Грешка при обновяване' });
             setDeploying(false);
+            setDialogOpen(false);
+        }
+    };
+
+    const handleCloseDialog = () => {
+        if (!deploying) {
+            setDialogOpen(false);
+            setDeployResult(null);
         }
     };
 
@@ -994,18 +1122,14 @@ const DeploymentSettings: React.FC = () => {
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#455a64' }}>
                     <SystemUpdateIcon /> Обновяване на Приложението
                 </Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                    GitHub repository: {GITHUB_REPO}
-                </Typography>
-
                 {msg && <Alert severity={msg.type} sx={{ mb: 2 }}>{msg.text}</Alert>}
 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                     <Typography variant="body1" fontWeight="bold">
                         Текуща версия: {currentVersion}
                     </Typography>
-                    <Button 
-                        variant="outlined" 
+                    <Button
+                        variant="outlined"
                         size="small"
                         onClick={handleCheckUpdate}
                         disabled={checking || deploying}
@@ -1015,57 +1139,14 @@ const DeploymentSettings: React.FC = () => {
                     </Button>
                 </Box>
 
-                {updateAvailable?.available && (
-                    <Alert severity="info" sx={{ mb: 2 }}>
-                        <Typography variant="body2" fontWeight="bold">
-                            Налична е нова версия: {updateAvailable.version}
-                        </Typography>
-                        {updateAvailable.releaseNotes && (
-                            <Box sx={{ mt: 1, maxHeight: 150, overflowY: 'auto' }}>
-                                <Typography variant="caption" color="text.secondary">
-                                    Release notes:
-                                </Typography>
-                                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.5 }}>
-                                    {updateAvailable.releaseNotes.substring(0, 500)}
-                                    {updateAvailable.releaseNotes.length > 500 ? '...' : ''}
-                                </Typography>
-                            </Box>
-                        )}
-                    </Alert>
-                )}
-
-                {deploying && (
+                {deploying && !dialogOpen && (
                     <Box sx={{ mb: 2 }}>
                         <LinearProgress sx={{ mb: 1 }} />
                         <Typography variant="body2" color="text.secondary">
                             {deployProgress || 'Deploy в процес...'}
                         </Typography>
-                        {deployOutput && (
-                            <Box sx={{ 
-                                mt: 1, maxHeight: 200, overflowY: 'auto', 
-                                bgcolor: 'grey.900', color: 'grey.100', 
-                                p: 1, borderRadius: 1, fontFamily: 'monospace', fontSize: '0.7rem' 
-                            }}>
-                                {deployOutput.split('\n').slice(-10).map((line, i) => (
-                                    <Box key={i}>{line}</Box>
-                                ))}
-                            </Box>
-                        )}
                     </Box>
                 )}
-
-                <Button 
-                    variant="contained" 
-                    color="warning"
-                    onClick={handleDeploy}
-                    disabled={deploying}
-                    startIcon={deploying ? <CircularProgress size={20} color="inherit" /> : <SystemUpdateIcon />}
-                    sx={{ mb: 2 }}
-                >
-                    {deploying ? 'Обновяване...' : 
-                     updateAvailable?.available ? `Обнови до ${updateAvailable.version}` : 
-                     'Обнови Приложението'}
-                </Button>
 
                 {lastCheck && (
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
@@ -1074,8 +1155,8 @@ const DeploymentSettings: React.FC = () => {
                 )}
 
                 <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-                    <Button 
-                        variant="outlined" 
+                    <Button
+                        variant="outlined"
                         size="small"
                         onClick={handleFetchDeployLog}
                         disabled={loadingLog}
@@ -1091,22 +1172,16 @@ const DeploymentSettings: React.FC = () => {
                             Последни 50 реда от deploy.log
                         </Typography>
                         <Box sx={{
-                            maxHeight: 300,
-                            overflowY: 'auto',
-                            bgcolor: 'grey.900',
-                            color: 'grey.100',
-                            p: 1.5,
-                            borderRadius: 1,
-                            fontFamily: 'monospace',
-                            fontSize: '0.75rem',
-                            lineHeight: 1.4,
+                            maxHeight: 300, overflowY: 'auto', bgcolor: 'grey.900',
+                            color: 'grey.100', p: 1.5, borderRadius: 1, fontFamily: 'monospace',
+                            fontSize: '0.75rem', lineHeight: 1.4,
                         }}>
                             {deployLog.length > 0 ? (
                                 deployLog.map((line, i) => (
-                                    <Box key={i} sx={{ 
-                                        color: line.includes('SUCCESS') ? '#4caf50' : 
-                                               line.includes('FAILED') || line.includes('ERROR') ? '#f44336' : 
-                                               line.includes('ROLLBACK') ? '#ff9800' : 'inherit' 
+                                    <Box key={i} sx={{
+                                        color: line.includes('SUCCESS') ? '#4caf50' :
+                                               line.includes('FAILED') || line.includes('ERROR') ? '#f44336' :
+                                               line.includes('ROLLBACK') ? '#ff9800' : 'inherit'
                                     }}>
                                         {line}
                                     </Box>
@@ -1120,6 +1195,20 @@ const DeploymentSettings: React.FC = () => {
                     </Box>
                 )}
             </CardContent>
+
+            <VersionSelectorDialog
+                open={dialogOpen}
+                onClose={handleCloseDialog}
+                versions={versions}
+                currentVersion={currentVersion}
+                selectedVersion={selectedVersion}
+                onSelect={setSelectedVersion}
+                onDeploy={handleDeploy}
+                deploying={deploying}
+                deployProgress={deployProgress}
+                deployOutput={deployOutput}
+                deployResult={deployResult}
+            />
         </Card>
     );
 };

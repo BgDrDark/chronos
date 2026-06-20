@@ -30,6 +30,7 @@ class NotificationsMutation:
         current_user = get_current_user(info)
 
         from backend.services.notification_service import notification_service
+
         service = notification_service(db)
         await service.mark_as_read(id, current_user.id)
         return True
@@ -48,7 +49,9 @@ class NotificationsMutation:
             sub_data = json.loads(subscription_json)
             prefs = json.loads(preferences_json)
         except json.JSONDecodeError as e:
-            raise ValidationException.field("subscription_json", f"Invalid JSON: {e}") from e
+            raise ValidationException.field(
+                "subscription_json", f"Invalid JSON: {e}"
+            ) from e
 
         endpoint = sub_data.get("endpoint")
         keys = sub_data.get("keys", {})
@@ -60,6 +63,7 @@ class NotificationsMutation:
 
         try:
             from backend.services.notification_service import notification_service
+
             service = notification_service(db)
             subscription = await service.subscribe(
                 user_id=current_user.id,
@@ -76,10 +80,14 @@ class NotificationsMutation:
         except Exception as e:
             logger.error(f"Failed to subscribe to push notifications: {e}")
             await db.rollback()
-            raise ValidationException.field("subscription", f"Failed to save subscription: {e}") from e
+            raise ValidationException.field(
+                "subscription", f"Failed to save subscription: {e}"
+            ) from e
 
     @strawberry.mutation
-    async def schedule_maintenance(self, info: strawberry.Info, input: inputs.MaintenanceInput) -> bool:
+    async def schedule_maintenance(
+        self, info: strawberry.Info, input: inputs.MaintenanceInput
+    ) -> bool:
         from backend.database.models import MaintenanceSettings
 
         db = info.context["db"]
@@ -90,7 +98,9 @@ class NotificationsMutation:
         if input.delay_minutes > 0:
             scheduled_at = now + timedelta(minutes=input.delay_minutes)
 
-        result = await db.execute(select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1))
+        result = await db.execute(
+            select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1)
+        )
         setting = result.scalar_one_or_none()
 
         if setting:
@@ -120,7 +130,9 @@ class NotificationsMutation:
         current_user = get_current_user(info)
 
         now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
-        result = await db.execute(select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1))
+        result = await db.execute(
+            select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1)
+        )
         setting = result.scalar_one_or_none()
 
         if setting:
@@ -133,7 +145,9 @@ class NotificationsMutation:
         return True
 
     @strawberry.mutation
-    async def set_update_schedule(self, info: strawberry.Info, input: inputs.UpdateScheduleInput) -> types.UpdateScheduleType:
+    async def set_update_schedule(
+        self, info: strawberry.Info, input: inputs.UpdateScheduleInput
+    ) -> types.UpdateScheduleType:
         from backend.database.models import UpdateSchedule
 
         db = info.context["db"]
@@ -141,13 +155,24 @@ class NotificationsMutation:
 
         now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
 
-        result = await db.execute(select(UpdateSchedule).order_by(UpdateSchedule.id.desc()).limit(1))
+        result = await db.execute(
+            select(UpdateSchedule).order_by(UpdateSchedule.id.desc()).limit(1)
+        )
         schedule = result.scalar_one_or_none()
+
+        scheduled_at = input.scheduled_at
+        if scheduled_at and scheduled_at.tzinfo:
+            scheduled_at = scheduled_at.astimezone(ZoneInfo(settings.TIMEZONE)).replace(
+                tzinfo=None
+            )
+
+        if input.schedule_type == "weekly":
+            scheduled_at = None
 
         if schedule:
             schedule.enabled = input.enabled
             schedule.schedule_type = input.schedule_type
-            schedule.scheduled_at = input.scheduled_at
+            schedule.scheduled_at = scheduled_at
             schedule.day_of_week = input.day_of_week
             schedule.hour = input.hour
             schedule.minute = input.minute
@@ -157,7 +182,7 @@ class NotificationsMutation:
             schedule = UpdateSchedule(
                 enabled=input.enabled,
                 schedule_type=input.schedule_type,
-                scheduled_at=input.scheduled_at,
+                scheduled_at=scheduled_at,
                 day_of_week=input.day_of_week,
                 hour=input.hour,
                 minute=input.minute,
@@ -193,7 +218,11 @@ class NotificationsMutation:
         if not deploy_key:
             return "Deploy API key not configured. Cannot trigger update."
 
-        deploy_url = os.environ.get("DEPLOY_MANAGER_URL") or os.environ.get("DEPLOY_LISTENER_URL") or "http://host.docker.internal:14241"
+        deploy_url = (
+            os.environ.get("DEPLOY_MANAGER_URL")
+            or os.environ.get("DEPLOY_LISTENER_URL")
+            or "http://host.docker.internal:14241"
+        )
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -203,29 +232,35 @@ class NotificationsMutation:
                     headers={"Authorization": f"UpdateKey {deploy_key}"},
                 )
                 if response.status_code != 200:
-                    logger.error(f"Deploy trigger failed: {response.status_code} - {response.text}")
+                    logger.error(
+                        f"Deploy trigger failed: {response.status_code} - {response.text}"
+                    )
                     return f"Deploy trigger failed: HTTP {response.status_code}"
         except Exception as e:
             logger.error(f"Deploy listener unavailable at {deploy_url}: {e}")
             return f"Deploy listener unavailable at {deploy_url}. Ensure chronos-update-listener is running."
 
-        schedule_result = await db.execute(select(UpdateSchedule).order_by(UpdateSchedule.id.desc()).limit(1))
+        schedule_result = await db.execute(
+            select(UpdateSchedule).order_by(UpdateSchedule.id.desc()).limit(1)
+        )
         schedule = schedule_result.scalar_one_or_none()
 
         now = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
         if schedule:
             schedule.last_run_at = now
             schedule.last_run_status = "started"
-            schedule.last_run_output = f"Update to {latest_version} triggered at {now.isoformat()}"
+            schedule.last_run_output = (
+                f"Update to {latest_version} triggered at {now.isoformat()}"
+            )
             await db.commit()
 
         return f"Update to {latest_version} started. Check deploy status for progress."
 
     @strawberry.mutation
     async def update_smtp_settings(
-            self,
-            settings: inputs.SmtpSettingsInput,
-            info: strawberry.Info,
+        self,
+        settings: inputs.SmtpSettingsInput,
+        info: strawberry.Info,
     ) -> types.SmtpSettings:
         db = info.context["db"]
         get_current_user(info)
@@ -252,9 +287,9 @@ class NotificationsMutation:
 
     @strawberry.mutation
     async def save_notification_setting(
-            self,
-            setting_data: inputs.NotificationSettingInput,
-            info: strawberry.Info,
+        self,
+        setting_data: inputs.NotificationSettingInput,
+        info: strawberry.Info,
     ) -> types.NotificationSetting:
         db = info.context["db"]
         get_current_user(info)
@@ -305,6 +340,7 @@ class NotificationsMutation:
         current_user = get_current_user(info)
 
         from backend.services.notification_service import notification_service
+
         service = notification_service(db)
         await service.mark_all_as_read(current_user.id)
         return True
@@ -315,15 +351,16 @@ class NotificationsMutation:
         current_user = get_current_user(info)
 
         from backend.services.notification_service import notification_service
+
         service = notification_service(db)
         return await service.delete_notification(id, current_user.id)
 
     @strawberry.mutation
     async def test_notification(
-            self,
-            info: strawberry.Info,
-            event_type: str,
-            recipient_email: str | None = None,
+        self,
+        info: strawberry.Info,
+        event_type: str,
+        recipient_email: str | None = None,
     ) -> bool:
         """Send a test notification email"""
         db = info.context["db"]
@@ -332,11 +369,16 @@ class NotificationsMutation:
         from backend.services.email_service import is_smtp_configured, send_email
 
         if not await is_smtp_configured(db):
-            raise ValidationException.field("smtp", "SMTP is not configured. Please configure SMTP settings first.")
+            raise ValidationException.field(
+                "smtp", "SMTP is not configured. Please configure SMTP settings first."
+            )
 
         target_email = recipient_email or current_user.email
         if not target_email:
-            raise ValidationException.field("email", "No recipient email provided and current user has no email address.")
+            raise ValidationException.field(
+                "email",
+                "No recipient email provided and current user has no email address.",
+            )
 
         body = (
             f"<h2>Тестово уведомление</h2>"
@@ -353,8 +395,12 @@ class NotificationsMutation:
                 body=body,
                 html=body,
             )
-            logger.info(f"Test notification sent to {target_email} for event_type: {event_type}")
+            logger.info(
+                f"Test notification sent to {target_email} for event_type: {event_type}"
+            )
             return True
         except Exception as e:
             logger.error(f"Failed to send test notification: {e}")
-            raise ValidationException.field("email", f"Failed to send test email: {e}") from e
+            raise ValidationException.field(
+                "email", f"Failed to send test email: {e}"
+            ) from e

@@ -28,7 +28,7 @@ const SAFTTab: React.FC = () => {
           saftType
         }
       });
-      setResult(data?.generateSAFTFile);
+      setResult(data?.generateSaftFile);
     } catch (err) {
       console.error(err);
       setResult({ error: 'Грешка при генериране на SAF-T файл' });

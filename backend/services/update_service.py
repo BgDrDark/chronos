@@ -1,4 +1,5 @@
 """Service за автоматични актуализации"""
+
 import logging
 import os
 from datetime import datetime
@@ -60,12 +61,16 @@ class UpdateService:
         output_lines = []
 
         try:
-            output_lines.append(f"[AUTO-UPDATE] Starting at {datetime.now().isoformat()}")
+            output_lines.append(
+                f"[AUTO-UPDATE] Starting at {datetime.now().isoformat()}"
+            )
 
             # 1. Проверка за нова версия
             update_info = await self.check_for_updates()
             if not update_info.get("has_update"):
-                output_lines.append(f"[AUTO-UPDATE] No update available. Current: {update_info.get('current_version')}")
+                output_lines.append(
+                    f"[AUTO-UPDATE] No update available. Current: {update_info.get('current_version')}"
+                )
                 return {
                     "status": "skipped",
                     "output": "\n".join(output_lines),
@@ -77,9 +82,15 @@ class UpdateService:
 
             # 2. Trigger deploy чрез deploy manager
             deploy_key = settings.get_deploy_key()
-            deploy_manager_url = os.environ.get("DEPLOY_MANAGER_URL") or os.environ.get("DEPLOY_LISTENER_URL") or "http://host.docker.internal:14241"
+            deploy_manager_url = (
+                os.environ.get("DEPLOY_MANAGER_URL")
+                or os.environ.get("DEPLOY_LISTENER_URL")
+                or "http://host.docker.internal:14241"
+            )
 
-            output_lines.append(f"[AUTO-UPDATE] Triggering deploy via {deploy_manager_url}")
+            output_lines.append(
+                f"[AUTO-UPDATE] Triggering deploy via {deploy_manager_url}"
+            )
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
@@ -89,7 +100,9 @@ class UpdateService:
                 )
 
                 if response.status_code != 200:
-                    output_lines.append(f"[AUTO-UPDATE] Deploy failed: {response.status_code} - {response.text}")
+                    output_lines.append(
+                        f"[AUTO-UPDATE] Deploy failed: {response.status_code} - {response.text}"
+                    )
                     await self._send_update_email(
                         version=latest_version,
                         status="failed",
@@ -103,7 +116,9 @@ class UpdateService:
                 output_lines.append("[AUTO-UPDATE] Deploy started successfully")
 
             # 3. Poll за статус (до 10 мин)
-            final_status = await self._poll_deploy_status(deploy_manager_url, latest_version, output_lines)
+            final_status = await self._poll_deploy_status(
+                deploy_manager_url, latest_version, output_lines
+            )
 
             # 4. Email уведомление
             await self._send_update_email(
@@ -134,7 +149,9 @@ class UpdateService:
                 "error": str(e),
             }
 
-    async def _poll_deploy_status(self, manager_url: str, version: str, output_lines: list) -> str:
+    async def _poll_deploy_status(
+        self, manager_url: str, version: str, output_lines: list
+    ) -> str:
         """Poll deploy статус до приключване"""
         import asyncio
 
@@ -147,7 +164,9 @@ class UpdateService:
                         data = response.json()
                         status = data.get("status", "running")
                         progress = data.get("progress", "")
-                        output_lines.append(f"[AUTO-UPDATE] Status: {status} - {progress}")
+                        output_lines.append(
+                            f"[AUTO-UPDATE] Status: {status} - {progress}"
+                        )
 
                         if not data.get("is_deploying", False):
                             return "success" if status == "success" else "failed"
@@ -226,7 +245,7 @@ Chronos ERP Auto-Update System
                     server.send_message(msg)
             else:
                 with smtplib.SMTP(smtp_server, smtp_port_int) as server:
-                    if (use_tls or "True") == "True":
+                    if use_tls and use_tls.lower() == "true":
                         server.starttls()
                     server.login(smtp_username, smtp_password)
                     server.send_message(msg)
