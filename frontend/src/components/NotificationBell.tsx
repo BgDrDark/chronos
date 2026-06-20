@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { IconButton, Badge, Menu, MenuItem, ListItemText, Typography, Box } from '@mui/material';
+import { IconButton, Badge, Menu, MenuItem, ListItemText, Typography } from '@mui/material';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_MY_NOTIFICATIONS, MARK_NOTIFICATION_READ } from '../graphql/notifications';

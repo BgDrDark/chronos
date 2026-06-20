@@ -23,25 +23,28 @@ export const SharePage: React.FC = () => {
   const [parsed, setParsed] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const title = params.get('title') || '';
-    const text = params.get('text') || '';
-    const url = params.get('url') || '';
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      const title = params.get('title') || '';
+      const text = params.get('text') || '';
+      const url = params.get('url') || '';
 
-    if (title || text || url) {
-      setShareData({ title, text, url });
-    } else {
-      // Try POST body via service worker
-      try {
-        const body = (window as any).__share_body__;
-        if (body) {
-          setShareData(body);
+      if (title || text || url) {
+        setShareData({ title, text, url });
+      } else {
+        // Try POST body via service worker
+        try {
+          const body = (window as any).__share_body__;
+          if (body) {
+            setShareData(body);
+          }
+        } catch {
+          // ignore
         }
-      } catch (e) {
-        // ignore
       }
-    }
-    setParsed(true);
+      setParsed(true);
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   if (!parsed) {

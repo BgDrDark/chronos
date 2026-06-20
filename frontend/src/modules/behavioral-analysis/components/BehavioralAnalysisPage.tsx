@@ -5,15 +5,6 @@ import { GET_BEHAVIORAL_PROFILES, GET_BEHAVIORAL_ANOMALIES, GET_BEHAVIORAL_RECOM
 import { BehavioralProfile, BehavioralAnomaly, BehavioralRecommendation } from '../types';
 import { formatDate } from '../../../utils/dateUtils';
 
-const statusColors: Record<string, 'default' | 'success' | 'warning' | 'error' | 'info'> = {
-  stable: 'success',
-  improving: 'info',
-  at_risk: 'warning',
-  critical: 'error',
-  star: 'success',
-  insufficient_data: 'default',
-};
-
 const priorityColors: Record<string, 'default' | 'success' | 'warning' | 'error' | 'info'> = {
   low: 'info',
   medium: 'warning',

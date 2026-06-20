@@ -163,10 +163,6 @@ const OrganizationManager: React.FC = () => {
     defaultValues: { name: '', companyId: '', managerId: '' }
   });
 
-  const posForm = useForm({
-    defaultValues: { title: '', departmentId: '' }
-  });
-
   const [posTitle, setPosTitle] = useState('');
   const [posDepartmentId, setPosDepartmentId] = useState('');
 

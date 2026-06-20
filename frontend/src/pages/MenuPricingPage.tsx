@@ -54,7 +54,7 @@ const MenuPricingPage: React.FC = () => {
     onError: (err) => setError(getErrorMessage(err))
   });
 
-  const { data: historyData, refetch: refetchHistory } = useQuery(GET_PRICE_HISTORY, {
+  const { data: historyData } = useQuery(GET_PRICE_HISTORY, {
     variables: { recipeId: selectedRecipe?.id },
     skip: !selectedRecipe?.id || !historyDialogOpen,
     fetchPolicy: 'no-cache',

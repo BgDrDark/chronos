@@ -139,15 +139,22 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
 
   React.useEffect(() => {
     if (prevOpenRef.current && !open) {
-      setFormData(initialFormData);
-      setApiError('');
-      setValidationError('');
+      setTimeout(() => {
+        setFormData(initialFormData);
+        setApiError('');
+        setValidationError('');
+      }, 0);
     }
     prevOpenRef.current = open;
   }, [open]);
 
+  const prevContractKeyRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
-    if (open) {
+    const key = contract ? `edit-${contract.id}` : `new-${propCompanyId ?? 'none'}`;
+    if (prevContractKeyRef.current === key) return;
+    prevContractKeyRef.current = key;
+    setTimeout(() => {
       if (contract) {
         setFormData({
           companyId: contract.company?.id || null,
@@ -176,7 +183,7 @@ const EmploymentContractDialog: React.FC<EmploymentContractDialogProps> = ({
       }
       setApiError('');
       setValidationError('');
-    }
+    }, 0);
   }, [contract, open, propCompanyId]);
 
   const filteredDepartments = useMemo(() => {

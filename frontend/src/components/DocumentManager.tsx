@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, Typography, List, ListItem, ListItemText, ListItemSecondaryAction, 
   IconButton, Button, Card, CardContent, Chip, CircularProgress, Alert, ListItemIcon
@@ -23,7 +23,7 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
     const [error, setError] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
 
-    const fetchDocs = useCallback(async () => {
+    const fetchDocs = async () => {
         setLoading(true);
         try {
             const apiUrl = import.meta.env.VITE_API_URL || '';
@@ -39,11 +39,11 @@ const DocumentManager: React.FC<Props> = ({ userId, isAdmin }) => {
         } finally {
             setLoading(false);
         }
-    }, [userId]);
+    };
 
     useEffect(() => {
         fetchDocs();
-    }, [fetchDocs]);
+    }, []);
 
     const handleDownload = async (docId: number, filename: string) => {
         try {

@@ -16,7 +16,10 @@ export const useSessionActivity = ({
   onIdleTimeout,
   onRefreshNeeded,
 }: UseSessionActivityOptions) => {
-  const lastActivityRef = useRef<number>(Date.now());
+  const lastActivityRef = useRef<number>(0);
+  useEffect(() => {
+    lastActivityRef.current = Date.now();
+  }, []);
   const isRefreshingRef = useRef<boolean>(false);
   const [isIdle, setIsIdle] = useState(false);
 

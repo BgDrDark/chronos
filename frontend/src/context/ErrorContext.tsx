@@ -59,6 +59,7 @@ export const ErrorProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useError = () => {
   const context = useContext(ErrorContext);
   if (!context) {
@@ -67,6 +68,7 @@ export const useError = () => {
   return context;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const extractErrorMessage = (error: any): string => {
   if (!error) return 'Възникна грешка';
   

@@ -54,14 +54,15 @@ export function useOfflineClock() {
 
   useEffect(() => {
     if (isOnline && pendingCount > 0) {
-      syncAll();
+      const timer = setTimeout(() => syncAll(), 0);
+      return () => clearTimeout(timer);
     }
   }, [isOnline, syncAll]);
 
   useEffect(() => {
-    refreshPendingCount();
+    const timer = setTimeout(() => refreshPendingCount(), 0);
     const interval = setInterval(refreshPendingCount, 30000);
-    return () => clearInterval(interval);
+    return () => { clearTimeout(timer); clearInterval(interval); };
   }, [refreshPendingCount]);
 
   return { pendingCount, syncing, syncAll, refreshPendingCount, saveClockEntry };

@@ -40,7 +40,10 @@ const KioskTerminalPage: React.FC = () => {
     const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
     // Initialize Terminal ID
+    const termInitRef = useRef(false);
     useEffect(() => {
+        if (termInitRef.current) return;
+        termInitRef.current = true;
         let id = localStorage.getItem('terminal_hardware_uuid');
         if (!id) {
             id = crypto.randomUUID();

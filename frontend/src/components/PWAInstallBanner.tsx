@@ -1,18 +1,21 @@
 import React from 'react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { Snackbar, Alert, Button, Box, Typography, IconButton } from '@mui/material';
-import DownloadIcon from '@mui/icons-material/Download';
 import CloseIcon from '@mui/icons-material/Close';
 import InstallMobileIcon from '@mui/icons-material/InstallMobile';
 
 export const PWAInstallBanner: React.FC = () => {
   const { install, dismiss, isInstallable, isInstalled } = usePWAInstall();
   const [open, setOpen] = React.useState(false);
-  const [visitCount, setVisitCount] = React.useState(0);
+  const [, setVisitCount] = React.useState(0);
+
+  const prevInstallableRef = React.useRef<boolean | null>(null);
 
   React.useEffect(() => {
     if (isInstalled) return;
     if (!isInstallable) return;
+    if (prevInstallableRef.current === isInstallable) return;
+    prevInstallableRef.current = isInstallable;
 
     const visits = parseInt(localStorage.getItem('pwa_visit_count') || '0', 10);
     const newVisits = visits + 1;

@@ -67,9 +67,15 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
     }
   });
 
-  // Reset form when initial values change or modal opens
+  const prevOpenKeyRef = React.useRef<string>('');
+
+  // Reset form when modal opens with new initial values
   React.useEffect(() => {
-    if (open) {
+    const key = `${open}-${initialUserId}-${initialDate}`;
+    if (prevOpenKeyRef.current === key) return;
+    prevOpenKeyRef.current = key;
+    if (!open) return;
+    setTimeout(() => {
       reset({
         userId: initialUserId?.toString() || '',
         date: initialDate || new Date().toISOString().split('T')[0],
@@ -78,7 +84,7 @@ const ManualTimeLogModal: React.FC<ManualTimeLogModalProps> = ({
         breakDuration: '60'
       });
       setApiError(null);
-    }
+    }, 0);
   }, [open, initialUserId, initialDate, reset]);
 
   const onSubmit = async (data: ManualLogFormData) => {

@@ -72,7 +72,7 @@ interface ScheduleGridProps {
 const ScheduleGrid: React.FC<ScheduleGridProps> = ({ onOpenTemplatePreview }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [editingCell, setEditingCell] = useState<{ userId: number; date: string } | null>(null);
-  const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
+  const [selectedUsers] = useState<number[]>([]);
 
   const { showError, showSuccess } = useError();
   const year = currentDate.getFullYear();

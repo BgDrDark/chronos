@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { getErrorMessage } from '../types';
 import { 
   Container, Typography, Box, CircularProgress, Alert, Paper, Dialog, 
   DialogTitle, DialogContent, Button, DialogActions, Stack,

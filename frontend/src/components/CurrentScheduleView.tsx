@@ -57,7 +57,6 @@ const CurrentScheduleView: React.FC = () => {
   const startDate = dayjs(currentDate).startOf('month').toDate();
   const endDate = dayjs(currentDate).endOf('month').toDate();
   const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
 
   // Queries
   const { data: usersData, loading: usersLoading } = useQuery(GET_USERS_QUERY, {

@@ -22,7 +22,7 @@ export function usePWAInstall() {
   useEffect(() => {
     if (window.matchMedia('(display-mode: standalone)').matches ||
         (window.navigator as unknown as { standalone?: boolean }).standalone) {
-      setIsInstalled(true);
+      setTimeout(() => setIsInstalled(true), 0);
       return;
     }
 

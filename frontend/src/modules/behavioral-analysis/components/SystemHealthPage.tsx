@@ -1,5 +1,5 @@
 import React from 'react';
-import { Container, Typography, Box, Paper, Grid, Card, CardContent, Chip, Alert, Button } from '@mui/material';
+import { Container, Typography, Box, Grid, Card, CardContent, Chip, Alert, Button } from '@mui/material';
 import { useQuery } from '@apollo/client';
 import { GET_SYSTEM_HEALTH } from '../api/queries';
 import { formatDate } from '../../../utils/dateUtils';

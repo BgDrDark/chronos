@@ -66,6 +66,8 @@ const ProductionKioskPage: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<TerminalOrder | null>(null);
   const [activeTask, setActiveTask] = useState<ProductionTask | null>(null);
   const [taskStartTime, setTaskStartTime] = useState<Date | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const taskStartTimeMsRef = useRef(0);
   const [scrapDialog, setScrapDialog] = useState<{open: boolean, taskId: number | null, taskName: string, maxQuantity: number}>({
     open: false, taskId: null, taskName: '', maxQuantity: 0
   });
@@ -78,7 +80,8 @@ const ProductionKioskPage: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const urlTerminal = params.get('terminal');
     if (urlTerminal) {
-      setTerminalDisplayName(`Цех ${urlTerminal}`);
+      const timer = setTimeout(() => setTerminalDisplayName(`Цех ${urlTerminal}`), 0);
+      return () => clearTimeout(timer);
     }
   }, []);
   
@@ -91,7 +94,7 @@ const ProductionKioskPage: React.FC = () => {
     }
   });
   
-  const { data: orderData, loading: ordersLoading, refetch: refetchOrders, error: ordersError } = useQuery(GET_TERMINAL_ORDERS, {
+  const { data: orderData, loading: ordersLoading, refetch: refetchOrders } = useQuery(GET_TERMINAL_ORDERS, {
     variables: { workstationId: selectedStation },
     skip: !selectedStation,
     pollInterval: 3000,
@@ -201,21 +204,19 @@ const ProductionKioskPage: React.FC = () => {
   };
 
   useEffect(() => {
+    if (taskStartTime) {
+      taskStartTimeMsRef.current = taskStartTime.getTime();
+    }
     const interval = setInterval(() => {
-      if (taskStartTime) {
-        setTaskStartTime(new Date(taskStartTime));
+      if (taskStartTimeMsRef.current) {
+        const diff = Math.floor((Date.now() - taskStartTimeMsRef.current) / 1000);
+        setElapsedSeconds(diff);
+      } else {
+        setElapsedSeconds(0);
       }
     }, 1000);
     return () => clearInterval(interval);
   }, [taskStartTime]);
-
-  const getElapsedTime = () => {
-    if (!taskStartTime) return '00:00';
-    const diff = Math.floor((Date.now() - taskStartTime.getTime()) / 1000);
-    const mins = Math.floor(diff / 60).toString().padStart(2, '0');
-    const secs = (diff % 60).toString().padStart(2, '0');
-    return `${mins}:${secs}`;
-  };
 
   const renderHeader = (title: string) => (
     <Box sx={{ 
@@ -379,7 +380,7 @@ const ProductionKioskPage: React.FC = () => {
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mb: 4 }}>
               <TimerIcon sx={{ fontSize: 40, mr: 1, color: '#4caf50' }} />
               <Typography variant="h3" sx={{ fontWeight: 'bold', color: '#4caf50' }}>
-                {getElapsedTime()}
+                {`${Math.floor(elapsedSeconds / 60).toString().padStart(2, '0')}:${(elapsedSeconds % 60).toString().padStart(2, '0')}`}
               </Typography>
             </Box>
 

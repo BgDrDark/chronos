@@ -56,7 +56,7 @@ const PulseSurveyForm: React.FC<Props> = ({ open, onClose, onSubmit }) => {
         notes: notes || null,
       });
       onClose();
-    } catch (e) {
+    } catch {
       setError('Грешка при изпращане. Опитайте отново.');
     } finally {
       setSubmitting(false);

@@ -176,11 +176,6 @@ const AdminClockDialog: React.FC<{
 }> = ({ open, onClose, onConfirm, mode, userName, targetDate }) => {
     const [useNow, setUseNow] = useState(true);
     const [customTime, setCustomTime] = useState(format(new Date(), 'HH:mm'));
-    const handleConfirm = () => {
-        if (useNow) onConfirm(null);
-        else onConfirm(new Date(`${targetDate}T${customTime}`).toISOString());
-        onClose();
-    };
     return (
         <Dialog open={open} onClose={onClose}>
             <DialogTitle>{mode === 'IN' ? 'Стартиране на смяна' : 'Приключване на смяна'}</DialogTitle>

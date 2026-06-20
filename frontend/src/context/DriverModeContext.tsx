@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 interface DriverModeContextType {
   isDriverMode: boolean;
@@ -27,6 +27,7 @@ export const DriverModeProvider: React.FC<{ children: ReactNode }> = ({ children
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useDriverMode = () => {
   const context = useContext(DriverModeContext);
   if (!context) {

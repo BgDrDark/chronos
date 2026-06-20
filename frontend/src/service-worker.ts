@@ -263,7 +263,7 @@ async function syncClockLogs() {
           
           if (!response.ok) throw new Error('Sync failed');
           store.delete(log.id as string);
-        } catch (e) {
+        } catch {
           failedLogs.push(log);
         }
       }

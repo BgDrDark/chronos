@@ -51,12 +51,14 @@ const MyCardPage: React.FC = () => {
   const setLoadingRef = useRef(setLoading);
   const setTimeLeftRef = useRef(setTimeLeft);
   const setErrorRef = useRef(setError);
-  loadingRef.current = loading;
-  beaconDetectedRef.current = beaconDetected;
-  setTokenRef.current = setToken;
-  setLoadingRef.current = setLoading;
-  setTimeLeftRef.current = setTimeLeft;
-  setErrorRef.current = setError;
+  useEffect(() => {
+    loadingRef.current = loading;
+    beaconDetectedRef.current = beaconDetected;
+    setTokenRef.current = setToken;
+    setLoadingRef.current = setLoading;
+    setTimeLeftRef.current = setTimeLeft;
+    setErrorRef.current = setError;
+  }, [loading, beaconDetected, setToken, setLoading, setTimeLeft, setError]);
 
   const fetchToken = useCallback(async () => {
     if (!beaconDetectedRef.current && !loadingRef.current) {

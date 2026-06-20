@@ -16,7 +16,7 @@ import {
 } from '../graphql/queries';
 
 const MaintenanceModeSettings: React.FC = () => {
-  const { data, loading, refetch } = useQuery(MAINTENANCE_STATUS_QUERY, {
+  const { data, refetch } = useQuery(MAINTENANCE_STATUS_QUERY, {
     pollInterval: 10000,
     fetchPolicy: 'network-only',
   });

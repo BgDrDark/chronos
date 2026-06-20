@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Container, Typography, Paper, Box, Divider, List, ListItem, ListItemText, Tabs, Tab, CircularProgress, TextField, InputAdornment, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
+import { Container, Typography, Paper, Box, Tabs, Tab, CircularProgress, TextField, InputAdornment, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SearchIcon from '@mui/icons-material/Search';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -118,7 +118,7 @@ const DocumentationPage: React.FC = () => {
               },
             }}
           >
-            {filteredCategories.map((category: any, index: number) => (
+            {filteredCategories.map((category: any) => (
               <Tab 
                 key={category.id}
                 icon={getIconComponent(category.icon)} 

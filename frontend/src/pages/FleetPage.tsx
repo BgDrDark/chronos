@@ -136,13 +136,6 @@ const CREATE_TRIP_MUTATION = gql`
   }
 `;
 
-const CREATE_ACCIDENT_MUTATION = gql`
-  mutation CreateVehicleAccident($input: VehicleAccidentInput!) {
-    createVehicleAccident(input: $input) {
-      id
-    }
-  }
-`;
 
 const GET_VEHICLES_QUERY = gql`
   query GetVehicles($skip: Int, $limit: Int, $search: String, $status: String, $fuelType: String, $vehicleType: String) {
@@ -342,7 +335,7 @@ const FleetPage: React.FC = () => {
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [driverOpen, setDriverOpen] = useState(false);
   const [tripOpen, setTripOpen] = useState(false);
-  const [accidentOpen, setAccidentOpen] = useState(false);
+   
 
   const [vehicleForm, setVehicleForm] = useState({
     registrationNumber: '',
@@ -380,7 +373,7 @@ const FleetPage: React.FC = () => {
   const [createInspection] = useMutation(CREATE_INSPECTION_MUTATION);
   const [createDriver] = useMutation(CREATE_DRIVER_MUTATION);
   const [createTrip] = useMutation(CREATE_TRIP_MUTATION);
-  const [createAccident] = useMutation(CREATE_ACCIDENT_MUTATION);
+   
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
   const [searchText, setSearchText] = useState('');
@@ -391,7 +384,7 @@ const FleetPage: React.FC = () => {
   // Detail View State
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
   const [detailTab, setDetailTab] = useState(0);
-  const [costYear, setCostYear] = useState(new Date().getFullYear());
+   const [costYear] = useState(new Date().getFullYear());
 
   const { data: vehiclesData, refetch: refetchVehicles } = useQuery(GET_VEHICLES_QUERY, {
     variables: { 
@@ -457,7 +450,7 @@ const FleetPage: React.FC = () => {
   const [inspectionForm, setInspectionForm] = useState({ vehicleId: '', date: new Date().toISOString().split('T')[0], nextDate: '', cost: 0, protocolNumber: '', result: 'passed', notes: '' });
   const [driverForm, setDriverForm] = useState({ userId: '', vehicleId: '', licenseNumber: '', licenseExpiry: '', phone: '', category: 'B', isPrimary: true, notes: '' });
   const [tripForm, setTripForm] = useState({ vehicleId: '', userId: '', startDate: new Date().toISOString().split('T')[0], endDate: '', startLocation: '', endLocation: '', distance: 0, tripType: 'business', description: '', notes: '' });
-  const [accidentForm, setAccidentForm] = useState({ vehicleId: '', date: new Date().toISOString().split('T')[0], location: '', description: '', severity: 'minor', estimatedCost: 0, thirdPartyName: '', policeReportNumber: '', status: 'reported' });
+   
 
   const handleVehicleChange = (field: string, value: unknown) => {
     setVehicleForm(prev => ({ ...prev, [field]: value }));
@@ -515,9 +508,7 @@ const FleetPage: React.FC = () => {
     }
   };
 
-  const handleAccidentChange = (field: string, value: unknown) => {
-    setAccidentForm(prev => ({ ...prev, [field]: value }));
-  };
+   
 
   const handleSaveVehicle = async () => {
     const errors: Record<string, boolean> = {};

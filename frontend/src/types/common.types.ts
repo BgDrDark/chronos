@@ -68,4 +68,3 @@ export interface ToastMessage {
   duration?: number;
 }
 
-import type { ReactNode } from 'react';

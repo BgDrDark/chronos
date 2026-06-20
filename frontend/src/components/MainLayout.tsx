@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   AppBar, Box, CssBaseline, Divider, Drawer as MuiDrawer, IconButton,
-  Toolbar, Typography, Alert, AlertTitle, styled, type Theme, type CSSObject,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, CircularProgress, Paper,
+  Toolbar, Typography, Alert, AlertTitle, Paper, styled, type Theme, type CSSObject,
   Switch, FormControlLabel
 } from '@mui/material';
 import {
@@ -127,16 +126,6 @@ const MainLayout: React.FC<Props> = ({ children }) => {
   useEffect(() => {
     localStorage.setItem('sidebarCollapsed', isCollapsed.toString());
   }, [isCollapsed]);
-
-  useEffect(() => {
-    const newExpanded = new Set<string>();
-    menuItems.forEach(item => {
-      if (item.children && item.children.some(child => child.path === location.pathname)) {
-        newExpanded.add(item.text);
-      }
-    });
-    setExpandedSections(newExpanded);
-  }, [location.pathname]);
 
   // Session activity hook - auto refresh and idle timeout
   useSessionActivity({
@@ -366,6 +355,20 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Терминал за достъп', icon: <DoorIcon />, path: '/kiosk/terminal', visible: isAdmin },
     { text: 'Производствен терминал', icon: <KitchenIcon />, path: '/admin/production/kiosk', visible: isAdmin && isEnabled('confectionery') },
   ];
+
+  const prevPathRef = useRef<string>('');
+
+  useEffect(() => {
+    if (prevPathRef.current === location.pathname) return;
+    prevPathRef.current = location.pathname;
+    const newExpanded = new Set<string>();
+    menuItems.forEach(item => {
+      if (item.children && item.children.some(child => child.path === location.pathname)) {
+        newExpanded.add(item.text);
+      }
+    });
+    setExpandedSections(newExpanded);
+  }, [location.pathname]);
 
   const handleToggleSection = (text: string) => {
     setExpandedSections(prev => {

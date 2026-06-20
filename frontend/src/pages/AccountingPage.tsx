@@ -1,6 +1,6 @@
 import { formatDate } from '../utils/dateUtils';
 import { getApiUrl } from '../utils/api';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Ingredient, getErrorMessage } from '../types';
 import { useCurrency, formatCurrencyValue } from '../currencyContext';
 import {
@@ -23,40 +23,22 @@ import {
   TextField,
   MenuItem,
   Grid,
-  CircularProgress,
   Alert,
   Select,
   FormControl,
   InputLabel,
-  Radio,
-  RadioGroup,
-  FormControlLabel,
-  Checkbox,
-  FormLabel,
   IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  Divider,
   InputAdornment,
-  Tooltip,
-  Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
-  Edit as EditIcon,
-  ExpandMore as ExpandMoreIcon,
   Print as PrintIcon,
   Close as CloseIcon,
-  FileCopy as FileCopyIcon,
 } from '@mui/icons-material';
-import Accordion from '@mui/material/Accordion';
-import AccordionSummary from '@mui/material/AccordionSummary';
-import AccordionDetails from '@mui/material/AccordionDetails';
 import { useQuery, useMutation, useLazyQuery, gql } from '@apollo/client';
 import { InfoIcon } from '../components/ui/InfoIcon';
-import { useError, extractErrorMessage } from '../context/ErrorContext';
+import { useError } from '../context/ErrorContext';
 import {
   InvoiceList,
   CashJournalTab,
@@ -73,7 +55,7 @@ import {
   AccountingEntriesTab,
 } from '../components/accounting';
 import {
-  type CashJournalEntry, type Supplier
+  type Supplier
 } from '../types';
 
 interface ValidatedTextFieldProps {
@@ -314,459 +296,7 @@ const UPDATE_INVOICE = gql`
   }
 `;
 
-const DELETE_INVOICE = gql`
-  mutation DeleteInvoice($id: Int!) {
-    deleteInvoice(id: $id)
-  }
-`;
 
-const GET_INVOICE_PDF_URL = gql`
-  mutation GetInvoicePdfUrl($invoiceId: Int!) {
-    getInvoicePdfUrl(invoiceId: $invoiceId)
-  }
-`;
-
-const GET_CASH_JOURNAL_ENTRIES = gql`
-  query GetCashJournalEntries($startDate: String, $endDate: String, $operationType: String) {
-    cashJournalEntries(startDate: $startDate, endDate: $endDate, operationType: $operationType) {
-      id
-      date
-      operationType
-      amount
-      description
-      referenceType
-      referenceId
-      createdAt
-      creator {
-        firstName
-        lastName
-      }
-    }
-  }
-`;
-
-const CREATE_CASH_JOURNAL_ENTRY = gql`
-  mutation CreateCashJournalEntry($input: CashJournalEntryInput!) {
-    createCashJournalEntry(input: $input) {
-      id
-      date
-      operationType
-      amount
-    }
-  }
-`;
-
-const DELETE_CASH_JOURNAL_ENTRY = gql`
-  mutation DeleteCashJournalEntry($id: Int!) {
-    deleteCashJournalEntry(id: $id)
-  }
-`;
-
-const GET_OPERATION_LOGS = gql`
-  query GetOperationLogs($startDate: String, $endDate: String, $operation: String, $entityType: String) {
-    operationLogs(startDate: $startDate, endDate: $endDate, operation: $operation, entityType: $entityType) {
-      id
-      timestamp
-      operation
-      entityType
-      entityId
-      changes
-      user {
-        firstName
-        lastName
-      }
-    }
-  }
-`;
-
-const GET_DAILY_SUMMARIES = gql`
-  query GetDailySummaries($startDate: String, $endDate: String) {
-    dailySummaries(startDate: $startDate, endDate: $endDate) {
-      id
-      date
-      invoicesCount
-      incomingInvoicesCount
-      outgoingInvoicesCount
-      invoicesTotal
-      incomingInvoicesTotal
-      outgoingInvoicesTotal
-      cashIncome
-      cashExpense
-      cashBalance
-      vatCollected
-      vatPaid
-      paidInvoicesCount
-      unpaidInvoicesCount
-      overdueInvoicesCount
-    }
-  }
-`;
-
-const GENERATE_DAILY_SUMMARY = gql`
-  mutation GenerateDailySummary($date: String!) {
-    generateDailySummary(date: $date) {
-      id
-      date
-      invoicesCount
-      invoicesTotal
-      cashIncome
-      cashExpense
-      cashBalance
-    }
-  }
-`;
-
-const GET_MONTHLY_SUMMARIES = gql`
-  query GetMonthlySummaries($startYear: Int, $endYear: Int) {
-    monthlySummaries(startYear: $startYear, endYear: $endYear) {
-      id
-      year
-      month
-      invoicesCount
-      incomingInvoicesCount
-      outgoingInvoicesCount
-      invoicesTotal
-      incomingInvoicesTotal
-      outgoingInvoicesTotal
-      cashIncome
-      cashExpense
-      cashBalance
-      vatCollected
-      vatPaid
-      paidInvoicesCount
-      unpaidInvoicesCount
-      overdueInvoicesCount
-    }
-  }
-`;
-
-const GENERATE_MONTHLY_SUMMARY = gql`
-  mutation GenerateMonthlySummary($year: Int!, $month: Int!) {
-    generateMonthlySummary(year: $year, month: $month) {
-      id
-      year
-      month
-      invoicesCount
-      invoicesTotal
-      cashIncome
-      cashExpense
-      cashBalance
-    }
-  }
-`;
-
-const GET_YEARLY_SUMMARIES = gql`
-  query GetYearlySummaries($startYear: Int, $endYear: Int) {
-    yearlySummaries(startYear: $startYear, endYear: $endYear) {
-      id
-      year
-      invoicesCount
-      incomingInvoicesCount
-      outgoingInvoicesCount
-      invoicesTotal
-      incomingInvoicesTotal
-      outgoingInvoicesTotal
-      cashIncome
-      cashExpense
-      cashBalance
-      vatCollected
-      vatPaid
-      paidInvoicesCount
-      unpaidInvoicesCount
-      overdueInvoicesCount
-    }
-  }
-`;
-
-const GENERATE_YEARLY_SUMMARY = gql`
-  mutation GenerateYearlySummary($year: Int!) {
-    generateYearlySummary(year: $year) {
-      id
-      year
-      invoicesCount
-      invoicesTotal
-      cashIncome
-      cashExpense
-      cashBalance
-    }
-  }
-`;
-
-const GET_ACCOUNTING_ENTRIES = gql`
-  query GetAccountingEntries($startDate: String, $endDate: String, $accountId: Int, $search: String) {
-    accountingEntries(startDate: $startDate, endDate: $endDate, accountId: $accountId, search: $search) {
-      id
-      date
-      entryNumber
-      description
-      debitAccountId
-      creditAccountId
-      debitAccount {
-        id
-        code
-        name
-      }
-      creditAccount {
-        id
-        code
-        name
-      }
-      amount
-      vatAmount
-      invoiceId
-      invoice {
-        id
-        number
-      }
-      createdAt
-    }
-  }
-`;
-
-// ============== NEW ACCOUNTING QUERIES ==============
-
-const GET_PROFORMA_INVOICES = gql`
-  query GetProformaInvoices($status: String, $search: String) {
-    proformaInvoices(status: $status, search: $search) {
-      id
-      number
-      date
-      clientName
-      clientEik
-      subtotal
-      vatRate
-      vatAmount
-      total
-      status
-    }
-  }
-`;
-
-const GET_INVOICE_CORRECTIONS = gql`
-  query GetInvoiceCorrections($type: String, $status: String) {
-    invoiceCorrections(type: $type, status: $status) {
-      id
-      number
-      type
-      date
-      originalInvoiceId
-      clientName
-      clientEik
-      reason
-      subtotal
-      vatAmount
-      total
-      status
-    }
-  }
-`;
-
-const CREATE_INVOICE_CORRECTION = gql`
-  mutation CreateInvoiceCorrection(
-    $originalInvoiceId: Int!
-    $correctionType: String!
-    $reason: String!
-    $correctionDate: Date!
-    $createNewInvoice: Boolean
-  ) {
-    createInvoiceCorrection(
-      originalInvoiceId: $originalInvoiceId
-      correctionType: $correctionType
-      reason: $reason
-      correctionDate: $correctionDate
-      createNewInvoice: $createNewInvoice
-    ) {
-      id
-      number
-      type
-      date
-      originalInvoiceId
-      clientName
-      reason
-      subtotal
-      vatAmount
-      total
-      status
-    }
-  }
-`;
-
-// These queries/mutations are available for future use:
-/*
-const GET_CASH_RECEIPTS = gql`...
-const GET_ACCOUNTING_ENTRIES = gql`...
-const CREATE_CASH_RECEIPT = gql`...
-const CREATE_ACCOUNTING_ENTRY = gql`...
-const MATCH_BANK_TRANSACTION = gql`...
-*/
-
-const GET_BANK_ACCOUNTS = gql`
-  query GetBankAccounts($isActive: Boolean) {
-    bankAccounts(isActive: $isActive) {
-      id
-      iban
-      bic
-      bankName
-      accountType
-      isDefault
-      currency
-      isActive
-    }
-  }
-`;
-
-const GET_BANK_TRANSACTIONS = gql`
-  query GetBankTransactions($bankAccountId: Int, $startDate: String, $endDate: String, $matched: Boolean) {
-    bankTransactions(bankAccountId: $bankAccountId, startDate: $startDate, endDate: $endDate, matched: $matched) {
-      id
-      bankAccountId
-      date
-      amount
-      type
-      description
-      reference
-      invoiceId
-      matched
-    }
-  }
-`;
-
-const MATCH_BANK_TRANSACTION = gql`
-  mutation MatchBankTransaction($transactionId: Int!, $invoiceId: Int!) {
-    matchBankTransaction(transactionId: $transactionId, invoiceId: $invoiceId) {
-      id
-      matched
-      invoiceId
-    }
-  }
-`;
-
-const UNMATCH_BANK_TRANSACTION = gql`
-  mutation UnmatchBankTransaction($transactionId: Int!) {
-    unmatchBankTransaction(transactionId: $transactionId) {
-      id
-      matched
-      invoiceId
-    }
-  }
-`;
-
-const AUTO_MATCH_BANK_TRANSACTIONS = gql`
-  mutation AutoMatchBankTransactions($bankAccountId: Int!) {
-    autoMatchBankTransactions(bankAccountId: $bankAccountId) {
-      matchedCount
-      unmatchedCount
-    }
-  }
-`;
-
-const GET_ACCOUNTS = gql`
-  query GetAccounts($type: String, $parentId: Int) {
-    accounts(type: $type, parentId: $parentId) {
-      id
-      code
-      name
-      type
-      parentId
-      openingBalance
-      closingBalance
-    }
-  }
-`;
-
-// These queries/mutations are available for future use:
-/*
-const GET_CASH_RECEIPTS = gql`...
-const GET_ACCOUNTING_ENTRIES = gql`...
-const CREATE_CASH_RECEIPT = gql`...
-const CREATE_ACCOUNTING_ENTRY = gql`...
-const MATCH_BANK_TRANSACTION = gql`...
-*/
-
-const GET_VAT_REGISTERS = gql`
-  query GetVATRegisters($year: Int, $month: Int) {
-    vatRegisters(year: $year, month: $month) {
-      id
-      periodMonth
-      periodYear
-      vatCollected20
-      vatCollected9
-      vatPaid20
-      vatPaid9
-      vatDue
-      vatCredit
-    }
-  }
-`;
-
-const GENERATE_SAFT_FILE = gql`
-  mutation GenerateSAFTFile($companyId: Int!, $year: Int!, $month: Int!, $saftType: String) {
-    generateSAFTFile(companyId: $companyId, year: $year, month: $month, saftType: $saftType) {
-      xmlContent
-      fileSize
-      fileName
-      periodStart
-      periodEnd
-      validationResult {
-        status
-        errors
-        warnings
-      }
-    }
-  }
- `;
-
-/*
-const CREATE_CASH_RECEIPT = gql`...
-*/
-
-const CREATE_BANK_ACCOUNT = gql`
-  mutation CreateBankAccount($input: BankAccountInput!) {
-    createBankAccount(input: $input) {
-      id
-      iban
-    }
-  }
-`;
-
-const CREATE_BANK_TRANSACTION = gql`
-  mutation CreateBankTransaction($input: BankTransactionInput!) {
-    createBankTransaction(input: $input) {
-      id
-      reference
-    }
-  }
-`;
-
-const CREATE_ACCOUNT = gql`
-  mutation CreateAccount($input: AccountInput!) {
-    createAccount(input: $input) {
-      id
-      code
-    }
-  }
-`;
-
-/*
-const CREATE_ACCOUNTING_ENTRY = gql`...
-const MATCH_BANK_TRANSACTION = gql`...
-*/
-
-const GENERATE_VAT_REGISTER = gql`
-  mutation GenerateVATRegister($input: VATRegisterInput!) {
-    generateVATRegister(input: $input) {
-      id
-      periodMonth
-      periodYear
-      vatDue
-      vatCredit
-    }
-  }
-`;
-
-/* Future use:
-const MATCH_BANK_TRANSACTION = gql`...
-*/
 
 interface InvoiceItem {
   id?: number;
@@ -827,13 +357,13 @@ interface Props {
 export default function AccountingPage({ tab }: Props) {
   const activeTab = tab ?? 'incoming';
   const { currency } = useCurrency();
-  const { showError, showSuccess } = useError();
+  const { showError } = useError();
 
   const formatPrice = (value: number | string | null | undefined): string => {
     return formatCurrencyValue(value, currency);
   };
   
-  const [search, setSearch] = useState('');
+  const [search] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -880,21 +410,23 @@ export default function AccountingPage({ tab }: Props) {
 
   const [loadIngredientBatches, { data: batchesData }] = useLazyQuery(GET_INGREDIENT_BATCHES_WITH_STOCK);
 
+  const prevBatchesRef = useRef<string>('');
+
   useEffect(() => {
-    if (batchesData?.ingredientBatchesWithStock && loadingBatchItemIndex !== null) {
-      setItemBatches(prev => ({
-        ...prev,
-        [loadingBatchItemIndex]: batchesData.ingredientBatchesWithStock
-      }));
-      setLoadingBatchItemIndex(null);
-    }
+    if (!batchesData?.ingredientBatchesWithStock || loadingBatchItemIndex === null) return;
+    const key = `${loadingBatchItemIndex}-${JSON.stringify(batchesData.ingredientBatchesWithStock)}`;
+    if (prevBatchesRef.current === key) return;
+    prevBatchesRef.current = key;
+    setItemBatches(prev => ({
+      ...prev,
+      [loadingBatchItemIndex]: batchesData.ingredientBatchesWithStock
+    }));
+    setLoadingBatchItemIndex(null);
   }, [batchesData, loadingBatchItemIndex]);
 
   const [createInvoice] = useMutation(CREATE_INVOICE);
   const [createProformaInvoice] = useMutation(CREATE_PROFORMA_INVOICE);
   const [updateInvoice] = useMutation(UPDATE_INVOICE);
-  const [deleteInvoice] = useMutation(DELETE_INVOICE);
-  const [getInvoicePdfUrl] = useMutation(GET_INVOICE_PDF_URL);
 
   const handleOpenDetailsDialog = (invoice: Invoice) => {
     setSelectedInvoice(invoice);
@@ -956,7 +488,6 @@ export default function AccountingPage({ tab }: Props) {
 
   const handleOpenDialog = (invoice?: Invoice) => {
     // Determine the invoice type - default based on current tab, or from invoice
-    const defaultType = invoiceType;
     
     if (invoice) {
       // READONLY check: paid, cancelled, corrected, converted invoices cannot be edited
@@ -1227,7 +758,7 @@ export default function AccountingPage({ tab }: Props) {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (_id: number) => {
     // DELETION IS ALWAYS BLOCKED - Show message
     showError('Създадена фактура не може да се изтрие. Може само да се анулира.');
   };

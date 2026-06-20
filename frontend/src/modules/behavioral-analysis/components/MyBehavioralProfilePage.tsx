@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Container, Typography, Box, Paper, Grid, Card, CardContent, Chip, LinearProgress,
   Alert, Button, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -155,8 +155,8 @@ const MyBehavioralProfilePage: React.FC = () => {
     skip: !currentUserId,
   });
 
-  const [submitTest, { loading: testSubmitting }] = useMutation(SUBMIT_PERSONALITY_TEST);
-  const [submitSurvey, { loading: surveySubmitting }] = useMutation(SUBMIT_PULSE_SURVEY);
+  const [submitTest] = useMutation(SUBMIT_PERSONALITY_TEST);
+  const [submitSurvey] = useMutation(SUBMIT_PULSE_SURVEY);
   const [computeMgr] = useMutation(COMPUTE_MANAGER_EFFECTIVENESS);
 
   const profile: BehavioralProfile | undefined = profilesData?.behavioralProfiles?.[0];
@@ -184,9 +184,14 @@ const MyBehavioralProfilePage: React.FC = () => {
 
   const isManager: boolean = !!(userRole && ['admin', 'super_admin'].includes(userRole));
 
+  const prevAssignmentRef = useRef<number | null>(null);
+
   useEffect(() => {
+    const id = activeAssignment?.id ?? null;
+    if (prevAssignmentRef.current === id) return;
+    prevAssignmentRef.current = id;
     if (activeAssignment && postponeDialog === 'idle') {
-      setPostponeDialog('open');
+      setTimeout(() => setPostponeDialog('open'), 0);
     }
   }, [activeAssignment, postponeDialog]);
 

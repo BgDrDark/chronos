@@ -428,11 +428,19 @@ const WarehousePage: React.FC = () => {
   const { data, loading, error, refetch } = useQuery(GET_WAREHOUSE_DATA);
   
   // Auto-select ingredient when barcode is entered in current batch item form
+  const lastBarcodeRef = useRef('');
   useEffect(() => {
-    if (currentBatchItem.barcode && data?.ingredients) {
+    if (currentBatchItem.barcode && currentBatchItem.barcode !== lastBarcodeRef.current && data?.ingredients) {
+      lastBarcodeRef.current = currentBatchItem.barcode;
       const found = data.ingredients.find((i: Ingredient) => i.barcode === currentBatchItem.barcode);
       if (found) {
-        setCurrentBatchItem(prev => ({ ...prev, ingredientId: found.id.toString(), storageZoneId: found.storageZone?.id?.toString() || prev.storageZoneId }));
+        const nextIngredientId = found.id.toString();
+        const nextZoneId = found.storageZone?.id?.toString();
+        setTimeout(() => setCurrentBatchItem(prev => ({
+          ...prev,
+          ingredientId: nextIngredientId,
+          storageZoneId: nextZoneId || prev.storageZoneId,
+        })), 0);
       }
     }
   }, [currentBatchItem.barcode, data]);
@@ -513,6 +521,10 @@ const WarehousePage: React.FC = () => {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [foundIngredient, setFoundIngredient] = useState<Ingredient | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const prevSupplierRef = useRef(editingSupplier);
+  const prevZoneRef = useRef(editingZone);
+  const prevIngredientRef = useRef(editingIngredient);
+  const prevBatchRef = useRef(editingBatch);
 
   const stopScanner = useCallback(async () => {
     if (scannerRef.current) {
@@ -796,7 +808,8 @@ const WarehousePage: React.FC = () => {
 
   // Open edit modals with data
   useEffect(() => {
-    if (editingSupplier) {
+    if (editingSupplier && editingSupplier !== prevSupplierRef.current) {
+      prevSupplierRef.current = editingSupplier;
       setEditSupplierForm({
         id: editingSupplier.id,
         name: editingSupplier.name || '',
@@ -811,7 +824,8 @@ const WarehousePage: React.FC = () => {
   }, [editingSupplier]);
 
   useEffect(() => {
-    if (editingZone) {
+    if (editingZone && editingZone !== prevZoneRef.current) {
+      prevZoneRef.current = editingZone;
       setEditZoneForm({
         id: editingZone.id,
         name: editingZone.name || '',
@@ -826,7 +840,8 @@ const WarehousePage: React.FC = () => {
   }, [editingZone]);
 
   useEffect(() => {
-    if (editingIngredient) {
+    if (editingIngredient && editingIngredient !== prevIngredientRef.current) {
+      prevIngredientRef.current = editingIngredient;
       setEditIngredientForm({
         id: editingIngredient.id,
         name: editingIngredient.name || '',
@@ -890,7 +905,8 @@ const WarehousePage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (editingBatch) {
+    if (editingBatch && editingBatch !== prevBatchRef.current) {
+      prevBatchRef.current = editingBatch;
       setEditBatchForm({
         id: editingBatch.id,
         ingredientId: editingBatch.ingredientId?.toString() || '',

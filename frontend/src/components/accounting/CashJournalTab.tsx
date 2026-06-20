@@ -52,12 +52,6 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   other: 'Друго',
 };
 
-const SOURCE_LABELS: Record<string, string> = {
-  manual: 'Ръчна',
-  invoice: 'Фактура',
-  cash_receipt: 'Касова бележка',
-};
-
 export const CashJournalTab: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');

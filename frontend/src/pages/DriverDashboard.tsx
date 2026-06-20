@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { Box, Typography, Paper, Card, CardContent, Grid, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Chip, IconButton, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, FormControl, InputLabel, Select, MenuItem, Checkbox, FormControlLabel, Stepper, Step, StepLabel } from '@mui/material';
+import { Box, Typography, Paper, Card, CardContent, Grid, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Chip, FormControl, InputLabel, Select, MenuItem, Stepper, Step, StepLabel } from '@mui/material';
 import { DirectionsCar as CarIcon, LocalGasStation as FuelIcon, Speed as SpeedIcon, Assignment as ChecklistIcon } from '@mui/icons-material';
 import { gql, useMutation, useQuery } from '@apollo/client';
 import { useDriverMode } from '../context/DriverModeContext';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { saveOfflineEntry } from '../db/fleet-offline-store';
-import { InfoIcon } from '../components/ui/InfoIcon';
 
 const GET_VEHICLES = gql`
   query GetVehiclesForDriver {
@@ -14,12 +13,6 @@ const GET_VEHICLES = gql`
         id registrationNumber make model year fuelType status color initialMileage
       }
     }
-  }
-`;
-
-const GET_MILEAGE = gql`
-  query GetVehicleMileage($vehicleId: Int!) {
-    vehicleMileage(vehicleId: $vehicleId) { id date mileage }
   }
 `;
 

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Container, Typography, Box, Paper, Button, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Alert, Snackbar,
+  TextField,
   Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, IconButton, Tooltip, TablePagination, TableSortLabel,
   CircularProgress,
@@ -81,7 +81,6 @@ const TestAssignmentManager: React.FC = () => {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const assignments: PersonalityTestAssignment[] = useMemo(() => {
     const list = assignmentsData?.personalityTestAssignments || [];

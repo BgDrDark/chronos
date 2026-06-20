@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Card, CardContent, Typography, Switch, 
   CircularProgress, Alert, Divider, List, ListItem, ListItemText
@@ -50,10 +50,14 @@ const ModuleManager: React.FC = () => {
     return null;
   };
 
+  const prevModulesRef = useRef<string>('');
+
   useEffect(() => {
-    if (data?.modules) {
-      setModules(data.modules);
-    }
+    if (!data?.modules) return;
+    const key = JSON.stringify(data.modules);
+    if (prevModulesRef.current === key) return;
+    prevModulesRef.current = key;
+    setModules(data.modules);
   }, [data]);
 
   const handleToggle = async (code: string, currentStatus: boolean) => {

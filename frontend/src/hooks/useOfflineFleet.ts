@@ -30,11 +30,7 @@ export function useOfflineFleet() {
   const [queue, setQueue] = useState<OfflineFleetLog[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  useEffect(() => {
-    loadQueue();
-  }, []);
-
-  const loadQueue = async () => {
+  async function loadQueue() {
     try {
       const db = await openDB();
       const transaction = db.transaction(STORE_NAME, 'readonly');
@@ -44,7 +40,11 @@ export function useOfflineFleet() {
     } catch (e) {
       console.error('Failed to load offline fleet queue:', e);
     }
-  };
+  }
+
+  useEffect(() => {
+    loadQueue();
+  }, []);
 
   const addToQueue = useCallback(async (log: Omit<OfflineFleetLog, 'id'>) => {
     const newLog = { ...log, id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}` };

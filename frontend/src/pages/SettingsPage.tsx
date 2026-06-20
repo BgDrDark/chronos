@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { getApiUrl, fetchWithAuth } from '../utils/api';
 import { getErrorMessage } from '../types';
@@ -17,7 +17,6 @@ import GoogleIcon from '@mui/icons-material/Google';
 import SystemUpdateIcon from '@mui/icons-material/SystemUpdate';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import AuditLogViewer from '../components/AuditLogViewer';
-import PushNotificationManager from '../components/PushNotificationManager';
 import ApiKeyManager from '../components/ApiKeyManager';
 import WebhookManager from '../components/WebhookManager';
 import MaintenanceModeSettings from '../components/MaintenanceModeSettings';
@@ -519,8 +518,10 @@ const OfficeLocationSettings: React.FC = () => {
     const [exitEnabled, setExitEnabled] = useState(false);
     const [msg, setMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
 
+    const locInitialized = useRef(false);
     React.useEffect(() => {
-        if (data?.officeLocation) {
+        if (data?.officeLocation && !locInitialized.current) {
+            locInitialized.current = true;
             setLat(data.officeLocation.latitude !== 0 ? data.officeLocation.latitude.toString() : '');
             setLon(data.officeLocation.longitude !== 0 ? data.officeLocation.longitude.toString() : '');
             setRad(data.officeLocation.radius?.toString() || '100');

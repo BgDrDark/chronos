@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@apollo/client';
 import {
   Card, CardContent, Typography, TextField, Button, Box,
@@ -27,7 +27,7 @@ const DAYS_OF_WEEK = [
 ];
 
 const ScheduledUpdateSettings: React.FC = () => {
-  const { data, loading, refetch } = useQuery(UPDATE_SCHEDULE_QUERY, {
+  const { data, refetch } = useQuery(UPDATE_SCHEDULE_QUERY, {
     pollInterval: 30000,
     fetchPolicy: 'network-only',
   });
@@ -61,8 +61,14 @@ const ScheduledUpdateSettings: React.FC = () => {
   const deployProgress = deployStatus?.progress;
   const deployOutput = deployStatus?.output;
 
+  const prevScheduleRef = useRef<string>('');
+
   useEffect(() => {
-    if (schedule) {
+    if (!schedule) return;
+    const key = JSON.stringify(schedule);
+    if (prevScheduleRef.current === key) return;
+    prevScheduleRef.current = key;
+    setTimeout(() => {
       setEnabled(schedule.enabled);
       setScheduleType(schedule.scheduleType);
       if (schedule.scheduledAt) {
@@ -74,13 +80,19 @@ const ScheduledUpdateSettings: React.FC = () => {
       setHour(schedule.hour);
       setMinute(schedule.minute);
       setNotifyEmail(schedule.notifyEmail || '');
-    }
+    }, 0);
   }, [schedule]);
 
+  const prevDeployingRef = useRef<boolean | undefined>(undefined);
+
   useEffect(() => {
+    if (prevDeployingRef.current === isDeploying) return;
+    prevDeployingRef.current = isDeploying;
     if (!isDeploying && deployPolling) {
-      setDeployPolling(false);
-      refetch();
+      setTimeout(() => {
+        setDeployPolling(false);
+        refetch();
+      }, 0);
     }
   }, [isDeploying, deployPolling, refetch]);
 

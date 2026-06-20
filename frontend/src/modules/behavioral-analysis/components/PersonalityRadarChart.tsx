@@ -5,14 +5,6 @@ import {
   Radar, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 
-const FACTOR_LABELS: Record<string, string> = {
-  openness: 'Отвореност',
-  conscientiousness: 'Съзнателност',
-  extraversion: 'Екстраверсия',
-  agreeableness: 'Дружелюбност',
-  neuroticism: 'Невротизъм',
-};
-
 interface Props {
   openness: number;
   conscientiousness: number;

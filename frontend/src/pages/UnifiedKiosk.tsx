@@ -73,11 +73,14 @@ const UnifiedKiosk: React.FC = () => {
     const setScanResultRef = useRef(setScanResult);
     const setOfflineQueueRef = useRef(setOfflineQueue);
     const offlineQueueRef = useRef(offlineQueue);
-    isScanningRef.current = isScanning;
-    setIsScanningRef.current = setIsScanning;
-    setScanResultRef.current = setScanResult;
-    setOfflineQueueRef.current = setOfflineQueue;
-    offlineQueueRef.current = offlineQueue;
+
+    useEffect(() => {
+        isScanningRef.current = isScanning;
+        setIsScanningRef.current = setIsScanning;
+        setScanResultRef.current = setScanResult;
+        setOfflineQueueRef.current = setOfflineQueue;
+        offlineQueueRef.current = offlineQueue;
+    }, [isScanning, setIsScanning, setScanResult, setOfflineQueue, offlineQueue]);
 
     // TTS Function
     const speak = useCallback((text: string) => {

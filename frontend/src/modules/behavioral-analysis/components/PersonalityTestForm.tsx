@@ -86,7 +86,7 @@ const PersonalityTestForm: React.FC<Props> = ({ open, onClose, questions, templa
       const orderedAnswers = questions.map((q) => answers[q.id]);
       await onSubmit(templateId, orderedAnswers);
       onClose();
-    } catch (e) {
+    } catch {
       setError('Грешка при изпращане. Опитайте отново.');
     } finally {
       setSubmitting(false);

@@ -705,11 +705,17 @@ const PayrollLegalSettings: React.FC = () => {
         }
     });
 
+    const prevLegalRef = React.useRef<string>('');
+
     React.useEffect(() => {
-        if (data?.payrollLegalSettings) {
+        if (!data?.payrollLegalSettings) return;
+        const key = JSON.stringify(data.payrollLegalSettings);
+        if (prevLegalRef.current === key) return;
+        prevLegalRef.current = key;
+        setTimeout(() => {
             reset(data.payrollLegalSettings);
             setDefaultTaxResident(data.payrollLegalSettings.defaultTaxResident ?? true);
-        }
+        }, 0);
     }, [data, reset]);
 
     const handleDefaultTaxResidentChange = (checked: boolean) => {
@@ -1066,11 +1072,13 @@ const MonthlyWorkDaysSettings: React.FC = () => {
     });
 
     React.useEffect(() => {
-        if (data?.monthlyWorkDays) {
-            setDaysCount(data.monthlyWorkDays.daysCount);
-        } else {
-            setDaysCount(22); // Default fallback
-        }
+        setTimeout(() => {
+            if (data?.monthlyWorkDays) {
+                setDaysCount(data.monthlyWorkDays.daysCount);
+            } else {
+                setDaysCount(22); // Default fallback
+            }
+        }, 0);
     }, [data]);
 
     const handleSave = async () => {
@@ -1145,24 +1153,26 @@ const GlobalPayrollSettings: React.FC = () => {
     });
 
     React.useEffect(() => {
-        if (data?.globalPayrollConfig) {
-            const conf = data.globalPayrollConfig;
-            setHasTaxDeduction(conf.hasTaxDeduction ?? false);
-            setHasHealthInsurance(conf.hasHealthInsurance ?? false);
-            reset({
-                hourlyRate: conf.hourlyRate,
-                monthlySalary: conf.monthlySalary,
-                currency: conf.currency,
-                annualLeaveDays: conf.annualLeaveDays,
-                overtimeMultiplier: conf.overtimeMultiplier,
-                standardHoursWeekly: conf.standardHoursPerDay * 5,
-                taxPercent: conf.taxPercent,
-                healthInsurancePercent: conf.healthInsurancePercent,
-                hasTaxDeduction: conf.hasTaxDeduction ?? false,
-                hasHealthInsurance: conf.hasHealthInsurance ?? false
-            });
+        setTimeout(() => {
+            if (data?.globalPayrollConfig) {
+                const conf = data.globalPayrollConfig;
+                setHasTaxDeduction(conf.hasTaxDeduction ?? false);
+                setHasHealthInsurance(conf.hasHealthInsurance ?? false);
+                reset({
+                    hourlyRate: conf.hourlyRate,
+                    monthlySalary: conf.monthlySalary,
+                    currency: conf.currency,
+                    annualLeaveDays: conf.annualLeaveDays,
+                    overtimeMultiplier: conf.overtimeMultiplier,
+                    standardHoursWeekly: conf.standardHoursPerDay * 5,
+                    taxPercent: conf.taxPercent,
+                    healthInsurancePercent: conf.healthInsurancePercent,
+                    hasTaxDeduction: conf.hasTaxDeduction ?? false,
+                    hasHealthInsurance: conf.hasHealthInsurance ?? false
+                });
         }
-    }, [data, reset, setHasTaxDeduction, setHasHealthInsurance]);
+    }, 0);
+}, [data, reset, setHasTaxDeduction, setHasHealthInsurance]);
 
     type GlobalFormData = PayrollLegalSettings;
     const onSubmitGlobal = async (formData: GlobalFormData) => {
@@ -1977,8 +1987,8 @@ const PayrollSettings: React.FC = () => {
       setValue('hourlyRate', rate);
 
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      setSaveStatus('saving');
       autoSaveTimer.current = setTimeout(async () => {
+        setSaveStatus('saving');
         try {
           const vals = getValues();
           const dailyHours = (vals.standardHoursWeekly ?? 40) / 5;
@@ -2069,60 +2079,62 @@ const PayrollSettings: React.FC = () => {
         }
     }
 
-    if (config) {
-        const dailyHours = config.standardHoursPerDay || 8;
-        setHasTaxDeductionLocal(config.hasTaxDeduction ?? false);
-        setHasHealthInsuranceLocal(config.hasHealthInsurance ?? false);
-        reset({
-            targetId: selectedTargetId,
-            hourlyRate: config.hourlyRate,
-            monthlySalary: config.monthlySalary || 0,
-            currency: config.currency || 'BGN',
-            annualLeaveDays: config.annualLeaveDays || 20,
-            overtimeMultiplier: config.overtimeMultiplier || 1.0,
-            standardHoursPerDay: dailyHours,
-            standardHoursWeekly: dailyHours * 5,
-            taxPercent: config.taxPercent,
-            healthInsurancePercent: config.healthInsurancePercent,
-            hasTaxDeduction: config.hasTaxDeduction,
-            hasHealthInsurance: config.hasHealthInsurance
-        });
-    } else if (globalData?.globalPayrollConfig) {
-        const g = globalData.globalPayrollConfig;
-        setHasTaxDeductionLocal(g.hasTaxDeduction ?? false);
-        setHasHealthInsuranceLocal(g.hasHealthInsurance ?? false);
-        reset({
-            targetId: selectedTargetId,
-            hourlyRate: g.hourlyRate,
-            monthlySalary: g.monthlySalary,
-            currency: g.currency,
-            annualLeaveDays: g.annualLeaveDays,
-            overtimeMultiplier: g.overtimeMultiplier,
-            standardHoursPerDay: g.standardHoursPerDay,
-            standardHoursWeekly: g.standardHoursPerDay * 5,
-            taxPercent: g.taxPercent,
-            healthInsurancePercent: g.healthInsurancePercent,
-            hasTaxDeduction: g.hasTaxDeduction,
-            hasHealthInsurance: g.hasHealthInsurance
-        });
-    } else {
-        setHasTaxDeductionLocal(false);
-        setHasHealthInsuranceLocal(false);
-        reset({
-            targetId: selectedTargetId,
-            hourlyRate: 0,
-            monthlySalary: 0,
-            currency: 'BGN',
-            annualLeaveDays: 20,
-            overtimeMultiplier: 1.0,
-            standardHoursPerDay: 8,
-            standardHoursWeekly: 40,
-            taxPercent: 10.0,
-            healthInsurancePercent: 13.78,
-            hasTaxDeduction: false, 
-            hasHealthInsurance: false 
-        });
-    }
+    setTimeout(() => {
+      if (config) {
+          const dailyHours = config.standardHoursPerDay || 8;
+          setHasTaxDeductionLocal(config.hasTaxDeduction ?? false);
+          setHasHealthInsuranceLocal(config.hasHealthInsurance ?? false);
+          reset({
+              targetId: selectedTargetId,
+              hourlyRate: config.hourlyRate,
+              monthlySalary: config.monthlySalary || 0,
+              currency: config.currency || 'BGN',
+              annualLeaveDays: config.annualLeaveDays || 20,
+              overtimeMultiplier: config.overtimeMultiplier || 1.0,
+              standardHoursPerDay: dailyHours,
+              standardHoursWeekly: dailyHours * 5,
+              taxPercent: config.taxPercent,
+              healthInsurancePercent: config.healthInsurancePercent,
+              hasTaxDeduction: config.hasTaxDeduction,
+              hasHealthInsurance: config.hasHealthInsurance
+          });
+      } else if (globalData?.globalPayrollConfig) {
+          const g = globalData.globalPayrollConfig;
+          setHasTaxDeductionLocal(g.hasTaxDeduction ?? false);
+          setHasHealthInsuranceLocal(g.hasHealthInsurance ?? false);
+          reset({
+              targetId: selectedTargetId,
+              hourlyRate: g.hourlyRate,
+              monthlySalary: g.monthlySalary,
+              currency: g.currency,
+              annualLeaveDays: g.annualLeaveDays,
+              overtimeMultiplier: g.overtimeMultiplier,
+              standardHoursPerDay: g.standardHoursPerDay,
+              standardHoursWeekly: g.standardHoursPerDay * 5,
+              taxPercent: g.taxPercent,
+              healthInsurancePercent: g.healthInsurancePercent,
+              hasTaxDeduction: g.hasTaxDeduction,
+              hasHealthInsurance: g.hasHealthInsurance
+          });
+      } else {
+          setHasTaxDeductionLocal(false);
+          setHasHealthInsuranceLocal(false);
+          reset({
+              targetId: selectedTargetId,
+              hourlyRate: 0,
+              monthlySalary: 0,
+              currency: 'BGN',
+              annualLeaveDays: 20,
+              overtimeMultiplier: 1.0,
+              standardHoursPerDay: 8,
+              standardHoursWeekly: 40,
+              taxPercent: 10.0,
+              healthInsurancePercent: 13.78,
+              hasTaxDeduction: false, 
+              hasHealthInsurance: false 
+          });
+      }
+    }, 0);
   }, [selectedTargetId, mode, data, globalData, reset, setHasTaxDeductionLocal, setHasHealthInsuranceLocal]);
 
   type IndividualFormData = PayrollLegalSettings;

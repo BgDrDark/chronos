@@ -22,20 +22,24 @@ const SettingsPage: React.FC = () => {
     anonymizeInsteadOfDelete: false,
   });
 
+  const prevSettingsRef = React.useRef<string>('');
+
   React.useEffect(() => {
-    if (data?.behavioralSettings) {
-      const s: BehavioralSettings = data.behavioralSettings;
-      setForm({
-        rawProfileDays: s.rawProfileDays,
-        aggregatedProfileMonths: s.aggregatedProfileMonths,
-        recommendationMonths: s.recommendationMonths,
-        feedbackMonths: s.feedbackMonths,
-        auditLogMonths: s.auditLogMonths,
-        autoCleanupEnabled: s.autoCleanupEnabled,
-        cleanupSchedule: s.cleanupSchedule,
-        anonymizeInsteadOfDelete: s.anonymizeInsteadOfDelete,
-      });
-    }
+    if (!data?.behavioralSettings) return;
+    const key = JSON.stringify(data.behavioralSettings);
+    if (prevSettingsRef.current === key) return;
+    prevSettingsRef.current = key;
+    const s: BehavioralSettings = data.behavioralSettings;
+    setForm({
+      rawProfileDays: s.rawProfileDays,
+      aggregatedProfileMonths: s.aggregatedProfileMonths,
+      recommendationMonths: s.recommendationMonths,
+      feedbackMonths: s.feedbackMonths,
+      auditLogMonths: s.auditLogMonths,
+      autoCleanupEnabled: s.autoCleanupEnabled,
+      cleanupSchedule: s.cleanupSchedule,
+      anonymizeInsteadOfDelete: s.anonymizeInsteadOfDelete,
+    });
   }, [data]);
 
   const handleSubmit = async (e: React.FormEvent) => {

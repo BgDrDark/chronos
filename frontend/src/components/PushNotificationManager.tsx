@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getErrorMessage } from '../types';
 import { 
   Box, Typography, Alert, CircularProgress, Card, CardContent, 
@@ -72,7 +72,11 @@ const PushNotificationManager: React.FC = () => {
         }
     };
 
+    const checkedRef = useRef(false);
+
     useEffect(() => {
+        if (checkedRef.current) return;
+        checkedRef.current = true;
         checkSubscription();
     }, []);
 
@@ -97,7 +101,7 @@ const PushNotificationManager: React.FC = () => {
             
             try {
                 // Use existing registration - SW is already registered by main.tsx
-                const registration = await navigator.serviceWorker.ready;
+                registration = await navigator.serviceWorker.ready;
             } catch (swErr) {
                 console.warn("Manual SW registration failed, waiting for ready...", swErr);
                 registration = await Promise.race([

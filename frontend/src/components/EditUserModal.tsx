@@ -144,14 +144,21 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
   const [updateUser] = useMutation(UPDATE_USER_MUTATION);
   const { data: orgData, loading: dataLoading } = useQuery<OrgData>(GET_DATA_QUERY);
 
+  const prevUserKeyRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (user && open) {
+    const key = user ? `${user.id}-${open}` : null;
+    if (!key || prevUserKeyRef.current === key) return;
+    prevUserKeyRef.current = key;
+    if (!open) return;
+    setTimeout(() => {
+      if (!user) return;
       setApiError('');
       const contract = user.employmentContract;
       
       reset({
         id: user.id ? Number(user.id) : undefined,
-        email: '', // Keep email empty for privacy
+        email: '',
         username: user.username || '',
         firstName: user.firstName || '',
         surname: user.surname || '',
@@ -168,7 +175,6 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         isActive: user.isActive ?? true,
         passwordForceChange: user.passwordForceChange ?? false,
         password: '',
-        // ТРЗ данни от employment contract
         contractType: contract?.contractType || 'full_time',
         contractNumber: contract?.contractNumber || '',
         contractStartDate: contract?.startDate || '',
@@ -182,7 +188,6 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         salaryInstallmentsCount: contract?.salaryInstallmentsCount || 1,
         monthlyAdvanceAmount: contract?.monthlyAdvanceAmount !== undefined && contract?.monthlyAdvanceAmount !== null ? Number(contract.monthlyAdvanceAmount) : 0,
         taxResident: contract?.taxResident ?? true,
-        // ТРЗ Разширение
         paymentDay: contract?.paymentDay || 25,
         nightWorkRate: contract?.nightWorkRate !== undefined && contract?.nightWorkRate !== null ? Number(contract.nightWorkRate) : 0.50,
         overtimeRate: contract?.overtimeRate !== undefined && contract?.overtimeRate !== null ? Number(contract.overtimeRate) : 1.50,
@@ -190,7 +195,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         workClass: contract?.workClass || '',
         dangerousWork: contract?.dangerousWork ?? false,
       });
-    }
+    }, 0);
   }, [user, open, reset]);
 
   const filteredDepartments = orgData?.departments.filter((d) => 

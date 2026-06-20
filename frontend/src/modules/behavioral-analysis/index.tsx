@@ -33,6 +33,9 @@ export const myBehavioralProfileRoute = {
   isVisible: (_userRole: string, moduleStatus: boolean) => moduleStatus,
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export * from './types';
+// eslint-disable-next-line react-refresh/only-export-components
 export * from './api/queries';
+// eslint-disable-next-line react-refresh/only-export-components
 export * from './api/mutations';

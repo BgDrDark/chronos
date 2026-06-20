@@ -12,12 +12,7 @@ import {
 } from '@mui/material';
 import {
   Security as SecurityIcon,
-  QrCodeScanner as QrCodeScannerIcon,
-  Router as GatewayIcon,
   MeetingRoom as DoorIcon,
-  Layers as ZoneIcon,
-  VpnKey as CodeIcon,
-  History as LogIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Add as AddIcon,
@@ -29,7 +24,6 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import KioskCustomizationSettings from '../components/KioskCustomizationSettings';
-import { useNavigate } from 'react-router-dom';
 import { 
   GATEWAYS_QUERY, 
   TERMINALS_QUERY, 
@@ -138,8 +132,6 @@ const KioskSecuritySettings: React.FC = () => {
 };
 
 const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
-    const navigate = useNavigate();
-
     // Queries
     const { data: gatewaysData, loading: gatewaysLoading, refetch: refetchGateways } = useQuery(GATEWAYS_QUERY);
     const { data: terminalsData, loading: terminalsLoading, refetch: refetchTerminals } = useQuery(TERMINALS_QUERY);
@@ -632,8 +624,13 @@ const TerminalUpdateDialog: React.FC<{
     const [alias, setAlias] = useState<string>('');
     const [loading, setLoading] = useState(false);
 
+    const prevTerminalKeyRef = React.useRef<string>('');
+
     React.useEffect(() => {
-        if (terminal && open) {
+        const key = terminal ? `${terminal.id}-${open}` : '';
+        if (!key || prevTerminalKeyRef.current === key) return;
+        prevTerminalKeyRef.current = key;
+        setTimeout(() => {
             const currentDoor = doors.find(d => d.terminalId === terminal.hardwareUuid);
             if (currentDoor) {
                 setSelectedDoorId(currentDoor.id);
@@ -643,7 +640,7 @@ const TerminalUpdateDialog: React.FC<{
                 setMode(terminal.mode || 'both');
             }
             setAlias(terminal.alias || terminal.deviceName || '');
-        }
+        }, 0);
     }, [terminal, open, doors]);
 
     const handleSave = async () => {
@@ -909,11 +906,18 @@ const UserAccessDialog: React.FC<{open: boolean, onClose: () => void, user: any,
     const [checkedZones, setCheckedZones] = useState<number[]>([]);
     const [loading, setLoading] = useState(false);
 
+    const prevUserAccessRef = React.useRef<string>('');
+
     React.useEffect(() => {
-        if (user) {
-            const auth = zones.filter(z => z.authorizedUsers?.some((au: any) => au.id === user.id)).map(z => parseInt(z.id));
-            setCheckedZones(auth);
-        } else setCheckedZones([]);
+        const key = `${open}-${user?.id ?? 'bulk'}`;
+        if (prevUserAccessRef.current === key) return;
+        prevUserAccessRef.current = key;
+        setTimeout(() => {
+            if (user) {
+                const auth = zones.filter(z => z.authorizedUsers?.some((au: any) => au.id === user.id)).map(z => parseInt(z.id));
+                setCheckedZones(auth);
+            } else setCheckedZones([]);
+        }, 0);
     }, [user, zones, open]);
 
     const handleSave = async () => {
@@ -998,8 +1002,13 @@ const ZoneEditDialog: React.FC<{
     });
     const [loading, setLoading] = useState(false);
 
+    const prevZoneKeyRef = React.useRef<string>('');
+
     React.useEffect(() => {
-        if (zone && open) {
+        const key = zone ? `${zone.id}-${open}` : '';
+        if (!key || prevZoneKeyRef.current === key) return;
+        prevZoneKeyRef.current = key;
+        setTimeout(() => {
             setFormData({
                 zoneId: zone.zoneId || '',
                 name: zone.name || '',
@@ -1012,7 +1021,7 @@ const ZoneEditDialog: React.FC<{
                 antiPassbackTimeout: zone.antiPassbackTimeout || 5,
                 description: zone.description || ''
             });
-        }
+        }, 0);
     }, [zone, open]);
 
     const handleSave = async () => {
@@ -1092,11 +1101,16 @@ const GatewayEditDialog: React.FC<{
     const [companyId, setCompanyId] = useState<number | ''>('');
     const [loading, setLoading] = useState(false);
 
+    const prevGatewayKeyRef = React.useRef<string>('');
+
     React.useEffect(() => {
-        if (gateway && open) {
+        const key = gateway ? `${gateway.id}-${open}` : '';
+        if (!key || prevGatewayKeyRef.current === key) return;
+        prevGatewayKeyRef.current = key;
+        setTimeout(() => {
             setAlias(gateway.alias || '');
             setCompanyId(gateway.companyId || '');
-        }
+        }, 0);
     }, [gateway, open]);
 
     const handleSave = async () => {

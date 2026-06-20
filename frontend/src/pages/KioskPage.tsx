@@ -34,9 +34,11 @@ const KioskPage: React.FC = () => {
     const setIsScanningRef = useRef(setIsScanning);
     const setScanResultRef = useRef(setScanResult);
     const scannerRef = useRef<Html5QrcodeScanner | null>(null);
-    isScanningRef.current = isScanning;
-    setIsScanningRef.current = setIsScanning;
-    setScanResultRef.current = setScanResult;
+    useEffect(() => {
+        isScanningRef.current = isScanning;
+        setIsScanningRef.current = setIsScanning;
+        setScanResultRef.current = setScanResult;
+    }, [isScanning, setIsScanning, setScanResult]);
 
     useEffect(() => {
         const fetchConfig = async () => {

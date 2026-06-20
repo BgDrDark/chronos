@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Typography, Box, Paper, TextField, Button, Grid, MenuItem, Switch, FormControlLabel, Alert } from '@mui/material';
+import React, { useState, useEffect, useRef } from 'react';
+import { Container, Typography, Box, Paper, TextField, Button, Grid, MenuItem, Switch, FormControlLabel } from '@mui/material';
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_BEHAVIORAL_RULES } from '../api/queries';
 import { CREATE_BEHAVIORAL_RULE, UPDATE_BEHAVIORAL_RULE } from '../api/mutations';
@@ -11,16 +11,6 @@ const conditionTypes = [
   { value: 'composite', label: 'Комбинирано (Composite)' },
   { value: 'trend', label: 'Тренд (Trend)' },
   { value: 'custom_expression', label: 'Персонален израз' },
-];
-
-const metricOptions = [
-  { value: 'punctuality_score', label: 'Точност' },
-  { value: 'efficiency_score', label: 'Ефективност' },
-  { value: 'overtime_score', label: 'Извънреден труд' },
-  { value: 'burnout_risk', label: 'Риск от прегаряне' },
-  { value: 'financial_stress_score', label: 'Финансов стрес' },
-  { value: 'attendance_score', label: 'Присъствие' },
-  { value: 'scrap_rate', label: 'Бракуване' },
 ];
 
 const RuleBuilderPage: React.FC = () => {
@@ -47,37 +37,44 @@ const RuleBuilderPage: React.FC = () => {
 
   const rules: BehavioralRule[] = data?.behavioralRules || [];
 
+  const prevRuleIdRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (selectedRule) {
-      setForm({
-        name: selectedRule.name,
-        description: selectedRule.description || '',
-        ruleType: selectedRule.ruleType,
-        conditionType: selectedRule.conditionType,
-        conditionConfig: JSON.stringify(selectedRule.conditionConfig, null, 2),
-        recommendationTemplate: JSON.stringify(selectedRule.recommendationTemplate, null, 2),
-        autoExecuteAction: selectedRule.autoExecuteAction || '',
-        autoExecute: selectedRule.autoExecute,
-        isActive: selectedRule.isActive,
-        shadowMode: selectedRule.shadowMode,
-      });
-      setIsEditing(true);
-    } else {
-      setForm({
-        name: '',
-        description: '',
-        ruleType: 'custom',
-        conditionType: 'threshold',
-        conditionConfig: '{\n  "metric": "burnout_risk",\n  "operator": ">",\n  "threshold": 0.7\n}',
-        recommendationTemplate: '{\n  "type": "general",\n  "priority": "medium",\n  "title": "Препоръка",\n  "description": "",\n  "suggested_action": "",\n  "explanation": ""\n}',
-        autoExecuteAction: '',
-        autoExecute: false,
-        isActive: true,
-        shadowMode: false,
-      });
-      setIsEditing(false);
-    }
-    setErrors({});
+    const id = selectedRule?.id ?? null;
+    if (prevRuleIdRef.current === id) return;
+    prevRuleIdRef.current = id;
+    setTimeout(() => {
+      if (selectedRule) {
+        setForm({
+          name: selectedRule.name,
+          description: selectedRule.description || '',
+          ruleType: selectedRule.ruleType,
+          conditionType: selectedRule.conditionType,
+          conditionConfig: JSON.stringify(selectedRule.conditionConfig, null, 2),
+          recommendationTemplate: JSON.stringify(selectedRule.recommendationTemplate, null, 2),
+          autoExecuteAction: selectedRule.autoExecuteAction || '',
+          autoExecute: selectedRule.autoExecute,
+          isActive: selectedRule.isActive,
+          shadowMode: selectedRule.shadowMode,
+        });
+        setIsEditing(true);
+      } else {
+        setForm({
+          name: '',
+          description: '',
+          ruleType: 'custom',
+          conditionType: 'threshold',
+          conditionConfig: '{\n  "metric": "burnout_risk",\n  "operator": ">",\n  "threshold": 0.7\n}',
+          recommendationTemplate: '{\n  "type": "general",\n  "priority": "medium",\n  "title": "Препоръка",\n  "description": "",\n  "suggested_action": "",\n  "explanation": ""\n}',
+          autoExecuteAction: '',
+          autoExecute: false,
+          isActive: true,
+          shadowMode: false,
+        });
+        setIsEditing(false);
+      }
+      setErrors({});
+    }, 0);
   }, [selectedRule]);
 
   const validateForm = (): boolean => {

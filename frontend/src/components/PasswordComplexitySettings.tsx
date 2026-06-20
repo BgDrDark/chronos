@@ -44,16 +44,20 @@ const PasswordComplexitySettings: React.FC = () => {
   const [reqSpecial, setReqSpecial] = useState(true);
   const [msg, setMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
 
+  const prevPwdRef = React.useRef<string>('');
+
   React.useEffect(() => {
-    if (data?.passwordSettings) {
-      const s = data.passwordSettings;
-      setMinLen(s.minLength);
-      setMaxLen(s.maxLength);
-      setReqUpper(s.requireUpper);
-      setReqLower(s.requireLower);
-      setReqDigit(s.requireDigit);
-      setReqSpecial(s.requireSpecial);
-    }
+    if (!data?.passwordSettings) return;
+    const key = JSON.stringify(data.passwordSettings);
+    if (prevPwdRef.current === key) return;
+    prevPwdRef.current = key;
+    const s = data.passwordSettings;
+    setMinLen(s.minLength);
+    setMaxLen(s.maxLength);
+    setReqUpper(s.requireUpper);
+    setReqLower(s.requireLower);
+    setReqDigit(s.requireDigit);
+    setReqSpecial(s.requireSpecial);
   }, [data]);
 
   const handleSave = async () => {
