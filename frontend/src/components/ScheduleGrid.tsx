@@ -38,8 +38,8 @@ const LeaveTypeColors: Record<string, string> = {
 };
 
 const LeaveTypeLabels: Record<string, string> = {
-  annual_paid: 'Пл',
-  paid_leave: 'Пл',
+  annual_paid: 'По',
+  paid_leave: 'По',
   sick: 'Б',
   sick_leave: 'Б',
   unpaid: 'Н',
@@ -49,6 +49,20 @@ const LeaveTypeLabels: Record<string, string> = {
   parental: 'Р',
   child_care: 'Гр',
   study: 'Уч',
+};
+
+const LeaveTypeFullNames: Record<string, string> = {
+  annual_paid: 'Платен отпуск',
+  paid_leave: 'Платен отпуск',
+  sick: 'Болничен',
+  sick_leave: 'Болничен',
+  unpaid: 'Неплатен отпуск',
+  unpaid_leave: 'Неплатен отпуск',
+  maternity: 'Майчинство',
+  paternity: 'Бащинство',
+  parental: 'Отглеждане на дете',
+  child_care: 'Грижа за дете',
+  study: 'Учебен отпуск',
 };
 
 interface ScheduleGridProps {
@@ -269,7 +283,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({ onOpenTemplatePreview }) =>
                           <Box sx={{ width: 26, height: 26, borderRadius: '50%', margin: '0 auto', backgroundColor: ShiftTypeColors[entry.shift.shiftType] || '#999', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold' }}>{entry.shift.name.charAt(0).toUpperCase()}</Box>
                         </Tooltip>
                       ) : leave ? (
-                        <Tooltip title={LeaveTypeLabels[leave.leaveType] || leave.leaveType} arrow>
+                        <Tooltip title={LeaveTypeFullNames[leave.leaveType] || leave.leaveType} arrow>
                           <Box sx={{ width: 26, height: 26, borderRadius: '4px', margin: '0 auto', backgroundColor: leave.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold' }}>{leave.label}</Box>
                         </Tooltip>
                       ) : (
@@ -300,6 +314,26 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({ onOpenTemplatePreview }) =>
           })}
         </Box>
       )}
+
+      {(() => {
+        const seen = new Set<string>();
+        const legend = Object.entries(LeaveTypeLabels).filter(([, label]) => {
+          if (seen.has(label)) return false;
+          seen.add(label);
+          return true;
+        });
+        return (
+          <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center', p: 1 }}>
+            <Typography variant="caption" fontWeight="bold" color="text.secondary">Легенда:</Typography>
+            {legend.map(([key, label]) => (
+              <Box key={key} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 14, height: 14, borderRadius: '3px', backgroundColor: LeaveTypeColors[key] || '#757575' }} />
+                <Typography variant="caption" color="text.secondary">{label} - {LeaveTypeFullNames[key]}</Typography>
+              </Box>
+            ))}
+          </Box>
+        );
+      })()}
 
       <style>{`@media print { .no-print { display: none !important; } body, html { visibility: hidden; } .MuiTableContainer-root { visibility: visible; position: absolute; left: 0; top: 0; width: 100%; } @page { size: landscape; margin: 5mm; } }`}</style>
     </Box>
