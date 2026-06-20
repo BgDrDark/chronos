@@ -18,13 +18,20 @@ class NotificationRepository(BaseRepository):
         user_id: int,
         limit: int = 50,
         unread_only: bool = False,
+        offset: int = 0,
     ) -> list[Notification]:
         query = select(Notification).where(Notification.user_id == user_id)
         if unread_only:
             query = query.where(~Notification.is_read)
-        query = query.order_by(Notification.created_at.desc()).limit(limit)
+        query = query.order_by(Notification.created_at.desc()).offset(offset).limit(limit)
         result = await db.execute(query)
         return list(result.scalars().all())
+
+    async def get_notifications_count(self, db: AsyncSession, user_id: int) -> int:
+        result = await db.execute(
+            select(func.count(Notification.id)).where(Notification.user_id == user_id),
+        )
+        return result.scalar() or 0
 
     async def get_user_notification(
         self,

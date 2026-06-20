@@ -13,7 +13,12 @@ from backend.graphql import types
 @strawberry.type
 class NotificationsQuery:
     @strawberry.field
-    async def my_notifications(self, info: strawberry.Info, unread_only: bool = False) -> list[types.Notification]:
+    async def my_notifications(
+        self, info: strawberry.Info,
+        unread_only: bool = False,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> list[types.Notification]:
         db = info.context["db"]
         current_user = info.context.get("current_user")
         if not current_user:
@@ -21,8 +26,21 @@ class NotificationsQuery:
 
         from backend.services.notification_service import notification_service
         service = notification_service(db)
-        notifications = await service.get_notifications(current_user.id, unread_only=unread_only)
+        notifications = await service.get_notifications(current_user.id, unread_only=unread_only, limit=limit, offset=offset)
         return [types.Notification.from_pydantic(n) for n in notifications]
+
+    @strawberry.field
+    async def my_notifications_count(self, info: strawberry.Info, unread_only: bool = False) -> int:
+        db = info.context["db"]
+        current_user = info.context.get("current_user")
+        if not current_user:
+            return 0
+
+        from backend.services.notification_service import notification_service
+        service = notification_service(db)
+        if unread_only:
+            return await service.get_unread_count(current_user.id)
+        return await service.get_count(current_user.id)
 
     @strawberry.field
     async def maintenance_status(self, info: strawberry.Info) -> types.MaintenanceStatus:

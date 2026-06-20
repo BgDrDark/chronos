@@ -56,9 +56,14 @@ class NotificationService:
         user_id: int,
         limit: int = 50,
         unread_only: bool = False,
+        offset: int = 0,
     ) -> list[Notification]:
         """Get notifications for a user"""
-        return await self.notification_repo.get_user_notifications(self.db, user_id, limit, unread_only)
+        return await self.notification_repo.get_user_notifications(self.db, user_id, limit, unread_only, offset)
+
+    async def get_count(self, user_id: int) -> int:
+        """Get total notification count for a user"""
+        return await self.notification_repo.get_notifications_count(self.db, user_id)
 
     async def mark_as_read(self, notification_id: int, user_id: int) -> bool:
         """Mark a notification as read"""

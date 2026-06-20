@@ -300,6 +300,25 @@ class NotificationsMutation:
         return types.NotificationSetting.from_pydantic(new_setting)
 
     @strawberry.mutation
+    async def mark_all_notifications_read(self, info: strawberry.Info) -> bool:
+        db = info.context["db"]
+        current_user = get_current_user(info)
+
+        from backend.services.notification_service import notification_service
+        service = notification_service(db)
+        await service.mark_all_as_read(current_user.id)
+        return True
+
+    @strawberry.mutation
+    async def delete_notification(self, info: strawberry.Info, id: int) -> bool:
+        db = info.context["db"]
+        current_user = get_current_user(info)
+
+        from backend.services.notification_service import notification_service
+        service = notification_service(db)
+        return await service.delete_notification(id, current_user.id)
+
+    @strawberry.mutation
     async def test_notification(
             self,
             info: strawberry.Info,
