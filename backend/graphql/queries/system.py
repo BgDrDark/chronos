@@ -19,8 +19,8 @@ class SystemQuery:
         if not current_user or current_user.role.name not in ["admin", "super_admin"]:
              raise PermissionDeniedException.for_action("access")
 
-        gps = await settings_repo.get_setting(db, "kiosk_require_gps") != "false"
-        net = await settings_repo.get_setting(db, "kiosk_require_same_network") != "false"
+        gps = (await settings_repo.get_setting(db, "kiosk_require_gps")) == "true"
+        net = (await settings_repo.get_setting(db, "kiosk_require_same_network")) == "true"
 
         return types.KioskSecuritySettings(
             require_gps=gps,
