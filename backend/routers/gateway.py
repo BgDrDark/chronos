@@ -369,10 +369,11 @@ async def push_gateway_config(
     config: GatewayConfigPush,
     x_signature: str = Header(..., alias="X-Signature"),
     x_timestamp: str = Header(..., alias="X-Timestamp"),
+    x_gateway_key: str = Header(..., alias="X-Gateway-Key"),
     db: AsyncSession = Depends(get_db),
 ):
     # Verify gateway and HMAC
-    gateway = await require_gateway_auth(x_signature, x_timestamp, request)
+    gateway = await require_gateway_auth(x_signature, x_timestamp, x_gateway_key, request, db)
 
     # Verify this gateway matches the URL
     if gateway.id != gateway_id:
@@ -485,10 +486,11 @@ async def pull_gateway_config(
     gateway_id: int,
     x_signature: str = Header(..., alias="X-Signature"),
     x_timestamp: str = Header(..., alias="X-Timestamp"),
+    x_gateway_key: str = Header(..., alias="X-Gateway-Key"),
     db: AsyncSession = Depends(get_db),
 ):
     # Verify gateway and HMAC
-    gateway = await require_gateway_auth(x_signature, x_timestamp, request)
+    gateway = await require_gateway_auth(x_signature, x_timestamp, x_gateway_key, request, db)
 
     # Verify this gateway matches the URL
     if gateway.id != gateway_id:
@@ -570,10 +572,11 @@ async def sync_logs(
     logs: list[AccessLogSync],
     x_signature: str = Header(..., alias="X-Signature"),
     x_timestamp: str = Header(..., alias="X-Timestamp"),
+    x_gateway_key: str = Header(..., alias="X-Gateway-Key"),
     db: AsyncSession = Depends(get_db),
 ):
     # Verify gateway and HMAC
-    gateway = await require_gateway_auth(x_signature, x_timestamp, request)
+    gateway = await require_gateway_auth(x_signature, x_timestamp, x_gateway_key, request, db)
 
     # Verify this gateway matches the URL
     if gateway.id != gateway_id:

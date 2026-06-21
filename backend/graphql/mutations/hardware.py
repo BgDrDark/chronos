@@ -1,5 +1,6 @@
 import logging
 
+import httpx
 import strawberry
 
 from backend.exceptions import (
@@ -83,3 +84,43 @@ class HardwareMutation:
         await db.commit()
         await db.refresh(gateway)
         return types.Gateway.from_pydantic(gateway)
+
+    @strawberry.mutation
+    async def sync_gateway_config(
+        self,
+        id: int,
+        direction: str,
+        info: strawberry.Info = None,
+    ) -> str:
+        if not info:
+            raise InvalidOperationException.info_required()
+        db = info.context["db"]
+        get_current_user(info)
+
+        from backend.database.models import Gateway as GwModel
+        gateway = await db.get(GwModel, id)
+        if not gateway:
+            raise NotFoundException.resource("Gateway")
+
+        host = gateway.ip_address or "localhost"
+        port = gateway.web_port or 8889
+
+        if direction == "push":
+            url = f"http://{host}:{port}/sync/push"
+        elif direction == "pull":
+            url = f"http://{host}:{port}/sync/pull"
+        else:
+            raise InvalidOperationException("direction must be 'push' or 'pull'")
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(url)
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("message", "Sync completed")
+        except httpx.RequestError as e:
+            logger.error(f"Failed to reach gateway {id} at {url}: {e}")
+            return f"Грешка: Неуспешна връзка с gateway-а ({e})"
+        except Exception as e:
+            logger.error(f"Unexpected error syncing gateway {id}: {e}")
+            return f"Грешка при синхронизация: {e}"

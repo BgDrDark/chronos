@@ -82,10 +82,14 @@ class HMACVerifier:
 async def require_gateway_auth(
     x_signature: str = Header(..., alias="X-Signature"),
     x_timestamp: str = Header(..., alias="X-Timestamp"),
+    x_gateway_key: str = Header(..., alias="X-Gateway-Key"),
     request: Request = None,
-    gateway: Gateway = Depends(get_gateway_from_request),
+    db: AsyncSession = Depends(get_db),
 ):
     """Dependency that requires valid HMAC signature"""
+    # Look up gateway by API key
+    gateway = await get_gateway_from_request(x_gateway_key=x_gateway_key, db=db)
+
     # Get the raw body
     body = await request.body()
     body_str = body.decode() if body else ""
