@@ -98,7 +98,7 @@ class AccessController:
             uid_int = int(user_id)
             if uid_int not in zone.authorized_users:
                 return {"allowed": False, "message": "Липсва оторизация", "reason": "not_authorized", "zone": zone.to_dict(), "door": door.to_dict()}
-        except:
+        except (ValueError, TypeError):
             if user_id not in [str(u) for u in zone.authorized_users]:
                 return {"allowed": False, "message": "Липсва оторизация", "reason": "not_authorized", "zone": zone.to_dict(), "door": door.to_dict()}
 
@@ -195,7 +195,8 @@ class AccessController:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute("SELECT * FROM access_logs WHERE synced = 0 LIMIT ?", (limit,))
                 return [dict(row) for row in cursor.fetchall()]
-        except: return []
+        except Exception:
+            return []
 
     def mark_as_synced(self, log_ids: List[str]):
         """Маркира като синхронизирани"""
@@ -203,7 +204,8 @@ class AccessController:
             with sqlite3.connect(str(self.db_path)) as conn:
                 conn.executemany("UPDATE access_logs SET synced = 1 WHERE id = ?", [(lid,) for lid in log_ids])
                 conn.commit()
-        except: pass
+        except Exception:
+            pass
 
     def verify_log_signature(self, log: dict) -> bool:
         """Проверка на подписа"""
@@ -219,7 +221,8 @@ class AccessController:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute("SELECT * FROM access_logs ORDER BY timestamp DESC LIMIT ?", (limit,))
                 return [dict(row) for row in cursor.fetchall()]
-        except: return []
+        except Exception:
+            return []
 
     def get_active_users(self) -> List[dict]:
         return self.zone_state.get_all_active_users() if self.zone_state else []

@@ -68,7 +68,6 @@ access_control:
 # ===================
 # HARDWARE DEVICES
 # ===================
-access_control:
   hardware:
     # SR201 Relay Board
     # Format: device_id: serial_port
@@ -89,8 +88,7 @@ activity:
 # LOGGING
 # ===================
 logging:
-  # Log level: DEBUG, INFO,  level: INFO WARNING, ERROR
-
+  level: INFO
   
   # Log file path
   file: logs/gateway.log

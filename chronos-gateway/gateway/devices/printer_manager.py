@@ -1,4 +1,5 @@
 import socket
+import sys
 import logging
 from typing import Optional, Dict, List
 from datetime import datetime
@@ -204,6 +205,3 @@ class PrinterManager:
             "active": active,
             "printers": list(self.printers.values())
         }
-
-
-import sys

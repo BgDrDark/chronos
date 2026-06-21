@@ -163,6 +163,29 @@ class GatewayService:
         
         return False
     
+    async def _registration_retry(self):
+        """Периодично опитва регистрация, докато успее"""
+        # First, validate cached gateway ID if present
+        if config.gateway_id != "auto" and config.gateway_id:
+            logger.info(f"Validating cached gateway ID: {config.gateway_id}")
+            if await self.validate_gateway_id():
+                self._registered = True
+                self._registration_ready = True
+                logger.info(f"Gateway ID {config.gateway_id} is valid")
+                return
+            logger.warning("Cached gateway ID invalid, clearing and re-registering")
+            config.set("gateway.id", "auto")
+            config.set("backend.api_key", "")
+
+        while self._running:
+            if self.cluster_manager.is_master() and not self._registered:
+                logger.info("Attempting gateway registration...")
+                if await self.register_with_backend():
+                    logger.info("Gateway registration successful")
+                    return
+                logger.warning(f"Registration failed, retrying in 30s...")
+            await asyncio.sleep(30)
+
     def _load_printers_from_config(self):
         """Зарежда принтери от конфигурацията"""
         printers = config.get('printers', [])
@@ -392,18 +415,6 @@ class GatewayService:
             stop_task.cancel()
         
         async def run_all():
-            # Initial registration attempt (only if leader/master)
-            if self.cluster_manager.is_master():
-                # First, validate cached gateway ID
-                if config.gateway_id != "auto" and config.gateway_id:
-                    logger.info(f"Validating cached gateway ID: {config.gateway_id}")
-                    if not await self.validate_gateway_id():
-                        logger.warning("Cached gateway ID invalid, clearing and re-registering")
-                        config.set("gateway.id", "auto")
-                        config.set("backend.api_key", "")
-                
-                await self.register_with_backend()
-            
             from gateway.devices.relay_controller import relay_controller
             
             # Старт на всички под-системи като таскове
@@ -411,6 +422,7 @@ class GatewayService:
                 asyncio.create_task(run_terminal_hub()),
                 asyncio.create_task(run_web_dashboard()),
                 asyncio.create_task(self.cluster_manager.start()),
+                asyncio.create_task(self._registration_retry()),
                 asyncio.create_task(self.start_heartbeat()),
                 asyncio.create_task(self.sync_config_from_backend()),
                 asyncio.create_task(self.cleanup_offline_terminals()),

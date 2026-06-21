@@ -17,9 +17,30 @@ class Config:
         if os.path.exists(self._config_path):
             with open(self._config_path, 'r') as f:
                 self._config = yaml.safe_load(f) or {}
+            if self._deep_merge_defaults():
+                self._save()
         else:
             self._config = self._get_defaults()
             self._save()
+    
+    def _deep_merge_defaults(self) -> bool:
+        """Добавя липсващи ключове от defaults в self._config.
+        Връща True ако е имало промяна (за да се презапише файла)."""
+        changed = False
+        defaults = self._get_defaults()
+
+        def _merge(current, default, path=""):
+            nonlocal changed
+            for key, val in default.items():
+                if key not in current:
+                    current[key] = val
+                    changed = True
+                elif isinstance(val, dict) and isinstance(current[key], dict):
+                    _merge(current[key], val, f"{path}.{key}")
+                # ако е списък — не сливаме, остава файловата стойност
+
+        _merge(self._config, defaults)
+        return changed
     
     def _save(self):
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)

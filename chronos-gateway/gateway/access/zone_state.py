@@ -22,7 +22,24 @@ class Zone:
     description: str = ""
     active: bool = True
     
-    # ... (is_within_hours stays same)
+    def is_within_hours(self) -> tuple[bool, str]:
+        """Проверява дали текущото време е в работното време на зоната"""
+        try:
+            now = datetime.now()
+            start = time.fromisoformat(self.required_hours_start)
+            end = time.fromisoformat(self.required_hours_end)
+            
+            if start <= end:
+                if start <= now.time() <= end:
+                    return True, "OK"
+            else:
+                if now.time() >= start or now.time() <= end:
+                    return True, "OK"
+            
+            return False, f"Извън работно време ({self.required_hours_start} - {self.required_hours_end})"
+        except ValueError as e:
+            logger.error(f"Invalid time format for zone {self.id}: {e}")
+            return True, "OK"  # Default to allowing access if time format is invalid
 
     def to_dict(self) -> dict:
         return {
@@ -135,20 +152,20 @@ class ZoneState:
         Returns:
             (allowed, reason)
         """
-        # 1. Проверка за оторизация - потребителят ТРЯБВА да е в списъка
-        try:
-            uid_int = int(user_id)
-            if uid_int not in target_zone.authorized_users:
-                return False, f"Потребител {user_id} няма оторизация за тази зона"
-        except (ValueError, TypeError):
-            # Ако не е число (напр. гост код), отказваме достъп, ако не е в списъка (като string)
-            if user_id not in [str(u) for u in target_zone.authorized_users]:
-                 return False, "Липсва специфична оторизация за този код"
-
+        # Level 1 zones are public — everyone has access
         if target_zone.level == 1:
             return True, "OK"
 
-        
+        # 1. Проверка за оторизация — ако има explicit authorized_users, потребителят трябва да е в списъка
+        if target_zone.authorized_users:
+            try:
+                uid_int = int(user_id)
+                if uid_int not in target_zone.authorized_users:
+                    return False, f"Потребител {user_id} няма оторизация за тази зона"
+            except (ValueError, TypeError):
+                if user_id not in [str(u) for u in target_zone.authorized_users]:
+                    return False, "Липсва специфична оторизация за този код"
+
         user_zones = self._user_zones.get(user_id, {})
         
         for dep_zone_id in target_zone.depends_on:
