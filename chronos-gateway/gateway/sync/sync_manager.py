@@ -40,13 +40,22 @@ class SyncManager:
     """
     
     def __init__(self, gateway_id: str = None):
-        self.gateway_id = gateway_id or config.get('gateway.id', '1')
+        self._gateway_id = gateway_id
         self.backend_url = config.backend_url
-        self.api_key = config.api_key
         self.sync_interval = config.get('sync.interval_minutes', 15) * 60  # Convert to seconds
         self.retry_attempts = config.get('sync.retry_attempts', 3)
         self.batch_size = config.get('sync.batch_size', 100)
         self._running = False
+    
+    @property
+    def gateway_id(self) -> str:
+        """Чете gateway_id динамично от config — не кешира"""
+        return self._gateway_id or config.get('gateway.id', '1')
+    
+    @property
+    def api_key(self) -> str:
+        """Чете api_key динамично от config — не кешира"""
+        return config.api_key
     
     async def start(self):
         """Стартира синхронизацията"""
