@@ -39,7 +39,7 @@ class SyncManager:
     - Pull на конфигурация от backend
     """
     
-    def __init__(self, gateway_id: str = None):
+    def __init__(self, gateway_id: str | None = None):
         self._gateway_id = gateway_id
         self.backend_url = config.backend_url
         self.sync_interval = config.get('sync.interval_minutes', 15) * 60  # Convert to seconds
@@ -49,8 +49,9 @@ class SyncManager:
     
     @property
     def gateway_id(self) -> str:
-        """Чете gateway_id динамично от config — не кешира"""
-        return self._gateway_id or config.get('gateway.id', '1')
+        """Чете gateway_id динамично от config — не кешира.
+        Ако gateway-ът все още не е регистриран, връща 'auto'."""
+        return self._gateway_id or config.get('gateway.id', 'auto')
     
     @property
     def api_key(self) -> str:
