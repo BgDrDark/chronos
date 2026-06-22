@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -179,7 +179,7 @@ class ZoneState:
         if user_id not in self._user_zones:
             self._user_zones[user_id] = {}
         
-        self._user_zones[user_id][zone_id] = datetime.utcnow()
+        self._user_zones[user_id][zone_id] = datetime.now(timezone.utc)
         logger.info(f"User {user_id} entered zone {zone_id}")
     
     def leave_zone(self, user_id: str, zone_id: str):
@@ -242,7 +242,7 @@ class ZoneState:
         
         return {
             "version": 1,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "user_zones": exported
         }
     

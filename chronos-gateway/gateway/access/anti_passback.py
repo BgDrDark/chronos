@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class AntiPassbackState:
                 timeout = config.get("timeout_minutes", 5)
                 last_time = last.get("timestamp")
                 if last_time:
-                    minutes_since = (datetime.utcnow() - last_time).total_seconds() / 60
+                    minutes_since = (datetime.now(timezone.utc) - last_time).total_seconds() / 60
                     if minutes_since < timeout:
                         remaining = timeout - minutes_since
                         return False, f"Изчакайте {int(remaining)} минути"
@@ -104,7 +104,7 @@ class AntiPassbackState:
         """
         self._last_scans[user_id] = {
             "zone_id": zone_id,
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(timezone.utc),
             "scan_type": scan_type
         }
         logger.debug(f"Recorded scan: user={user_id}, zone={zone_id}, type={scan_type}")

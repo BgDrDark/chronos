@@ -4,7 +4,7 @@ from typing import Optional, List
 import logging
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from gateway.config import config
 from gateway.devices.terminal_manager import TerminalManager
@@ -557,7 +557,7 @@ class TerminalHub:
             return {
                 "status": "success", 
                 "imported": count,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         
         @self.app.get("/cluster/state")

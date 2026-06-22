@@ -401,12 +401,12 @@ class TestCodeManager:
         """Тест на изтекъл код"""
         from gateway.access.code_manager import CodeManager, AccessCode
         from datetime import datetime, timedelta
-        
+    
         manager = CodeManager()
         code = AccessCode(
             code="TEST123",
             code_type="one_time",
-            expires_at=datetime.utcnow() - timedelta(hours=1)
+            expires_at=datetime.now() - timedelta(hours=1)
         )
         manager.codes["TEST123"] = code
         

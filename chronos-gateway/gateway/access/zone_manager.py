@@ -323,11 +323,11 @@ class ZoneManager:
         """
         Експортира цялата конфигурация (зони + врати) за синхронизация
         """
-        from datetime import datetime
-        
+        from datetime import datetime, timezone
+
         return {
             "version": 1,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "zones": self.get_all_zones(),
             "doors": self.get_all_doors()
         }

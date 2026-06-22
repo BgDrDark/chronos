@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 
 class TerminalManager:
@@ -24,11 +24,11 @@ class TerminalManager:
             "device_model": device_info.get("device_model"),
             "os_version": device_info.get("os_version"),
             "ip_address": device_info.get("ip_address"),
-            "registered_at": datetime.utcnow(),
-            "last_seen": datetime.utcnow(),
+            "registered_at": datetime.now(timezone.utc),
+            "last_seen": datetime.now(timezone.utc),
             "total_scans": 0,
         }
-        self.heartbeats[terminal_id] = datetime.utcnow()
+        self.heartbeats[terminal_id] = datetime.now(timezone.utc)
         return self.terminals[terminal_id]
     
     def unregister(self, terminal_id: str):
@@ -39,8 +39,8 @@ class TerminalManager:
     def update_heartbeat(self, terminal_id: str):
         """Обновява heartbeat"""
         if terminal_id in self.terminals:
-            self.heartbeats[terminal_id] = datetime.utcnow()
-            self.terminals[terminal_id]["last_seen"] = datetime.utcnow()
+            self.heartbeats[terminal_id] = datetime.now(timezone.utc)
+            self.terminals[terminal_id]["last_seen"] = datetime.now(timezone.utc)
     
     def increment_scans(self, terminal_id: str):
         """Увеличава брояча на сканирания"""
@@ -57,7 +57,7 @@ class TerminalManager:
     
     def get_status(self, timeout_seconds: int = 120) -> dict:
         """Връща статус на всички терминали"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         active = []
         offline = []

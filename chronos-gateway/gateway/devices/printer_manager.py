@@ -2,7 +2,7 @@ import socket
 import sys
 import logging
 from typing import Optional, Dict, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,7 @@ class PrinterManager:
         
         success = self.print_data(printer_id, test_data)
         
-        printer["last_test"] = datetime.utcnow()
+        printer["last_test"] = datetime.now(timezone.utc)
         
         return {
             "status": "success" if success else "error",
