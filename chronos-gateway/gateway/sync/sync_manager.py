@@ -170,7 +170,7 @@ class SyncManager:
                 connector = aiohttp.TCPConnector(ssl=False)
             
             async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.post(url, json={}, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                async with session.post(url, data=empty_payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
                     if response.status == 200:
                         data = await response.json()
                         
@@ -226,7 +226,7 @@ class SyncManager:
         for attempt in range(self.retry_attempts):
             try:
                 async with aiohttp.ClientSession(connector=connector) as session:
-                    async with session.post(url, json=data, headers=headers, 
+                    async with session.post(url, data=payload, headers=headers, 
                                            timeout=aiohttp.ClientTimeout(total=30)) as response:
                         if response.status in (200, 201):
                             return True

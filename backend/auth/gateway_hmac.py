@@ -106,8 +106,8 @@ async def require_gateway_auth(
         )
 
     # Verify HMAC signature
-    # Use API key as secret for signature verification
-    if not verify_hmac_signature(body_str, x_signature, gateway.api_key):
+    # Gateway signs {body}{timestamp} — must match
+    if not verify_hmac_signature(body_str + x_timestamp, x_signature, gateway.api_key):
         raise HTTPException(
             status_code=401,
             detail="Invalid HMAC signature",
