@@ -6,6 +6,7 @@ from typing import Annotated
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Depends, FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -208,6 +209,20 @@ async def chronos_exception_handler(request: Request, exc: CHRONOSException):
         status_code=exc.status_code,
         content=exc.to_dict(),
     )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Log FastAPI 422 validation errors with full details"""
+    logger.error(
+        f"422 Validation Error on {request.method} {request.url}: {exc.errors()}",
+        extra={"body": str(exc.body)[:1000] if exc.body else None},
+    )
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
 
 @app.get("/health")
 async def health_check():

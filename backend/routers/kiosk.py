@@ -2,10 +2,12 @@ import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend import crud
 from backend.auth.limiter import limiter
+from backend.config import settings
 from backend.database.database import get_db
 
 router = APIRouter(prefix="/kiosk", tags=["kiosk"])
@@ -37,7 +39,6 @@ async def kiosk_scan(
     x_kiosk_secret: str = Header(..., alias="X-Kiosk-Secret"),
 ):
     # 0. Валидация на терминала
-    from backend.config import settings
     if x_kiosk_secret != getattr(settings, "KIOSK_DEVICE_SECRET", "super-secret-kiosk-key"):
         raise HTTPException(status_code=403, detail="Неоторизиран терминал")
 
@@ -127,7 +128,6 @@ async def terminal_scan(
     x_kiosk_secret: str = Header(..., alias="X-Kiosk-Secret"),
 ):
     """Сканиране за достъп - QR код или код от клавиатура + отваряне на врата"""
-    from backend.config import settings
     if x_kiosk_secret != getattr(settings, "KIOSK_DEVICE_SECRET", "super-secret-kiosk-key"):
         raise HTTPException(status_code=403, detail="Неоторизиран терминал")
 
@@ -335,6 +335,9 @@ async def handle_clock_in_out(db: AsyncSession, user, action: str) -> dict:
         }
 
 
+_validate_code_limiter = None
+
+
 @router.post("/terminal/validate-code")
 @require_module("kiosk")
 async def validate_code(
@@ -344,9 +347,36 @@ async def validate_code(
     x_kiosk_secret: str = Header(..., alias="X-KiosK-Secret"),
 ):
     """Валидира код от клавиатурата (без да отваря врата)"""
-    from backend.config import settings
     if x_kiosk_secret != getattr(settings, "KIOSK_DEVICE_SECRET", "super-secret-kiosk-key"):
         raise HTTPException(status_code=403, detail="Неоторизиран терминал")
+
+    from backend.auth.limiter import APIKeyRateLimiter
+    from backend.crud import get_global_setting
+
+    global _validate_code_limiter
+
+    key = f"validate_code:{request.client.host if request.client else 'unknown'}"
+
+    limit_raw = await get_global_setting(db, "kiosk_validate_code_rate_limit")
+    if limit_raw:
+        import re
+        match = re.match(r"^(\d+)/(minute|hour|second|day)$", limit_raw)
+        if match:
+            count = int(match.group(1))
+            unit = match.group(2)
+            window = {"second": 1, "minute": 60, "hour": 3600, "day": 86400}.get(unit, 60)
+            limiter = APIKeyRateLimiter(max_requests=count, window_seconds=window)
+        else:
+            if _validate_code_limiter is None:
+                _validate_code_limiter = APIKeyRateLimiter(max_requests=5, window_seconds=60)
+            limiter = _validate_code_limiter
+    else:
+        if _validate_code_limiter is None:
+            _validate_code_limiter = APIKeyRateLimiter(max_requests=5, window_seconds=60)
+        limiter = _validate_code_limiter
+
+    if not limiter.is_allowed(key):
+        raise HTTPException(status_code=429, detail="Твърде много опити. Изчакайте.")
 
     result = await validate_access_code(db, validation.code, validation.terminal_hardware_uuid)
     return result
@@ -384,9 +414,13 @@ async def get_terminals_list(
 async def get_terminal_config(
     hwid: str,
     db: AsyncSession = Depends(get_db),
+    x_kiosk_secret: str = Header(None, alias="X-Kiosk-Secret"),
 ):
-    """Връща конфигурацията на терминала (режим на работа)"""
-    from sqlalchemy import select
+    """Връща конфигурацията на терминала (режим на работа)
+    Protected by X-Kiosk-Secret header match.
+    """
+    if x_kiosk_secret != getattr(settings, "KIOSK_DEVICE_SECRET", "super-secret-kiosk-key"):
+        raise HTTPException(status_code=403, detail="Неоторизиран терминал")
 
     from backend.database.models import Terminal
 

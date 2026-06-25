@@ -8,6 +8,7 @@ import os
 import subprocess
 import socket
 import asyncio
+import aiohttp
 from pathlib import Path
 
 from gateway.config import config
@@ -70,6 +71,16 @@ class WebDashboard:
         )
         
         self._setup_routes()
+        self._register_scim()
+    
+    def _register_scim(self):
+        """Регистрира SCIM 2.0 endpoint-ите"""
+        try:
+            from gateway.scim_server import router as scim_router
+            self.app.include_router(scim_router)
+            logger.info("SCIM 2.0 endpoints registered at /scim/v2")
+        except Exception as e:
+            logger.error(f"Failed to register SCIM router: {e}")
     
     def _get_cluster_peers(self) -> list:
         """Връща списък с peers в клъстера"""
@@ -158,6 +169,127 @@ class WebDashboard:
             asyncio.create_task(shutdown())
             return {"status": "restarting"}
         
+        @self.app.post("/api/test-backend")
+        async def test_backend_connection():
+            """Тест на връзката с backend"""
+            from gateway.sync import get_sync_manager
+            sm = get_sync_manager()
+            from gateway.config import config as gateway_config
+            
+            backend_url = sm.backend_url or gateway_config.backend_url
+            if not backend_url:
+                return JSONResponse(content={"status": "error", "message": "Backend URL not configured"}, status_code=400)
+            
+            ssl_verify = not gateway_config.get('backend.ssl_verify_disabled', False)
+            connector = None
+            if not ssl_verify:
+                connector = aiohttp.TCPConnector(ssl=False)
+            
+            try:
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.get(
+                        f"{backend_url}/health",
+                        timeout=aiohttp.ClientTimeout(total=10)
+                    ) as response:
+                        if response.status == 200:
+                            return JSONResponse(content={"status": "ok", "message": "Backend is reachable"})
+                        else:
+                            return JSONResponse(content={"status": "error", "message": f"Backend returned HTTP {response.status}"}, status_code=502)
+            except Exception as e:
+                return JSONResponse(content={"status": "error", "message": f"Connection failed: {str(e)}"}, status_code=502)
+        
+        @self.app.post("/api/push-config")
+        async def push_config_to_backend():
+            """Изпраща конфигурацията към backend"""
+            from gateway.sync import get_sync_manager
+            sm = get_sync_manager()
+            
+            try:
+                await sm.sync_logs_to_backend()
+                await sm.sync_config_to_backend()
+                return JSONResponse(content={"status": "ok", "message": "Config pushed to backend"})
+            except Exception as e:
+                return JSONResponse(content={"status": "error", "message": f"Failed to push config: {str(e)}"}, status_code=500)
+        
+        @self.app.get("/api/sync-interval")
+        async def get_sync_interval():
+            """Връща текущия интервал за синхронизация"""
+            return JSONResponse(content={
+                "interval_minutes": config.get('sync.interval_minutes', 15)
+            })
+        
+        @self.app.post("/api/sync-interval")
+        async def set_sync_interval(data: dict):
+            """Задава интервала за синхронизация"""
+            interval = data.get("interval_minutes")
+            if not interval or not isinstance(interval, (int, float)) or interval < 1 or interval > 1440:
+                return JSONResponse(content={"status": "error", "message": "Интервалът трябва да е между 1 и 1440 минути"}, status_code=400)
+            
+            config.set("sync.interval_minutes", int(interval))
+            logger.warning(f"Sync interval changed to {int(interval)} minutes via dashboard")
+            return JSONResponse(content={"status": "ok", "interval_minutes": int(interval)})
+        
+        @self.app.get("/api/system-settings")
+        async def get_system_settings():
+            """Връща системните настройки (timezone, rate_limit, auto_reset)"""
+            return JSONResponse(content={
+                "timezone": config.timezone,
+                "rate_limit": {
+                    "enabled": config.get('access_control.rate_limit.enabled', True),
+                    "max_attempts": config.get('access_control.rate_limit.max_attempts', 5),
+                    "window_minutes": config.get('access_control.rate_limit.window_minutes', 1),
+                    "lockout_minutes": config.get('access_control.rate_limit.lockout_minutes', 5),
+                },
+                "auto_reset": {
+                    "enabled": config.get('access_control.auto_reset_enabled', True),
+                    "time": config.get('access_control.auto_reset_time', '23:00'),
+                },
+                "anti_passback_global": {
+                    "enabled": config.get('access_control.anti_passback.enabled', False),
+                    "default_type": config.get('access_control.anti_passback.default_type', 'soft'),
+                    "timeout_minutes": config.get('access_control.anti_passback.timeout_minutes', 5),
+                },
+            })
+
+        @self.app.post("/api/system-settings")
+        async def set_system_settings(data: dict):
+            """Задава системни настройки"""
+            if "timezone" in data:
+                tz = data["timezone"]
+                try:
+                    import zoneinfo
+                    zoneinfo.ZoneInfo(tz)
+                    config.set("system.timezone", tz)
+                except (KeyError, TypeError):
+                    return JSONResponse(content={"status": "error", "message": "Невалидна часова зона"}, status_code=400)
+
+            if "rate_limit" in data:
+                rl = data["rate_limit"]
+                if "max_attempts" in rl:
+                    config.set("access_control.rate_limit.max_attempts", int(rl["max_attempts"]))
+                if "window_minutes" in rl:
+                    config.set("access_control.rate_limit.window_minutes", int(rl["window_minutes"]))
+                if "lockout_minutes" in rl:
+                    config.set("access_control.rate_limit.lockout_minutes", int(rl["lockout_minutes"]))
+
+            if "auto_reset" in data:
+                ar = data["auto_reset"]
+                if "enabled" in ar:
+                    config.set("access_control.auto_reset_enabled", bool(ar["enabled"]))
+                if "time" in ar:
+                    config.set("access_control.auto_reset_time", ar["time"])
+
+            if "anti_passback_global" in data:
+                ap = data["anti_passback_global"]
+                if "enabled" in ap:
+                    config.set("access_control.anti_passback.enabled", bool(ap["enabled"]))
+                if "default_type" in ap:
+                    config.set("access_control.anti_passback.default_type", ap["default_type"])
+                if "timeout_minutes" in ap:
+                    config.set("access_control.anti_passback.timeout_minutes", int(ap["timeout_minutes"]))
+
+            return JSONResponse(content={"status": "ok"})
+
         @self.app.get("/api/terminals")
         async def get_terminals():
             """Списък с терминали"""

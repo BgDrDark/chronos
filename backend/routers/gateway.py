@@ -3,13 +3,16 @@ import secrets
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select, update
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.auth.gateway_hmac import require_gateway_auth
 from backend.auth.jwt_utils import get_current_user
 from backend.auth.limiter import limiter
 from backend.auth.module_guard import require_module
@@ -31,6 +34,9 @@ logger = logging.getLogger(__name__)
 def generate_api_key() -> str:
     return "gw_" + secrets.token_hex(24)
 
+def generate_shared_secret() -> str:
+    return "gws_" + secrets.token_hex(48)
+
 class GatewayCreate(BaseModel):
     hardware_uuid: str
     ip_address: str | None = None
@@ -49,6 +55,8 @@ class GatewayRegisterResponse(BaseModel):
     web_port: int
     is_active: bool
     api_key: str
+    shared_secret: str
+    is_verified: bool
     registered_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -89,10 +97,6 @@ class TerminalResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-
-    is_default: bool
-    last_test: datetime | None
-    model_config = ConfigDict(from_attributes=True)
 
 class GatewayHeartbeatRequest(BaseModel):
     status: str
@@ -201,17 +205,67 @@ async def register_gateway(gateway: GatewayCreate, db: AsyncSession = Depends(ge
             existing_gateway.api_key = generate_api_key()
             await db.commit()
             await db.refresh(existing_gateway)
-        raise HTTPException(status_code=400, detail={"message": "Вече регистриран", "id": existing_gateway.id, "api_key": existing_gateway.api_key})
+        raise HTTPException(status_code=400, detail={
+            "message": "Вече регистриран",
+            "id": existing_gateway.id,
+            "api_key": existing_gateway.api_key,
+            "shared_secret": existing_gateway.shared_secret,
+        })
 
     res = await db.execute(select(Gateway).order_by(Gateway.id.desc()).limit(1))
     last = res.scalar_one_or_none()
     new_name = f"GATEWAY-{(last.id + 1 if last else 1):03d}"
     api_key = generate_api_key()
-    new_gw = Gateway(name=new_name, hardware_uuid=gateway.hardware_uuid, api_key=api_key, ip_address=gateway.ip_address, local_hostname=gateway.local_hostname, terminal_port=gateway.terminal_port, web_port=gateway.web_port)
+    shared_secret = generate_shared_secret()
+    new_gw = Gateway(
+        name=new_name, hardware_uuid=gateway.hardware_uuid,
+        api_key=api_key, shared_secret=shared_secret,
+        ip_address=gateway.ip_address, local_hostname=gateway.local_hostname,
+        terminal_port=gateway.terminal_port, web_port=gateway.web_port,
+    )
     db.add(new_gw)
     await db.commit()
     await db.refresh(new_gw)
     return new_gw
+
+
+@router.post("/{gateway_id}/verify")
+async def verify_gateway(
+    gateway_id: int,
+    x_signature: str = Header(..., alias="X-Signature"),
+    x_timestamp: str = Header(..., alias="X-Timestamp"),
+    x_gateway_key: str = Header(..., alias="X-Gateway-Key"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Proof-of-possession: gateway signs a challenge with its shared_secret.
+    On success, marks gateway as verified and returns a fresh api_key.
+    """
+    from backend.auth.gateway_hmac import get_gateway_from_request, verify_hmac_signature
+
+    gateway = await get_gateway_from_request(x_gateway_key=x_gateway_key, db=db)
+    if gateway.id != gateway_id:
+        raise HTTPException(status_code=403, detail="Gateway ID mismatch")
+
+    secret = gateway.shared_secret or gateway.api_key
+    if not secret:
+        raise HTTPException(status_code=400, detail="No secret configured")
+
+    challenge = f"verify:{gateway_id}:{x_timestamp}"
+    if not verify_hmac_signature(challenge, x_signature, secret):
+        raise HTTPException(status_code=401, detail="Invalid proof-of-possession signature")
+
+    gateway.is_verified = True
+    if not gateway.api_key:
+        gateway.api_key = generate_api_key()
+    await db.commit()
+    await db.refresh(gateway)
+
+    return {
+        "status": "verified",
+        "id": gateway.id,
+        "is_verified": True,
+        "api_key": gateway.api_key,
+    }
 
 @router.post("/bulk-emergency-action")
 @require_module("kiosk")
@@ -225,9 +279,17 @@ async def bulk_emergency_action(action: str, db: AsyncSession = Depends(get_db),
     return {"status": "success", "mode": action}
 
 @router.get("/{gateway_id}/config")
-async def get_gateway_config(gateway_id: int, db: AsyncSession = Depends(get_db)):
-    gateway = await db.get(Gateway, gateway_id)
-    if not gateway: raise HTTPException(status_code=404, detail="Няма такъв gateway")
+async def get_gateway_config(
+    gateway_id: int,
+    x_signature: str = Header(..., alias="X-Signature"),
+    x_timestamp: str = Header(..., alias="X-Timestamp"),
+    x_gateway_key: str = Header(..., alias="X-Gateway-Key"),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+):
+    gateway = await require_gateway_auth(x_signature, x_timestamp, x_gateway_key, request, db)
+    if gateway.id != gateway_id:
+        raise HTTPException(status_code=403, detail="Gateway ID mismatch")
     doors_res = await db.execute(select(AccessDoor).where(AccessDoor.gateway_id == gateway_id, AccessDoor.is_active))
     doors = doors_res.scalars().all()
     zone_ids = list(set([d.zone_db_id for d in doors]))
@@ -276,13 +338,24 @@ async def update_gw(gateway_id: int, upd: GatewayUpdate, db: AsyncSession = Depe
     return gw
 
 @router.post("/{gateway_id}/heartbeat")
-async def heartbeat(gateway_id: int, hb: GatewayHeartbeatRequest, db: AsyncSession = Depends(get_db)):
-    gw = await db.get(Gateway, gateway_id)
-    if not gw: raise HTTPException(status_code=404, detail="Не е намерен")
-    gw.last_heartbeat = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
-    db.add(GatewayHeartbeat(gateway_id=gateway_id, status=hb.status, cpu_usage=hb.cpu_usage, memory_usage=hb.memory_usage, terminal_count=hb.terminal_count, printer_count=hb.printer_count))
-    await db.commit()
-    return {"status": "ok"}
+async def heartbeat(
+    gateway_id: int,
+    hb: GatewayHeartbeatRequest,
+    gw: "Gateway" = Depends(require_gateway_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        if gw.id != gateway_id:
+            raise HTTPException(status_code=403, detail="Gateway ID mismatch")
+        gw.last_heartbeat = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+        db.add(GatewayHeartbeat(gateway_id=gateway_id, status=hb.status, cpu_usage=hb.cpu_usage, memory_usage=hb.memory_usage, terminal_count=hb.terminal_count, printer_count=hb.printer_count))
+        await db.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Heartbeat error for gateway {gateway_id}: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/access/zones", response_model=list[AccessZoneResponse])
 @require_module("kiosk")
@@ -349,15 +422,6 @@ class GatewayConfigPushResponse(BaseModel):
     doors_synced: int
     devices_synced: int
 
-from fastapi import Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-from backend.auth.gateway_hmac import require_gateway_auth
-
-gateway_limiter = Limiter(key_func=get_remote_address)
-
-# Rate limit: 10 requests per minute for gateway endpoints
 GATEWAY_RATE_LIMIT = "10/minute"
 
 

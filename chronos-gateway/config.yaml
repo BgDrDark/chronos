@@ -1,7 +1,7 @@
 access_control:
   anti_passback:
-    default_type: soft
-    enabled: false
+    default_type: hard
+    enabled: true
     timeout_minutes: 5
   auto_reset_enabled: true
   auto_reset_time: '23:00'
@@ -12,12 +12,17 @@ access_control:
   one_time_codes:
     enabled: true
     prefix: G
+  rate_limit:
+    enabled: true
+    lockout_minutes: 5
+    max_attempts: 5
+    window_minutes: 1
   zones: []
 activity:
   heartbeat_interval: 30
   timeout: 120
 backend:
-  api_key: gw_99c1f137363c931a8a2423c26e18bba7999ee938e32be484
+  api_key: gw_48205e80990c16c921d779b8492ec6b133a8514afca82b0e
   fallback_url: https://chronos.oblak24.org
   ssl_verify_disabled: true
   url: https://dev.oblak24.org
@@ -28,11 +33,11 @@ cluster:
   heartbeat_interval: 5
   master_timeout: 60
   priority: auto
-  shared_secret: chronos_cluster_secret
+  shared_secret: gws_9b4ff7a32198f4836afd4ba7e76b6a57ae6d6e4faeb349d9661d6bd99db94bde3aed08ef799b2aff23963c41bbb83b26
 gateway:
-  alias: "\u041B\u043E\u043A\u0430\u043B\u0435\u043D \u0422\u0435\u0441\u0442"
-  hardware_uuid: 07b28cd7f3c9ec3ba3f6d1bfd921f39be9d29c2c6badba98f365cad93358d8c4
-  id: '1'
+  alias: ''
+  hardware_uuid: 0cd40336f6435a14b8eadc742f1185e7bdba49b0bfce7fde4e3a1b5c116dd88b
+  id: '2'
   mode: production
   system_mode: normal
 logging:
@@ -50,3 +55,7 @@ network:
   terminal_port: 1424
   web_port: 8889
 printers: []
+sync:
+  interval_minutes: 10
+system:
+  timezone: Europe/Sofia

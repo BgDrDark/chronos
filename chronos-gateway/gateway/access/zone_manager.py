@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 from typing import Dict, List, Optional, Tuple
@@ -74,13 +75,14 @@ class ZoneManager:
         except Exception as e:
             logger.error(f"Error deleting door from SQLite: {e}")
     
-    def add_zone(self, zone_data: dict) -> str:
+    def add_zone(self, zone_data: dict, changed_by: str = 'system') -> str:
         """Добавя нова зона"""
         zone_id = zone_data.get("id")
         if not zone_id:
             zone_id = f"zone_{uuid.uuid4().hex[:8]}"
         
-        if zone_id in self.zones:
+        existing = zone_id in self.zones
+        if existing:
             logger.warning(f"Zone {zone_id} already exists, updating")
         
         zone = Zone.from_dict(zone_data)
@@ -90,14 +92,22 @@ class ZoneManager:
         # Save to SQLite
         self._save_zone_to_sqlite(zone)
         
+        try:
+            config_db.add_audit_entry('zone', zone_id, 'update' if existing else 'create',
+                                      changed_by=changed_by,
+                                      details=f"{'Updated' if existing else 'Created'} zone: {zone.name}")
+        except Exception:
+            pass
+        
         logger.info(f"Added zone: {zone_id} - {zone.name}")
         return zone_id
     
-    def remove_zone(self, zone_id: str) -> bool:
+    def remove_zone(self, zone_id: str, changed_by: str = 'system') -> bool:
         """Премахва зона"""
         if zone_id not in self.zones:
             return False
         
+        zone_name = self.zones[zone_id].name
         del self.zones[zone_id]
         
         for door in list(self.doors.values()):
@@ -107,20 +117,36 @@ class ZoneManager:
         # Delete from SQLite
         self._delete_zone_from_sqlite(zone_id)
         
+        try:
+            config_db.add_audit_entry('zone', zone_id, 'delete',
+                                      changed_by=changed_by,
+                                      details=f"Deleted zone: {zone_name}")
+        except Exception:
+            pass
+        
         logger.info(f"Removed zone: {zone_id}")
         return True
     
-    def update_zone(self, zone_id: str, zone_data: dict) -> bool:
+    def update_zone(self, zone_id: str, zone_data: dict, changed_by: str = 'system') -> bool:
         """Обновява зона"""
         if zone_id not in self.zones:
             return False
         
+        old = self.zones[zone_id].to_dict()
         zone = Zone.from_dict(zone_data)
         zone.id = zone_id
         self.zones[zone_id] = zone
         
         # Save to SQLite
         self._save_zone_to_sqlite(zone)
+        
+        try:
+            config_db.add_audit_entry('zone', zone_id, 'update',
+                                      changed_by=changed_by,
+                                      details=f"Updated zone: {zone.name}",
+                                      old_value=json.dumps(old), new_value=json.dumps(zone.to_dict()))
+        except Exception:
+            pass
         
         logger.info(f"Updated zone: {zone_id}")
         return True
@@ -137,13 +163,14 @@ class ZoneManager:
         """Връща само активните зони"""
         return [zone.to_dict() for zone in self.zones.values() if zone.active]
     
-    def add_door(self, door_data: dict) -> str:
+    def add_door(self, door_data: dict, changed_by: str = 'system') -> str:
         """Добавя нова врата"""
         door_id = door_data.get("id")
         if not door_id:
             door_id = f"door_{uuid.uuid4().hex[:8]}"
         
-        if door_id in self.doors:
+        existing = door_id in self.doors
+        if existing:
             logger.warning(f"Door {door_id} already exists, updating")
         
         door = Door.from_dict(door_data)
@@ -153,23 +180,38 @@ class ZoneManager:
         # Save to SQLite
         self._save_door_to_sqlite(door)
         
+        try:
+            config_db.add_audit_entry('door', door_id, 'update' if existing else 'create',
+                                      changed_by=changed_by,
+                                      details=f"{'Updated' if existing else 'Created'} door: {door.name}")
+        except Exception:
+            pass
+        
         logger.info(f"Added door: {door_id} - {door.name}")
         return door_id
     
-    def remove_door(self, door_id: str) -> bool:
+    def remove_door(self, door_id: str, changed_by: str = 'system') -> bool:
         """Премахва врата"""
         if door_id not in self.doors:
             return False
         
+        door_name = self.doors[door_id].name
         del self.doors[door_id]
         
         # Delete from SQLite
         self._delete_door_from_sqlite(door_id)
         
+        try:
+            config_db.add_audit_entry('door', door_id, 'delete',
+                                      changed_by=changed_by,
+                                      details=f"Deleted door: {door_name}")
+        except Exception:
+            pass
+        
         logger.info(f"Removed door: {door_id}")
         return True
     
-    def update_door(self, door_id: str, door_data: dict) -> bool:
+    def update_door(self, door_id: str, door_data: dict, changed_by: str = 'system') -> bool:
         """Обновява врата"""
         if door_id not in self.doors:
             return False
@@ -186,6 +228,10 @@ class ZoneManager:
             existing_door.relay_number = door_data['relay_number']
         if 'terminal_id' in door_data:
             existing_door.terminal_id = door_data['terminal_id']
+        if 'anti_passback_scope' in door_data:
+            existing_door.anti_passback_scope = door_data['anti_passback_scope']
+        if 'anti_passback_group' in door_data:
+            existing_door.anti_passback_group = door_data['anti_passback_group']
         if 'description' in door_data:
             existing_door.description = door_data['description']
         if 'active' in door_data:
@@ -193,6 +239,13 @@ class ZoneManager:
         
         # Save to SQLite
         self._save_door_to_sqlite(existing_door)
+        
+        try:
+            config_db.add_audit_entry('door', door_id, 'update',
+                                      changed_by=changed_by,
+                                      details=f"Updated door: {existing_door.name}")
+        except Exception:
+            pass
         
         logger.info(f"Updated door: {door_id}")
         return True
@@ -290,19 +343,27 @@ class ZoneManager:
         
         return True, "OK"
     
-    def load_from_config(self, zones_config: List[dict], doors_config: List[dict]):
+    def load_from_config(self, zones_config: List[dict], doors_config: List[dict],
+                         changed_by: str = 'system'):
         """Зарежда зони и врати от конфигурация"""
         for zone_data in zones_config:
             try:
-                self.add_zone(zone_data)
+                self.add_zone(zone_data, changed_by=changed_by)
             except Exception as e:
                 logger.error(f"Error loading zone from config: {e}")
         
         for door_data in doors_config:
             try:
-                self.add_door(door_data)
+                self.add_door(door_data, changed_by=changed_by)
             except Exception as e:
                 logger.error(f"Error loading door from config: {e}")
+        
+        try:
+            config_db.add_audit_entry('config', 'bulk', 'import',
+                                      changed_by=changed_by,
+                                      details=f"Imported {len(zones_config)} zones and {len(doors_config)} doors")
+        except Exception:
+            pass
     
     def get_status(self) -> dict:
         """Връща статус"""
@@ -332,7 +393,7 @@ class ZoneManager:
             "doors": self.get_all_doors()
         }
     
-    def import_config(self, config: dict, merge: bool = False) -> dict:
+    def import_config(self, config: dict, merge: bool = False, changed_by: str = 'system') -> dict:
         """
         Импортира конфигурация от друг Gateway
         
@@ -368,6 +429,13 @@ class ZoneManager:
             if door_id:
                 self.add_door(door_data)
                 count["doors"] += 1
+        
+        try:
+            config_db.add_audit_entry('config', 'sync', 'import',
+                                      changed_by=changed_by,
+                                      details=f"Imported config: {count['zones']} zones, {count['doors']} doors ({'merge' if merge else 'replace'})")
+        except Exception:
+            pass
         
         logger.info(f"Imported config: {count['zones']} zones, {count['doors']} doors")
         return count

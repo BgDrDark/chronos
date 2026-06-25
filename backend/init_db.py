@@ -51,6 +51,9 @@ async def init_db():
         existing_version = await crud.get_global_setting(session, "seed_version")
         if existing_version and int(existing_version) >= seed_cfg.SEED_VERSION:
             logger.info(f"Seed версия {seed_cfg.SEED_VERSION} вече е приложена, пропускане.")
+            await session.close()
+            await seed_documentation()
+            logger.info("Документацията е попълнена успешно.")
             return
 
         # 1. Модули

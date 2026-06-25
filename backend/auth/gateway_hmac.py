@@ -47,10 +47,12 @@ async def get_gateway_from_request(
     db: AsyncSession = Depends(get_db),
 ) -> Gateway:
     """Get and verify gateway from X-Gateway-Key header"""
-    from sqlalchemy import select
+    from sqlalchemy import select, or_
 
-    # Find gateway by API key
-    stmt = select(Gateway).where(Gateway.api_key == x_gateway_key)
+    # Find gateway by API key or shared_secret
+    stmt = select(Gateway).where(
+        or_(Gateway.api_key == x_gateway_key, Gateway.shared_secret == x_gateway_key)
+    )
     result = await db.execute(stmt)
     gateway = result.scalar_one_or_none()
 
@@ -106,8 +108,9 @@ async def require_gateway_auth(
         )
 
     # Verify HMAC signature
-    # Gateway signs {body}{timestamp} — must match
-    if not verify_hmac_signature(body_str + x_timestamp, x_signature, gateway.api_key):
+    # Prefer shared_secret, fall back to api_key for legacy gateways
+    secret = gateway.shared_secret or gateway.api_key
+    if not secret or not verify_hmac_signature(body_str + x_timestamp, x_signature, secret):
         raise HTTPException(
             status_code=401,
             detail="Invalid HMAC signature",

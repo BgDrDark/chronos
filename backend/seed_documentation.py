@@ -1300,6 +1300,10 @@ Pulse survey е месечен (не по-често от 20 дни), UWES-9 е 
 async def seed_documentation():
     """Попълва документацията с реални данни"""
     async with AsyncSessionLocal() as session:
+        result = await session.execute(select(DocumentationArticle).limit(1))
+        if result.scalar_one_or_none():
+            return
+        
         # Изтриваме старата документация
         await session.execute(DocumentationArticle.__table__.delete())
         await session.execute(DocumentationCategory.__table__.delete())

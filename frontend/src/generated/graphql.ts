@@ -913,6 +913,13 @@ export type CreatePaymentBatchInput = {
   periodStart: Scalars['Date']['input'];
 };
 
+export type CreatePersonalityTemplateInput = {
+  isActive?: Scalars['Boolean']['input'];
+  name: Scalars['String']['input'];
+  selectedQuestionIds: Array<Scalars['Int']['input']>;
+  shuffle?: Scalars['Boolean']['input'];
+};
+
 export type DailyStat = {
   actualArrival?: Maybe<Scalars['DateTime']['output']>;
   actualDeparture?: Maybe<Scalars['DateTime']['output']>;
@@ -1544,6 +1551,7 @@ export type Mutation = {
   approveBusinessTrip: BusinessTrip;
   approveLeave: LeaveRequest;
   approveSwap: ShiftSwapRequest;
+  assignPersonalityTest: Array<PersonalityTestAssignmentType>;
   assignRoleToUser: Scalars['Boolean']['output'];
   assignZoneToUser: Scalars['Boolean']['output'];
   attachLeaveDocument: LeaveRequest;
@@ -1601,6 +1609,7 @@ export type Mutation = {
   createNightWorkBonus: NightWorkBonus;
   createOvertimeWork: OvertimeWork;
   createPaymentBatch: SalaryPaymentBatchType;
+  createPersonalityTemplate: PersonalityTestTemplateType;
   createPosition: Position;
   createProductionOrder: ProductionOrder;
   createProformaInvoice: ProformaInvoice;
@@ -1644,6 +1653,8 @@ export type Mutation = {
   deleteDocumentationCategory: Scalars['Boolean']['output'];
   deleteInvoice: Scalars['Boolean']['output'];
   deleteLeaveRequest: Scalars['Boolean']['output'];
+  deleteNotification: Scalars['Boolean']['output'];
+  deletePersonalityTemplate: Scalars['Boolean']['output'];
   deletePosition: Scalars['Boolean']['output'];
   deleteRecipe: Scalars['Boolean']['output'];
   deleteRole: Scalars['Boolean']['output'];
@@ -1685,11 +1696,13 @@ export type Mutation = {
   getScrapLogs: Array<ProductionScrapLog>;
   invalidateUserSession: Scalars['Boolean']['output'];
   linkEmploymentContractToUser: EmploymentContract;
+  markAllNotificationsRead: Scalars['Boolean']['output'];
   markNotificationRead: Scalars['Boolean']['output'];
   markPayslipAsPaid: Payslip;
   markTaskScrap: ProductionTask;
   matchBankTransaction?: Maybe<BankTransaction>;
   openDoor: Scalars['Boolean']['output'];
+  reassignPersonalityTest: PersonalityTestAssignmentType;
   reassignTaskWorkstation: ProductionTask;
   recalculateAllRecipeCosts: Array<RecalculateResult>;
   recalculateProductionDeadline: ProductionOrder;
@@ -1717,6 +1730,7 @@ export type Mutation = {
   submitPersonalityTest: BehavioralPersonalityProfileType;
   submitPulseSurvey: BehavioralPulseSurveyType;
   subscribeToPush: Scalars['Boolean']['output'];
+  syncGatewayConfig: Scalars['String']['output'];
   syncHolidays: Scalars['Int']['output'];
   syncOrthodoxHolidays: Scalars['Int']['output'];
   testNotification: Scalars['Boolean']['output'];
@@ -1751,6 +1765,7 @@ export type Mutation = {
   updateOfficeLocation: OfficeLocation;
   updatePasswordSettings: PasswordSettings;
   updatePayrollLegalSettings: PayrollLegalSettings;
+  updatePersonalityTemplate: PersonalityTestTemplateType;
   updatePosition: Position;
   updatePositionPayroll: Payroll;
   updateProductionOrderQuantity: ProductionOrder;
@@ -1860,6 +1875,13 @@ export type MutationApproveLeaveArgs = {
 export type MutationApproveSwapArgs = {
   approve: Scalars['Boolean']['input'];
   swapId: Scalars['Int']['input'];
+};
+
+
+export type MutationAssignPersonalityTestArgs = {
+  dueBy: Scalars['DateTime']['input'];
+  templateId: Scalars['Int']['input'];
+  userIds: Array<Scalars['Int']['input']>;
 };
 
 
@@ -2242,6 +2264,11 @@ export type MutationCreatePaymentBatchArgs = {
 };
 
 
+export type MutationCreatePersonalityTemplateArgs = {
+  input: CreatePersonalityTemplateInput;
+};
+
+
 export type MutationCreatePositionArgs = {
   departmentId?: InputMaybe<Scalars['Int']['input']>;
   title: Scalars['String']['input'];
@@ -2496,6 +2523,16 @@ export type MutationDeleteLeaveRequestArgs = {
 };
 
 
+export type MutationDeleteNotificationArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type MutationDeletePersonalityTemplateArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
 export type MutationDeletePositionArgs = {
   id: Scalars['Int']['input'];
 };
@@ -2732,6 +2769,13 @@ export type MutationOpenDoorArgs = {
 };
 
 
+export type MutationReassignPersonalityTestArgs = {
+  assignmentId: Scalars['Int']['input'];
+  dueBy?: InputMaybe<Scalars['DateTime']['input']>;
+  templateId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
 export type MutationReassignTaskWorkstationArgs = {
   newWorkstationId: Scalars['Int']['input'];
   taskId: Scalars['Int']['input'];
@@ -2856,6 +2900,12 @@ export type MutationSubmitPulseSurveyArgs = {
 export type MutationSubscribeToPushArgs = {
   preferencesJson: Scalars['String']['input'];
   subscriptionJson: Scalars['String']['input'];
+};
+
+
+export type MutationSyncGatewayConfigArgs = {
+  direction: Scalars['String']['input'];
+  id: Scalars['Int']['input'];
 };
 
 
@@ -3086,6 +3136,11 @@ export type MutationUpdatePayrollLegalSettingsArgs = {
   maxInsuranceBase: Scalars['Float']['input'];
   noiCompensationPercent: Scalars['Float']['input'];
   trzComplianceStrictMode: Scalars['Boolean']['input'];
+};
+
+
+export type MutationUpdatePersonalityTemplateArgs = {
+  input: UpdatePersonalityTemplateInput;
 };
 
 
@@ -3541,6 +3596,23 @@ export type PersonalityTestAnswers = {
   templateId: Scalars['Int']['input'];
 };
 
+export type PersonalityTestAssignmentType = {
+  assignedAt: Scalars['DateTime']['output'];
+  assignedBy: Scalars['Int']['output'];
+  assignerName: Scalars['String']['output'];
+  companyId: Scalars['Int']['output'];
+  completedAt?: Maybe<Scalars['DateTime']['output']>;
+  dueBy: Scalars['DateTime']['output'];
+  id: Scalars['Int']['output'];
+  notifiedOverdue: Scalars['Boolean']['output'];
+  status: Scalars['String']['output'];
+  templateId: Scalars['Int']['output'];
+  templateName: Scalars['String']['output'];
+  userEmail: Scalars['String']['output'];
+  userId: Scalars['Int']['output'];
+  userName: Scalars['String']['output'];
+};
+
 export type PersonalityTestTemplateType = {
   companyId: Scalars['Int']['output'];
   createdAt: Scalars['DateTime']['output'];
@@ -3746,7 +3818,10 @@ export type Query = {
   annexTemplates: Array<AnnexTemplate>;
   annexes: Array<ContractAnnex>;
   apiKeys: Array<ApiKey>;
+  approvedLeaveRequestsInRange: Array<LeaveRequest>;
   auditLogs: Array<AuditLog>;
+  bankAccounts: Array<BankAccount>;
+  bankTransactions: Array<BankTransaction>;
   batches: Array<Batch>;
   behavioralAnomalies: Array<BehavioralAnomalyType>;
   behavioralProfiles: Array<BehavioralProfileType>;
@@ -3778,6 +3853,7 @@ export type Query = {
   gateways: Array<Gateway>;
   getFefoSuggestion: Array<FefoSuggestion>;
   globalPayrollConfig: GlobalPayrollConfig;
+  globalSetting?: Maybe<GlobalSetting>;
   googleCalendarAccount?: Maybe<GoogleCalendarAccount>;
   hello: Scalars['String']['output'];
   ingredientBatchesWithStock: Array<Batch>;
@@ -3802,6 +3878,7 @@ export type Query = {
   myDailyStats: Array<DailyStat>;
   myLeaveRequests: Array<LeaveRequest>;
   myNotifications: Array<Notification>;
+  myNotificationsCount: Scalars['Int']['output'];
   myPaymentHistory: Array<SalaryPaymentItemType>;
   mySchedules: Array<WorkSchedule>;
   mySwapRequests: Array<ShiftSwapRequest>;
@@ -3824,6 +3901,7 @@ export type Query = {
   personalityProfiles: Array<BehavioralPersonalityProfileType>;
   personalityQuestions: Array<PersonalityQuestionType>;
   personalityTemplates: Array<PersonalityTestTemplateType>;
+  personalityTestAssignments: Array<PersonalityTestAssignmentType>;
   positions: Array<Position>;
   priceHistory: Array<PriceHistory>;
   printers: Array<Printer>;
@@ -3960,10 +4038,29 @@ export type QueryAnnexesArgs = {
 };
 
 
+export type QueryApprovedLeaveRequestsInRangeArgs = {
+  endDate: Scalars['Date']['input'];
+  startDate: Scalars['Date']['input'];
+};
+
+
 export type QueryAuditLogsArgs = {
   action?: InputMaybe<Scalars['String']['input']>;
   limit?: Scalars['Int']['input'];
   skip?: Scalars['Int']['input'];
+};
+
+
+export type QueryBankAccountsArgs = {
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
+export type QueryBankTransactionsArgs = {
+  bankAccountId?: InputMaybe<Scalars['Int']['input']>;
+  endDate?: InputMaybe<Scalars['String']['input']>;
+  matched?: InputMaybe<Scalars['Boolean']['input']>;
+  startDate?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -4094,6 +4191,11 @@ export type QueryGetFefoSuggestionArgs = {
 };
 
 
+export type QueryGlobalSettingArgs = {
+  key: Scalars['String']['input'];
+};
+
+
 export type QueryIngredientBatchesWithStockArgs = {
   ingredientId: Scalars['Int']['input'];
 };
@@ -4177,6 +4279,13 @@ export type QueryMyDailyStatsArgs = {
 
 
 export type QueryMyNotificationsArgs = {
+  limit?: Scalars['Int']['input'];
+  offset?: Scalars['Int']['input'];
+  unreadOnly?: Scalars['Boolean']['input'];
+};
+
+
+export type QueryMyNotificationsCountArgs = {
   unreadOnly?: Scalars['Boolean']['input'];
 };
 
@@ -4262,6 +4371,12 @@ export type QueryPersonalityProfilesArgs = {
 
 export type QueryPersonalityQuestionsArgs = {
   templateId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+export type QueryPersonalityTestAssignmentsArgs = {
+  status?: InputMaybe<Scalars['String']['input']>;
+  userId?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -4994,6 +5109,14 @@ export type UpdateLeaveRequestStatusInput = {
   employerTopUp?: InputMaybe<Scalars['Boolean']['input']>;
   requestId: Scalars['Int']['input'];
   status: Scalars['String']['input'];
+};
+
+export type UpdatePersonalityTemplateInput = {
+  id: Scalars['Int']['input'];
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  selectedQuestionIds?: InputMaybe<Array<Scalars['Int']['input']>>;
+  shuffle?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
 export type UpdateScheduleInput = {

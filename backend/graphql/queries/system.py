@@ -3,7 +3,7 @@ from sqlalchemy import desc, extract, select
 
 from backend import schemas
 from backend.crud.repositories import settings_repo
-from backend.exceptions import PermissionDeniedException
+from backend.exceptions import NotFoundException, PermissionDeniedException
 from backend.graphql import types
 
 authenticate_msg = "Трябва да се автентикирате"
@@ -130,6 +130,19 @@ class SystemQuery:
             require_special=(await settings_repo.get_setting(db, "pwd_require_special")) == "true",
         )
 
+
+    @strawberry.field
+    async def global_setting(self, info: strawberry.Info, key: str) -> types.GlobalSetting | None:
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None or current_user.role.name not in ["admin", "super_admin"]:
+            raise PermissionDeniedException.for_action("view global settings")
+
+        value = await settings_repo.get_setting(db, key)
+        if value is None:
+            raise NotFoundException(f"Настройка '{key}' не е намерена")
+
+        return types.GlobalSetting(key=key, value=value)
 
     @strawberry.field
     async def deploy_status(self, info: strawberry.Info) -> types.DeployStatus:

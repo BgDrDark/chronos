@@ -101,6 +101,8 @@ class Settings(BaseSettings):
             self.ENCRYPTION_KEY = _ensure_env_key("ENCRYPTION_KEY", key_type="fernet")
         if not self.CSRF_SECRET_KEY:
             self.CSRF_SECRET_KEY = _ensure_env_key("CSRF_SECRET_KEY")
+        if not self.KIOSK_DEVICE_SECRET:
+            self.KIOSK_DEVICE_SECRET = _ensure_env_key("KIOSK_DEVICE_SECRET")
         return self
 
     def get_deploy_key(self) -> str:
@@ -147,6 +149,8 @@ class Settings(BaseSettings):
     API_URL: str = "http://localhost:8000"
     # QR Code Settings
     QR_TOKEN_REGEN_MINUTES: int = 15
+
+    KIOSK_DEVICE_SECRET: str | None = None
 
     # Session Settings
     SESSION_MAX_AGE_HOURS: int = 12
@@ -256,6 +260,7 @@ class SeedSettings:
         "pwd_require_digit": "false",
         "pwd_require_special": "false",
         "password_settings_version": "1",
+        "kiosk_validate_code_rate_limit": "5/minute",
     }
     WORKSTATIONS: list[dict] = [
         {"name": "Пекарна", "description": "Изпичане на блатове и основи"},

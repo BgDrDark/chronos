@@ -22,6 +22,21 @@ class Config:
         else:
             self._config = self._get_defaults()
             self._save()
+        self._ensure_cluster_secret()
+    
+    def _ensure_cluster_secret(self):
+        """Кластърният shared_secret винаги идва от backend-а — никога не го генерираме локално.
+        Ако липсва, оставяме празен (ще се запълни след регистрация).
+        Ако все още е 'chronos_cluster_secret', изчистваме го.
+        """
+        logger = __import__('logging').getLogger(__name__)
+        current = self._config.get('cluster', {}).get('shared_secret', '')
+        if not current:
+            return
+        if current == 'chronos_cluster_secret':
+            self._config.setdefault('cluster', {})['shared_secret'] = ''
+            self._save()
+            logger.info("Cleared deprecated default cluster secret (will be fetched from backend on registration)")
     
     def _deep_merge_defaults(self) -> bool:
         """Добавя липсващи ключове от defaults в self._config.
@@ -58,7 +73,7 @@ class Config:
             'cluster': {
                 'enabled': False,
                 'priority': 'auto', # auto or 1, 2, 3...
-                'shared_secret': 'chronos_cluster_secret',
+                'shared_secret': '',
                 'discovery_port': 8891,
                 'heartbeat_interval': 5,
                 'master_timeout': 60,
@@ -70,6 +85,7 @@ class Config:
             },
             'backend': {
                 'url': 'https://dev.oblak24.org',
+                'fallback_url': 'https://dev.oblak24.org',
                 'api_key': '',
                 'verify_ssl': True,
             },
@@ -90,6 +106,9 @@ class Config:
                 'backup_count': 5,
             },
             'printers': [],
+            'system': {
+                'timezone': 'Europe/Sofia',
+            },
             'access_control': {
                 'enabled': False,
                 'auto_reset_time': '23:00',
@@ -98,6 +117,12 @@ class Config:
                     'enabled': False,
                     'default_type': 'soft',
                     'timeout_minutes': 5,
+                },
+                'rate_limit': {
+                    'enabled': True,
+                    'max_attempts': 5,
+                    'window_minutes': 1,
+                    'lockout_minutes': 5,
                 },
                 'one_time_codes': {
                     'enabled': True,
@@ -174,6 +199,10 @@ class Config:
     @property
     def heartbeat_timeout(self) -> int:
         return self.get('activity.timeout', 120)
+    
+    @property
+    def timezone(self) -> str:
+        return self.get('system.timezone', 'Europe/Sofia')
     
     @property
     def access_control_enabled(self) -> bool:

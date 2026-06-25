@@ -119,12 +119,22 @@ class ConfigDatabaseManager(SQLiteManager):
                     device_id TEXT,
                     relay_number INTEGER DEFAULT 1,
                     terminal_id TEXT,
+                    anti_passback_scope TEXT DEFAULT 'global',
+                    anti_passback_group TEXT DEFAULT '',
                     description TEXT,
                     active INTEGER DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Check for missing columns in existing doors table
+            cursor.execute("PRAGMA table_info(doors)")
+            columns = [row['name'] for row in cursor.fetchall()]
+            if 'anti_passback_scope' not in columns:
+                cursor.execute("ALTER TABLE doors ADD COLUMN anti_passback_scope TEXT DEFAULT 'global'")
+            if 'anti_passback_group' not in columns:
+                cursor.execute("ALTER TABLE doors ADD COLUMN anti_passback_group TEXT DEFAULT ''")
             
             # Terminals
             cursor.execute("""
@@ -170,6 +180,23 @@ class ConfigDatabaseManager(SQLiteManager):
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Audit log for config changes
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS config_audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT,
+                    action TEXT NOT NULL,
+                    changed_by TEXT DEFAULT 'system',
+                    details TEXT,
+                    old_value TEXT,
+                    new_value TEXT
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_entity ON config_audit_log(entity_type, entity_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON config_audit_log(timestamp)")
             
             logger.info("Config database initialized")
     
@@ -319,11 +346,13 @@ class ConfigDatabaseManager(SQLiteManager):
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO doors 
-                (id, name, zone_id, device_id, relay_number, terminal_id, description, active, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                (id, name, zone_id, device_id, relay_number, terminal_id, anti_passback_scope, anti_passback_group, description, active, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (
                 door.get('id'), door.get('name'), door.get('zone_id'), door.get('device_id'),
-                door.get('relay_number', 1), door.get('terminal_id'), door.get('description'),
+                door.get('relay_number', 1), door.get('terminal_id'), 
+                door.get('anti_passback_scope', 'global'), door.get('anti_passback_group', ''),
+                door.get('description'),
                 1 if door.get('active', True) else 0
             ))
             return True
@@ -394,6 +423,41 @@ class ConfigDatabaseManager(SQLiteManager):
                 VALUES (?, ?, CURRENT_TIMESTAMP)
             """, (key, value))
     
+    # ========== CONFIG AUDIT TRAIL ==========
+
+    def add_audit_entry(self, entity_type: str, entity_id: str, action: str,
+                        changed_by: str = 'system', details: str = None,
+                        old_value: str = None, new_value: str = None):
+        """Добавя запис в config_audit_log"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO config_audit_log 
+                (entity_type, entity_id, action, changed_by, details, old_value, new_value)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (entity_type, entity_id, action, changed_by, details, old_value, new_value))
+
+    def get_audit_log(self, entity_type: str = None, entity_id: str = None,
+                      limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+        """Връща записи от config_audit_log с опционални филтри"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            query = "SELECT * FROM config_audit_log"
+            params = []
+            conditions = []
+            if entity_type:
+                conditions.append("entity_type = ?")
+                params.append(entity_type)
+            if entity_id:
+                conditions.append("entity_id = ?")
+                params.append(entity_id)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+
     # ========== EXPORT FOR SYNC ==========
     
     def export_all_config(self) -> Dict[str, Any]:
@@ -433,6 +497,7 @@ class LogsDatabaseManager(SQLiteManager):
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS access_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    log_id TEXT,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     user_id TEXT,
                     user_name TEXT,
@@ -440,14 +505,26 @@ class LogsDatabaseManager(SQLiteManager):
                     door_name TEXT,
                     zone_id TEXT,
                     zone_name TEXT,
+                    action TEXT,
                     result TEXT,
                     reason TEXT,
                     method TEXT,
                     terminal_id TEXT,
                     gateway_id TEXT,
+                    signature TEXT,
                     synced INTEGER DEFAULT 0
                 )
             """)
+            
+            # Migrate old tables - add missing columns
+            cursor.execute("PRAGMA table_info(access_logs)")
+            columns = [row['name'] for row in cursor.fetchall()]
+            if 'action' not in columns:
+                cursor.execute("ALTER TABLE access_logs ADD COLUMN action TEXT")
+            if 'signature' not in columns:
+                cursor.execute("ALTER TABLE access_logs ADD COLUMN signature TEXT")
+            if 'log_id' not in columns:
+                cursor.execute("ALTER TABLE access_logs ADD COLUMN log_id TEXT")
             
             # Create indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON access_logs(timestamp)")
@@ -462,14 +539,14 @@ class LogsDatabaseManager(SQLiteManager):
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO access_logs 
-                (user_id, user_name, door_id, door_name, zone_id, zone_name, 
-                 result, reason, method, terminal_id, gateway_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (log_id, user_id, user_name, door_id, door_name, zone_id, zone_name,
+                 action, result, reason, method, terminal_id, gateway_id, signature)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                log.get('user_id'), log.get('user_name'), log.get('door_id'),
+                log.get('id'), log.get('user_id'), log.get('user_name'), log.get('door_id'),
                 log.get('door_name'), log.get('zone_id'), log.get('zone_name'),
-                log.get('result'), log.get('reason'), log.get('method'),
-                log.get('terminal_id'), log.get('gateway_id')
+                log.get('action'), log.get('result'), log.get('reason'), log.get('method'),
+                log.get('terminal_id'), log.get('gateway_id', ''), log.get('signature')
             ))
             return cursor.lastrowid
     

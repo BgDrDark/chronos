@@ -5,13 +5,14 @@ import sys
 import os
 import socket
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 from gateway.config import config
 from gateway.core.hardware_id import get_hardware_uuid
 from gateway.devices.terminal_manager import TerminalManager
 from gateway.devices.printer_manager import PrinterManager
 from gateway.cluster.manager import ClusterManager
+from gateway.utils import now_tz
 
 BASE_DIR = Path(__file__).parent.parent
 LOGS_DIR = BASE_DIR / "logs"
@@ -83,7 +84,7 @@ class GatewayService:
                 pass
             return False
         
-        return await try_validate(config.backend_url) or (config.fallback_url and await try_validate(config.fallback_url))
+        return await try_validate(config.backend_url)
     
     async def register_with_backend(self):
         """Регистрира gateway-а в бекенда"""
@@ -119,7 +120,11 @@ class GatewayService:
                                 if result.get("id"):
                                     gateway_id = str(result.get("id"))
                                     config.set("gateway.id", gateway_id)
-                                    logger.info(f"Registered with backend. Persistent Gateway ID: {gateway_id}")
+                                shared_secret = result.get("shared_secret", "")
+                                if shared_secret:
+                                    config.set("cluster.shared_secret", shared_secret)
+                                    logger.info(f"Received cluster shared secret from backend")
+                                logger.info(f"Registered with backend. Persistent Gateway ID: {gateway_id}")
                                 return True
                         elif response.status == 400:
                             result = await response.json()
@@ -128,16 +133,20 @@ class GatewayService:
                                 msg = detail.get("message", "")
                                 gateway_id = detail.get("id")
                                 api_key = detail.get("api_key")
+                                shared_secret = detail.get("shared_secret", "")
                             else:
                                 msg = detail
                                 gateway_id = None
                                 api_key = None
+                                shared_secret = ""
 
                             if "вече" in msg.lower():
                                 if gateway_id:
                                     config.set("gateway.id", str(gateway_id))
                                 if api_key:
                                     config.set("backend.api_key", api_key)
+                                if shared_secret:
+                                    config.set("cluster.shared_secret", shared_secret)
                                 logger.info(f"Gateway already registered. Found ID: {gateway_id}")
                                 return True
                         logger.warning(f"Registration failed: HTTP {response.status} (URL: {url})")
@@ -240,12 +249,31 @@ class GatewayService:
             
             await asyncio.sleep(config.heartbeat_interval)
     
+    def _sign_payload(self, payload_str: str) -> tuple:
+        """Подписва payload string с api_key/shared_secret.
+        Връща (headers, payload_str)."""
+        import hashlib, hmac, time
+        
+        key = config.api_key
+        secret = config.get("cluster.shared_secret", "") or key
+        ts = str(int(time.time()))
+        sig = hmac.new(secret.encode(), (f"{payload_str}{ts}").encode(), hashlib.sha256).hexdigest()
+        
+        headers = {
+            "X-Gateway-Key": key,
+            "X-Timestamp": ts,
+            "X-Signature": sig,
+            "Content-Type": "application/json",
+        }
+        
+        return headers, payload_str
+
     async def _send_heartbeat(self):
         """Изпраща heartbeat към бекенд. Returns 'ok', 'invalid_id', or 'error'."""
         if config.gateway_id == "auto" or not self.cluster_manager.is_master():
             return "error"
         
-        import aiohttp
+        import aiohttp, json
         
         terminals_status = self.terminal_manager.get_status(config.heartbeat_timeout)
         printers_status = self.printer_manager.get_status()
@@ -255,18 +283,21 @@ class GatewayService:
             "terminal_count": terminals_status["total"],
             "printer_count": printers_status["total"],
         }
+        payload_str = json.dumps(data, separators=(",", ":"), default=str)
+        hw_headers, _ = self._sign_payload(payload_str)
         
         async def try_heartbeat(base_url: str) -> str:
             url = f"{base_url}/gateways/{config.gateway_id}/heartbeat"
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(url, json=data) as response:
+                    async with session.post(url, data=payload_str, headers=hw_headers) as response:
                         if response.status == 200:
                             return "ok"
                         elif response.status == 404:
                             return "invalid_id"
                         else:
-                            logger.debug(f"Heartbeat failed: {response.status}")
+                            body_text = await response.text()
+                            logger.warning(f"Heartbeat failed: {response.status} — {response.reason}: {body_text[:500]}")
                             return "error"
             except Exception as e:
                 logger.debug(f"Heartbeat skipped (backend unreachable): {e}")
@@ -288,10 +319,18 @@ class GatewayService:
         if config.gateway_id == "auto" or not self.cluster_manager.is_master():
             return
 
-        import aiohttp
+        import aiohttp, hashlib, hmac, time
         from gateway.access import zone_manager
 
-        headers = {"X-Kiosk-Secret": config.api_key}
+        key = config.api_key
+        secret = config.get("cluster.shared_secret", "") or key
+        ts = str(int(time.time()))
+        sig = hmac.new(secret.encode(), ts.encode(), hashlib.sha256).hexdigest()
+        hw_headers = {
+            "X-Gateway-Key": key,
+            "X-Timestamp": ts,
+            "X-Signature": sig,
+        }
 
         async def try_sync(base_url: str) -> bool:
             url = f"{base_url}/gateways/{config.gateway_id}/config"
@@ -308,7 +347,7 @@ class GatewayService:
             
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    async with session.get(url, headers=hw_headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                         if response.status == 200:
                             data = await response.json()
                             
@@ -347,13 +386,29 @@ class GatewayService:
             
             await asyncio.sleep(300) # Every 5 minutes
     
-    async def cleanup_offline_terminals(self):
-        """Премахва офлайн терминали"""
+    async def _auto_reset_loop(self):
+        """Автоматичен дневен reset на zone state в зададения час"""
+        if not config.get('access_control.auto_reset_enabled', True):
+            return
+        reset_time = config.get('access_control.auto_reset_time', '23:00')
+        logger.info(f"Auto-reset scheduled daily at {reset_time}")
         while self._running:
-            await asyncio.sleep(60)
-            removed = self.terminal_manager.cleanup_offline(300)
-            if removed:
-                logger.info(f"Cleaned up {removed} offline terminals")
+            try:
+                now = now_tz()
+                target_hour, target_min = map(int, reset_time.split(':'))
+                next_reset = now.replace(hour=target_hour, minute=target_min, second=0, microsecond=0)
+                if next_reset <= now:
+                    next_reset = next_reset.replace(day=next_reset.day + 1)
+                wait_seconds = (next_reset - now).total_seconds()
+                await asyncio.sleep(wait_seconds)
+                if not self._running:
+                    break
+                from gateway.access import access_controller
+                access_controller.reset_all_users()
+                logger.info("Auto-reset completed - all zone states cleared")
+            except Exception as e:
+                logger.error(f"Auto-reset error: {e}")
+                await asyncio.sleep(3600)
     
     def stop(self):
         """Спира service-а"""
@@ -417,6 +472,10 @@ class GatewayService:
         async def run_all():
             from gateway.devices.relay_controller import relay_controller
             
+            # Стартира zone state persistence сега, когато event loop-ът работи
+            from gateway.access import access_controller
+            access_controller.start_zone_state_persistence()
+            
             # Старт на всички под-системи като таскове
             tasks = [
                 asyncio.create_task(run_terminal_hub()),
@@ -425,7 +484,7 @@ class GatewayService:
                 asyncio.create_task(self._registration_retry()),
                 asyncio.create_task(self.start_heartbeat()),
                 asyncio.create_task(self.sync_config_from_backend()),
-                asyncio.create_task(self.cleanup_offline_terminals()),
+                asyncio.create_task(self._auto_reset_loop()),
                 asyncio.create_task(relay_controller.start_background_checks()),
             ]
             

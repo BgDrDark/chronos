@@ -238,6 +238,8 @@ class Gateway(Base):
     hardware_uuid: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)  # Hardware-bound UUID
     alias: Mapped[str] = mapped_column(String(100), nullable=True)  # User-defined alias
     api_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=True)  # API key for authentication
+    shared_secret: Mapped[str] = mapped_column(String(128), nullable=True)  # HMAC shared secret
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # proof-of-possession verified
     ip_address: Mapped[str] = mapped_column(String(50), nullable=True)
     local_hostname: Mapped[str] = mapped_column(String(100), nullable=True)
     terminal_port: Mapped[int] = mapped_column(Integer, default=8080)

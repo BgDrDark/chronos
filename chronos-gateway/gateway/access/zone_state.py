@@ -106,6 +106,8 @@ class Door:
     device_id: str
     relay_number: int = 1
     terminal_id: str = ""
+    anti_passback_scope: str = "global"  # "global" | "per_door" | "group"
+    anti_passback_group: str = ""        # group id за групов anti-passback
     description: str = ""
     active: bool = True
     
@@ -117,6 +119,8 @@ class Door:
             "device_id": self.device_id,
             "relay_number": self.relay_number,
             "terminal_id": self.terminal_id,
+            "anti_passback_scope": self.anti_passback_scope,
+            "anti_passback_group": self.anti_passback_group,
             "description": self.description,
             "active": self.active
         }
@@ -130,6 +134,8 @@ class Door:
             device_id=data.get("device_id", ""),
             relay_number=data.get("relay_number", 1),
             terminal_id=data.get("terminal_id", ""),
+            anti_passback_scope=data.get("anti_passback_scope", "global"),
+            anti_passback_group=data.get("anti_passback_group", ""),
             description=data.get("description", ""),
             active=data.get("active", True)
         )

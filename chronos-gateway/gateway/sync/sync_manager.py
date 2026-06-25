@@ -42,7 +42,6 @@ class SyncManager:
     def __init__(self, gateway_id: str | None = None):
         self._gateway_id = gateway_id
         self.backend_url = config.backend_url
-        self.sync_interval = config.get('sync.interval_minutes', 15) * 60  # Convert to seconds
         self.retry_attempts = config.get('sync.retry_attempts', 3)
         self.batch_size = config.get('sync.batch_size', 100)
         self._running = False
@@ -57,6 +56,16 @@ class SyncManager:
     def api_key(self) -> str:
         """Чете api_key динамично от config — не кешира"""
         return config.api_key
+
+    @property
+    def _signing_secret(self) -> str:
+        """Използва shared_secret ако е наличен, иначе api_key — същата логика като _sign_payload в main.py"""
+        return config.get("cluster.shared_secret", "") or config.api_key
+    
+    @property
+    def sync_interval(self) -> int:
+        """Чете интервала динамично от config — не кешира"""
+        return config.get('sync.interval_minutes', 15) * 60
     
     async def start(self):
         """Стартира синхронизацията"""
@@ -154,7 +163,7 @@ class SyncManager:
             # Generate HMAC signature
             timestamp = str(int(time.time()))
             empty_payload = "{}"
-            signature = generate_hmac_signature(f"{empty_payload}{timestamp}", self.api_key)
+            signature = generate_hmac_signature(f"{empty_payload}{timestamp}", self._signing_secret)
             
             headers = {
                 "X-Gateway-Key": self.api_key,
@@ -208,7 +217,7 @@ class SyncManager:
         # Generate HMAC signature
         timestamp = str(int(time.time()))
         payload = json.dumps(data, separators=(',', ':'))
-        signature = generate_hmac_signature(f"{payload}{timestamp}", self.api_key)
+        signature = generate_hmac_signature(f"{payload}{timestamp}", self._signing_secret)
         
         headers = {
             "X-Gateway-Key": self.api_key,

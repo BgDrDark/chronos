@@ -52,6 +52,7 @@
             <button onclick="showTab('terminals')" class="px-4 py-2 rounded bg-blue-600 text-white" id="tab-terminals">Terminals</button>
             <button onclick="showTab('printers')" class="px-4 py-2 rounded bg-gray-200" id="tab-printers">Printers</button>
             <button onclick="showTab('access')" class="px-4 py-2 rounded bg-gray-200" id="tab-access">Контрол на Достъп</button>
+            <button onclick="showTab('settings')" class="px-4 py-2 rounded bg-gray-200" id="tab-settings">Настройки</button>
         </div>
 
         <div id="section-terminals" class="bg-white rounded-lg shadow p-4">
@@ -88,10 +89,101 @@
             </div>
         </div>
 
+        <div id="section-settings" class="hidden">
+            <div class="bg-white rounded-lg shadow p-4">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Настройки</h2>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">Cluster Mode</p>
+                            <p class="text-sm text-gray-500">Статус: <span id="settings-cluster-status">Loading...</span></p>
+                        </div>
+                        <button id="settings-cluster-toggle-btn" onclick="toggleCluster()" class="px-3 py-1 bg-gray-600 text-white rounded text-xs">Enable</button>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">Часова зона</p>
+                            <p class="text-sm text-gray-500" id="timezone-display">Europe/Sofia</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="timezone-input" value="Europe/Sofia" class="w-36 px-2 py-1 border rounded text-xs">
+                            <button onclick="setTimezone(event)" class="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Задай</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">Rate Limiting</p>
+                            <p class="text-sm text-gray-500">Опити: <span id="rate-max-display">5</span> за <span id="rate-window-display">1</span> мин, блокиране: <span id="rate-lockout-display">5</span> мин</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="rate-max-input" value="5" min="1" max="100" class="w-12 px-2 py-1 border rounded text-xs" placeholder="опити">
+                            <input type="number" id="rate-lockout-input" value="5" min="1" max="1440" class="w-12 px-2 py-1 border rounded text-xs" placeholder="мин">
+                            <button onclick="setRateLimit(event)" class="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Задай</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">Авто-reset на зони</p>
+                            <p class="text-sm text-gray-500" id="auto-reset-display">Всеки ден в 23:00</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="time" id="auto-reset-time-input" value="23:00" class="px-2 py-1 border rounded text-xs">
+                            <button onclick="setAutoReset(event)" class="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Задай</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">Anti-Passback (глобален)</p>
+                            <p class="text-sm text-gray-500" id="ap-global-display">Disabled</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select id="ap-type-input" class="px-2 py-1 border rounded text-xs">
+                                <option value="soft">Soft</option>
+                                <option value="hard">Hard</option>
+                                <option value="timed">Timed</option>
+                            </select>
+                            <input type="number" id="ap-timeout-input" value="5" min="1" class="w-12 px-2 py-1 border rounded text-xs" placeholder="мин">
+                            <button onclick="setAntiPassbackGlobal(event)" class="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Задай</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">Авто-синхронизация</p>
+                            <p class="text-sm text-gray-500">Интервал: <span id="sync-interval-display">15</span> мин</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="sync-interval-input" value="15" min="1" max="1440" class="w-16 px-2 py-1 border rounded text-xs">
+                            <button onclick="setSyncInterval(event)" class="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Задай</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">Тест на връзката със сървъра</p>
+                            <p class="text-sm text-gray-500" id="backend-test-result">Проверка дали сървъра е достъпен</p>
+                        </div>
+                        <button onclick="testBackendConnection(event)" class="px-3 py-1 bg-teal-600 text-white rounded text-xs hover:bg-teal-700">Тествай</button>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">Push Config към сървъра</p>
+                            <p class="text-sm text-gray-500" id="push-config-result">Изпраща конфигурацията към сървъра</p>
+                        </div>
+                        <button onclick="pushConfigToBackend(event)" class="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">Push Config</button>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">Рестарт на Гейтуей</p>
+                            <p class="text-sm text-gray-500">Рестартира цялата услуга</p>
+                        </div>
+                        <button onclick="restartService()" class="px-3 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700">Рестартирай</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="mt-6 bg-white rounded-lg shadow p-4">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-semibold text-gray-800">Gateway Information</h2>
-                <button onclick="restartService()" class="px-3 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700">Рестартирай Гейтуея</button>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div><span class="text-gray-500">Hardware UUID:</span> <span class="font-mono ml-2" id="hw-uuid">-</span></div>
@@ -252,9 +344,12 @@
                 document.getElementById('gw-status').textContent = data.gateway.registered ? 'Registered' : 'Not Registered';
                 document.getElementById('register-btn').classList.toggle('hidden', data.gateway.registered);
                 const clusterEnabled = data.gateway.cluster_enabled;
-                document.getElementById('cluster-status').textContent = clusterEnabled ? 'Enabled' : 'Disabled';
+                const cs = clusterEnabled ? 'Enabled' : 'Disabled';
+                document.getElementById('cluster-status').textContent = cs;
+                document.getElementById('settings-cluster-status').textContent = cs;
                 document.getElementById('cluster-role').textContent = clusterEnabled ? `(${data.gateway.cluster_role.toUpperCase()})` : '';
                 document.getElementById('cluster-toggle-btn').textContent = clusterEnabled ? 'Disable Cluster' : 'Enable Cluster';
+                document.getElementById('settings-cluster-toggle-btn').textContent = clusterEnabled ? 'Disable' : 'Enable';
                 
                 // Render cluster peers
                 const peers = data.gateway.cluster_peers || [];
@@ -285,11 +380,12 @@
         }
 
         function showTab(tab) {
-            ['terminals', 'printers', 'access'].forEach(t => {
+            ['terminals', 'printers', 'access', 'settings'].forEach(t => {
                 document.getElementById(`section-${t}`).classList.toggle('hidden', t !== tab);
                 document.getElementById(`tab-${t}`).className = t === tab ? 'px-4 py-2 rounded bg-blue-600 text-white' : 'px-4 py-2 rounded bg-gray-200';
             });
             if (tab === 'access') { loadHardware(); loadZones(); loadDoors(); }
+            if (tab === 'settings') { loadSystemSettings(); }
         }
 
         async function restartService() {
@@ -298,6 +394,166 @@
                 const r = await fetch('/api/restart', { method: 'POST' });
                 if (r.ok) { alert('Рестартиране...'); setTimeout(() => location.reload(), 5000); }
             } catch (e) { alert(e); }
+        }
+
+        async function loadSystemSettings() {
+            try {
+                const r = await fetch('/api/system-settings');
+                const data = await r.json();
+                document.getElementById('timezone-display').textContent = data.timezone || 'Europe/Sofia';
+                document.getElementById('timezone-input').value = data.timezone || 'Europe/Sofia';
+                if (data.rate_limit) {
+                    document.getElementById('rate-max-display').textContent = data.rate_limit.max_attempts || 5;
+                    document.getElementById('rate-window-display').textContent = data.rate_limit.window_minutes || 1;
+                    document.getElementById('rate-lockout-display').textContent = data.rate_limit.lockout_minutes || 5;
+                    document.getElementById('rate-max-input').value = data.rate_limit.max_attempts || 5;
+                    document.getElementById('rate-lockout-input').value = data.rate_limit.lockout_minutes || 5;
+                }
+                if (data.auto_reset) {
+                    const t = data.auto_reset.time || '23:00';
+                    document.getElementById('auto-reset-display').textContent = data.auto_reset.enabled !== false ? 'Всеки ден в ' + t : 'Disabled';
+                    document.getElementById('auto-reset-time-input').value = t;
+                }
+                if (data.anti_passback_global) {
+                    const ap = data.anti_passback_global;
+                    const status = ap.enabled ? ap.default_type + ' (' + ap.timeout_minutes + ' мин)' : 'Disabled';
+                    document.getElementById('ap-global-display').textContent = status;
+                    document.getElementById('ap-type-input').value = ap.default_type || 'soft';
+                    document.getElementById('ap-timeout-input').value = ap.timeout_minutes || 5;
+                }
+                const syncR = await fetch('/api/sync-interval');
+                const syncData = await syncR.json();
+                const min = syncData.interval_minutes || 15;
+                document.getElementById('sync-interval-display').textContent = min;
+                document.getElementById('sync-interval-input').value = min;
+            } catch (e) { console.error(e); }
+        }
+
+        async function setTimezone(event) {
+            const btn = event.target;
+            const val = document.getElementById('timezone-input').value.trim();
+            if (!val) { alert('Въведете часова зона'); return; }
+            btn.disabled = true; btn.textContent = 'Запазване...';
+            try {
+                const r = await fetch('/api/system-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timezone: val }) });
+                if (r.ok) { document.getElementById('timezone-display').textContent = val; alert('Часовата зона е обновена'); }
+                else { const res = await r.json(); alert(res.message || 'Грешка'); }
+            } catch (e) { alert(e); }
+            finally { btn.disabled = false; btn.textContent = 'Задай'; }
+        }
+
+        async function setRateLimit(event) {
+            const btn = event.target;
+            const max = parseInt(document.getElementById('rate-max-input').value);
+            const lockout = parseInt(document.getElementById('rate-lockout-input').value);
+            if (!max || max < 1) { alert('Макс опити трябва да е >= 1'); return; }
+            btn.disabled = true; btn.textContent = 'Запазване...';
+            try {
+                const r = await fetch('/api/system-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rate_limit: { max_attempts: max, lockout_minutes: lockout } }) });
+                if (r.ok) {
+                    document.getElementById('rate-max-display').textContent = max;
+                    document.getElementById('rate-lockout-display').textContent = lockout;
+                    alert('Rate limit обновен');
+                } else { alert('Грешка'); }
+            } catch (e) { alert(e); }
+            finally { btn.disabled = false; btn.textContent = 'Задай'; }
+        }
+
+        async function setAutoReset(event) {
+            const btn = event.target;
+            const t = document.getElementById('auto-reset-time-input').value;
+            btn.disabled = true; btn.textContent = 'Запазване...';
+            try {
+                const r = await fetch('/api/system-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_reset: { time: t } }) });
+                if (r.ok) { document.getElementById('auto-reset-display').textContent = 'Всеки ден в ' + t; alert('Auto-reset обновен'); }
+                else { alert('Грешка'); }
+            } catch (e) { alert(e); }
+            finally { btn.disabled = false; btn.textContent = 'Задай'; }
+        }
+
+        async function setAntiPassbackGlobal(event) {
+            const btn = event.target;
+            const type = document.getElementById('ap-type-input').value;
+            const timeout = parseInt(document.getElementById('ap-timeout-input').value);
+            btn.disabled = true; btn.textContent = 'Запазване...';
+            try {
+                const r = await fetch('/api/system-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ anti_passback_global: { enabled: true, default_type: type, timeout_minutes: timeout } }) });
+                if (r.ok) {
+                    document.getElementById('ap-global-display').textContent = type + ' (' + timeout + ' мин)';
+                    alert('Anti-passback обновен');
+                } else { alert('Грешка'); }
+            } catch (e) { alert(e); }
+            finally { btn.disabled = false; btn.textContent = 'Задай'; }
+        }
+
+        async function setSyncInterval(event) {
+            const btn = event.target;
+            const input = document.getElementById('sync-interval-input');
+            const val = parseInt(input.value);
+            if (!val || val < 1 || val > 1440) { alert('Интервалът трябва да е между 1 и 1440 минути'); return; }
+            btn.disabled = true;
+            btn.textContent = 'Запазване...';
+            try {
+                const r = await fetch('/api/sync-interval', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interval_minutes: val }) });
+                if (r.ok) {
+                    document.getElementById('sync-interval-display').textContent = val;
+                    alert('Интервалът е обновен на ' + val + ' минути');
+                } else {
+                    const res = await r.json();
+                    alert(res.message || 'Грешка');
+                }
+            } catch (e) { alert(e); }
+            finally { btn.disabled = false; btn.textContent = 'Задай'; }
+        }
+
+        async function testBackendConnection() {
+            const btn = event.target;
+            const resultEl = document.getElementById('backend-test-result');
+            btn.disabled = true;
+            btn.textContent = 'Тестване...';
+            resultEl.textContent = 'Тестване...';
+            try {
+                const r = await fetch('/api/test-backend', { method: 'POST' });
+                const res = await r.json();
+                if (r.ok) {
+                    resultEl.textContent = '✅ Сървърът е достъпен';
+                    resultEl.className = 'text-sm text-green-600';
+                } else {
+                    resultEl.textContent = '❌ ' + (res.message || 'Грешка');
+                    resultEl.className = 'text-sm text-red-600';
+                }
+            } catch (e) {
+                resultEl.textContent = '❌ ' + e;
+                resultEl.className = 'text-sm text-red-600';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Тествай';
+            }
+        }
+
+        async function pushConfigToBackend() {
+            const btn = event.target;
+            const resultEl = document.getElementById('push-config-result');
+            btn.disabled = true;
+            btn.textContent = 'Изпращане...';
+            resultEl.textContent = 'Изпращане...';
+            try {
+                const r = await fetch('/api/push-config', { method: 'POST' });
+                const res = await r.json();
+                if (r.ok) {
+                    resultEl.textContent = '✅ ' + (res.message || 'Config изпратен');
+                    resultEl.className = 'text-sm text-green-600';
+                } else {
+                    resultEl.textContent = '❌ ' + (res.message || 'Грешка');
+                    resultEl.className = 'text-sm text-red-600';
+                }
+            } catch (e) {
+                resultEl.textContent = '❌ ' + e;
+                resultEl.className = 'text-sm text-red-600';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Push Config';
+            }
         }
 
         async function registerGateway() {
