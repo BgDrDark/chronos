@@ -22,7 +22,7 @@ activity:
   heartbeat_interval: 30
   timeout: 120
 backend:
-  api_key: gw_48205e80990c16c921d779b8492ec6b133a8514afca82b0e
+  api_key: gw_148b86b55a2a9bb819a01e46b570bd2f3ce79d8687b41742
   fallback_url: https://chronos.oblak24.org
   ssl_verify_disabled: true
   url: https://dev.oblak24.org
@@ -37,7 +37,7 @@ cluster:
 gateway:
   alias: ''
   hardware_uuid: 0cd40336f6435a14b8eadc742f1185e7bdba49b0bfce7fde4e3a1b5c116dd88b
-  id: '2'
+  id: '1'
   mode: production
   system_mode: normal
 logging:
@@ -55,6 +55,9 @@ network:
   terminal_port: 1424
   web_port: 8889
 printers: []
+scim:
+  api_token: ''
+  enabled: false
 sync:
   interval_minutes: 10
 system:

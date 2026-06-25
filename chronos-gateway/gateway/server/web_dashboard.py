@@ -74,9 +74,14 @@ class WebDashboard:
         self._register_scim()
     
     def _register_scim(self):
-        """Регистрира SCIM 2.0 endpoint-ите"""
+        """Регистрира SCIM 2.0 endpoint-ите ако са включени"""
+        from gateway.config import config as gw_config
+        if not gw_config.scim_enabled:
+            logger.info("SCIM 2.0 is disabled (set scim.enabled=true in config)")
+            return
         try:
-            from gateway.scim_server import router as scim_router
+            from gateway.scim_server import router as scim_router, migrate_json_to_sqlite
+            migrate_json_to_sqlite()
             self.app.include_router(scim_router)
             logger.info("SCIM 2.0 endpoints registered at /scim/v2")
         except Exception as e:
@@ -231,9 +236,11 @@ class WebDashboard:
         
         @self.app.get("/api/system-settings")
         async def get_system_settings():
-            """Връща системните настройки (timezone, rate_limit, auto_reset)"""
+            """Връща системните настройки (timezone, rate_limit, auto_reset, backend URLs)"""
             return JSONResponse(content={
                 "timezone": config.timezone,
+                "backend_url": config.backend_url,
+                "fallback_url": config.fallback_url,
                 "rate_limit": {
                     "enabled": config.get('access_control.rate_limit.enabled', True),
                     "max_attempts": config.get('access_control.rate_limit.max_attempts', 5),
@@ -287,6 +294,15 @@ class WebDashboard:
                     config.set("access_control.anti_passback.default_type", ap["default_type"])
                 if "timeout_minutes" in ap:
                     config.set("access_control.anti_passback.timeout_minutes", int(ap["timeout_minutes"]))
+
+            if "backend_url" in data:
+                config.set("backend.url", data["backend_url"])
+                from gateway.database.sqlite_manager import config_db
+                config_db.set_setting("backend_url", data["backend_url"])
+            if "fallback_url" in data:
+                config.set("backend.fallback_url", data["fallback_url"])
+                from gateway.database.sqlite_manager import config_db
+                config_db.set_setting("fallback_url", data["fallback_url"])
 
             return JSONResponse(content={"status": "ok"})
 

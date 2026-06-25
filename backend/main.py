@@ -214,7 +214,7 @@ async def chronos_exception_handler(request: Request, exc: CHRONOSException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Log FastAPI 422 validation errors with full details"""
-    logger.error(
+    logger.debug(
         f"422 Validation Error on {request.method} {request.url}: {exc.errors()}",
         extra={"body": str(exc.body)[:1000] if exc.body else None},
     )

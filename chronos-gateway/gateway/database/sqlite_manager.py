@@ -109,6 +109,15 @@ class ConfigDatabaseManager(SQLiteManager):
                 cursor.execute("ALTER TABLE zones ADD COLUMN authorized_users TEXT")
             if 'description' not in columns:
                 cursor.execute("ALTER TABLE zones ADD COLUMN description TEXT")
+
+            # Gateway settings (key-value store for runtime config overrides)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS gateway_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             
             # Doors
             cursor.execute("""
@@ -423,6 +432,29 @@ class ConfigDatabaseManager(SQLiteManager):
                 VALUES (?, ?, CURRENT_TIMESTAMP)
             """, (key, value))
     
+    # ========== GATEWAY SETTINGS (runtime overrides) ==========
+
+    def get_setting(self, key: str) -> Optional[str]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM gateway_settings WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row['value'] if row else None
+
+    def set_setting(self, key: str, value: str):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO gateway_settings (key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+            """, (key, value))
+
+    def get_all_settings(self) -> Dict[str, str]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT key, value FROM gateway_settings")
+            return {row['key']: row['value'] for row in cursor.fetchall()}
+
     # ========== CONFIG AUDIT TRAIL ==========
 
     def add_audit_entry(self, entity_type: str, entity_id: str, action: str,

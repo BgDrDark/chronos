@@ -23,6 +23,7 @@ class Config:
             self._config = self._get_defaults()
             self._save()
         self._ensure_cluster_secret()
+        self._load_sqlite_overrides()
     
     def _ensure_cluster_secret(self):
         """Кластърният shared_secret винаги идва от backend-а — никога не го генерираме локално.
@@ -38,6 +39,20 @@ class Config:
             self._save()
             logger.info("Cleared deprecated default cluster secret (will be fetched from backend on registration)")
     
+    def _load_sqlite_overrides(self):
+        """Зарежда настройки от SQLite gateway_settings които презаписват config.yaml.
+        Позволява runtime промени (напр. backend URL) да се запазят през рестарти."""
+        try:
+            from gateway.database.sqlite_manager import config_db
+            url = config_db.get_setting("backend_url")
+            if url:
+                self._config.setdefault('backend', {})['url'] = url
+            fallback = config_db.get_setting("fallback_url")
+            if fallback:
+                self._config.setdefault('backend', {})['fallback_url'] = fallback
+        except Exception:
+            pass
+
     def _deep_merge_defaults(self) -> bool:
         """Добавя липсващи ключове от defaults в self._config.
         Връща True ако е имало промяна (за да се презапише файла)."""
@@ -108,6 +123,10 @@ class Config:
             'printers': [],
             'system': {
                 'timezone': 'Europe/Sofia',
+            },
+            'scim': {
+                'enabled': False,
+                'api_token': '',
             },
             'access_control': {
                 'enabled': False,
@@ -211,6 +230,14 @@ class Config:
     @property
     def access_control_config(self) -> dict:
         return self.get('access_control', {})
+
+    @property
+    def scim_enabled(self) -> bool:
+        return self.get('scim.enabled', False)
+
+    @property
+    def scim_api_token(self) -> str:
+        return self.get('scim.api_token', '')
 
 
 config = Config()

@@ -102,6 +102,26 @@
                     </div>
                     <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
                         <div>
+                            <p class="font-medium">URL на основния сървър</p>
+                            <p class="text-sm text-gray-500" id="backend-url-display">https://dev.oblak24.org</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="backend-url-input" value="" class="w-56 px-2 py-1 border rounded text-xs" placeholder="https://...">
+                            <button onclick="setBackendUrl(event)" class="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Задай</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">УРЛ за резервния сървър</p>
+                            <p class="text-sm text-gray-500" id="fallback-url-display">https://dev.oblak24.org</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="fallback-url-input" value="" class="w-56 px-2 py-1 border rounded text-xs" placeholder="https://...">
+                            <button onclick="setFallbackUrl(event)" class="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Задай</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
                             <p class="font-medium">Часова зона</p>
                             <p class="text-sm text-gray-500" id="timezone-display">Europe/Sofia</p>
                         </div>
@@ -400,6 +420,10 @@
             try {
                 const r = await fetch('/api/system-settings');
                 const data = await r.json();
+                document.getElementById('backend-url-display').textContent = data.backend_url || 'https://dev.oblak24.org';
+                document.getElementById('backend-url-input').value = data.backend_url || '';
+                document.getElementById('fallback-url-display').textContent = data.fallback_url || '';
+                document.getElementById('fallback-url-input').value = data.fallback_url || '';
                 document.getElementById('timezone-display').textContent = data.timezone || 'Europe/Sofia';
                 document.getElementById('timezone-input').value = data.timezone || 'Europe/Sofia';
                 if (data.rate_limit) {
@@ -427,6 +451,32 @@
                 document.getElementById('sync-interval-display').textContent = min;
                 document.getElementById('sync-interval-input').value = min;
             } catch (e) { console.error(e); }
+        }
+
+        async function setBackendUrl(event) {
+            const btn = event.target;
+            const val = document.getElementById('backend-url-input').value.trim();
+            if (!val) { alert('Въведете URL'); return; }
+            btn.disabled = true; btn.textContent = 'Запазване...';
+            try {
+                const r = await fetch('/api/system-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ backend_url: val }) });
+                if (r.ok) { document.getElementById('backend-url-display').textContent = val; alert('URL на основния сървър е обновен'); }
+                else { alert('Грешка'); }
+            } catch (e) { alert(e); }
+            finally { btn.disabled = false; btn.textContent = 'Задай'; }
+        }
+
+        async function setFallbackUrl(event) {
+            const btn = event.target;
+            const val = document.getElementById('fallback-url-input').value.trim();
+            if (!val) { alert('Въведете URL'); return; }
+            btn.disabled = true; btn.textContent = 'Запазване...';
+            try {
+                const r = await fetch('/api/system-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fallback_url: val }) });
+                if (r.ok) { document.getElementById('fallback-url-display').textContent = val; alert('УРЛ за резервния сървър е обновен'); }
+                else { alert('Грешка'); }
+            } catch (e) { alert(e); }
+            finally { btn.disabled = false; btn.textContent = 'Задай'; }
         }
 
         async function setTimezone(event) {
