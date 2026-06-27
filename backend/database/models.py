@@ -359,6 +359,7 @@ class User(Base):
     __tablename__ = "users"
 
     id:Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[int | None] = mapped_column(Integer, unique=True, nullable=True)
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     username: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=True) # Now optional
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)

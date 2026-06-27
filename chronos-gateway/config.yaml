@@ -22,7 +22,7 @@ activity:
   heartbeat_interval: 30
   timeout: 120
 backend:
-  api_key: gw_148b86b55a2a9bb819a01e46b570bd2f3ce79d8687b41742
+  api_key: gw_483ad91bb7c6a63658c0681823c47e0c230e48be5a768ab8
   fallback_url: https://chronos.oblak24.org
   ssl_verify_disabled: true
   url: https://dev.oblak24.org
@@ -33,7 +33,7 @@ cluster:
   heartbeat_interval: 5
   master_timeout: 60
   priority: auto
-  shared_secret: gws_9b4ff7a32198f4836afd4ba7e76b6a57ae6d6e4faeb349d9661d6bd99db94bde3aed08ef799b2aff23963c41bbb83b26
+  shared_secret: gws_f0d173034bdbd0f9511073cacbea8049c3b67bbeb63f6d8b3d0a4895470756516186dc63467831442ee43b2dc4332a72
 gateway:
   alias: ''
   hardware_uuid: 0cd40336f6435a14b8eadc742f1185e7bdba49b0bfce7fde4e3a1b5c116dd88b
@@ -57,7 +57,7 @@ network:
 printers: []
 scim:
   api_token: ''
-  enabled: false
+  enabled: true
 sync:
   interval_minutes: 10
 system:

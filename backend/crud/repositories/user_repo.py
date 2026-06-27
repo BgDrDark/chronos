@@ -108,6 +108,7 @@ class UserRepository(BaseRepository):
     ) -> User:
         """Създава нов потребител"""
         from backend.auth.security import hash_password
+        import uuid
         contract_fields = {
             "contract_type", "contract_number", "contract_start_date", "contract_end_date",
             "base_salary", "work_hours_per_week", "probation_months", "salary_calculation_type",
@@ -124,6 +125,10 @@ class UserRepository(BaseRepository):
 
         if "created_at" not in user_dict:
             user_dict["created_at"] = datetime.now(ZoneInfo(settings.TIMEZONE)).replace(tzinfo=None)
+
+        if "external_id" not in user_dict:
+            email = user_data.email
+            user_dict["external_id"] = int(uuid.uuid5(uuid.NAMESPACE_DNS, f"scim:{email}").int) & 0x7FFFFFFF
 
         user = User(**user_dict)
         db.add(user)

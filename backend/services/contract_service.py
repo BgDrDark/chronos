@@ -1,10 +1,10 @@
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.crud.repositories import trz_repo
-from backend.database.models import EmploymentContract, Notification, User
+from backend.database.models import EmploymentContract, Notification, User, user_access_zones
 
 
 class ContractService:
@@ -126,6 +126,10 @@ class ContractService:
         if reason:
             contract.termination_reason = reason
 
+        await self.db.execute(
+            delete(user_access_zones).where(user_access_zones.c.user_id == contract.user_id)
+        )
+
         await self.db.commit()
         await self.db.refresh(contract)
 
@@ -157,6 +161,10 @@ class ContractService:
             if contract:
                 contract.is_active = False
                 self.db.add(contract)
+
+            await self.db.execute(
+                delete(user_access_zones).where(user_access_zones.c.user_id == user.id)
+            )
 
             await self._notify_expiration(user.id)
 

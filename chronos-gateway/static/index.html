@@ -53,6 +53,7 @@
             <button onclick="showTab('printers')" class="px-4 py-2 rounded bg-gray-200" id="tab-printers">Printers</button>
             <button onclick="showTab('access')" class="px-4 py-2 rounded bg-gray-200" id="tab-access">Контрол на Достъп</button>
             <button onclick="showTab('settings')" class="px-4 py-2 rounded bg-gray-200" id="tab-settings">Настройки</button>
+            <button onclick="showTab('scim')" class="px-4 py-2 rounded bg-gray-200" id="tab-scim">SCIM</button>
         </div>
 
         <div id="section-terminals" class="bg-white rounded-lg shadow p-4">
@@ -197,6 +198,58 @@
                         </div>
                         <button onclick="restartService()" class="px-3 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700">Рестартирай</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="section-scim" class="hidden space-y-4">
+            <div class="bg-white rounded-lg shadow p-4">
+                <h2 class="text-lg font-semibold text-gray-800 mb-1">SCIM 2.0</h2>
+            <p class="text-xs text-gray-400 mb-4">System for Cross-domain Identity Management</p>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">SCIM Server</p>
+                            <p class="text-sm text-gray-500" id="scim-enabled-display">Disabled</p>
+                        </div>
+                        <button id="scim-toggle-btn" onclick="toggleScim()" class="px-3 py-1 bg-gray-600 text-white rounded text-xs">Enable</button>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                        <div>
+                            <p class="font-medium">API Token</p>
+                            <p class="text-sm text-gray-500">Остави празно за без auth</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="scim-token-input" value="" class="w-48 px-2 py-1 border rounded text-xs" placeholder="токен">
+                            <button onclick="setScimToken(event)" class="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Задай</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex justify-between mb-4">
+                    <h2 class="font-bold">SCIM Потребители</h2>
+                    <button onclick="loadScimUsers()" class="bg-gray-200 px-3 py-1 rounded text-sm">Обнови</button>
+                </div>
+                <div id="scim-users-list" class="space-y-1 text-sm max-h-80 overflow-y-auto"></div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex justify-between mb-4">
+                    <h2 class="font-bold">SCIM Групи</h2>
+                    <button onclick="loadScimGroups()" class="bg-gray-200 px-3 py-1 rounded text-sm">Обнови</button>
+                </div>
+                <div id="scim-groups-list" class="space-y-1 text-sm max-h-80 overflow-y-auto"></div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="font-medium">Синхронизиране към зони</p>
+                        <p class="text-sm text-gray-500" id="scim-sync-result">Добавя всички активни SCIM потребители в зоните</p>
+                    </div>
+                    <button onclick="syncScimToZones(event)" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Синхронизирай</button>
                 </div>
             </div>
         </div>
@@ -400,12 +453,13 @@
         }
 
         function showTab(tab) {
-            ['terminals', 'printers', 'access', 'settings'].forEach(t => {
+            ['terminals', 'printers', 'access', 'settings', 'scim'].forEach(t => {
                 document.getElementById(`section-${t}`).classList.toggle('hidden', t !== tab);
                 document.getElementById(`tab-${t}`).className = t === tab ? 'px-4 py-2 rounded bg-blue-600 text-white' : 'px-4 py-2 rounded bg-gray-200';
             });
             if (tab === 'access') { loadHardware(); loadZones(); loadDoors(); }
             if (tab === 'settings') { loadSystemSettings(); }
+            if (tab === 'scim') { loadScimSettings(); loadScimUsers(); loadScimGroups(); }
         }
 
         async function restartService() {
@@ -554,6 +608,103 @@
                 }
             } catch (e) { alert(e); }
             finally { btn.disabled = false; btn.textContent = 'Задай'; }
+        }
+
+        async function loadScimSettings() {
+            try {
+                const r = await fetch('/api/scim/settings');
+                const data = await r.json();
+                document.getElementById('scim-enabled-display').textContent = data.enabled ? 'Enabled' : 'Disabled';
+                document.getElementById('scim-toggle-btn').textContent = data.enabled ? 'Disable' : 'Enable';
+                document.getElementById('scim-token-input').value = data.api_token || '';
+            } catch (e) { console.error(e); }
+        }
+
+        async function toggleScim() {
+            const btn = document.getElementById('scim-toggle-btn');
+            const currentlyEnabled = btn.textContent === 'Disable';
+            const newEnabled = !currentlyEnabled;
+            btn.disabled = true;
+            btn.textContent = 'Запазване...';
+            try {
+                const r = await fetch('/api/scim/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: newEnabled }) });
+                if (r.ok) {
+                    document.getElementById('scim-enabled-display').textContent = newEnabled ? 'Enabled' : 'Disabled';
+                    btn.textContent = newEnabled ? 'Disable' : 'Enable';
+                }
+            } catch (e) { alert(e); }
+            finally { btn.disabled = false; }
+        }
+
+        async function setScimToken(event) {
+            const btn = event.target;
+            const val = document.getElementById('scim-token-input').value.trim();
+            btn.disabled = true;
+            btn.textContent = 'Запазване...';
+            try {
+                const r = await fetch('/api/scim/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api_token: val }) });
+                if (r.ok) { alert('API токенът е обновен'); }
+                else { alert('Грешка'); }
+            } catch (e) { alert(e); }
+            finally { btn.disabled = false; btn.textContent = 'Задай'; }
+        }
+
+        async function loadScimUsers() {
+            const container = document.getElementById('scim-users-list');
+            container.innerHTML = '<p class="text-gray-400">Зареждане...</p>';
+            try {
+                const r = await fetch('/api/scim/users');
+                const users = await r.json();
+                if (!users.length) { container.innerHTML = '<p class="text-gray-400">Няма потребители</p>'; return; }
+                container.innerHTML = users.map(u =>
+                    `<div class="flex items-center justify-between p-2 bg-gray-50 rounded ${u.active ? '' : 'opacity-50'}">
+                        <div><span class="font-medium">${u.display_name || u.user_name}</span><br><span class="text-xs text-gray-400">${u.external_id || u.id}</span></div>
+                        <span class="text-xs px-2 py-0.5 rounded ${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${u.active ? 'Active' : 'Inactive'}</span>
+                    </div>`
+                ).join('');
+            } catch (e) { container.innerHTML = '<p class="text-red-500">Грешка при зареждане</p>'; }
+        }
+
+        async function loadScimGroups() {
+            const container = document.getElementById('scim-groups-list');
+            container.innerHTML = '<p class="text-gray-400">Зареждане...</p>';
+            try {
+                const r = await fetch('/api/scim/groups');
+                const groups = await r.json();
+                if (!groups.length) { container.innerHTML = '<p class="text-gray-400">Няма групи</p>'; return; }
+                container.innerHTML = groups.map(g => {
+                    const members = JSON.parse(g.members || '[]');
+                    return `<div class="p-2 bg-gray-50 rounded">
+                        <span class="font-medium">${g.display_name}</span>
+                        <span class="text-xs text-gray-400 ml-2">${members.length} members</span>
+                    </div>`;
+                }).join('');
+            } catch (e) { container.innerHTML = '<p class="text-red-500">Грешка при зареждане</p>'; }
+        }
+
+        async function syncScimToZones(event) {
+            const btn = event.target;
+            const resultEl = document.getElementById('scim-sync-result');
+            btn.disabled = true;
+            btn.textContent = 'Синхронизиране...';
+            resultEl.textContent = 'Синхронизиране...';
+            try {
+                const r = await fetch('/api/scim/sync-zones', { method: 'POST' });
+                const res = await r.json();
+                if (r.ok) {
+                    resultEl.textContent = `✅ Синхронизирани ${res.synced} записи в зоните`;
+                    resultEl.className = 'text-sm text-green-600';
+                } else {
+                    resultEl.textContent = '❌ Грешка';
+                    resultEl.className = 'text-sm text-red-600';
+                }
+            } catch (e) {
+                resultEl.textContent = '❌ ' + e;
+                resultEl.className = 'text-sm text-red-600';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Синхронизирай';
+            }
         }
 
         async function testBackendConnection() {

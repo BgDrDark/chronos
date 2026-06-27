@@ -762,7 +762,73 @@ class WebDashboard:
                 return JSONResponse(content={"status": "ok", "message": "Config pulled from backend"})
             else:
                 return JSONResponse(content={"status": "error", "message": "Failed to pull config"}, status_code=500)
-    
+
+        @self.app.get("/api/scim/settings")
+        async def get_scim_settings():
+            return {
+                "enabled": config.scim_enabled,
+                "api_token": config.scim_api_token,
+            }
+
+        @self.app.post("/api/scim/settings")
+        async def set_scim_settings(data: dict):
+            if "enabled" in data:
+                config.set("scim.enabled", bool(data["enabled"]))
+            if "api_token" in data:
+                config.set("scim.api_token", data["api_token"])
+            return {"status": "ok"}
+
+        @self.app.get("/api/scim/users")
+        async def get_scim_users():
+            try:
+                from gateway.scim_server import _ensure_scim_tables
+                from gateway.database.sqlite_manager import config_db
+                _ensure_scim_tables()
+                with config_db.get_connection() as conn:
+                    rows = conn.execute(
+                        "SELECT id, external_id, user_name, display_name, active, emails, roles, created_at, modified_at FROM scim_users ORDER BY user_name"
+                    ).fetchall()
+                return [dict(r) for r in rows]
+            except Exception as e:
+                return []
+
+        @self.app.get("/api/scim/groups")
+        async def get_scim_groups():
+            try:
+                from gateway.scim_server import _ensure_scim_tables
+                from gateway.database.sqlite_manager import config_db
+                _ensure_scim_tables()
+                with config_db.get_connection() as conn:
+                    rows = conn.execute(
+                        "SELECT id, display_name, members, created_at, modified_at FROM scim_groups ORDER BY display_name"
+                    ).fetchall()
+                return [dict(r) for r in rows]
+            except Exception as e:
+                return []
+
+        @self.app.post("/api/scim/sync-zones")
+        async def sync_scim_to_zones():
+            """Синхронизира всички активни SCIM потребители към зоните"""
+            from gateway.access import zone_manager
+            from gateway.database.sqlite_manager import config_db
+            from gateway.scim_server import _ensure_scim_tables
+            _ensure_scim_tables()
+            with config_db.get_connection() as conn:
+                users = conn.execute("SELECT id, external_id, active FROM scim_users").fetchall()
+            synced = 0
+            for u in users:
+                if u["active"]:
+                    try:
+                        uid_int = int(u["id"])
+                    except (ValueError, TypeError):
+                        continue
+                    for zone in zone_manager.zones.values():
+                        if uid_int not in zone.authorized_users:
+                            zone.authorized_users.append(uid_int)
+                            zone_manager._save_zone_to_sqlite(zone)
+                            synced += 1
+            return {"status": "ok", "synced": synced}
+
     def _get_default_html(self) -> str:
         """Default HTML ако липсва файл"""
         return """
