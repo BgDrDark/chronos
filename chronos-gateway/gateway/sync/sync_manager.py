@@ -138,6 +138,10 @@ class SyncManager:
             
             # Update devices with actual status from memory
             config_data['devices'] = relay_controller.get_all_devices()
+
+            # Strip authorized_users — backend is authoritative for user assignments
+            for zone in config_data.get('zones', []):
+                zone.pop('authorized_users', None)
             
             success = await self._push_with_retry(
                 f"/gateways/{self.gateway_id}/push-config",

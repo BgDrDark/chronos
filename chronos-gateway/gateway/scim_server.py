@@ -156,7 +156,8 @@ def _now() -> str:
 
 
 def _sync_to_zones(user_id: str, active: bool):
-    """Синхронизира потребителя с authorized_users на зоните"""
+    """Премахва потребител от authorized_users на всички зони при деактивация.
+    Добавянето става само от backend-а чрез pull."""
     try:
         uid_int = int(user_id)
     except (ValueError, TypeError):
@@ -166,16 +167,8 @@ def _sync_to_zones(user_id: str, active: bool):
             return
 
     for zone in zone_manager.zones.values():
-        changed = False
-        if active:
-            if uid_int not in zone.authorized_users:
-                zone.authorized_users.append(uid_int)
-                changed = True
-        else:
-            if uid_int in zone.authorized_users:
-                zone.authorized_users.remove(uid_int)
-                changed = True
-        if changed:
+        if not active and uid_int in zone.authorized_users:
+            zone.authorized_users.remove(uid_int)
             zone_manager._save_zone_to_sqlite(zone)
 
 

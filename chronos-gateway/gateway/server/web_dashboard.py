@@ -809,24 +809,16 @@ class WebDashboard:
         @self.app.post("/api/scim/sync-zones")
         async def sync_scim_to_zones():
             """Синхронизира всички активни SCIM потребители към зоните"""
-            from gateway.access import zone_manager
             from gateway.database.sqlite_manager import config_db
-            from gateway.scim_server import _ensure_scim_tables
+            from gateway.scim_server import _ensure_scim_tables, _sync_to_zones
             _ensure_scim_tables()
             with config_db.get_connection() as conn:
                 users = conn.execute("SELECT id, external_id, active FROM scim_users").fetchall()
             synced = 0
             for u in users:
                 if u["active"]:
-                    try:
-                        uid_int = int(u["id"])
-                    except (ValueError, TypeError):
-                        continue
-                    for zone in zone_manager.zones.values():
-                        if uid_int not in zone.authorized_users:
-                            zone.authorized_users.append(uid_int)
-                            zone_manager._save_zone_to_sqlite(zone)
-                            synced += 1
+                    _sync_to_zones(u["id"], True)
+                    synced += 1
             return {"status": "ok", "synced": synced}
 
     def _get_default_html(self) -> str:
