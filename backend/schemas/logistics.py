@@ -57,7 +57,7 @@ class BatchBase(CustomBaseModel):
     production_date: date | None = None
     expiry_date: date
     price_no_vat: Decimal | None = None
-    vat_percent: Decimal | None = 20
+    vat_percent: Decimal | None = None
     price_with_vat: Decimal | None = None
     supplier_id: int | None = None
     is_stock_receipt: bool = False

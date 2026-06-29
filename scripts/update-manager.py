@@ -78,7 +78,7 @@ def _run_deploy(project_dir, version):
             cwd=project_dir,
             env=env,
         )
-
+        assert process.stdout is not None
         for line in iter(process.stdout.readline, ""):
             if line:
                 line = line.rstrip()
@@ -130,6 +130,7 @@ class UpdateHandler(BaseHTTPRequestHandler):
     """HTTP handler for update requests"""
 
     api_key_file = None
+    project_dir = None
 
     def log_message(self, format, *args):
         logger.info(format % args)

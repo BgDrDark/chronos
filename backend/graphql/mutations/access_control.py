@@ -225,7 +225,8 @@ class AccessControlMutation:
             anti_passback_type=input.anti_passback_type,
             anti_passback_timeout=input.anti_passback_timeout,
             description=input.description,
-            company_id=current_user.company_id
+            company_id=current_user.company_id,
+            parent_zone_id=input.parent_zone_id,
         )
         db.add(new_zone)
         await db.commit()
@@ -263,6 +264,7 @@ class AccessControlMutation:
         zone.anti_passback_type = input.anti_passback_type
         zone.anti_passback_timeout = input.anti_passback_timeout
         zone.description = input.description
+        zone.parent_zone_id = input.parent_zone_id
         
         await db.commit()
         await db.refresh(zone)

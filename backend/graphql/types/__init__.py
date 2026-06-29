@@ -26,7 +26,10 @@ from backend.graphql.types.user import *  # noqa: F403
 if TYPE_CHECKING:
     from backend.graphql.types import Workstation
 
+from backend.graphql.types.access_policy import *  # noqa: F403
 from backend.graphql.types.access_control import *  # noqa: F403
+from backend.graphql.types.security import *  # noqa: F403
+from backend.graphql.types.elevator import *  # noqa: F403
 from backend.graphql.types.accounting import *  # noqa: F403
 from backend.graphql.types.calendar import *  # noqa: F403
 from backend.graphql.types.contract import *  # noqa: F403

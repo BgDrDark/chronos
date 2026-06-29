@@ -25,6 +25,20 @@ import KioskAdminPage from './pages/KioskAdminPage';
 import KioskTerminalPage from './pages/KioskTerminalPage';
 import UnifiedKiosk from './pages/UnifiedKiosk';
 import GatewayAdminPage from './pages/GatewayAdminPage';
+
+// New restructured pages
+import AccessControlLayout from './pages/access-control/AccessControlLayout';
+import ZonesPage from './pages/access-control/ZonesPage';
+import DoorsPage from './pages/access-control/DoorsPage';
+import AccessLevelsPage from './pages/access-control/AccessLevelsPage';
+import AccessSchedulesPage from './pages/access-control/SchedulesPage';
+import ElevatorPage from './pages/access-control/ElevatorPage';
+import AccessControlEmergencyPage from './pages/access-control/EmergencyPage';
+import KioskAdminLayout from './pages/kiosk-admin/KioskAdminLayout';
+import TerminalsPage from './pages/kiosk-admin/TerminalsPage';
+import GatewaysPage from './pages/kiosk-admin/GatewaysPage';
+import ConfigPage from './pages/kiosk-admin/ConfigPage';
+import KioskEmergencyPage from './pages/access-control/EmergencyPage';
 import MyCardPage from './pages/MyCardPage';
 import WarehousePage from './pages/WarehousePage';
 import RecipesPage from './pages/RecipesPage';
@@ -239,16 +253,28 @@ function App() {
           }
         />
         
-        {/* Отдел КД - с redirect */}
+        {/* Контрол на достъпа - нови страници */}
+        <Route path="/admin/access-control" element={<Navigate to="/admin/access-control/zones" replace />} />
+        <Route path="/admin/access-control/zones" element={<AdminRoute><AccessControlLayout><ZonesPage /></AccessControlLayout></AdminRoute>} />
+        <Route path="/admin/access-control/doors" element={<AdminRoute><AccessControlLayout><DoorsPage /></AccessControlLayout></AdminRoute>} />
+        <Route path="/admin/access-control/access-levels" element={<AdminRoute><AccessControlLayout><AccessLevelsPage /></AccessControlLayout></AdminRoute>} />
+        <Route path="/admin/access-control/schedules" element={<AdminRoute><AccessControlLayout><AccessSchedulesPage /></AccessControlLayout></AdminRoute>} />
+        <Route path="/admin/access-control/elevator" element={<AdminRoute><AccessControlLayout><ElevatorPage /></AccessControlLayout></AdminRoute>} />
+        <Route path="/admin/access-control/emergency" element={<AdminRoute><AccessControlLayout><AccessControlEmergencyPage /></AccessControlLayout></AdminRoute>} />
+
+        {/* Отдел КД - с redirect (стари страници за обратна съвместимост) */}
         <Route path="/admin/kiosk" element={<Navigate to="/admin/kiosk/config" replace />} />
-        <Route path="/admin/kiosk/config" element={<AdminRoute><KioskAdminPage tab="config" /></AdminRoute>} />
-        <Route path="/admin/kiosk/terminals" element={<AdminRoute><KioskAdminPage tab="terminals" /></AdminRoute>} />
-        <Route path="/admin/kiosk/gateways" element={<AdminRoute><KioskAdminPage tab="gateways" /></AdminRoute>} />
+        <Route path="/admin/kiosk/config" element={<AdminRoute><KioskAdminLayout><ConfigPage /></KioskAdminLayout></AdminRoute>} />
+        <Route path="/admin/kiosk/terminals" element={<AdminRoute><KioskAdminLayout><TerminalsPage /></KioskAdminLayout></AdminRoute>} />
+        <Route path="/admin/kiosk/gateways" element={<AdminRoute><KioskAdminLayout><GatewaysPage /></KioskAdminLayout></AdminRoute>} />
+        <Route path="/admin/kiosk/emergency" element={<AdminRoute><KioskAdminLayout><KioskEmergencyPage /></KioskAdminLayout></AdminRoute>} />
         <Route path="/admin/kiosk/zones" element={<AdminRoute><KioskAdminPage tab="zones" /></AdminRoute>} />
         <Route path="/admin/kiosk/doors" element={<AdminRoute><KioskAdminPage tab="doors" /></AdminRoute>} />
         <Route path="/admin/kiosk/codes" element={<AdminRoute><KioskAdminPage tab="codes" /></AdminRoute>} />
         <Route path="/admin/kiosk/logs" element={<AdminRoute><KioskAdminPage tab="logs" /></AdminRoute>} />
         <Route path="/admin/kiosk/users" element={<AdminRoute><KioskAdminPage tab="users" /></AdminRoute>} />
+        <Route path="/admin/kiosk/levels" element={<AdminRoute><KioskAdminPage tab="levels" /></AdminRoute>} />
+        <Route path="/admin/kiosk/schedules" element={<AdminRoute><KioskAdminPage tab="schedules" /></AdminRoute>} />
         <Route
           path="/admin/kiosk/terminal"
           element={

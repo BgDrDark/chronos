@@ -17,6 +17,12 @@ class AccessZone(CustomBaseModel):
     description: str | None = None
     is_active: bool = True
     company_id: int
+    parent_zone_id: int | None = None
+    inherit_permissions: bool = True
+    traversal_order: int = 0
+    is_safe_zone: bool = False
+    lockdown_behavior: str = "lock"
+    emergency_contact: str | None = None
 
 
 class AccessDoor(CustomBaseModel):

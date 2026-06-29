@@ -27,6 +27,7 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
 
@@ -182,6 +183,7 @@ class Company(Base):
     users = relationship("User", back_populates="company_rel")
     departments = relationship("Department", back_populates="company")
     shifts = relationship("Shift", back_populates="company")
+    access_levels = relationship("AccessLevel", back_populates="company")
 
 
 class Department(Base):
@@ -396,9 +398,11 @@ class User(Base):
     password_force_change: Mapped[bool] = mapped_column(Boolean, default=False)
     profile_picture: Mapped[str] = mapped_column(String, nullable=True) # Filename of the profile picture
     role_id: Mapped[int] = mapped_column(Integer, ForeignKey("roles.id"))
+    access_level_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("access_levels.id", ondelete="SET NULL"), nullable=True)
 
     # RBAC enhancements
     role = relationship("Role", back_populates="users")
+    access_level = relationship("AccessLevel", back_populates="users")
     timelogs = relationship("TimeLog", back_populates="user", cascade="all, delete-orphan")
     payrolls = relationship("Payroll", back_populates="user", cascade="all, delete-orphan")
     payslips = relationship("Payslip", back_populates="user", cascade="all, delete-orphan")
@@ -2385,6 +2389,62 @@ class VATRegister(Base):
     company = relationship("Company", backref="vat_registers")
 
 
+# ============================================================
+# ACCESS POLICY MODELS (Phase 1)
+# ============================================================
+
+class AccessLevel(Base):
+    """Ниво на достъп — групира зони за групово assign-ване на потребители"""
+
+    __tablename__ = "access_levels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now())
+
+    company = relationship("Company", back_populates="access_levels")
+    assignments = relationship("AccessLevelZone", back_populates="access_level", cascade="all, delete-orphan")
+    users = relationship("User", back_populates="access_level")
+
+
+class AccessLevelZone(Base):
+    """Връзка между ниво на достъп и зона — опционален schedule"""
+
+    __tablename__ = "access_level_zones"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    access_level_id: Mapped[int] = mapped_column(Integer, ForeignKey("access_levels.id"), nullable=False)
+    zone_id: Mapped[int] = mapped_column(Integer, ForeignKey("access_zones.id"), nullable=False)
+    schedule_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("access_schedules.id"), nullable=True)
+    out_of_hours_behavior: Mapped[str] = mapped_column(String(20), default="deny")
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+
+    access_level = relationship("AccessLevel", back_populates="assignments")
+    zone = relationship("AccessZone")
+    schedule = relationship("AccessSchedule")
+
+
+class AccessSchedule(Base):
+    """Времеви график за достъп — time windows, overrides, holiday handling"""
+
+    __tablename__ = "access_schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False)
+    timezone: Mapped[str] = mapped_column(String(50), default="Europe/Sofia")
+    config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    holiday_override_auto: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    company = relationship("Company")
+
+
 class AccessZone(Base):
     """Зона за контрол на достъп"""
 
@@ -2403,6 +2463,20 @@ class AccessZone(Base):
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+
+    # ─── Zone Tree (Phase 4) ────────────────────────────
+    parent_zone_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("access_zones.id", ondelete="SET NULL"), nullable=True, index=True)
+    inherit_permissions: Mapped[bool] = mapped_column(Boolean, default=True)
+    traversal_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    # ─── Emergency/Lockdown (Phase 6) ────────────────────
+    is_safe_zone: Mapped[bool] = mapped_column(Boolean, default=False)
+    lockdown_behavior: Mapped[str] = mapped_column(String(20), default="lock")
+    # "lock" → заключва се, "unlock" → отваря се, "safe" → нормален достъп
+    emergency_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    parent = relationship("AccessZone", remote_side="AccessZone.id", back_populates="children")
+    children = relationship("AccessZone", back_populates="parent", passive_deletes=True)
 
     doors = relationship("AccessDoor", back_populates="zone")
     authorized_users = relationship("User", secondary=user_access_zones, back_populates="accessible_zones")
@@ -2470,6 +2544,71 @@ class AccessLog(Base):
     gateway_id: Mapped[int] = mapped_column(Integer, ForeignKey("gateways.id", ondelete="CASCADE"), nullable=False)
 
     gateway = relationship("Gateway")
+
+
+# ============================================================
+# ELEVATOR CONTROL MODELS
+# ============================================================
+
+class ElevatorGroup(Base):
+    """Група асансьори свързани към gateway — контрол на достъп до етажи"""
+
+    __tablename__ = "elevator_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    gateway_id: Mapped[int] = mapped_column(Integer, ForeignKey("gateways.id", ondelete="CASCADE"), nullable=False)
+    terminal_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    controller_type: Mapped[str] = mapped_column(String(30), default="sr201")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
+
+    gateway = relationship("Gateway")
+    floors = relationship("ElevatorFloor", back_populates="group", cascade="all, delete-orphan", order_by="ElevatorFloor.order")
+
+
+class ElevatorFloor(Base):
+    """Етаж в асансьорна група — обвързан с relay и access zone"""
+
+    __tablename__ = "elevator_floors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    elevator_group_id: Mapped[int] = mapped_column(Integer, ForeignKey("elevator_groups.id", ondelete="CASCADE"), nullable=False)
+    floor_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    zone_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("access_zones.id", ondelete="SET NULL"), nullable=True)
+    relay_device_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    relay_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    group = relationship("ElevatorGroup", back_populates="floors")
+    zone = relationship("AccessZone")
+
+
+class EmergencyEvent(Base):
+    """Събитие за извънредна ситуация — lockdown, евакуация, аларма"""
+
+    __tablename__ = "emergency_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    # "lockdown", "emergency_unlock", "fire_alarm", "evacuation", "drill"
+    scope: Mapped[str] = mapped_column(String(20), default="all")
+    # "all", "zone", "gateway"
+    gateway_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("gateways.id", ondelete="SET NULL"), nullable=True)
+    zone_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("access_zones.id", ondelete="SET NULL"), nullable=True)
+    triggered_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    triggered_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    zone = relationship("AccessZone")
+    trigger_user = relationship("User", foreign_keys=[triggered_by])
+    resolve_user = relationship("User", foreign_keys=[resolved_by])
 
 
 # ============================================================

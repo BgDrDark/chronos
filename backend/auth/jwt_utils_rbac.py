@@ -69,7 +69,7 @@ async def create_tokens_with_permissions(
 
     # Refresh Token (Stateful, long-lived)
     refresh_jti = str(uuid.uuid4())
-    refresh_exp_dt = now + timedelta(days=7)
+    refresh_exp_dt = now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
     refresh_payload = {
         "iss": "chronos-api",
         "sub": email,
@@ -158,7 +158,7 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> dict | None:
 async def get_current_user_rbac(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> schemas.UserWithPermissions:
+) -> dict:
     """Enhanced current user getter with RBAC data"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -182,12 +182,12 @@ async def get_current_user_rbac(
                 permissions = await permission_service.get_user_permissions(user.id, user.company_id)
                 roles = await permission_service.get_user_roles(user.id)
 
-                return schemas.UserWithPermissions(
+                return {
                     **user.__dict__,
-                    permissions=list(permissions),
-                    roles=roles,
-                    primary_company_id=user.company_id,
-                )
+                    "permissions": list(permissions),
+                    "roles": roles,
+                    "primary_company_id": user.company_id,
+                }
         raise credentials_exception
 
     # --- 2. Try JWT (Cookies or Bearer) ---
@@ -232,12 +232,12 @@ async def get_current_user_rbac(
         permissions = await permission_service.get_user_permissions(user.id, user.company_id)
         roles = await permission_service.get_user_roles(user.id)
 
-    return schemas.UserWithPermissions(
+    return {
         **user.__dict__,
-        permissions=permissions,
-        roles=roles,
-        primary_company_id=user.company_id,
-    )
+        "permissions": permissions,
+        "roles": roles,
+        "primary_company_id": user.company_id,
+    }
 
 
 async def get_current_user(
@@ -314,7 +314,7 @@ async def get_optional_current_user(
 async def get_optional_current_user_rbac(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> schemas.UserWithPermissions | None:
+) -> dict | None:
     try:
         return await get_current_user_rbac(request, db)
     except HTTPException:
@@ -336,6 +336,13 @@ async def refresh_token_with_updated_permissions(
 
     user_id = payload.get("uid")
     email = payload.get("sub")
+
+    # Validate token payload early
+    if user_id is None or email is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
 
     # Get user
     user = await crud.get_user_by_id(db, user_id)

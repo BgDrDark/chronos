@@ -13,7 +13,7 @@ class Payroll(CustomBaseModel):
     monthly_salary: Decimal | None = None
     overtime_multiplier: Decimal = Decimal(1)
     standard_hours_per_day: int = 8
-    currency: str = "BGN"
+    currency: str = "EUR"
     annual_leave_days: int = 20
     tax_percent: Decimal = Decimal("10.00")
     health_insurance_percent: Decimal = Decimal("13.78")

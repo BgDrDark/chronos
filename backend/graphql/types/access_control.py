@@ -23,6 +23,25 @@ class AccessZone:
     anti_passback_timeout: strawberry.auto
     description: strawberry.auto
     is_active: strawberry.auto
+    parent_zone_id: strawberry.auto
+    inherit_permissions: strawberry.auto
+    traversal_order: strawberry.auto
+
+    @strawberry.field
+    async def parent_zone(self, info: strawberry.Info) -> Annotated["AccessZone", strawberry.lazy("backend.graphql.types.access_control")] | None:  # noqa: F821
+        if not self.parent_zone_id:
+            return None
+        db = info.context["db"]
+        res = await db.get(models.AccessZone, self.parent_zone_id)
+        return AccessZone.from_pydantic(res) if res else None
+
+    @strawberry.field
+    async def children(self, info: strawberry.Info) -> list[Annotated["AccessZone", strawberry.lazy("backend.graphql.types.access_control")]]:  # noqa: F821
+        from sqlalchemy import select
+        db = info.context["db"]
+        stmt = select(models.AccessZone).where(models.AccessZone.parent_zone_id == self.id).order_by(models.AccessZone.traversal_order)
+        res = await db.execute(stmt)
+        return [AccessZone.from_pydantic(zone) for zone in res.scalars().all()]
 
     @strawberry.field
     async def authorized_users(self, info: strawberry.Info) -> list[Annotated["User", strawberry.lazy("backend.graphql.types.user")]]:  # noqa: F821

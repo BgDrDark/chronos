@@ -6,6 +6,7 @@ from backend.config import settings
 from backend.database.models import TimeLog, User
 from backend.modules.behavioral_analysis.models import (
     BehavioralAnomaly,
+    BehavioralProfile,
     BehavioralSystemHealth,
 )
 from backend.services.notification_service import NotificationService
@@ -22,10 +23,18 @@ class TriggeredEventProcessor:
         self.db = db
         self.notification_service = NotificationService(db)
 
+    async def _get_profile_id(self, user_id: int) -> int | None:
+        result = await self.db.execute(
+            select(BehavioralProfile.id).where(BehavioralProfile.user_id == user_id),
+        )
+        return result.scalar_one_or_none()
+
     async def handle_clock_out(self, time_log: TimeLog) -> list[BehavioralAnomaly]:
         """Process a clock-out event to detect immediate risks"""
         anomalies = []
         user_id = time_log.user_id
+
+        profile_id = await self._get_profile_id(user_id)
 
         # Calculate hours_worked from start_time and end_time
         if time_log.start_time and time_log.end_time:
@@ -39,7 +48,7 @@ class TriggeredEventProcessor:
         if duration > 12:
             anomaly = BehavioralAnomaly(
                 user_id=user_id,
-                profile_id=None,
+                profile_id=profile_id,
                 anomaly_type="real_time_excessive_hours",
                 severity=4,
                 metric_name="overtime_score",
@@ -66,7 +75,7 @@ class TriggeredEventProcessor:
         if duration > 6 and (time_log.break_duration or 0) < 0.5:
             anomaly = BehavioralAnomaly(
                 user_id=user_id,
-                profile_id=None,
+                profile_id=profile_id,
                 anomaly_type="real_time_missed_break",
                 severity=3,
                 metric_name="burnout_risk",
@@ -86,7 +95,7 @@ class TriggeredEventProcessor:
             if end_hour > 23.0 and duration > 8:
                 anomaly = BehavioralAnomaly(
                     user_id=user_id,
-                    profile_id=None,
+                    profile_id=profile_id,
                     anomaly_type="real_time_night_overtime",
                     severity=3,
                     metric_name="burnout_risk",
@@ -110,6 +119,8 @@ class TriggeredEventProcessor:
         today = date.today()
         anomalies = []
 
+        profile_id = await self._get_profile_id(user_id)
+
         consecutive_days = 0
         check_date = today
 
@@ -132,7 +143,7 @@ class TriggeredEventProcessor:
         if consecutive_days > 10:
             anomaly = BehavioralAnomaly(
                 user_id=user_id,
-                profile_id=None,
+                profile_id=profile_id,
                 anomaly_type="real_time_consecutive_days",
                 severity=4,
                 metric_name="burnout_risk",

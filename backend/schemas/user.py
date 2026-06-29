@@ -86,7 +86,6 @@ class UserBase(CustomBaseModel):
 class UserCreate(UserBase):
     password: str
     password_force_change: bool = False
-
     contract_type: str | None = None
     contract_number: str | None = None
     contract_start_date: date | None = None
@@ -100,7 +99,6 @@ class UserCreate(UserBase):
     tax_resident: bool | None = None
     insurance_contributor: bool | None = None
     has_income_tax: bool | None = None
-
     payment_day: int | None = 25
     experience_start_date: date | None = None
     night_work_rate: Decimal | None = Decimal("0.50")
@@ -127,7 +125,6 @@ class UserUpdate(CustomBaseModel):
     company_id: int | None = None
     department_id: int | None = None
     position_id: int | None = None
-
     contract_type: str | None = None
     contract_start_date: date | None = None
     contract_end_date: date | None = None
@@ -140,7 +137,6 @@ class UserUpdate(CustomBaseModel):
     tax_resident: bool | None = None
     insurance_contributor: bool | None = None
     has_income_tax: bool | None = None
-
     payment_day: int | None = None
     experience_start_date: date | None = None
     night_work_rate: Decimal | None = None

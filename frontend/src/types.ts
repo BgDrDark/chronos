@@ -1122,6 +1122,11 @@ export interface AccessZone {
   requiredHours_end?: string;
   antiPassbackEnabled?: boolean;
   antiPassbackType?: string;
+  parentZoneId?: number | null;
+  inheritPermissions?: boolean;
+  traversalOrder?: number;
+  parentZone?: AccessZone | null;
+  children?: AccessZone[];
   [key: string]: unknown;
 }
 
@@ -1158,6 +1163,39 @@ export interface AccessDoor {
   zoneDbId?: number;
   deviceId?: string;
   relayNumber?: number;
+}
+
+export interface AccessLevel {
+  id: number;
+  name: string;
+  description?: string | null;
+  companyId: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string | null;
+  zoneAssignments?: AccessLevelZone[];
+  userCount?: number;
+}
+
+export interface AccessLevelZone {
+  id: number;
+  accessLevelId: number;
+  zoneId: number;
+  scheduleId?: number | null;
+  outOfHoursBehavior: string;
+  priority: number;
+  zone?: AccessZone | null;
+}
+
+export interface AccessSchedule {
+  id: number;
+  name: string;
+  companyId: number;
+  timezone: string;
+  config?: Record<string, unknown>;
+  holidayOverrideAuto: boolean;
+  isActive: boolean;
+  createdAt: string;
 }
 
 export interface AccessCode {

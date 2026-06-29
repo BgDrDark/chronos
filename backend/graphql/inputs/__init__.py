@@ -4,7 +4,9 @@ from typing import Optional
 
 import strawberry
 
+from backend.graphql.inputs.access_policy import *  # noqa: F403
 from backend.graphql.inputs.access_control import *  # noqa: F403
+from backend.graphql.inputs.security import *  # noqa: F403
 from backend.graphql.inputs.accounting import *  # noqa: F403
 from backend.graphql.inputs.company import *  # noqa: F403
 from backend.graphql.inputs.contract import *  # noqa: F403

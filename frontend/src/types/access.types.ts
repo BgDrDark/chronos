@@ -4,6 +4,29 @@ export interface AccessZone {
   description?: string | null;
   isActive?: boolean;
   createdAt?: string;
+  parentZoneId?: number | null;
+  inheritPermissions?: boolean;
+  traversalOrder?: number;
+  isSafeZone?: boolean;
+  lockdownBehavior?: string;
+  emergencyContact?: string | null;
+  parentZone?: AccessZone | null;
+  children?: AccessZone[];
+}
+
+export interface EmergencyEvent {
+  id: number;
+  eventType: string;
+  scope: string;
+  gatewayId?: number | null;
+  zoneId?: number | null;
+  triggeredBy?: number | null;
+  triggeredAt: string;
+  resolvedAt?: string | null;
+  resolvedBy?: number | null;
+  isActive: boolean;
+  notes?: string | null;
+  zone?: AccessZone | null;
 }
 
 export interface AccessDoor {

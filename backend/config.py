@@ -128,6 +128,7 @@ class Settings(BaseSettings):
         return new_key
 
     JWT_ALGORITHM: str = "HS256"
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     COOKIE_SECURE: bool = True  # Set to False for HTTP development
     AUTH_KEY_ROTATION_DAYS: int = 30

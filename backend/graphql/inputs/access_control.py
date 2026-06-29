@@ -14,6 +14,7 @@ class AccessZoneInput:
     anti_passback_type: str = "soft"
     anti_passback_timeout: int = 5
     description: str | None = None
+    parent_zone_id: int | None = None
 
 
 @strawberry.input

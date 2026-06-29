@@ -9,7 +9,10 @@ import logging
 
 import strawberry
 
+from backend.graphql.mutations.access_policy import AccessPolicyMutation
 from backend.graphql.mutations.access_control import AccessControlMutation
+from backend.graphql.mutations.security import SecurityMutations
+from backend.graphql.mutations.elevator import ElevatorMutations
 from backend.graphql.mutations.accounting import AccountingMutation
 from backend.graphql.mutations.calendar import CalendarMutation
 from backend.graphql.mutations.company import CompanyMutation
@@ -39,6 +42,6 @@ authenticate_msg = "Трябва да се автентикирате"
 
 
 @strawberry.type
-class Mutation(VehicleMutation, CostCenterMutation, NotificationsMutation, ShiftMutation, LogisticsMutation, ProductionMutation, AccountingMutation, ContractMutation, HardwareMutation, AccessControlMutation, PayrollMutation, TrzMutation, LeaveMutation, CalendarMutation, NapReportMutation, BehavioralMutation, HRMutation, InventoryMutation, ShiftSwapMutation, CompanyMutation, SettingsMutation, UserMutation, DocumentationMutation):
+class Mutation(AccessPolicyMutation, VehicleMutation, CostCenterMutation, NotificationsMutation, ShiftMutation, LogisticsMutation, ProductionMutation, AccountingMutation, ContractMutation, HardwareMutation, AccessControlMutation, SecurityMutations, ElevatorMutations, PayrollMutation, TrzMutation, LeaveMutation, CalendarMutation, NapReportMutation, BehavioralMutation, HRMutation, InventoryMutation, ShiftSwapMutation, CompanyMutation, SettingsMutation, UserMutation, DocumentationMutation):
     pass
 

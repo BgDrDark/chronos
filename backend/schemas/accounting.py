@@ -269,7 +269,7 @@ class BankAccount(CustomBaseModel):
     bank_name: str
     account_type: str = "current"
     is_default: bool = False
-    currency: str = "BGN"
+    currency: str = "EUR"
     is_active: bool = True
     created_at: datetime.datetime
 

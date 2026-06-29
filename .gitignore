@@ -230,3 +230,7 @@ to_save/
 .gitnexus/
 .agents/
 .claude/
+
+# PLANS & DESIGN DOCUMENTS
+# ==========================================
+ACCESS_CONTROL_IMPROVEMENT_PLAN.md

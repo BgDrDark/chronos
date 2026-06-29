@@ -14,7 +14,10 @@ from backend.exceptions import (
     PermissionDeniedException,
 )
 from backend.graphql import types
+from backend.graphql.queries.access_policy import AccessPolicyQuery
 from backend.graphql.queries.access_control import AccessControlQuery
+from backend.graphql.queries.security import SecurityQueries
+from backend.graphql.queries.elevator import ElevatorQueries
 from backend.graphql.queries.accounting import AccountingQuery
 from backend.graphql.queries.company import CompanyQuery
 from backend.graphql.queries.contract import ContractQuery
@@ -37,7 +40,7 @@ from backend.services.payroll_calculator import PayrollCalculator
 
 authenticate_msg = "Трябва да се автентикирате"
 @strawberry.type
-class Query(LeaveQuery, UserQuery, NotificationsQuery, VehicleQuery, CostCenterQuery, ShiftsQuery, LogisticsQuery, ProductionQuery, AccountingQuery, ContractQuery, HardwareQuery, AccessControlQuery, PayrollQuery, BehavioralQuery, TimeTrackingQuery, SystemQuery, CompanyQuery, StatsQuery, DocumentationQuery):
+class Query(AccessPolicyQuery, LeaveQuery, UserQuery, NotificationsQuery, VehicleQuery, CostCenterQuery, ShiftsQuery, LogisticsQuery, ProductionQuery, AccountingQuery, ContractQuery, HardwareQuery, AccessControlQuery, SecurityQueries, ElevatorQueries, PayrollQuery, BehavioralQuery, TimeTrackingQuery, SystemQuery, CompanyQuery, StatsQuery, DocumentationQuery):
     @strawberry.field
     async def hello(self) -> str:
         return "Hello World"

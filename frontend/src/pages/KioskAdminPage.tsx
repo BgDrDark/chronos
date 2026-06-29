@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getErrorMessage, Terminal, Gateway, AccessZone, User } from '../types';
+import { getErrorMessage, Terminal, Gateway, AccessZone, AccessLevel, AccessSchedule, User } from '../types';
 import { 
   Typography, Card, CardContent, Button, 
   Box, CircularProgress, Switch, FormControlLabel,
@@ -32,7 +32,9 @@ import {
   ACCESS_CODES_QUERY,
   ACCESS_LOGS_QUERY,
   USERS_QUERY,
-  COMPANIES_QUERY
+  COMPANIES_QUERY,
+  ACCESS_LEVELS_QUERY,
+  ACCESS_SCHEDULES_QUERY,
 } from '../graphql/queries';
 import {
   CREATE_ACCESS_ZONE,
@@ -52,7 +54,17 @@ import {
   BULK_EMERGENCY_ACTION,
   SYNC_GATEWAY_CONFIG,
   UPDATE_TERMINAL,
-  DELETE_TERMINAL
+  DELETE_TERMINAL,
+  CREATE_ACCESS_LEVEL,
+  UPDATE_ACCESS_LEVEL,
+  DELETE_ACCESS_LEVEL,
+  CREATE_ACCESS_SCHEDULE,
+  UPDATE_ACCESS_SCHEDULE,
+  DELETE_ACCESS_SCHEDULE,
+  ASSIGN_LEVEL_TO_ZONE,
+  REMOVE_LEVEL_FROM_ZONE,
+  ASSIGN_ACCESS_LEVEL_TO_USER,
+  REMOVE_ACCESS_LEVEL_FROM_USER,
 } from '../graphql/gatewayMutations';
 
 const GET_KIOSK_SECURITY_SETTINGS = gql`
@@ -224,6 +236,16 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
         variables: { limit: 50 }
     });
     const { data: usersData, loading: usersLoading } = useQuery(USERS_QUERY);
+    const { data: compData } = useQuery(COMPANIES_QUERY);
+    const companyId = compData?.companies?.[0]?.id;
+    const { data: levelsData, loading: levelsLoading, refetch: refetchLevels } = useQuery(ACCESS_LEVELS_QUERY, {
+        variables: { companyId },
+        skip: !companyId,
+    });
+    const { data: schedulesData, loading: schedulesLoading, refetch: refetchSchedules } = useQuery(ACCESS_SCHEDULES_QUERY, {
+        variables: { companyId },
+        skip: !companyId,
+    });
 
     // Mutations
     const [deleteZone] = useMutation(DELETE_ACCESS_ZONE);
@@ -242,6 +264,34 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const [revokeCode] = useMutation(REVOKE_ACCESS_CODE);
     const [deleteCode] = useMutation(DELETE_ACCESS_CODE);
     const [deleteTerminal] = useMutation(DELETE_TERMINAL);
+    const [createLevel] = useMutation(CREATE_ACCESS_LEVEL);
+    const [updateLevel] = useMutation(UPDATE_ACCESS_LEVEL);
+    const [deleteLevel] = useMutation(DELETE_ACCESS_LEVEL);
+    const [createSchedule] = useMutation(CREATE_ACCESS_SCHEDULE);
+    const [updateSchedule] = useMutation(UPDATE_ACCESS_SCHEDULE);
+    const [deleteSchedule] = useMutation(DELETE_ACCESS_SCHEDULE);
+    const [assignLevelToZone] = useMutation(ASSIGN_LEVEL_TO_ZONE);
+    const [removeLevelFromZone] = useMutation(REMOVE_LEVEL_FROM_ZONE);
+    const [assignLevelToUser] = useMutation(ASSIGN_ACCESS_LEVEL_TO_USER);
+    const [removeLevelFromUser] = useMutation(REMOVE_ACCESS_LEVEL_FROM_USER);
+
+    const handleDeleteLevel = async (id: number) => {
+        if (window.confirm('Сигурни ли сте, че искате да изтриете това ниво на достъп?')) {
+            try {
+                await deleteLevel({ variables: { id } });
+                refetchLevels();
+            } catch (e) { alert(getErrorMessage(e)); }
+        }
+    };
+
+    const handleDeleteSchedule = async (id: number) => {
+        if (window.confirm('Сигурни ли сте, че искате да изтриете този график?')) {
+            try {
+                await deleteSchedule({ variables: { id } });
+                refetchSchedules();
+            } catch (e) { alert(getErrorMessage(e)); }
+        }
+    };
 
     const handleDeleteTerminal = async (id: number) => {
         if (window.confirm('Сигурни ли сте, че искате да изтриете този терминал?')) {
@@ -270,6 +320,12 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
     const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
     const [syncingGateway, setSyncingGateway] = useState<number | null>(null);
     const [syncingStatus, setSyncingStatus] = useState<string>('');
+    const [levelDialogOpen, setLevelDialogOpen] = useState(false);
+    const [levelEditOpen, setLevelEditOpen] = useState(false);
+    const [selectedLevel, setSelectedLevel] = useState<AccessLevel | null>(null);
+    const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+    const [scheduleEditOpen, setScheduleEditOpen] = useState(false);
+    const [selectedSchedule, setSelectedSchedule] = useState<AccessSchedule | null>(null);
 
     const [syncGateway] = useMutation(SYNC_GATEWAY_CONFIG);
 
@@ -664,7 +720,121 @@ const KioskAdminPage: React.FC<{tab?: string}> = ({ tab }) => {
                 </Card>
             )}
 
+            {/* Access Levels Tab */}
+            {tab === 'levels' && (
+                <Card>
+                    <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
+                            <Typography variant="h6">Нива на достъп</Typography>
+                            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setLevelDialogOpen(true)}>Ново ниво</Button>
+                        </Box>
+                        <TableContainer component={Paper} variant="outlined">
+                            <Table size="small">
+                                <TableHead sx={{ bgcolor: 'action.hover' }}>
+                                    <TableRow>
+                                        <TableCell>Име</TableCell>
+                                        <TableCell>Описание</TableCell>
+                                        <TableCell align="center">Зони</TableCell>
+                                        <TableCell align="center">Потребители</TableCell>
+                                        <TableCell>Статус</TableCell>
+                                        <TableCell align="right">Действия</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {levelsLoading ? (
+                                        <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={24} /></TableCell></TableRow>
+                                    ) : levelsData?.accessLevels?.length === 0 ? (
+                                        <TableRow><TableCell colSpan={6} align="center">Няма добавени нива на достъп</TableCell></TableRow>
+                                    ) : levelsData?.accessLevels?.map((lv: AccessLevel) => (
+                                        <TableRow key={lv.id} hover>
+                                            <TableCell sx={{ fontWeight: 500 }}>{lv.name}</TableCell>
+                                            <TableCell>{lv.description || '-'}</TableCell>
+                                            <TableCell align="center">{lv.zoneAssignments?.length || 0}</TableCell>
+                                            <TableCell align="center">{lv.userCount ?? 0}</TableCell>
+                                            <TableCell><Chip size="small" label={lv.isActive ? 'Активно' : 'Неактивно'} color={lv.isActive ? 'success' : 'default'} /></TableCell>
+                                            <TableCell align="right">
+                                                <IconButton size="small" onClick={() => { setSelectedLevel(lv); setLevelEditOpen(true); }}><EditIcon fontSize="small" /></IconButton>
+                                                <IconButton size="small" onClick={() => handleDeleteLevel(lv.id)}><DeleteIcon fontSize="small" /></IconButton>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Access Schedules Tab */}
+            {tab === 'schedules' && (
+                <Card>
+                    <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
+                            <Typography variant="h6">Графици за достъп</Typography>
+                            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setScheduleDialogOpen(true)}>Нов график</Button>
+                        </Box>
+                        <TableContainer component={Paper} variant="outlined">
+                            <Table size="small">
+                                <TableHead sx={{ bgcolor: 'action.hover' }}>
+                                    <TableRow>
+                                        <TableCell>Име</TableCell>
+                                        <TableCell>Часова зона</TableCell>
+                                        <TableCell>Празнична отмяна</TableCell>
+                                        <TableCell>Статус</TableCell>
+                                        <TableCell align="right">Действия</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {schedulesLoading ? (
+                                        <TableRow><TableCell colSpan={5} align="center"><CircularProgress size={24} /></TableCell></TableRow>
+                                    ) : schedulesData?.accessSchedules?.length === 0 ? (
+                                        <TableRow><TableCell colSpan={5} align="center">Няма добавени графици</TableCell></TableRow>
+                                    ) : schedulesData?.accessSchedules?.map((s: AccessSchedule) => (
+                                        <TableRow key={s.id} hover>
+                                            <TableCell sx={{ fontWeight: 500 }}>{s.name}</TableCell>
+                                            <TableCell>{s.timezone}</TableCell>
+                                            <TableCell><Chip size="small" label={s.holidayOverrideAuto ? 'Автоматичен' : 'Ръчен'} color={s.holidayOverrideAuto ? 'primary' : 'default'} variant="outlined" /></TableCell>
+                                            <TableCell><Chip size="small" label={s.isActive ? 'Активен' : 'Неактивен'} color={s.isActive ? 'success' : 'default'} /></TableCell>
+                                            <TableCell align="right">
+                                                <IconButton size="small" onClick={() => { setSelectedSchedule(s); setScheduleEditOpen(true); }}><EditIcon fontSize="small" /></IconButton>
+                                                <IconButton size="small" onClick={() => handleDeleteSchedule(s.id)}><DeleteIcon fontSize="small" /></IconButton>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Dialogs */}
+            <AccessLevelDialog
+                open={levelDialogOpen}
+                onClose={() => setLevelDialogOpen(false)}
+                onSuccess={() => { setLevelDialogOpen(false); refetchLevels(); }}
+                companyId={companyId}
+            />
+            <AccessLevelDialog
+                open={levelEditOpen}
+                onClose={() => setLevelEditOpen(false)}
+                onSuccess={() => { setLevelEditOpen(false); refetchLevels(); }}
+                level={selectedLevel}
+                companyId={companyId}
+            />
+            <AccessScheduleDialog
+                open={scheduleDialogOpen}
+                onClose={() => setScheduleDialogOpen(false)}
+                onSuccess={() => { setScheduleDialogOpen(false); refetchSchedules(); }}
+                companyId={companyId}
+            />
+            <AccessScheduleDialog
+                open={scheduleEditOpen}
+                onClose={() => setScheduleEditOpen(false)}
+                onSuccess={() => { setScheduleEditOpen(false); refetchSchedules(); }}
+                schedule={selectedSchedule}
+                companyId={companyId}
+            />
             <GatewayEditDialog
                 open={gatewayEditOpen}
                 onClose={() => setGatewayEditOpen(false)}
@@ -1059,6 +1229,126 @@ const EmergencyControl: React.FC<{currentMode: string, onAction: () => void}> = 
                 </Box>
             </CardContent>
         </Card>
+    );
+};
+
+const AccessLevelDialog: React.FC<{
+    open: boolean,
+    onClose: () => void,
+    onSuccess: () => void,
+    level?: AccessLevel | null,
+    companyId?: number,
+}> = ({ open, onClose, onSuccess, level, companyId }) => {
+    const [createLevel] = useMutation(CREATE_ACCESS_LEVEL);
+    const [updateLevel] = useMutation(UPDATE_ACCESS_LEVEL);
+    const [name, setName] = useState('');
+    const [description, setDescription] = useState('');
+    const [isActive, setIsActive] = useState(true);
+    const [loading, setLoading] = useState(false);
+
+    const prevKeyRef = React.useRef<string>('');
+
+    React.useEffect(() => {
+        const key = level ? `${level.id}-${open}` : `new-${open}`;
+        if (!key || prevKeyRef.current === key) return;
+        prevKeyRef.current = key;
+        setTimeout(() => {
+            setName(level?.name || '');
+            setDescription(level?.description || '');
+            setIsActive(level?.isActive ?? true);
+        }, 0);
+    }, [level, open]);
+
+    const handleSave = async () => {
+        if (!name.trim()) { alert('Името е задължително'); return; }
+        setLoading(true);
+        try {
+            if (level) {
+                await updateLevel({ variables: { id: level.id, input: { name, description: description || null, isActive } } });
+            } else {
+                await createLevel({ variables: { input: { name, description: description || null, isActive }, companyId } });
+            }
+            onSuccess();
+        } catch (e) { alert(getErrorMessage(e)); } finally { setLoading(false); }
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+            <DialogTitle>{level ? 'Редактиране на ниво' : 'Ново ниво на достъп'}</DialogTitle>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+                <TextField label="Име" fullWidth value={name} onChange={(e) => setName(e.target.value)} />
+                <TextField label="Описание" fullWidth multiline rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+                <FormControlLabel control={<Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />} label="Активно" />
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose}>Отказ</Button>
+                <Button variant="contained" onClick={handleSave} disabled={loading}>{loading ? <CircularProgress size={24} /> : 'Запази'}</Button>
+            </DialogActions>
+        </Dialog>
+    );
+};
+
+const AccessScheduleDialog: React.FC<{
+    open: boolean,
+    onClose: () => void,
+    onSuccess: () => void,
+    schedule?: AccessSchedule | null,
+    companyId?: number,
+}> = ({ open, onClose, onSuccess, schedule, companyId }) => {
+    const [createSchedule] = useMutation(CREATE_ACCESS_SCHEDULE);
+    const [updateSchedule] = useMutation(UPDATE_ACCESS_SCHEDULE);
+    const [name, setName] = useState('');
+    const [timezone, setTimezone] = useState('Europe/Sofia');
+    const [configJson, setConfigJson] = useState('{}');
+    const [holidayOverrideAuto, setHolidayOverrideAuto] = useState(true);
+    const [isActive, setIsActive] = useState(true);
+    const [loading, setLoading] = useState(false);
+
+    const prevKeyRef = React.useRef<string>('');
+
+    React.useEffect(() => {
+        const key = schedule ? `${schedule.id}-${open}` : `new-${open}`;
+        if (!key || prevKeyRef.current === key) return;
+        prevKeyRef.current = key;
+        setTimeout(() => {
+            setName(schedule?.name || '');
+            setTimezone(schedule?.timezone || 'Europe/Sofia');
+            setConfigJson(schedule?.config ? JSON.stringify(schedule.config, null, 2) : '{}');
+            setHolidayOverrideAuto(schedule?.holidayOverrideAuto ?? true);
+            setIsActive(schedule?.isActive ?? true);
+        }, 0);
+    }, [schedule, open]);
+
+    const handleSave = async () => {
+        if (!name.trim()) { alert('Името е задължително'); return; }
+        let config: Record<string, unknown> = {};
+        try { config = JSON.parse(configJson); } catch { alert('Невалиден JSON в конфигурацията'); return; }
+        setLoading(true);
+        try {
+            if (schedule) {
+                await updateSchedule({ variables: { id: schedule.id, input: { name, timezone, config, holidayOverrideAuto, isActive } } });
+            } else {
+                await createSchedule({ variables: { input: { name, timezone, config, holidayOverrideAuto, isActive }, companyId } });
+            }
+            onSuccess();
+        } catch (e) { alert(getErrorMessage(e)); } finally { setLoading(false); }
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+            <DialogTitle>{schedule ? 'Редактиране на график' : 'Нов график за достъп'}</DialogTitle>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+                <TextField label="Име" fullWidth value={name} onChange={(e) => setName(e.target.value)} />
+                <TextField label="Часова зона" fullWidth value={timezone} onChange={(e) => setTimezone(e.target.value)} />
+                <TextField label="Конфигурация (JSON)" fullWidth multiline rows={6} value={configJson} onChange={(e) => setConfigJson(e.target.value)} sx={{ '& textarea': { fontFamily: 'monospace', fontSize: '0.8rem' } }} />
+                <FormControlLabel control={<Switch checked={holidayOverrideAuto} onChange={(e) => setHolidayOverrideAuto(e.target.checked)} />} label="Автоматична отмяна за празници" />
+                <FormControlLabel control={<Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />} label="Активен" />
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose}>Отказ</Button>
+                <Button variant="contained" onClick={handleSave} disabled={loading}>{loading ? <CircularProgress size={24} /> : 'Запази'}</Button>
+            </DialogActions>
+        </Dialog>
     );
 };
 

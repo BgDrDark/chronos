@@ -17,8 +17,10 @@ print(f"Schema exported to {sdl_path}")
 
 # Export as JSON for introspection
 import json
+from graphql import get_introspection_query, graphql_sync
+
 json_path = os.path.join(OUTPUT_DIR, "schema.json")
-json_schema = schema._schema.schema_dump()
+introspection = graphql_sync(schema._schema, get_introspection_query()).data
 with open(json_path, "w", encoding="utf-8") as f:
-    json.dump(json_schema, f)
+    json.dump(introspection, f, indent=2)
 print(f"Schema JSON exported to {json_path}")

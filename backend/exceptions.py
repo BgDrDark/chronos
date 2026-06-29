@@ -28,7 +28,7 @@ class CHRONOSException(Exception):
         detail: str = None,
         error_code: str = None,
         original_error: Exception = None,
-        context: dict = None,
+        context: dict | None = None,
     ):
         self.detail = detail or self.__class__.detail
         self.error_code = error_code or self.__class__.error_code
@@ -59,7 +59,7 @@ class ErrorResponse:
         error: str,
         message: str,
         timestamp: str,
-        context: dict = None,
+        context: dict | None = None,
     ):
         self.error = error
         self.message = message
@@ -145,7 +145,7 @@ class NotFoundException(CHRONOSException):
     @classmethod
     def order(cls, order_id: int = None):
         """Поръчка не е намерена"""
-        context = {}
+        context: dict[str, Any] = {}
         msg = "Поръчка не е намерена"
         if order_id:
             msg += f" (ID: {order_id})"
@@ -156,7 +156,7 @@ class NotFoundException(CHRONOSException):
     @classmethod
     def request(cls, request_id: int = None):
         """Заявка не е намерена"""
-        context = {}
+        context: dict[str, Any] = {}
         msg = "Заявка не е намерена"
         if request_id:
             msg += f" (ID: {request_id})"
@@ -167,7 +167,7 @@ class NotFoundException(CHRONOSException):
     @classmethod
     def session(cls, session_id: int = None):
         """Сесия не е намерена"""
-        context = {}
+        context: dict[str, Any] = {}
         msg = "Сесия не е намерена"
         if session_id:
             msg += f" (ID: {session_id})"
@@ -257,7 +257,7 @@ class ValidationException(CHRONOSException):
     detail = "Невалидни данни"
 
     @classmethod
-    def field(cls, field_name: str, reason: str = None):
+    def field(cls, field_name: str, reason: str | None = None):
         """Невалидно конкретно поле"""
         msg = f"Невалидно поле: {field_name}"
         if reason:
@@ -278,7 +278,7 @@ class ValidationException(CHRONOSException):
         )
 
     @classmethod
-    def email(cls, reason: str = None):
+    def email(cls, reason: str | None = None):
         """Невалиден имейл"""
         msg = "Невалиден имейл адрес"
         if reason:

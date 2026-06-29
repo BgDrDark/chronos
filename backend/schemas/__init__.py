@@ -1,3 +1,8 @@
+from backend.schemas.access_policy import (
+    AccessLevel,
+    AccessLevelZone,
+    AccessSchedule,
+)
 from backend.schemas.access_control import (
     AccessCode,
     AccessDoor,

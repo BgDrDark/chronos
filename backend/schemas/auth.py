@@ -1,3 +1,5 @@
+from pydantic import EmailStr
+
 from backend.schemas.base import CustomBaseModel
 
 
@@ -12,4 +14,4 @@ class LoginResponse(Token):
 
 
 class TokenData(CustomBaseModel):
-    email: str | None = None
+    email: EmailStr | None = None
