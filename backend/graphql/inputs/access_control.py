@@ -15,6 +15,12 @@ class AccessZoneInput:
     anti_passback_timeout: int = 5
     description: str | None = None
     parent_zone_id: int | None = None
+    inherit_permissions: bool = True
+    required_auth_factors: list[str] = strawberry.field(default_factory=list)
+    interlock_enabled: bool = False
+    interlock_timeout: int = 30
+    dual_auth_enabled: bool = False
+    dual_auth_timeout: int = 30
 
 
 @strawberry.input

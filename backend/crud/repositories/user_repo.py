@@ -398,6 +398,52 @@ class UserRepository(BaseRepository):
         )
         return result.scalar_one_or_none()
 
+    async def get_pin_code(self, db: AsyncSession, user_id: int) -> str | None:
+        """Връща pin_code на потребител"""
+        result = await db.execute(
+            select(User.pin_code).where(User.id == user_id),
+        )
+        return result.scalar_one_or_none()
+
+    async def set_pin_code(self, db: AsyncSession, user_id: int, pin_code: str) -> User | None:
+        """Задава pin_code на потребител (bcrypt + Fernet + SHA-256). pin_code е RAW PIN."""
+        user = await self.get_by_id(db, user_id)
+        if not user:
+            return None
+
+        from backend.auth.security import hash_password
+        from backend.utils.pin_utils import encrypt_pin, hash_pin_sha256
+
+        user.pin_code = hash_password(pin_code)
+        user.pin_encrypted = encrypt_pin(pin_code)
+        user.pin_sha256 = hash_pin_sha256(pin_code)
+        await db.flush()
+        await db.refresh(user)
+        return user
+
+    async def check_pin_unique(self, db: AsyncSession, pin: str, exclude_user_id: int | None = None) -> bool:
+        """Проверява дали PIN е уникален (чрез SHA-256)."""
+        from backend.utils.pin_utils import hash_pin_sha256
+
+        sha = hash_pin_sha256(pin)
+        stmt = select(User).where(User.pin_sha256 == sha)
+        if exclude_user_id:
+            stmt = stmt.where(User.id != exclude_user_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none() is None
+
+    async def clear_pin(self, db: AsyncSession, user_id: int) -> User | None:
+        """Изчиства PIN на потребител."""
+        user = await self.get_by_id(db, user_id)
+        if not user:
+            return None
+        user.pin_code = None
+        user.pin_encrypted = None
+        user.pin_sha256 = None
+        await db.flush()
+        await db.refresh(user)
+        return user
+
     async def invalidate_all_user_sessions(self, db: AsyncSession, user_id: int) -> int:
         """Инвалидира всички активни сесии на потребител"""
         result = await db.execute(

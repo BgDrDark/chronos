@@ -26,6 +26,7 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import KeyIcon from '@mui/icons-material/Key';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import SearchIcon from '@mui/icons-material/Search';
@@ -33,6 +34,7 @@ import CorporateFareIcon from '@mui/icons-material/CorporateFare';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, gql, useMutation } from '@apollo/client';
+import { Snackbar, Alert as MuiAlert } from '@mui/material';
 import EditUserModal from './EditUserModal';
 
 const GET_USERS_QUERY = gql`
@@ -89,6 +91,12 @@ const DELETE_USER_MUTATION = gql`
   }
 `;
 
+const REISSUE_PIN_MUTATION = gql`
+  mutation ReissuePin($userId: Int!) {
+    reissuePin(userId: $userId)
+  }
+`;
+
 const UserList: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -116,6 +124,9 @@ const UserList: React.FC = () => {
     onError: (err) => console.error("Error deleting user:", getErrorMessage(err)),
   });
 
+  const [reissuePinMut] = useMutation(REISSUE_PIN_MUTATION);
+  const [pinResult, setPinResult] = useState<{ userId: number; pin: string } | null>(null);
+
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
@@ -133,6 +144,15 @@ const UserList: React.FC = () => {
         const error = err as { message?: string };
         alert(`Грешка при изтриване: ${error.message || ' неизвестна грешка'}`);
       }
+    }
+  };
+
+  const handleReissuePin = async (userId: number) => {
+    try {
+      const res = await reissuePinMut({ variables: { userId } });
+      setPinResult({ userId, pin: res.data.reissuePin });
+    } catch (err) {
+      alert(`Грешка при генериране на PIN: ${getErrorMessage(err)}`);
     }
   };
 
@@ -222,6 +242,15 @@ const UserList: React.FC = () => {
               </IconButton>
               <IconButton 
                 size="small" 
+                color="warning" 
+                onClick={() => handleReissuePin(user.id)}
+                title="Преиздай PIN"
+                sx={{ border: '1px solid', borderColor: 'warning.main', borderRadius: 1 }}
+              >
+                <KeyIcon fontSize="small" />
+              </IconButton>
+              <IconButton 
+                size="small" 
                 color="primary" 
                 onClick={() => handleEditUser(user)} 
                 sx={{ border: '1px solid', borderColor: 'primary.main', borderRadius: 1 }}
@@ -288,6 +317,9 @@ const UserList: React.FC = () => {
                 <IconButton color="info" onClick={() => navigate(`/profile/${user.id}`)} title="Преглед на досие" size="small">
                   <VisibilityIcon fontSize="small" />
                 </IconButton>
+                <IconButton color="warning" onClick={() => handleReissuePin(user.id)} title="Преиздай PIN" size="small">
+                  <KeyIcon fontSize="small" />
+                </IconButton>
                 <IconButton color="primary" onClick={() => handleEditUser(user)} title="Редактирай" size="small">
                   <EditIcon fontSize="small" />
                 </IconButton>
@@ -353,6 +385,17 @@ const UserList: React.FC = () => {
           refetchUsers={refetch}
         />
       )}
+
+      <Snackbar
+        open={!!pinResult}
+        autoHideDuration={10000}
+        onClose={() => setPinResult(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <MuiAlert severity="success" onClose={() => setPinResult(null)} sx={{ width: '100%' }}>
+          {pinResult && `Нов PIN за потребител ID ${pinResult.userId}: ${pinResult.pin}`}
+        </MuiAlert>
+      </Snackbar>
     </Box>
   );
 };

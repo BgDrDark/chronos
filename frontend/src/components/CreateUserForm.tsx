@@ -83,6 +83,8 @@ const createUserSchema = z.object({
   egn: z.string().max(10).optional().or(z.literal('')),
   birthDate: z.string().optional().or(z.literal('')),
   iban: z.string().optional().or(z.literal('')),
+  cardNumber: z.string().optional().or(z.literal('')),
+  pinCode: z.string().optional().or(z.literal('')),
   roleId: z.number().nullable().optional(),
   companyId: z.number().nullable().optional(),
   departmentId: z.number().nullable().optional(),
@@ -122,6 +124,8 @@ interface CreateUserFormData {
   egn?: string;
   birthDate?: string;
   iban?: string;
+  cardNumber?: string;
+  pinCode?: string;
   roleId?: number | null;
   companyId?: number | null;
   departmentId?: number | null;
@@ -163,6 +167,8 @@ const CREATE_USER_MUTATION = gql`
     $egn: String
     $birthDate: Date
     $iban: String
+    $cardNumber: String
+    $pinCode: String
     $roleId: Int
     $companyId: Int
     $departmentId: Int
@@ -201,6 +207,8 @@ const CREATE_USER_MUTATION = gql`
         egn: $egn
         birthDate: $birthDate
         iban: $iban
+        cardNumber: $cardNumber
+        pinCode: $pinCode
         roleId: $roleId
         companyId: $companyId
         departmentId: $departmentId
@@ -281,6 +289,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
     reset,
     control,
     setError,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<CreateUserFormData>({
     resolver: zodResolver(createUserSchema),
@@ -421,6 +430,8 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
           phoneNumber: data.phoneNumber || null,
           birthDate: data.birthDate || null,
           iban: data.iban || null,
+          cardNumber: data.cardNumber || null,
+          pinCode: data.pinCode || null,
           address: data.address || null,
           username: data.username || null,
           email: data.email || null,
@@ -601,6 +612,42 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onCreated }) => {
                 endAdornment: (
                   <InputAdornment position="end">
                     <InfoIcon helpText={userFieldsHelp.iban} />
+                  </InputAdornment>
+                )
+              }
+            }}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField
+            fullWidth
+            label="Номер на карта"
+            size="small"
+            {...register('cardNumber')}
+            InputLabelProps={{ shrink: true }}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField
+            fullWidth
+            label="PIN код"
+            size="small"
+            {...register('pinCode')}
+            InputLabelProps={{ shrink: true }}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        const pin = Math.floor(10000000 + Math.random() * 90000000).toString();
+                        setValue('pinCode', pin);
+                      }}
+                      title="Генерирай PIN"
+                    >
+                      <AddIcon fontSize="small" />
+                    </IconButton>
                   </InputAdornment>
                 )
               }

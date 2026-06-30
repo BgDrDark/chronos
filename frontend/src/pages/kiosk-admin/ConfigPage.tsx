@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import {
   Typography, Card, CardContent, Button,
-  Box, CircularProgress, Switch, FormControlLabel, TextField,
+  Box, CircularProgress, Switch, FormControlLabel, TextField, InputAdornment
 } from '@mui/material';
 import { Security as SecurityIcon } from '@mui/icons-material';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import KioskCustomizationSettings from '../../components/KioskCustomizationSettings';
+import { InfoIcon } from '../../components/ui/InfoIcon';
 
 const GET_KIOSK_SECURITY_SETTINGS = gql`
   query GetKioskSecurity {
@@ -118,7 +119,7 @@ const KioskSecuritySettings: React.FC = () => {
                   disabled={updating}
                 />
               }
-              label="Изисквай GPS верификация (Геофенсинг)"
+              label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>Изисквай GPS верификация <InfoIcon helpText="Ограничава генерирането на QR код до служители, които са на определената GPS локация" /></Box>}
             />
             <FormControlLabel
               control={
@@ -128,7 +129,7 @@ const KioskSecuritySettings: React.FC = () => {
                   disabled={updating}
                 />
               }
-              label="Изисквай същата локална мрежа (IP Match)"
+              label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>Изисквай същата локална мрежа <InfoIcon helpText="Генерирането на QR код става само от устройства в същата локална мрежа като сървъра" /></Box>}
             />
           </Box>
           {msg && <Typography color="success.main" sx={{ mt: 1 }}>{msg}</Typography>}
@@ -157,6 +158,7 @@ const KioskSecuritySettings: React.FC = () => {
               onChange={(e) => setRateValue(e.target.value)}
               placeholder="5/minute"
               sx={{ width: 200 }}
+              slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText="Максимален брой опити за въвеждане на код от клавиатурата за определен период" /></InputAdornment> } }}
             />
             <Button
               variant="contained"

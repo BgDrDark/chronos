@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Button, CircularProgress, Switch, FormControlLabel
+  TextField, Button, CircularProgress, Switch, FormControlLabel, InputAdornment
 } from '@mui/material';
 import { useMutation } from '@apollo/client';
 import { getErrorMessage, AccessLevel } from '../../../types';
@@ -9,6 +9,8 @@ import {
   CREATE_ACCESS_LEVEL,
   UPDATE_ACCESS_LEVEL,
 } from '../../../graphql/mutations/accessPolicy';
+import { InfoIcon } from '../../../components/ui/InfoIcon';
+import { accessControlFieldsHelp } from '../../../components/ui/fieldsHelpText';
 
 const AccessLevelDialog: React.FC<{
     open: boolean,
@@ -54,8 +56,8 @@ const AccessLevelDialog: React.FC<{
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
             <DialogTitle>{level ? 'Редактиране на ниво' : 'Ново ниво на достъп'}</DialogTitle>
             <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-                <TextField label="Име" fullWidth value={name} onChange={(e) => setName(e.target.value)} />
-                <TextField label="Описание" fullWidth multiline rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+                <TextField label="Име" fullWidth value={name} onChange={(e) => setName(e.target.value)} slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={accessControlFieldsHelp.accessLevelName} /></InputAdornment> } }} />
+                <TextField label="Описание" fullWidth multiline rows={2} value={description} onChange={(e) => setDescription(e.target.value)} slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={accessControlFieldsHelp.accessLevelDescription} /></InputAdornment> } }} />
                 <FormControlLabel control={<Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />} label="Активно" />
             </DialogContent>
             <DialogActions>

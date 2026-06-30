@@ -13,6 +13,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@apollo/client';
 import { getErrorMessage, AccessLevel } from '../../types';
+import { InfoIcon } from '../../components/ui/InfoIcon';
+import { accessControlFieldsHelp } from '../../components/ui/fieldsHelpText';
 import { ACCESS_LEVELS_QUERY } from '../../graphql/queries/accessPolicy';
 import { DELETE_ACCESS_LEVEL } from '../../graphql/mutations/accessPolicy';
 import { COMPANIES_QUERY } from '../../graphql/queries';
@@ -48,7 +50,7 @@ const AccessLevelsPage: React.FC = () => {
             <Card>
                 <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
-                        <Typography variant="h6">Нива на достъп</Typography>
+                        <Typography variant="h6">Нива на достъп <InfoIcon helpText={accessControlFieldsHelp.accessLevelName} /></Typography>
                         <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setLevelDialogOpen(true)}>Ново ниво</Button>
                     </Box>
                     <TableContainer component={Paper} variant="outlined">

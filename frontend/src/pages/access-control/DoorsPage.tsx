@@ -13,6 +13,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@apollo/client';
 import { getErrorMessage, AccessDoor } from '../../types';
+import { InfoIcon } from '../../components/ui/InfoIcon';
+import { accessControlFieldsHelp } from '../../components/ui/fieldsHelpText';
 import { ACCESS_DOORS_QUERY, ACCESS_ZONES_QUERY } from '../../graphql/queries/accessControl';
 import {
   DELETE_ACCESS_DOOR,
@@ -56,7 +58,7 @@ const DoorsPage: React.FC = () => {
             <Card>
                 <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                        <Typography variant="h6">Врати</Typography>
+                        <Typography variant="h6">Врати <InfoIcon helpText={accessControlFieldsHelp.doorName} /></Typography>
                         <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDoorDialogOpen(true)}>Нова Врата</Button>
                     </Box>
                     <TableContainer component={Paper} variant="outlined">

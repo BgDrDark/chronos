@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import {
   Typography, Card, CardContent, Button, Box, CircularProgress,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, Chip, IconButton, Dialog, DialogTitle, DialogContent,
-  DialogActions, TextField, FormControl, InputLabel, Select, MenuItem,
+  Paper, Chip, IconButton,   Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, FormControl, InputLabel, Select, MenuItem, InputAdornment,
 } from '@mui/material';
 import {
   Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon,
@@ -11,6 +11,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@apollo/client';
 import { getErrorMessage } from '../../types';
+import { InfoIcon } from '../../components/ui/InfoIcon';
+import { accessControlFieldsHelp } from '../../components/ui/fieldsHelpText';
 import { GATEWAYS_QUERY } from '../../graphql/queries/kioskAdmin';
 import { ELEVATOR_GROUPS_QUERY } from '../../graphql/queries/elevator';
 import {
@@ -136,7 +138,7 @@ const ElevatorPage: React.FC = () => {
       <Card>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">Етажен контрол</Typography>
+            <Typography variant="h6">Етажен контрол <InfoIcon helpText={accessControlFieldsHelp.elevatorGroup} /></Typography>
             <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => { setEditingGroup(null); setGroupForm(emptyGroupForm()); setGroupDialog(true); }}>
               Нова група
             </Button>
@@ -223,18 +225,18 @@ const ElevatorPage: React.FC = () => {
       <Dialog open={groupDialog} onClose={() => setGroupDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingGroup ? 'Редактиране на група' : 'Нова Етажна група'}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-          <TextField label="Име" fullWidth value={groupForm.name} onChange={(e) => setGroupForm({...groupForm, name: e.target.value})} />
+          <TextField label="Име" fullWidth value={groupForm.name} onChange={(e) => setGroupForm({...groupForm, name: e.target.value})} slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={accessControlFieldsHelp.elevatorGroup} /></InputAdornment> } }} />
           <FormControl fullWidth>
-            <InputLabel>Gateway</InputLabel>
+            <InputLabel>Gateway <InfoIcon helpText={accessControlFieldsHelp.gatewayId} /></InputLabel>
             <Select value={groupForm.gatewayId} label="Gateway" onChange={(e) => setGroupForm({...groupForm, gatewayId: e.target.value as number})}>
               {gateways.map((g: any) => (
                 <MenuItem key={g.id} value={g.id}>{g.name} ({g.type})</MenuItem>
               ))}
             </Select>
           </FormControl>
-          <TextField label="Terminal ID" fullWidth value={groupForm.terminalId} onChange={(e) => setGroupForm({...groupForm, terminalId: e.target.value})} />
+          <TextField label="Terminal ID" fullWidth value={groupForm.terminalId} onChange={(e) => setGroupForm({...groupForm, terminalId: e.target.value})} slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={accessControlFieldsHelp.terminalId} /></InputAdornment> } }} />
           <FormControl fullWidth>
-            <InputLabel>Тип контролер</InputLabel>
+            <InputLabel>Тип контролер <InfoIcon helpText="Тип на хардуерния контролер за асансьора" /></InputLabel>
             <Select value={groupForm.controllerType} label="Тип контролер" onChange={(e) => setGroupForm({...groupForm, controllerType: e.target.value})}>
               <MenuItem value="sr201">SR201</MenuItem>
               <MenuItem value="custom">Custom</MenuItem>

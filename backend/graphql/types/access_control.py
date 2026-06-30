@@ -26,6 +26,14 @@ class AccessZone:
     parent_zone_id: strawberry.auto
     inherit_permissions: strawberry.auto
     traversal_order: strawberry.auto
+    is_safe_zone: strawberry.auto
+    lockdown_behavior: strawberry.auto
+    emergency_contact: strawberry.auto
+    required_auth_factors: strawberry.auto
+    interlock_enabled: strawberry.auto
+    interlock_timeout: strawberry.auto
+    dual_auth_enabled: strawberry.auto
+    dual_auth_timeout: strawberry.auto
 
     @strawberry.field
     async def parent_zone(self, info: strawberry.Info) -> Annotated["AccessZone", strawberry.lazy("backend.graphql.types.access_control")] | None:  # noqa: F821

@@ -10,6 +10,11 @@ export interface AccessZone {
   isSafeZone?: boolean;
   lockdownBehavior?: string;
   emergencyContact?: string | null;
+  requiredAuthFactors?: string[];
+  interlockEnabled?: boolean;
+  interlockTimeout?: number;
+  dualAuthEnabled?: boolean;
+  dualAuthTimeout?: number;
   parentZone?: AccessZone | null;
   children?: AccessZone[];
 }

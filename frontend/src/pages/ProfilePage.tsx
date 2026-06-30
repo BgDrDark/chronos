@@ -3,6 +3,7 @@ import {
   Container, Typography, Grid, Card, CardContent, Avatar, Box, 
   Chip, Tab, Tabs, List, ListItem, ListItemIcon, ListItemText,
   Paper, CircularProgress, Alert, IconButton, Divider, TextField, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions,
   FormControlLabel, Switch, MenuItem
 } from '@mui/material';
 import { useQuery, useMutation, gql } from '@apollo/client';
@@ -18,6 +19,9 @@ import ContractIcon from '@mui/icons-material/Assignment';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import FingerprintIcon from '@mui/icons-material/Fingerprint';
+import KeyIcon from '@mui/icons-material/Key';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import PaidIcon from '@mui/icons-material/Paid';
 import axios from 'axios';
@@ -34,7 +38,7 @@ import ContractDossier from '../components/ContractDossier';
 import { biometricService } from '../services/biometricService';
 import { type Payslip } from '../types';
 
-const GET_USER_PROFILE = gql`
+const GET_USER_PROFILE =     gql`
   query GetUserProfile($id: Int) {
     user(id: $id) {
       id
@@ -46,6 +50,8 @@ const GET_USER_PROFILE = gql`
       egn
       birthDate
       iban
+      cardNumber
+      pinExists
       jobTitle
       departmentName
       companyName
@@ -88,6 +94,18 @@ const GET_USER_PROFILE = gql`
 const CHANGE_PASSWORD_MUTATION = gql`
   mutation ChangePassword($oldPassword: String!, $newPassword: String!) {
     changePassword(oldPassword: $oldPassword, newPassword: $newPassword)
+  }
+`;
+
+const REISSUE_PIN_MUTATION = gql`
+  mutation ReissuePin($userId: Int!) {
+    reissuePin(userId: $userId)
+  }
+`;
+
+const REVEAL_PIN_MUTATION = gql`
+  mutation RevealPin($password: String!) {
+    revealPin(password: $password)
   }
 `;
 
@@ -248,6 +266,10 @@ const PersonalDataSection: React.FC<{ user: any }> = ({ user }) => {
                             {maskData(user.iban, 4)}
                         </Typography>
                     </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography variant="caption" color="text.secondary">Номер на карта</Typography>
+                        <Typography variant="body1" fontWeight="medium">{user.cardNumber || '—'}</Typography>
+                    </Grid>
                 </Grid>
 
                 {user.activeContract && (
@@ -327,6 +349,14 @@ const ProfilePage: React.FC = () => {
     const [biometricLoading, setBiometricLoading] = useState(false);
     const [biometricMsg, setBiometricMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
 
+    // PIN state
+    const [pinMsg, setPinMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
+    const [reissuePin] = useMutation(REISSUE_PIN_MUTATION);
+    const [revealedPin, setRevealedPin] = useState<string | null>(null);
+    const [pinDialogOpen, setPinDialogOpen] = useState(false);
+    const [pinPassword, setPinPassword] = useState('');
+    const [revealPin] = useMutation(REVEAL_PIN_MUTATION);
+
     // Payslip state
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -390,6 +420,34 @@ const ProfilePage: React.FC = () => {
             setBiometricMsg({ type: 'error', text: getErrorMessage(err) || 'Грешка при регистрация' });
         } finally {
             setBiometricLoading(false);
+        }
+    };
+
+    const handleReissuePin = async () => {
+        try {
+            const uid = data?.user?.id;
+            if (!uid) return;
+            const res = await reissuePin({ variables: { userId: uid } });
+            setPinMsg({ type: 'success', text: `Вашият нов PIN е: ${res.data.reissuePin}. Запомнете го!` });
+            setRevealedPin(res.data.reissuePin);
+            setTimeout(() => setRevealedPin(null), 30000);
+            refetch();
+        } catch (err) {
+            setPinMsg({ type: 'error', text: getErrorMessage(err) });
+        }
+    };
+
+    const handleRevealPin = async () => {
+        try {
+            const res = await revealPin({ variables: { password: pinPassword } });
+            setRevealedPin(res.data.revealPin);
+            setPinDialogOpen(false);
+            setPinPassword('');
+            setTimeout(() => setRevealedPin(null), 30000);
+        } catch (err) {
+            setPinMsg({ type: 'error', text: getErrorMessage(err) });
+            setPinDialogOpen(false);
+            setPinPassword('');
         }
     };
 
@@ -648,6 +706,66 @@ const ProfilePage: React.FC = () => {
                             </CardContent>
                         </Card>
                     </Grid>
+
+                    {/* PIN */}
+                    <Grid size={{ xs: 12 }}>
+                        <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                            <CardContent>
+                                <Typography variant="h6" gutterBottom fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <KeyIcon /> PIN код за достъп
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    PIN кодът се използва като втори фактор при достъп до защитени зони.
+                                </Typography>
+                                {pinMsg && (
+                                    <Alert severity={pinMsg.type} sx={{ mb: 2 }} onClose={() => setPinMsg(null)}>
+                                        {pinMsg.text}
+                                    </Alert>
+                                )}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    {user.pinExists ? (
+                                        <>
+                                            <Typography variant="body1" sx={{ fontFamily: 'monospace', fontSize: '1.2rem', letterSpacing: 2 }}>
+                                                {revealedPin ?? '**** ****'}
+                                            </Typography>
+                                            <IconButton size="small" onClick={() => setPinDialogOpen(true)}>
+                                                {revealedPin ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                                            </IconButton>
+                                        </>
+                                    ) : (
+                                        <Typography variant="body1">
+                                            Нямате зададен PIN код
+                                        </Typography>
+                                    )}
+                                    <Button variant="outlined" startIcon={<KeyIcon />} onClick={handleReissuePin}>
+                                        {user.pinExists ? 'Преиздай' : 'Генерирай PIN'}
+                                    </Button>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* PIN reveal dialog */}
+                    <Dialog open={pinDialogOpen} onClose={() => { setPinDialogOpen(false); setPinPassword(''); }} maxWidth="xs" fullWidth>
+                        <DialogTitle>Показване на PIN код</DialogTitle>
+                        <DialogContent>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                Въведете паролата си, за да видите PIN кода.
+                            </Typography>
+                            <TextField
+                                fullWidth
+                                type="password"
+                                label="Парола"
+                                value={pinPassword}
+                                onChange={e => setPinPassword(e.target.value)}
+                                autoFocus
+                            />
+                        </DialogContent>
+                        <DialogActions>
+                            <Button onClick={() => { setPinDialogOpen(false); setPinPassword(''); }}>Отказ</Button>
+                            <Button variant="contained" onClick={handleRevealPin} disabled={!pinPassword}>Покажи</Button>
+                        </DialogActions>
+                    </Dialog>
 
                     {/* Payslip */}
                     <Grid size={{ xs: 12 }}>

@@ -18,6 +18,11 @@ export const ACCESS_ZONES_QUERY = gql`
       parentZoneId
       inheritPermissions
       traversalOrder
+      requiredAuthFactors
+      interlockEnabled
+      interlockTimeout
+      dualAuthEnabled
+      dualAuthTimeout
       parentZone {
         id
         zoneId

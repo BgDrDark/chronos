@@ -339,7 +339,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
         { text: 'Терминали', path: '/admin/kiosk/terminals', visible: true },
         { text: 'Gateways', path: '/admin/kiosk/gateways', visible: true },
         { text: 'Конфигурация', path: '/admin/kiosk/config', visible: true },
-        { text: 'Emergency', path: '/admin/kiosk/emergency', visible: true },
+
         { text: 'Етажи', path: '/admin/access-control/elevator', visible: true },
         { text: 'Извънредни ситуации', path: '/admin/access-control/emergency', visible: true },
       ]

@@ -39,6 +39,8 @@ const updateUserSchema = z.object({
   egn: z.string().max(10).optional().or(z.literal('')),
   birthDate: z.string().optional().or(z.literal('')),
   iban: z.string().optional().or(z.literal('')),
+  cardNumber: z.string().optional().or(z.literal('')),
+  pinCode: z.string().optional().or(z.literal('')),
   companyId: z.number().optional().nullable(),
   departmentId: z.number().optional().nullable(),
   positionId: z.number().optional().nullable(),
@@ -136,6 +138,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
     reset,
     control,
     setError,
+    setValue,
     formState: { isSubmitting, errors },
   } = useForm<UpdateUserFormData>({
     resolver: zodResolver(updateUserSchema),
@@ -168,6 +171,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         egn: user.egn || '',
         birthDate: user.birthDate || '',
         iban: user.iban || '',
+        cardNumber: user.cardNumber || '',
         companyId: user.company?.id ? Number(user.company.id) : null,
         departmentId: user.department?.id ? Number(user.department.id) : null,
         positionId: user.position?.id ? Number(user.position.id) : null,
@@ -219,6 +223,8 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         egn: formData.egn,
         birthDate: formData.birthDate || null,
         iban: formData.iban,
+        cardNumber: formData.cardNumber || null,
+        pinCode: formData.pinCode || null,
         companyId: formData.companyId,
         departmentId: formData.departmentId,
         positionId: formData.positionId,
@@ -406,6 +412,43 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
                     endAdornment: (
                       <InputAdornment position="end">
                         <InfoIcon helpText={userFieldsHelp.iban} />
+                      </InputAdornment>
+                    )
+                  }
+                }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="Номер на карта"
+                size="small"
+                {...register('cardNumber')}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                label="PIN код"
+                size="small"
+                {...register('pinCode')}
+                InputLabelProps={{ shrink: true }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => {
+                            const pin = Math.floor(10000000 + Math.random() * 90000000).toString();
+                            setValue('pinCode', pin);
+                          }}
+                          sx={{ minWidth: 'auto', whiteSpace: 'nowrap', fontSize: '0.7rem' }}
+                        >
+                          Генерирай
+                        </Button>
                       </InputAdornment>
                     )
                   }

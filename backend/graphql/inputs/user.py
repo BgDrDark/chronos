@@ -21,6 +21,8 @@ class UserCreateInput:
     company_id: int | None = None
     department_id: int | None = None
     position_id: int | None = None
+    card_number: str | None = None
+    pin_code: str | None = None
     password_force_change: bool | None = False
     contract_type: str | None = None
     contract_number: str | None = None
@@ -67,6 +69,8 @@ class UpdateUserInput:
     is_active: bool | None = None
     role_id: int | None = None
     password_force_change: bool | None = None
+    card_number: str | None = None
+    pin_code: str | None = None
     company_id: int | None = None
     department_id: int | None = None
     position_id: int | None = None

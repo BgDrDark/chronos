@@ -7,6 +7,11 @@ export const CREATE_ACCESS_ZONE = gql`
       zoneId
       name
       parentZoneId
+      requiredAuthFactors
+      interlockEnabled
+      interlockTimeout
+      dualAuthEnabled
+      dualAuthTimeout
     }
   }
 `;
@@ -18,6 +23,11 @@ export const UPDATE_ACCESS_ZONE = gql`
       zoneId
       name
       parentZoneId
+      requiredAuthFactors
+      interlockEnabled
+      interlockTimeout
+      dualAuthEnabled
+      dualAuthTimeout
     }
   }
 `;

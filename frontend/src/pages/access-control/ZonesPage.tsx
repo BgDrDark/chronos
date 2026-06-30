@@ -16,6 +16,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@apollo/client';
 import { getErrorMessage, AccessZone } from '../../types';
+import { InfoIcon } from '../../components/ui/InfoIcon';
+import { accessControlFieldsHelp } from '../../components/ui/fieldsHelpText';
 import { ACCESS_ZONES_QUERY } from '../../graphql/queries/accessControl';
 import { DELETE_ACCESS_ZONE } from '../../graphql/mutations/accessControl';
 import { USERS_QUERY } from '../../graphql/queries';
@@ -67,7 +69,7 @@ const ZonesPage: React.FC = () => {
             <Card>
                 <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6">Зони за достъп</Typography>
+                        <Typography variant="h6">Зони за достъп <InfoIcon helpText={accessControlFieldsHelp.zoneName} /></Typography>
                         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                             <ToggleButtonGroup
                                 size="small"

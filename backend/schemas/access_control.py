@@ -23,6 +23,11 @@ class AccessZone(CustomBaseModel):
     is_safe_zone: bool = False
     lockdown_behavior: str = "lock"
     emergency_contact: str | None = None
+    required_auth_factors: list[str] = []
+    interlock_enabled: bool = False
+    interlock_timeout: int = 30
+    dual_auth_enabled: bool = False
+    dual_auth_timeout: int = 30
 
 
 class AccessDoor(CustomBaseModel):

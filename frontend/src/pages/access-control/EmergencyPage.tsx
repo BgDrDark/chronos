@@ -3,7 +3,7 @@ import {
   Box, Button, Card, CardContent, Typography, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Chip, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, MenuItem, Select, FormControl,
-  InputLabel,
+  InputLabel, InputAdornment,
 } from '@mui/material';
 import { useQuery, useMutation } from '@apollo/client';
 import { ACCESS_ZONES_QUERY } from '../../graphql/queries/accessControl';
@@ -11,6 +11,8 @@ import { EMERGENCY_EVENTS_QUERY } from '../../graphql/queries/security';
 import { TRIGGER_EMERGENCY, RESOLVE_EMERGENCY } from '../../graphql/mutations/security';
 import { BULK_EMERGENCY_ACTION } from '../../graphql/mutations/kioskAdmin';
 import { getErrorMessage } from '../../types';
+import { InfoIcon } from '../../components/ui/InfoIcon';
+import { accessControlFieldsHelp } from '../../components/ui/fieldsHelpText';
 
 const EmergencyPage: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -173,7 +175,7 @@ const EmergencyPage: React.FC = () => {
       </Card>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6" fontWeight="bold">История на събитията</Typography>
+        <Typography variant="h6" fontWeight="bold">История на събитията <InfoIcon helpText={accessControlFieldsHelp.emergencyEventType} /></Typography>
         <Button variant="contained" color="error" onClick={() => setDialogOpen(true)}>
           НОВА СИТУАЦИЯ
         </Button>
@@ -224,8 +226,8 @@ const EmergencyPage: React.FC = () => {
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Нова извънредна ситуация</DialogTitle>
         <DialogContent>
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Тип</InputLabel>
+              <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Тип <InfoIcon helpText={accessControlFieldsHelp.emergencyEventType} /></InputLabel>
             <Select value={eventType} label="Тип" onChange={(e) => setEventType(e.target.value)}>
               <MenuItem value="lockdown">Блокада</MenuItem>
               <MenuItem value="emergency_unlock">Аварийно отключване</MenuItem>
@@ -235,7 +237,7 @@ const EmergencyPage: React.FC = () => {
             </Select>
           </FormControl>
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Обхват</InputLabel>
+            <InputLabel>Обхват <InfoIcon helpText={accessControlFieldsHelp.emergencyScope} /></InputLabel>
             <Select value={scope} label="Обхват" onChange={(e) => setScope(e.target.value)}>
               <MenuItem value="all">Всички зони</MenuItem>
               <MenuItem value="zone">Конкретна зона</MenuItem>
@@ -252,7 +254,7 @@ const EmergencyPage: React.FC = () => {
               </Select>
             </FormControl>
           )}
-          <TextField fullWidth sx={{ mt: 2 }} label="Бележки" multiline rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <TextField fullWidth sx={{ mt: 2 }} label="Бележки" multiline rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={accessControlFieldsHelp.emergencyNotes} /></InputAdornment> } }} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Отказ</Button>

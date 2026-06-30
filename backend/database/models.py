@@ -376,6 +376,15 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     qr_secret: Mapped[str] = mapped_column(String(64), nullable=True) # Secret for dynamic QR generation
     is_qr_enabled: Mapped[bool] = mapped_column(Boolean, default=False) # Enable QR code access
+
+    # ─── Access Control Credentials (Phase 7) ────────────
+    card_number: Mapped[str | None] = mapped_column(String(50), unique=True, index=True, nullable=True)
+    pin_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    pin_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pin_sha256: Mapped[str | None] = mapped_column(
+        String(64), unique=True, nullable=True
+    )
+
     # Old String Fields (To be deprecated after migration)
     job_title: Mapped[str] = mapped_column(String, nullable=True)
     department: Mapped[str] = mapped_column(String, nullable=True)
@@ -2474,6 +2483,14 @@ class AccessZone(Base):
     lockdown_behavior: Mapped[str] = mapped_column(String(20), default="lock")
     # "lock" → заключва се, "unlock" → отваря се, "safe" → нормален достъп
     emergency_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # ─── MFA / Interlock / Dual-auth (Phase 7) ────────────
+    required_auth_factors: Mapped[int] = mapped_column(Integer, default=1)
+    # 1=card_only, 2=card+pin, 3=card+pin+biometric
+    interlock_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    interlock_timeout: Mapped[int] = mapped_column(Integer, default=30)  # seconds
+    dual_auth_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    dual_auth_timeout: Mapped[int] = mapped_column(Integer, default=5)    # seconds between dual auth
 
     parent = relationship("AccessZone", remote_side="AccessZone.id", back_populates="children")
     children = relationship("AccessZone", back_populates="parent", passive_deletes=True)

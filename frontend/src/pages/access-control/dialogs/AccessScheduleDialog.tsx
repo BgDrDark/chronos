@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, CircularProgress, Switch, FormControlLabel,
-  Box, FormControl, InputLabel, Select, MenuItem
+  Box, FormControl, InputLabel, Select, MenuItem, InputAdornment
 } from '@mui/material';
 import { useMutation } from '@apollo/client';
 import { getErrorMessage, AccessSchedule } from '../../../types';
@@ -10,6 +10,8 @@ import {
   CREATE_ACCESS_SCHEDULE,
   UPDATE_ACCESS_SCHEDULE,
 } from '../../../graphql/mutations/accessPolicy';
+import { InfoIcon } from '../../../components/ui/InfoIcon';
+import { accessControlFieldsHelp } from '../../../components/ui/fieldsHelpText';
 import ScheduleTimeGrid, { type ScheduleConfig } from './ScheduleTimeGrid';
 
 const AccessScheduleDialog: React.FC<{
@@ -82,9 +84,9 @@ const AccessScheduleDialog: React.FC<{
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
             <DialogTitle>{schedule ? 'Редактиране на график' : 'Нов график за достъп'}</DialogTitle>
             <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-                <TextField label="Име" fullWidth value={name} onChange={(e) => setName(e.target.value)} />
+                <TextField label="Име" fullWidth value={name} onChange={(e) => setName(e.target.value)} slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={accessControlFieldsHelp.scheduleName} /></InputAdornment> } }} />
                 <FormControl fullWidth>
-                    <InputLabel>Часова зона</InputLabel>
+                    <InputLabel>Часова зона <InfoIcon helpText="Часова зона, в която важи графикът" /></InputLabel>
                     <Select value={timezone} label="Часова зона" onChange={(e) => setTimezone(e.target.value)}>
                         {TIMEZONES.map((tz) => <MenuItem key={tz} value={tz}>{tz}</MenuItem>)}
                     </Select>

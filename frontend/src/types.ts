@@ -117,7 +117,8 @@ export interface UpdateUserInput {
   phoneNumber?: string | null;
   address?: string | null;
   egn?: string | null;
-  pin?: string | null;
+  pinCode?: string | null;
+  cardNumber?: string | null;
   birthDate?: string | null;
   iban?: string | null;
   companyId?: number | null;
@@ -294,6 +295,8 @@ export interface User {
   address?: string | null;
   egn?: string | null;
   pin?: string | null;
+  cardNumber?: string | null;
+  pinExists?: boolean;
   birthDate?: string | null;
   iban?: string | null;
   isActive: boolean;

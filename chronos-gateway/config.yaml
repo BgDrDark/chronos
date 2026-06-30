@@ -22,7 +22,7 @@ activity:
   heartbeat_interval: 30
   timeout: 120
 backend:
-  api_key: gw_b16c9b5bdc4ce8284056e176b508f2a3103ed9f9a1c8d2e8
+  api_key: gw_8920cbf85e7d37fbe98040d6106735c5f2fb71336a584fed
   fallback_url: https://chronos.oblak24.org
   ssl_verify_disabled: true
   url: https://dev.oblak24.org
@@ -33,7 +33,7 @@ cluster:
   heartbeat_interval: 5
   master_timeout: 60
   priority: auto
-  shared_secret: gws_7c03cfd794a0b575b0a1dc0d3345173cdb3612e1e69cd39cc085dac1ea3866a62e168e85e597f0c36019e65f883c3623
+  shared_secret: gws_36a276db297d528437daede3229f7a93f9c6e79b2d85e4fa7359c8be9d79a6f41e77493d10b19ad288d80517edcfa9ef
 gateway:
   alias: ''
   hardware_uuid: 0cd40336f6435a14b8eadc742f1185e7bdba49b0bfce7fde4e3a1b5c116dd88b

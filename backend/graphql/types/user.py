@@ -35,6 +35,16 @@ class User:
     qr_token: strawberry.auto
     password_force_change: strawberry.auto
     profile_picture: strawberry.auto
+    card_number: strawberry.auto
+
+    @strawberry.field
+    async def pin_exists(self, info: strawberry.Info) -> bool:
+        from backend.database.models import User as DbUser
+        from sqlalchemy import select
+        db = info.context["db"]
+        result = await db.execute(select(DbUser.pin_code).where(DbUser.id == self.id))
+        row = result.scalar_one_or_none()
+        return row is not None
 
     @strawberry.field
     async def pin(self, info: strawberry.Info) -> str | None:

@@ -15,7 +15,7 @@ from backend.auth.security import (
     verify_password,
 )
 from backend.crud.repositories import user_repo
-from backend.database.models import EmploymentContract, user_access_zones
+from backend.database.models import AuditLog, EmploymentContract, user_access_zones
 from backend.database.models import User as DbUser
 from backend.exceptions import (
     AuthenticationException,
@@ -29,6 +29,7 @@ from backend.graphql.utils.permission_checker import (
     require_permission,
 )
 from backend.services.auth_service import regenerate_user_qr_token
+from backend.utils.pin_utils import decrypt_pin
 
 logger = logging.getLogger(__name__)
 authenticate_msg = "Трябва да се автентикирате"
@@ -69,6 +70,7 @@ class UserMutation:
 
         import dataclasses
         user_input_dict = dataclasses.asdict(userInput)
+        user_input_dict.pop("pin_code", None)
         try:
             user_data = schemas.UserCreate(**user_input_dict)
         except PydanticValidationError as e:
@@ -76,6 +78,11 @@ class UserMutation:
             raise AssertionError("unreachable")  # _handle_pydantic_error always raises
 
         db_user = await user_repo.create_user(db=db, user_data=user_data, role_id=userInput.role_id)
+
+        if userInput.pin_code:
+            if not await user_repo.check_pin_unique(db, userInput.pin_code):
+                raise ValidationException.field("pin_code", "Този PIN вече се използва")
+            await user_repo.set_pin_code(db, db_user.id, userInput.pin_code)
 
         has_contract_data = any([
             userInput.contract_type is not None,
@@ -160,6 +167,10 @@ class UserMutation:
             update_data["role_id"] = userInput.role_id
         if userInput.password is not None and userInput.password != '':
             update_data["password"] = userInput.password
+        if userInput.pin_code is not None:
+            if not await user_repo.check_pin_unique(db, userInput.pin_code, exclude_user_id=userInput.id):
+                raise ValidationException.field("pin_code", "Този PIN вече се използва")
+            await user_repo.set_pin_code(db, userInput.id, userInput.pin_code)
 
         user_in = schemas.UserUpdate(**update_data)
         db_user = await user_repo.update_user(db, user_id=userInput.id, user_in=user_in)
@@ -296,6 +307,97 @@ class UserMutation:
         db.add(db_user)
         await db.commit()
         return True
+
+    @strawberry.mutation
+    async def generate_pin(self, user_id: int, info: strawberry.Info) -> str:
+        """Генерира 8-цифрен PIN за потребител. Връща го веднъж (само при генериране)."""
+        import secrets
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        if current_user.id != user_id:
+            await require_permission(info, "users:manage_access")
+
+        for _ in range(10):
+            pin = "".join(secrets.choice("0123456789") for _ in range(8))
+            if await user_repo.check_pin_unique(db, pin, exclude_user_id=user_id):
+                break
+        else:
+            raise ValidationException("Не може да се генерира уникален PIN")
+
+        await user_repo.set_pin_code(db, user_id, pin)
+
+        log = AuditLog(
+            user_id=current_user.id,
+            action="GENERATE_PIN",
+            target_type="User",
+            target_id=user_id,
+            details="Генериран е PIN код за достъп",
+        )
+        db.add(log)
+
+        await db.commit()
+        return pin
+
+    @strawberry.mutation
+    async def reissue_pin(self, user_id: int, info: strawberry.Info) -> str:
+        """Преиздава 8-цифрен PIN (заменя стария). Връща го веднъж."""
+        import secrets
+        db = info.context["db"]
+        current_user = info.context["current_user"]
+        if current_user is None:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        if current_user.id != user_id:
+            await require_permission(info, "users:manage_access")
+
+        for _ in range(10):
+            pin = "".join(secrets.choice("0123456789") for _ in range(8))
+            if await user_repo.check_pin_unique(db, pin, exclude_user_id=user_id):
+                break
+        else:
+            raise ValidationException("Не може да се генерира уникален PIN")
+
+        await user_repo.set_pin_code(db, user_id, pin)
+
+        log = AuditLog(
+            user_id=current_user.id,
+            action="REISSUE_PIN",
+            target_type="User",
+            target_id=user_id,
+            details="Преиздаден е PIN код за достъп",
+        )
+        db.add(log)
+
+        await db.commit()
+        return pin
+
+    @strawberry.mutation
+    async def reveal_pin(self, info: strawberry.Info, password: str) -> str | None:
+        """Разкрива PIN кода след въвеждане на парола."""
+        db = info.context["db"]
+        current_user_schema = info.context["current_user"]
+        if current_user_schema is None:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        from sqlalchemy import select
+
+        result = await db.execute(
+            select(DbUser).where(DbUser.id == current_user_schema.id)
+        )
+        db_user = result.scalar_one_or_none()
+        if not db_user:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        if not verify_password(password, db_user.hashed_password):
+            raise ValidationException.field("password", "Неправилна парола")
+
+        if not db_user.pin_encrypted:
+            return None
+
+        return decrypt_pin(db_user.pin_encrypted)
 
     @strawberry.mutation
     async def regenerate_my_qr_code(self, info: strawberry.Info) -> str:

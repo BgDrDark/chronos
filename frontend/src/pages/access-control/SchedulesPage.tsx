@@ -13,6 +13,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@apollo/client';
 import { getErrorMessage, AccessSchedule } from '../../types';
+import { InfoIcon } from '../../components/ui/InfoIcon';
+import { accessControlFieldsHelp } from '../../components/ui/fieldsHelpText';
 import { ACCESS_SCHEDULES_QUERY } from '../../graphql/queries/accessPolicy';
 import { DELETE_ACCESS_SCHEDULE } from '../../graphql/mutations/accessPolicy';
 import { COMPANIES_QUERY } from '../../graphql/queries';
@@ -48,7 +50,7 @@ const SchedulesPage: React.FC = () => {
             <Card>
                 <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
-                        <Typography variant="h6">Графици за достъп</Typography>
+                        <Typography variant="h6">Графици за достъп <InfoIcon helpText={accessControlFieldsHelp.scheduleName} /></Typography>
                         <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setScheduleDialogOpen(true)}>Нов график</Button>
                     </Box>
                     <TableContainer component={Paper} variant="outlined">

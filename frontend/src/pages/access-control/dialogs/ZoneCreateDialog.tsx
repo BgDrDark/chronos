@@ -3,11 +3,13 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, CircularProgress, Box, Chip,
   FormControl, InputLabel, Select, MenuItem,
-  FormControlLabel, Switch
+  FormControlLabel, Switch, Typography, Divider, InputAdornment
 } from '@mui/material';
 import { useMutation } from '@apollo/client';
 import { getErrorMessage } from '../../../types';
 import { CREATE_ACCESS_ZONE } from '../../../graphql/mutations/accessControl';
+import { InfoIcon } from '../../../components/ui/InfoIcon';
+import { accessControlFieldsHelp } from '../../../components/ui/fieldsHelpText';
 
 const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess: () => void, zones: any[], parentZoneId?: number | null}> = ({ open, onClose, onSuccess, zones, parentZoneId }) => {
     const [createZone] = useMutation(CREATE_ACCESS_ZONE);
@@ -22,7 +24,12 @@ const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess:
         antiPassbackType: 'soft',
         antiPassbackTimeout: 5,
         parentZoneId: parentZoneId ?? null,
-        inheritPermissions: true
+        inheritPermissions: true,
+        requiredAuthFactors: [] as string[],
+        interlockEnabled: false,
+        interlockTimeout: 30,
+        dualAuthEnabled: false,
+        dualAuthTimeout: 30
     });
 
     React.useEffect(() => {
@@ -42,7 +49,7 @@ const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess:
         try {
             await createZone({ variables: { input: formData } });
             onSuccess();
-            setFormData({ zoneId: '', name: '', level: 1, dependsOn: [], requiredHoursStart: '00:00', requiredHoursEnd: '23:59', antiPassbackEnabled: false, antiPassbackType: 'soft', antiPassbackTimeout: 5, parentZoneId: null, inheritPermissions: true });
+            setFormData({ zoneId: '', name: '', level: 1, dependsOn: [], requiredHoursStart: '00:00', requiredHoursEnd: '23:59', antiPassbackEnabled: false, antiPassbackType: 'soft', antiPassbackTimeout: 5, parentZoneId: null, inheritPermissions: true, requiredAuthFactors: [], interlockEnabled: false, interlockTimeout: 30, dualAuthEnabled: false, dualAuthTimeout: 30 });
         } catch (e) { alert(getErrorMessage(e)); } finally { setLoading(false); }
     };
 
@@ -50,8 +57,8 @@ const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess:
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
             <DialogTitle>Нова Зона</DialogTitle>
             <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-                <TextField label="ID" fullWidth value={formData.zoneId} onChange={(e) => setFormData({...formData, zoneId: e.target.value})} />
-                <TextField label="Име" fullWidth value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                <TextField label="ID" fullWidth value={formData.zoneId} onChange={(e) => setFormData({...formData, zoneId: e.target.value})} slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={accessControlFieldsHelp.zoneId} /></InputAdornment> } }} />
+                <TextField label="Име" fullWidth value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={accessControlFieldsHelp.zoneName} /></InputAdornment> } }} />
                 <FormControl fullWidth>
                     <InputLabel>Ниво</InputLabel>
                     <Select value={formData.level} label="Ниво" onChange={(e) => setFormData({...formData, level: e.target.value as number})}>
@@ -93,6 +100,42 @@ const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess:
                         ))}
                     </Select>
                 </FormControl>
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="subtitle1" fontWeight="bold">MFA / Сигурност</Typography>
+                <FormControl fullWidth>
+                    <InputLabel>Изисквани фактори</InputLabel>
+                    <Select
+                        multiple
+                        value={formData.requiredAuthFactors}
+                        label="Изисквани фактори"
+                        onChange={(e) => setFormData({...formData, requiredAuthFactors: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value})}
+                        renderValue={(selected) => (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                {selected.map((value) => (
+                                    <Chip key={value} label={value === 'card' ? 'Карта' : value === 'pin' ? 'ПИН' : value === 'biometric' ? 'Биометрия' : value} size="small" />
+                                ))}
+                            </Box>
+                        )}
+                    >
+                        <MenuItem value="card">Карта</MenuItem>
+                        <MenuItem value="pin">ПИН</MenuItem>
+                        <MenuItem value="biometric">Биометрия</MenuItem>
+                    </Select>
+                </FormControl>
+                <FormControlLabel
+                    control={<Switch checked={formData.interlockEnabled} onChange={(e) => setFormData({...formData, interlockEnabled: e.target.checked})} />}
+                    label="Включи interlock (мантрап)"
+                />
+                {formData.interlockEnabled && (
+                    <TextField label="Interlock таймаут (сек)" type="number" fullWidth value={formData.interlockTimeout} onChange={(e) => setFormData({...formData, interlockTimeout: parseInt(e.target.value) || 30})} slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={accessControlFieldsHelp.interlockTimeout} /></InputAdornment> } }} />
+                )}
+                <FormControlLabel
+                    control={<Switch checked={formData.dualAuthEnabled} onChange={(e) => setFormData({...formData, dualAuthEnabled: e.target.checked})} />}
+                    label="Включи dual-auth (мантрап)"
+                />
+                {formData.dualAuthEnabled && (
+                    <TextField label="Dual-auth таймаут (сек)" type="number" fullWidth value={formData.dualAuthTimeout} onChange={(e) => setFormData({...formData, dualAuthTimeout: parseInt(e.target.value) || 30})} slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText={accessControlFieldsHelp.dualAuthTimeout} /></InputAdornment> } }} />
+                )}
             </DialogContent>
             <DialogActions>
                 <Button onClick={onClose}>Отказ</Button>

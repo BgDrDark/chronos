@@ -31,6 +31,7 @@ class UserBase(CustomBaseModel):
     egn: str | None = None
     birth_date: date | None = None
     iban: str | None = None
+    card_number: str | None = None
     job_title: str | None = None
     department: str | None = None
     company: str | None = None
@@ -163,6 +164,7 @@ class User(UserBase):
     qr_token: str | None = None
     password_force_change: bool = False
     profile_picture: str | None = None
+    card_number: str | None = None
 
 
 class UserSessionBase(CustomBaseModel):

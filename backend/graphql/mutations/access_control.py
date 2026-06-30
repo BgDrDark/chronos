@@ -138,8 +138,6 @@ class AccessControlMutation:
                 raise ValidationException(detail=msg)
         except Exception as e:
             raise ValidationException(detail=f"Connection error: {str(e)}") from e
-        except Exception as e:
-            raise ValidationException(detail=f"Connection error: {str(e)}") from e
 
     @strawberry.mutation
     async def create_access_door(self, input: inputs.AccessDoorInput, info: strawberry.Info) -> types.AccessDoor:
@@ -227,6 +225,12 @@ class AccessControlMutation:
             description=input.description,
             company_id=current_user.company_id,
             parent_zone_id=input.parent_zone_id,
+            inherit_permissions=input.inherit_permissions,
+            required_auth_factors=input.required_auth_factors,
+            interlock_enabled=input.interlock_enabled,
+            interlock_timeout=input.interlock_timeout,
+            dual_auth_enabled=input.dual_auth_enabled,
+            dual_auth_timeout=input.dual_auth_timeout,
         )
         db.add(new_zone)
         await db.commit()
@@ -265,6 +269,12 @@ class AccessControlMutation:
         zone.anti_passback_timeout = input.anti_passback_timeout
         zone.description = input.description
         zone.parent_zone_id = input.parent_zone_id
+        zone.inherit_permissions = input.inherit_permissions
+        zone.required_auth_factors = input.required_auth_factors
+        zone.interlock_enabled = input.interlock_enabled
+        zone.interlock_timeout = input.interlock_timeout
+        zone.dual_auth_enabled = input.dual_auth_enabled
+        zone.dual_auth_timeout = input.dual_auth_timeout
         
         await db.commit()
         await db.refresh(zone)
