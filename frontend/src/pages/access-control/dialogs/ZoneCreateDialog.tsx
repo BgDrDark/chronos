@@ -25,7 +25,7 @@ const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess:
         antiPassbackTimeout: 5,
         parentZoneId: parentZoneId ?? null,
         inheritPermissions: true,
-        requiredAuthFactors: [] as string[],
+        requiredAuthFactors: [] as number[],
         interlockEnabled: false,
         interlockTimeout: 30,
         dualAuthEnabled: false,
@@ -108,18 +108,18 @@ const ZoneCreateDialog: React.FC<{open: boolean, onClose: () => void, onSuccess:
                         multiple
                         value={formData.requiredAuthFactors}
                         label="Изисквани фактори"
-                        onChange={(e) => setFormData({...formData, requiredAuthFactors: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value})}
+                        onChange={(e) => setFormData({...formData, requiredAuthFactors: e.target.value as number[]})}
                         renderValue={(selected) => (
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                {selected.map((value) => (
-                                    <Chip key={value} label={value === 'card' ? 'Карта' : value === 'pin' ? 'ПИН' : value === 'biometric' ? 'Биометрия' : value} size="small" />
-                                ))}
+                                    {selected.map((value: number) => (
+                                        <Chip key={value} label={value === 1 ? 'Карта' : value === 2 ? 'ПИН' : value === 3 ? 'Биометрия' : String(value)} size="small" />
+                                    ))}
                             </Box>
                         )}
                     >
-                        <MenuItem value="card">Карта</MenuItem>
-                        <MenuItem value="pin">ПИН</MenuItem>
-                        <MenuItem value="biometric">Биометрия</MenuItem>
+                        <MenuItem value={1}>Карта</MenuItem>
+                        <MenuItem value={2}>ПИН</MenuItem>
+                        <MenuItem value={3}>Биометрия</MenuItem>
                     </Select>
                 </FormControl>
                 <FormControlLabel

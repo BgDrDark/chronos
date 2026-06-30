@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.config import settings
 from backend.database.models import AuthKey, Role, User, UserSession
-from backend.graphql.utils.pagination import cached_count, invalidate_count_cache
+from backend.chronos_graphql.utils.pagination import cached_count, invalidate_count_cache
 from backend.schemas import UserCreate, UserUpdate
 
 from .base import BaseRepository

@@ -2413,7 +2413,7 @@ class AccessLevel(Base):
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now())
+    updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 
     company = relationship("Company", back_populates="access_levels")
     assignments = relationship("AccessLevelZone", back_populates="access_level", cascade="all, delete-orphan")
@@ -2485,8 +2485,8 @@ class AccessZone(Base):
     emergency_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # ─── MFA / Interlock / Dual-auth (Phase 7) ────────────
-    required_auth_factors: Mapped[int] = mapped_column(Integer, default=1)
-    # 1=card_only, 2=card+pin, 3=card+pin+biometric
+    required_auth_factors: Mapped[list] = mapped_column(JSON, default=[])
+    # list of ints: e.g. [1]=card, [1,2]=card+pin, [1,2,3]=card+pin+biometric
     interlock_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     interlock_timeout: Mapped[int] = mapped_column(Integer, default=30)  # seconds
     dual_auth_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -3431,6 +3431,44 @@ class DocumentationArticle(Base):
 
     category = relationship("DocumentationCategory", back_populates="articles")
     author = relationship("User", foreign_keys=[created_by])
+
+
+class FloorPlan(Base):
+    """План на етаж/сграда за визуализация на врати и зони"""
+
+    __tablename__ = "floor_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    width: Mapped[int] = mapped_column(Integer, default=1000)
+    height: Mapped[int] = mapped_column(Integer, default=800)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=sofia_now)
+    updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, default=sofia_now, onupdate=sofia_now)
+
+    company = relationship("Company", backref="floor_plans")
+    doors = relationship("FloorPlanDoor", back_populates="floor_plan", cascade="all, delete-orphan")
+
+
+class FloorPlanDoor(Base):
+    """Врата на плана на етаж"""
+
+    __tablename__ = "floor_plan_doors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    floor_plan_id: Mapped[int] = mapped_column(Integer, ForeignKey("floor_plans.id", ondelete="CASCADE"), nullable=False)
+    door_id: Mapped[int] = mapped_column(Integer, ForeignKey("access_doors.id", ondelete="CASCADE"), nullable=False)
+    x: Mapped[float] = mapped_column(Float, nullable=False)
+    y: Mapped[float] = mapped_column(Float, nullable=False)
+    width: Mapped[float] = mapped_column(Float, default=20)
+    height: Mapped[float] = mapped_column(Float, default=5)
+    rotation: Mapped[float] = mapped_column(Float, default=0)
+    label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    floor_plan = relationship("FloorPlan", back_populates="doors")
+    door = relationship("AccessDoor")
 
 
 # Add back_populates relationships after all models are defined

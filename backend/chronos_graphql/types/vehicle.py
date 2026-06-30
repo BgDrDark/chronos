@@ -1,0 +1,543 @@
+import datetime
+import enum
+from decimal import Decimal
+
+import strawberry
+from strawberry.experimental import pydantic as sp
+
+from backend import schemas
+from backend.chronos_graphql.types.user import User
+from backend.utils.json_type import JSONScalar
+
+
+@strawberry.enum
+class VehicleStatus(enum.StrEnum):
+    ACTIVE = "active"
+    IN_REPAIR = "in_repair"
+    OUT_OF_SERVICE = "out_of_service"
+    SOLD = "sold"
+
+
+@strawberry.enum
+class FuelType(enum.StrEnum):
+    BENZIN = "benzin"
+    DIZEL = "dizel"
+    ELECTRIC = "electric"
+    HYBRID = "hybrid"
+    LNG = "lng"
+    CNG = "cng"
+
+
+@strawberry.enum
+class VehicleDocumentType(enum.StrEnum):
+    INVOICE = "invoice"
+    POLICY = "policy"
+    INSPECTION = "inspection"
+    CONTRACT = "contract"
+    OTHER = "other"
+
+
+@strawberry.enum
+class InsuranceType(enum.StrEnum):
+    CIVIL = "civil"
+    KASKO = "kasko"
+    BORDER = "border"
+
+
+@strawberry.enum
+class InspectionResult(enum.StrEnum):
+    PASSED = "passed"
+    FAILED = "failed"
+    PENDING = "pending"
+
+
+@strawberry.enum
+class PreTripStatus(enum.StrEnum):
+    PASSED = "passed"
+    FAILED = "failed"
+
+
+@strawberry.enum
+class ExpenseType(enum.StrEnum):
+    FUEL = "fuel"
+    REPAIR = "repair"
+    INSURANCE = "insurance"
+    INSPECTION = "inspection"
+    VIGNETTE = "vignette"
+    TOLL = "toll"
+    TAX = "tax"
+    OTHER = "other"
+
+
+@sp.type(schemas.VehicleType)
+class VehicleType:
+    id: strawberry.auto
+    name: strawberry.auto
+    code: strawberry.auto
+
+
+@sp.type(schemas.VehicleDocument)
+class VehicleDocument:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    document_type: VehicleDocumentType
+    title: strawberry.auto
+    file_url: strawberry.auto
+    issue_date: strawberry.auto
+    expiry_date: strawberry.auto
+    notes: strawberry.auto
+    created_at: strawberry.auto
+
+
+@sp.type(schemas.VehicleFuelCard)
+class VehicleFuelCard:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    card_number: strawberry.auto
+    provider: strawberry.auto
+    pin: strawberry.auto
+    limit: strawberry.auto
+    is_active: strawberry.auto
+    expiry_date: strawberry.auto
+    created_at: strawberry.auto
+
+
+@sp.type(schemas.VehicleVignette)
+class VehicleVignette:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    vignette_type: strawberry.auto
+    purchase_date: strawberry.auto
+    valid_from: strawberry.auto
+    valid_until: strawberry.auto
+    price: strawberry.auto
+    provider: strawberry.auto
+    document_url: strawberry.auto
+    created_at: strawberry.auto
+
+
+@sp.type(schemas.VehicleToll)
+class VehicleToll:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    route: strawberry.auto
+    toll_amount: strawberry.auto
+    toll_date: strawberry.auto
+    section: strawberry.auto
+    document_url: strawberry.auto
+    created_at: strawberry.auto
+
+
+@sp.type(schemas.VehicleMileage)
+class VehicleMileage:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    date: strawberry.auto
+    mileage: strawberry.auto
+    source: strawberry.auto
+    notes: strawberry.auto
+    created_at: strawberry.auto
+
+
+@sp.type(schemas.VehicleFuel)
+class VehicleFuel:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    date: strawberry.auto
+    fuel_type: strawberry.auto
+    quantity: strawberry.auto
+    price_per_liter: strawberry.auto
+    total_amount: strawberry.auto
+    mileage: strawberry.auto
+    efficiency_l_per_100km: strawberry.auto
+    is_anomaly: strawberry.auto
+    location: strawberry.auto
+    invoice_number: strawberry.auto
+    fuel_card_id: strawberry.auto
+    driver_id: strawberry.auto
+    created_at: strawberry.auto
+
+    @strawberry.field(name="liters")
+    def liters(self) -> Decimal:
+        return self.quantity
+
+    @strawberry.field(name="price")
+    def price(self) -> Decimal:
+        return self.price_per_liter
+
+    @strawberry.field(name="total")
+    def total(self) -> Decimal:
+        return self.total_amount
+
+    @strawberry.field
+    def notes(self) -> str | None:
+        return None
+
+
+@sp.type(schemas.VehicleService)
+class VehicleService:
+    id: strawberry.auto
+    name: strawberry.auto
+    address: strawberry.auto
+    phone: strawberry.auto
+    email: strawberry.auto
+    contact_person: strawberry.auto
+    notes: strawberry.auto
+    created_at: strawberry.auto
+
+
+@sp.type(schemas.VehicleRepair)
+class VehicleRepair:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    repair_date: strawberry.auto
+    repair_type: strawberry.auto
+    description: strawberry.auto
+    parts: JSONScalar | None = None
+    labor_hours: strawberry.auto
+    labor_cost: strawberry.auto
+    parts_cost: strawberry.auto
+    total_cost: strawberry.auto
+    mileage: strawberry.auto
+    vehicle_service_id: strawberry.auto
+    warranty_months: strawberry.auto
+    next_service_km: strawberry.auto
+    notes: strawberry.auto
+    created_at: strawberry.auto
+
+    @strawberry.field(name="date")
+    def date(self) -> datetime.datetime:
+        return self.repair_date
+
+    @strawberry.field(name="cost")
+    def cost(self) -> Decimal:
+        return self.total_cost
+
+
+@sp.type(schemas.VehicleSchedule)
+class VehicleSchedule:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    schedule_type: strawberry.auto
+    interval_km: strawberry.auto
+    interval_months: strawberry.auto
+    last_service_date: strawberry.auto
+    last_service_km: strawberry.auto
+    next_service_date: strawberry.auto
+    next_service_km: strawberry.auto
+    vehicle_service_id: strawberry.auto
+    notes: strawberry.auto
+    created_at: strawberry.auto
+    updated_at: strawberry.auto
+
+
+@sp.type(schemas.VehicleInsurance)
+class VehicleInsurance:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    insurance_type: strawberry.auto
+    policy_number: strawberry.auto
+    insurance_company: strawberry.auto
+    start_date: strawberry.auto
+    end_date: strawberry.auto
+    premium: strawberry.auto
+    coverage_amount: strawberry.auto
+    payment_type: strawberry.auto
+    document_url: strawberry.auto
+    notes: strawberry.auto
+    created_at: strawberry.auto
+
+    @strawberry.field(name="provider")
+    def provider(self) -> str | None:
+        return self.insurance_company
+
+
+@sp.type(schemas.VehicleInspection)
+class VehicleInspection:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    inspection_date: strawberry.auto
+    valid_until: strawberry.auto
+    result: strawberry.auto
+    mileage: strawberry.auto
+    inspector: strawberry.auto
+    certificate_number: strawberry.auto
+    next_inspection_date: strawberry.auto
+    notes: strawberry.auto
+    created_at: strawberry.auto
+
+    @strawberry.field(name="date")
+    def date(self) -> datetime.date:
+        return self.inspection_date
+
+    @strawberry.field
+    def cost(self) -> float | None:
+        return None
+
+    @strawberry.field(name="protocolNumber")
+    def protocol_number(self) -> str | None:
+        return self.certificate_number
+
+    @strawberry.field(name="nextDate")
+    def next_date(self) -> datetime.date | None:
+        return self.next_inspection_date
+
+
+@sp.type(schemas.VehiclePreTripInspection)
+class VehiclePreTripInspection:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    driver_id: strawberry.auto
+    inspection_date: strawberry.auto
+    tires_condition: strawberry.auto
+    tires_pressure: strawberry.auto
+    tires_tread: strawberry.auto
+    brakes_condition: strawberry.auto
+    brakes_parking: strawberry.auto
+    lights_headlights: strawberry.auto
+    lights_brake: strawberry.auto
+    lights_turn: strawberry.auto
+    lights_warning: strawberry.auto
+    fluids_oil: strawberry.auto
+    fluids_coolant: strawberry.auto
+    fluids_washer: strawberry.auto
+    fluids_brake: strawberry.auto
+    mirrors: strawberry.auto
+    wipers: strawberry.auto
+    horn: strawberry.auto
+    seatbelts: strawberry.auto
+    first_aid_kit: strawberry.auto
+    fire_extinguisher: strawberry.auto
+    warning_triangle: strawberry.auto
+    overall_status: strawberry.auto
+    notes: strawberry.auto
+    photos: JSONScalar | None = None
+    created_at: strawberry.auto
+
+
+@sp.type(schemas.VehicleDriver)
+class VehicleDriver:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    user_id: strawberry.auto
+    assigned_from: strawberry.auto
+    assigned_to: strawberry.auto
+    is_primary: strawberry.auto
+    created_at: strawberry.auto
+
+    @strawberry.field
+    async def user(self, info: strawberry.Info) -> User | None:
+        if not self.user_id:
+            return None
+        return await info.context["dataloaders"]["user_by_id"].load(self.user_id)
+
+    @strawberry.field
+    def license_number(self) -> str | None:
+        return None
+
+    @strawberry.field
+    def category(self) -> str | None:
+        return None
+
+    @strawberry.field
+    def notes(self) -> str | None:
+        return None
+
+
+@sp.type(schemas.VehicleTrip)
+class VehicleTrip:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    driver_id: strawberry.auto
+    delivery_id: strawberry.auto
+    start_address: strawberry.auto
+    end_address: strawberry.auto
+    start_time: strawberry.auto
+    end_time: strawberry.auto
+    distance_km: strawberry.auto
+    purpose: strawberry.auto
+    expenses: strawberry.auto
+    notes: strawberry.auto
+    created_at: strawberry.auto
+    updated_at: strawberry.auto
+
+
+@sp.type(schemas.VehicleExpense)
+class VehicleExpense:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    expense_type: strawberry.auto
+    expense_date: strawberry.auto
+    amount: strawberry.auto
+    vat_amount: strawberry.auto
+    total_amount: strawberry.auto
+    description: strawberry.auto
+    reference_id: strawberry.auto
+    reference_type: strawberry.auto
+    is_deductible: strawberry.auto
+    cost_center_id: strawberry.auto
+    company_id: strawberry.auto
+    created_at: strawberry.auto
+
+
+@sp.type(schemas.Vehicle)
+class Vehicle:
+    id: strawberry.auto
+    registration_number: strawberry.auto
+    vin: strawberry.auto
+    make: strawberry.auto
+    model: strawberry.auto
+    year: strawberry.auto
+    vehicle_type_id: strawberry.auto
+    fuel_type: strawberry.auto
+    engine_number: strawberry.auto
+    chassis_number: strawberry.auto
+    color: strawberry.auto
+    initial_mileage: strawberry.auto
+    is_company: strawberry.auto
+    owner_name: strawberry.auto
+    status: strawberry.auto
+    notes: strawberry.auto
+    company_id: strawberry.auto
+    created_at: strawberry.auto
+    updated_at: strawberry.auto
+
+    @strawberry.field
+    async def type(self, info: strawberry.Info) -> VehicleType | None:
+        if not self.vehicle_type_id:
+            return None
+        result = await info.context["dataloaders"]["vehicle_type_by_id"].load(self.vehicle_type_id)
+        return VehicleType.from_pydantic(result) if result else None
+
+    @strawberry.field
+    async def documents(self, info: strawberry.Info) -> list[VehicleDocument] | None:
+        results = await info.context["dataloaders"]["vehicle_documents_by_vehicle_id"].load(self.id)
+        return [VehicleDocument.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def fuel_cards(self, info: strawberry.Info) -> list[VehicleFuelCard] | None:
+        results = await info.context["dataloaders"]["vehicle_fuel_cards_by_vehicle_id"].load(self.id)
+        return [VehicleFuelCard.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def vignettes(self, info: strawberry.Info) -> list[VehicleVignette] | None:
+        results = await info.context["dataloaders"]["vehicle_vignettes_by_vehicle_id"].load(self.id)
+        return [VehicleVignette.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def tolls(self, info: strawberry.Info) -> list[VehicleToll]:
+        results = await info.context["dataloaders"]["vehicle_tolls_by_vehicle_id"].load(self.id)
+        return [VehicleToll.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def mileages(self, info: strawberry.Info) -> list[VehicleMileage]:
+        results = await info.context["dataloaders"]["vehicle_mileages_by_vehicle_id"].load(self.id)
+        return [VehicleMileage.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def fuel_records(self, info: strawberry.Info) -> list[VehicleFuel]:
+        results = await info.context["dataloaders"]["vehicle_fuel_records_by_vehicle_id"].load(self.id)
+        return [VehicleFuel.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def repairs(self, info: strawberry.Info) -> list[VehicleRepair]:
+        results = await info.context["dataloaders"]["vehicle_repairs_by_vehicle_id"].load(self.id)
+        return [VehicleRepair.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def schedules(self, info: strawberry.Info) -> list[VehicleSchedule]:
+        results = await info.context["dataloaders"]["vehicle_schedules_by_vehicle_id"].load(self.id)
+        return [VehicleSchedule.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def inspections(self, info: strawberry.Info) -> list[VehicleInspection]:
+        results = await info.context["dataloaders"]["vehicle_inspections_by_vehicle_id"].load(self.id)
+        return [VehicleInspection.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def pre_trip_inspections(self, info: strawberry.Info) -> list[VehiclePreTripInspection]:
+        results = await info.context["dataloaders"]["vehicle_pre_trip_inspections_by_vehicle_id"].load(self.id)
+        return [VehiclePreTripInspection.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def drivers(self, info: strawberry.Info) -> list[VehicleDriver]:
+        results = await info.context["dataloaders"]["vehicle_drivers_by_vehicle_id"].load(self.id)
+        return [VehicleDriver.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def trips(self, info: strawberry.Info) -> list[VehicleTrip]:
+        results = await info.context["dataloaders"]["vehicle_trips_by_vehicle_id"].load(self.id)
+        return [VehicleTrip.from_pydantic(d) for d in results]
+
+    @strawberry.field
+    async def expenses(self, info: strawberry.Info) -> list[VehicleExpense]:
+        results = await info.context["dataloaders"]["vehicle_expenses_by_vehicle_id"].load(self.id)
+        return [VehicleExpense.from_pydantic(d) for d in results]
+
+
+__all__ = [
+    "ExpenseType",
+    "FuelType",
+    "InspectionResult",
+    "InsuranceType",
+    "PreTripStatus",
+    "Vehicle",
+    "VehicleDocument",
+    "VehicleDocumentType",
+    "VehicleDriver",
+    "VehicleExpense",
+    "VehicleFuel",
+    "VehicleFuelCard",
+    "VehicleInspection",
+    "VehicleInsurance",
+    "VehicleMileage",
+    "VehiclePage",
+    "VehiclePreTripInspection",
+    "VehicleRepair",
+    "VehicleSchedule",
+    "VehicleService",
+    "VehicleStatus",
+    "VehicleToll",
+    "VehicleTrip",
+    "VehicleType",
+    "VehicleVignette",
+    "VehicleAccident",
+    "VehicleCostSummary",
+]
+
+
+@strawberry.type
+class VehiclePage:
+    vehicles: list[Vehicle]
+    total_count: int
+
+
+@strawberry.type
+class VehicleCostSummary:
+    total_fuel: float
+    total_repairs: float
+    total_inspections: float
+    total_insurances: float
+    total_vignettes: float
+    total_tolls: float
+    grand_total: float
+    cost_per_km: float | None = None
+
+
+@sp.type(schemas.VehicleAccident)
+class VehicleAccident:
+    id: strawberry.auto
+    vehicle_id: strawberry.auto
+    date: strawberry.auto
+    location: strawberry.auto
+    description: strawberry.auto
+    severity: strawberry.auto
+    estimated_cost: strawberry.auto
+    actual_cost: strawberry.auto
+    third_party_name: strawberry.auto
+    third_party_insurance: strawberry.auto
+    police_report_number: strawberry.auto
+    photos: JSONScalar | None = None
+    downtime_days: strawberry.auto
+    status: strawberry.auto
+    created_at: strawberry.auto

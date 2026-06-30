@@ -356,7 +356,7 @@ async def test_mutations_import_services():
     print("\n=== Testing Mutations Import ===")
 
     try:
-        from backend.graphql import mutations
+        from backend.chronos_graphql import mutations
         print("✅ Mutations module imported")
 
         import inspect

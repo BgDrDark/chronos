@@ -14,7 +14,7 @@ from decimal import Decimal
 
 import pytest
 from backend import schemas
-from backend.graphql import types
+from backend.chronos_graphql import types
 
 
 class TestCompanySchema:

@@ -13,12 +13,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import pytest
 from backend.auth.rbac_service import PermissionService
 from backend.exceptions import PermissionDeniedException
-from backend.graphql.permission_middleware import (
+from backend.chronos_graphql.permission_middleware import (
     COMPANY_SCOPED_OPERATIONS,
     PERMISSION_MAPPING,
     PermissionGuardMiddleware,
 )
-from backend.graphql.utils.permission_checker import (
+from backend.chronos_graphql.utils.permission_checker import (
     check_company_access,
     get_current_user,
     require_permission,

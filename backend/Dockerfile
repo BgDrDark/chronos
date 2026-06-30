@@ -38,4 +38,4 @@ COPY . backend/
 EXPOSE 14240
 
 # Entrypoint script to run initialization and start the app
-CMD ["bash", "-c", "python -m backend.init_db && uvicorn backend.main:app --host 0.0.0.0 --port 14240"]
+CMD ["bash", "-c", "python -m backend.run_migrations && python -m backend.init_db && uvicorn backend.main:app --host 0.0.0.0 --port 14240"]

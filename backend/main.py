@@ -23,8 +23,8 @@ from backend.database.transaction_manager import (
     DeadlockError,
     TransactionError,
 )
-from backend.graphql.dataloaders import create_dataloaders
-from backend.graphql.schema import schema
+from backend.chronos_graphql.dataloaders import create_dataloaders
+from backend.chronos_graphql.schema import schema
 from backend.jobs.contract_job import check_expired_contracts
 from backend.jobs.fleet_notifications_job import check_fleet_notifications
 from backend.jobs.inventory_check_job import check_inventory_levels

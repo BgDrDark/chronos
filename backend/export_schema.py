@@ -4,7 +4,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.graphql.schema import schema
+from backend.chronos_graphql.schema import schema
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "src", "generated")
 os.makedirs(OUTPUT_DIR, exist_ok=True)

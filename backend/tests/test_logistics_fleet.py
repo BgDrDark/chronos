@@ -486,7 +486,7 @@ class TestGraphQLTypes:
 
     def test_supplier_extended_type(self):
         """Test SupplierExtended GraphQL type"""
-        from backend.graphql.types import SupplierExtended
+        from backend.chronos_graphql.types import SupplierExtended
 
         supplier_data = {
             "id": 1,
@@ -511,7 +511,7 @@ class TestGraphQLTypes:
 
     def test_vehicle_type(self):
         """Test Vehicle GraphQL type"""
-        from backend.graphql.types import FuelType, Vehicle, VehicleStatus
+        from backend.chronos_graphql.types import FuelType, Vehicle, VehicleStatus
 
         vehicle_data = {
             "id": 1,

@@ -150,7 +150,7 @@ async def test_optional_modules_can_be_toggled(test_db: AsyncSession):
 @pytest.mark.asyncio
 async def test_module_mapping_includes_fleet_inventory_costcenters(test_db: AsyncSession):
     """Verify MODULE_MAPPING includes new modules"""
-    from backend.graphql.module_middleware import MODULE_MAPPING
+    from backend.chronos_graphql.module_middleware import MODULE_MAPPING
 
     fleet_fields = ["vehicles", "drivers", "trips", "vehicle", "driver", "trip"]
     for field in fleet_fields:
@@ -212,7 +212,7 @@ async def test_throttle_log_table_created(test_db: AsyncSession):
 @pytest.mark.asyncio
 async def test_throttle_config_exists(test_db: AsyncSession):
     """Verify THROTTLE_CONFIG is defined"""
-    from backend.graphql.module_middleware import THROTTLE_CONFIG
+    from backend.chronos_graphql.module_middleware import THROTTLE_CONFIG
 
     assert "generatePayslip" in THROTTLE_CONFIG
     assert "calculatePayroll" in THROTTLE_CONFIG
@@ -222,7 +222,7 @@ async def test_throttle_config_exists(test_db: AsyncSession):
 @pytest.mark.asyncio
 async def test_module_mapping_has_proper_structure(test_db: AsyncSession):
     """Verify MODULE_MAPPING has expected fields"""
-    from backend.graphql.module_middleware import MODULE_MAPPING
+    from backend.chronos_graphql.module_middleware import MODULE_MAPPING
 
     assert isinstance(MODULE_MAPPING, dict)
     assert len(MODULE_MAPPING) > 50, "Should have many field mappings"
