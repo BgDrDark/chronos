@@ -158,9 +158,15 @@ async def init_db():
             admin_role_name = "admin"
         db_admin = await crud.get_user_by_email(session, admin_email)
         if not db_admin:
-            await crud.create_user(session, schemas.UserCreate(email=admin_email, password="admin1234", first_name="Системен", last_name="Администратор", company_id=default_company.id), role_name=admin_role_name)
-        elif not db_admin.company_id:
-            db_admin.company_id = default_company.id
+            db_admin = await crud.create_user(session, schemas.UserCreate(email=admin_email, username="admin", password="admin1234", first_name="Системен", last_name="Администратор", company_id=default_company.id), role_name=admin_role_name)
+            await crud.user_repo.set_pin_code(session, db_admin.id, "00000000")
+        else:
+            if not db_admin.company_id:
+                db_admin.company_id = default_company.id
+            if not db_admin.username:
+                db_admin.username = "admin"
+            if not db_admin.pin_code:
+                await crud.user_repo.set_pin_code(session, db_admin.id, "00000000")
 
         # CompanyRoleAssignment
         admin_role = await session.execute(select(Role).where(Role.name == admin_role_name))

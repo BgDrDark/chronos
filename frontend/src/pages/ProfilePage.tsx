@@ -266,10 +266,6 @@ const PersonalDataSection: React.FC<{ user: any }> = ({ user }) => {
                             {maskData(user.iban, 4)}
                         </Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
-                        <Typography variant="caption" color="text.secondary">Номер на карта</Typography>
-                        <Typography variant="body1" fontWeight="medium">{user.cardNumber || '—'}</Typography>
-                    </Grid>
                 </Grid>
 
                 {user.activeContract && (
@@ -707,40 +703,47 @@ const ProfilePage: React.FC = () => {
                         </Card>
                     </Grid>
 
-                    {/* PIN */}
+                    {/* Карта + PIN */}
                     <Grid size={{ xs: 12 }}>
                         <Card variant="outlined" sx={{ borderRadius: 3 }}>
                             <CardContent>
                                 <Typography variant="h6" gutterBottom fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <KeyIcon /> PIN код за достъп
+                                    <KeyIcon /> Карта и PIN код за достъп
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                    PIN кодът се използва като втори фактор при достъп до защитени зони.
+                                    Картата и PIN кодът се използват като фактори за достъп до защитени зони.
                                 </Typography>
                                 {pinMsg && (
                                     <Alert severity={pinMsg.type} sx={{ mb: 2 }} onClose={() => setPinMsg(null)}>
                                         {pinMsg.text}
                                     </Alert>
                                 )}
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                    {user.pinExists ? (
-                                        <>
-                                            <Typography variant="body1" sx={{ fontFamily: 'monospace', fontSize: '1.2rem', letterSpacing: 2 }}>
-                                                {revealedPin ?? '**** ****'}
-                                            </Typography>
-                                            <IconButton size="small" onClick={() => setPinDialogOpen(true)}>
-                                                {revealedPin ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                                            </IconButton>
-                                        </>
-                                    ) : (
-                                        <Typography variant="body1">
-                                            Нямате зададен PIN код
-                                        </Typography>
-                                    )}
-                                    <Button variant="outlined" startIcon={<KeyIcon />} onClick={handleReissuePin}>
-                                        {user.pinExists ? 'Преиздай' : 'Генерирай PIN'}
-                                    </Button>
-                                </Box>
+                                <Grid container spacing={2}>
+                                    <Grid size={{ xs: 12, sm: 6 }}>
+                                        <Typography variant="caption" color="text.secondary">Номер на карта</Typography>
+                                        <Typography variant="body1" fontWeight="medium">{user.cardNumber || '—'}</Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 12, sm: 6 }}>
+                                        <Typography variant="caption" color="text.secondary" display="block" gutterBottom>PIN код</Typography>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            {user.pinExists ? (
+                                                <>
+                                                    <Typography variant="body1" sx={{ fontFamily: 'monospace', fontSize: '1.2rem', letterSpacing: 2 }}>
+                                                        {revealedPin ?? '**** ****'}
+                                                    </Typography>
+                                                    <IconButton size="small" onClick={() => setPinDialogOpen(true)}>
+                                                        {revealedPin ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                                                    </IconButton>
+                                                </>
+                                            ) : (
+                                                <Typography variant="body1">Нямате зададен PIN код</Typography>
+                                            )}
+                                            <Button variant="outlined" startIcon={<KeyIcon />} onClick={handleReissuePin} size="small">
+                                                {user.pinExists ? 'Преиздай' : 'Генерирай'}
+                                            </Button>
+                                        </Box>
+                                    </Grid>
+                                </Grid>
                             </CardContent>
                         </Card>
                     </Grid>

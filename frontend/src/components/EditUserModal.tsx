@@ -21,6 +21,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { gql, useMutation, useQuery } from '@apollo/client';
+import KeyIcon from '@mui/icons-material/Key';
 import { type User, type Role, type Company, type Department, type Position, type UpdateUserInput } from '../types';
 import { InfoIcon } from './ui/InfoIcon';
 import { userFieldsHelp } from './ui/fieldsHelpText';
@@ -40,7 +41,6 @@ const updateUserSchema = z.object({
   birthDate: z.string().optional().or(z.literal('')),
   iban: z.string().optional().or(z.literal('')),
   cardNumber: z.string().optional().or(z.literal('')),
-  pinCode: z.string().optional().or(z.literal('')),
   companyId: z.number().optional().nullable(),
   departmentId: z.number().optional().nullable(),
   positionId: z.number().optional().nullable(),
@@ -79,6 +79,12 @@ const UPDATE_USER_MUTATION = gql`
       email
       username
     }
+  }
+`;
+
+const REISSUE_PIN_MUTATION = gql`
+  mutation ReissuePin($userId: Int!) {
+    reissuePin(userId: $userId)
   }
 `;
 
@@ -121,6 +127,8 @@ const style = {
 
 const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refetchUsers }) => {
   const [apiError, setApiError] = useState('');
+  const [pinResult, setPinResult] = useState<string | null>(null);
+  const [reissuePin] = useMutation(REISSUE_PIN_MUTATION);
 
   // Local state for checkboxes - initialized from user when modal opens
   const [isActive, setIsActive] = useState(() => user?.isActive ?? true);
@@ -138,7 +146,6 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
     reset,
     control,
     setError,
-    setValue,
     formState: { isSubmitting, errors },
   } = useForm<UpdateUserFormData>({
     resolver: zodResolver(updateUserSchema),
@@ -161,7 +168,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
       
       reset({
         id: user.id ? Number(user.id) : undefined,
-        email: '',
+        email: user.email || '',
         username: user.username || '',
         firstName: user.firstName || '',
         surname: user.surname || '',
@@ -202,6 +209,16 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
     }, 0);
   }, [user, open, reset]);
 
+  const handleReissuePin = async () => {
+    if (!user?.id) return;
+    try {
+      const res = await reissuePin({ variables: { userId: user.id } });
+      setPinResult(res.data.reissuePin);
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Грешка при генериране на PIN');
+    }
+  };
+
   const filteredDepartments = orgData?.departments.filter((d) => 
     selectedCompanyId ? d.companyId === selectedCompanyId : true
   ) || [];
@@ -224,7 +241,6 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
         birthDate: formData.birthDate || null,
         iban: formData.iban,
         cardNumber: formData.cardNumber || null,
-        pinCode: formData.pinCode || null,
         companyId: formData.companyId,
         departmentId: formData.departmentId,
         positionId: formData.positionId,
@@ -428,32 +444,19 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="PIN код"
-                size="small"
-                {...register('pinCode')}
-                InputLabelProps={{ shrink: true }}
-                slotProps={{
-                  input: {
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => {
-                            const pin = Math.floor(10000000 + Math.random() * 90000000).toString();
-                            setValue('pinCode', pin);
-                          }}
-                          sx={{ minWidth: 'auto', whiteSpace: 'nowrap', fontSize: '0.7rem' }}
-                        >
-                          Генерирай
-                        </Button>
-                      </InputAdornment>
-                    )
-                  }
-                }}
-              />
+              <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: '100%', pb: 0.5 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mr: 1, lineHeight: '36px' }}>
+                  PIN: {user?.pinExists ? 'активен' : 'няма'}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<KeyIcon />}
+                  onClick={handleReissuePin}
+                >
+                  {user?.pinExists ? 'Преиздай' : 'Генерирай'}
+                </Button>
+              </Box>
             </Grid>
             <Grid size={{ xs: 12 }}>
               <TextField
@@ -984,6 +987,12 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ open, onClose, user, refe
           </Grid>
 
           {apiError && <Alert severity="error" sx={{ mt: 2 }}>{apiError}</Alert>}
+
+          {pinResult && (
+            <Alert severity="success" sx={{ mt: 2 }} onClose={() => setPinResult(null)}>
+              Нов PIN: <strong>{pinResult}</strong>. Запомнете го!
+            </Alert>
+          )}
 
           <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
             <Button type="submit" fullWidth variant="contained" disabled={isSubmitting} sx={{ py: 1.2 }}>
