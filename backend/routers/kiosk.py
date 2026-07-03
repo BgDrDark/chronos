@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend import crud
+from backend.auth import jwt_utils
 from backend.auth.limiter import limiter
 from backend.auth.module_guard import require_module
 from backend.config import settings
@@ -142,6 +143,60 @@ async def validate_code(
     return result
 
 
+def _default_terminal_config() -> dict:
+    return {
+        "display": {
+            "clock_size": "large",
+            "show_date": True,
+            "show_weather": False,
+            "background": {"type": "color", "value": "#1a1a2e"},
+            "logo_url": None,
+        },
+        "colors": {
+            "primary": "#1976d2",
+            "secondary": "#dc004e",
+            "background": "#1a1a2e",
+            "surface": "#16213e",
+            "text": "#ffffff",
+            "error": "#ff5252",
+            "success": "#4caf50",
+        },
+        "timeouts": {
+            "inactivity_reset": 120,
+            "screensaver_delay": 30,
+            "screensaver_idle_action": "reset",
+        },
+        "screensaver": {
+            "type": "logo",
+            "image_url": None,
+        },
+        "sounds": {
+            "enabled": True,
+            "scan_success": "default",
+            "scan_error": "default",
+            "keypress": "default",
+        },
+        "text": {
+            "title": None,
+            "welcome_message": None,
+            "scan_placeholder": "Поставете карта или QR код",
+            "scanning_text": "Сканиране...",
+            "success_message": "Достъпът е разрешен",
+            "error_message": "Достъпът е отказан",
+        },
+        "tts": {
+            "enabled": False,
+            "language": "bg-BG",
+            "scan_success": True,
+            "scan_error": True,
+        },
+        "security": {
+            "exit_method": "pin",
+            "exit_pin_required": True,
+        },
+    }
+
+
 # === UNIFIED KIOSK TERMINAL ENDPOINTS ===
 
 
@@ -216,12 +271,67 @@ async def get_terminal_config(
             "new_registration": True,
         }
 
+    merged = {**_default_terminal_config(), **(terminal.config or {})}
     return {
         "mode": terminal.mode or "both",
         "registered": True,
         "terminal_id": terminal.id,
         "alias": terminal.alias,
         "is_active": terminal.is_active,
+        "config": merged,
+    }
+
+
+@router.put("/terminal/{hwid}/config")
+async def update_terminal_config(
+    hwid: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(jwt_utils.get_current_user),
+):
+    """Обновява конфигурацията на терминала (partial merge)"""
+    from backend.database.models import Terminal
+
+    stmt = select(Terminal).where(Terminal.hardware_uuid == hwid)
+    result = await db.execute(stmt)
+    terminal = result.scalar_one_or_none()
+    if not terminal:
+        raise HTTPException(status_code=404, detail="Терминалът не е намерен")
+    existing = terminal.config or {}
+    for key, value in body.items():
+        if key in existing and isinstance(existing[key], dict) and isinstance(value, dict):
+            existing[key] = {**existing[key], **value}
+        else:
+            existing[key] = value
+    terminal.config = existing
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/terminal/{hwid}/verify-pin")
+async def verify_admin_pin(
+    hwid: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Проверява PIN код за администраторски изход от терминала"""
+    import hashlib
+
+    from backend.database.models import User
+
+    pin = body.get("pin")
+    user_id = body.get("user_id")
+    if not pin or not user_id:
+        raise HTTPException(status_code=400, detail="Липсва PIN код или consumer ID")
+    user = await db.get(User, user_id)
+    if not user or not user.pin_sha256:
+        raise HTTPException(status_code=400, detail="Невалиден PIN код")
+    if user.pin_sha256 != hashlib.sha256(pin.encode()).hexdigest():
+        raise HTTPException(status_code=400, detail="Невалиден PIN код")
+    return {
+        "ok": True,
+        "user_id": user.id,
+        "name": user.display_name or f"{user.first_name} {user.last_name}",
     }
 
 
