@@ -148,14 +148,17 @@ const UnifiedKiosk: React.FC = () => {
     }, [isScanning, setIsScanning, setScanResult, setOfflineQueue, offlineQueue]);
 
     // TTS Function
-    const speak = useCallback((text: string) => {
+    const speak = useCallback((text: string, ttsType?: 'scan_success' | 'scan_error') => {
+        if (!terminalCfg.tts.enabled) return;
+        if (ttsType === 'scan_success' && !terminalCfg.tts.scan_success) return;
+        if (ttsType === 'scan_error' && !terminalCfg.tts.scan_error) return;
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
             const msg = new SpeechSynthesisUtterance(text);
-            msg.lang = 'en-US';
+            msg.lang = terminalCfg.tts.language;
             window.speechSynthesis.speak(msg);
         }
-    }, []);
+    }, [terminalCfg.tts]);
 
     // Get or create hardware UUID
     const getOrCreateHWID = useCallback((): string => {
@@ -227,9 +230,28 @@ const UnifiedKiosk: React.FC = () => {
         initTerminal();
     }, [getOrCreateHWID]);
 
+    // Apply config colors as CSS variables
+    useEffect(() => {
+        const c = terminalCfg.colors;
+        const root = document.documentElement;
+        root.style.setProperty('--kiosk-primary', c.primary);
+        root.style.setProperty('--kiosk-secondary', c.secondary);
+        root.style.setProperty('--kiosk-bg', c.background);
+        root.style.setProperty('--kiosk-surface', c.surface);
+        root.style.setProperty('--kiosk-text', c.text);
+        root.style.setProperty('--kiosk-error', c.error);
+        root.style.setProperty('--kiosk-success', c.success);
+    }, [terminalCfg]);
+
     const playSound = (type: 'success' | 'error') => {
-        const audio = new Audio(type === 'success' ? '/success.mp3' : '/error.mp3');
-        audio.play().catch(() => {});
+        if (!terminalCfg.sounds.enabled) return;
+        const soundKey = type === 'success' ? 'scan_success' : 'scan_error';
+        const sound = terminalCfg.sounds[soundKey];
+        if (sound && sound !== 'none' && sound !== 'default') {
+            new Audio(sound).play().catch(() => {});
+        } else if (sound !== 'none') {
+            new Audio(type === 'success' ? '/success.mp3' : '/error.mp3').play().catch(() => {});
+        }
     };
 
     const handleRequest = useCallback(async (payload: { qr_token?: string, code?: string }) => {
@@ -259,20 +281,13 @@ const UnifiedKiosk: React.FC = () => {
                         profile_picture: data.profile_picture
                     });
                     
-                    let ttsMsg = "Success";
-                    if (data.clock_action === "in") {
-                        ttsMsg = "Thank you, have a nice day";
-                    } else if (data.clock_action === "out") {
-                        ttsMsg = "Thank you, goodbye";
-                    } else if (data.access_granted) {
-                        ttsMsg = "Access granted";
-                    }
-                    speak(ttsMsg);
+                    const ttsMsg = data.message || (data.access_granted ? terminalCfg.text.success_message : terminalCfg.text.error_message);
+                    speak(ttsMsg, 'scan_success');
                     playSound('success');
                 } else {
-                    const msg = data.message || data.detail || 'Error';
+                    const msg = data.message || data.detail || terminalCfg.text.error_message;
                     setScanResultRef.current({ status: 'error', message: msg });
-                    speak("Access denied");
+                    speak(terminalCfg.text.error_message, 'scan_error');
                     playSound('error');
                 }
 
@@ -330,13 +345,15 @@ const UnifiedKiosk: React.FC = () => {
     };
 
     if (loading) return (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: '#1a237e', color: 'white', flexDirection: 'column', gap: 2 }}>
-            <CircularProgress color="inherit" />
-            <Typography variant="h6">Инициализиране на терминал...</Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: terminalCfg.colors.background, color: terminalCfg.colors.text, flexDirection: 'column', gap: 2 }}>
+            <CircularProgress sx={{ color: terminalCfg.colors.text }} />
+            <Typography variant="h6">{terminalCfg.text.scanning_text}</Typography>
         </Box>
     );
 
-    const defaultBg = 'linear-gradient(135deg, #1a237e 0%, #0d47a1 100%)';
+    const defaultBg = terminalCfg.display.background.type === 'color'
+        ? terminalCfg.display.background.value
+        : terminalCfg.display.background.value;
 
     return (
         <Box sx={{ 
@@ -423,6 +440,10 @@ const UnifiedKiosk: React.FC = () => {
                                 {entryMode === 'qr' ? (
                                     <Box sx={{ 
                                         overflow: 'hidden', borderRadius: 8, border: '8px solid rgba(255,255,255,0.2)', 
+                                        bgcolor: 'black', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+                                        '& #qr-reader': { border: 'none !important' }
+                                    }}>
+                                        <: 8, border: '8px solid rgba(255,255,255,0.2)', 
                                         bgcolor: 'black', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
                                         '& #qr-reader': { border: 'none !important' }
                                     }}>
