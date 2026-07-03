@@ -282,6 +282,8 @@ class Terminal(Base):
     # Terminal mode: "clock" (Clock In/Out), "access" (Достъп), "both" (Комбиниран)
     mode: Mapped[str] = mapped_column(String(20), default="both")
 
+    config: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
+
 
 class Printer(Base):
     """Принтер свързан към gateway"""
