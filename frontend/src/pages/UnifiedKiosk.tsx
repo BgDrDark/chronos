@@ -19,13 +19,77 @@ import { useNavigate } from 'react-router-dom';
 import { getApiUrl } from '../utils/api';
 import CodeKeyboard from '../components/CodeKeyboard';
 
-interface TerminalConfig {
+interface TerminalHardwareInfo {
     mode: 'clock' | 'access' | 'both';
     registered: boolean;
     terminal_id: number | null;
     alias: string | null;
     is_active?: boolean;
+    config?: TerminalCustomization;
 }
+
+export interface TerminalCustomization {
+  display: {
+    clock_size: 'large' | 'medium' | 'small';
+    show_date: boolean;
+    show_weather: boolean;
+    background: { type: 'color' | 'gradient' | 'image'; value: string };
+    logo_url: string | null;
+  };
+  colors: {
+    primary: string;
+    secondary: string;
+    background: string;
+    surface: string;
+    text: string;
+    error: string;
+    success: string;
+  };
+  timeouts: {
+    inactivity_reset: number;
+    screensaver_delay: number;
+    screensaver_idle_action: 'reset' | 'screensaver';
+  };
+  screensaver: {
+    type: 'logo' | 'clock' | 'slideshow' | 'none';
+    image_url: string | null;
+  };
+  sounds: {
+    enabled: boolean;
+    scan_success: string;
+    scan_error: string;
+    keypress: string;
+  };
+  text: {
+    title: string | null;
+    welcome_message: string | null;
+    scan_placeholder: string;
+    scanning_text: string;
+    success_message: string;
+    error_message: string;
+  };
+  tts: {
+    enabled: boolean;
+    language: string;
+    scan_success: boolean;
+    scan_error: boolean;
+  };
+  security: {
+    exit_method: 'pin' | 'password';
+    exit_pin_required: boolean;
+  };
+}
+
+const DEFAULT_TERMINAL_CUSTOMIZATION: TerminalCustomization = {
+  display: { clock_size: 'large', show_date: true, show_weather: false, background: { type: 'color', value: '#1a1a2e' }, logo_url: null },
+  colors: { primary: '#1976d2', secondary: '#dc004e', background: '#1a1a2e', surface: '#16213e', text: '#ffffff', error: '#ff5252', success: '#4caf50' },
+  timeouts: { inactivity_reset: 120, screensaver_delay: 30, screensaver_idle_action: 'reset' },
+  screensaver: { type: 'logo', image_url: null },
+  sounds: { enabled: true, scan_success: 'default', scan_error: 'default', keypress: 'default' },
+  text: { title: null, welcome_message: null, scan_placeholder: 'Поставете карта или QR код', scanning_text: 'Сканиране...', success_message: 'Достъпът е разрешен', error_message: 'Достъпът е отказан' },
+  tts: { enabled: false, language: 'bg-BG', scan_success: true, scan_error: true },
+  security: { exit_method: 'pin', exit_pin_required: true },
+};
 
 interface OfflineLog {
     id: string;
@@ -39,7 +103,8 @@ interface OfflineLog {
 }
 
 const UnifiedKiosk: React.FC = () => {
-    const [config, setConfig] = useState<TerminalConfig | null>(null);
+    const [hwInfo, setHwInfo] = useState<TerminalHardwareInfo | null>(null);
+    const [terminalCfg, setTerminalCfg] = useState<TerminalCustomization>(DEFAULT_TERMINAL_CUSTOMIZATION);
     const [loading, setLoading] = useState(true);
     const [scanResult, setScanResult] = useState<{ 
         status: 'success' | 'warning' | 'error', 
@@ -142,9 +207,10 @@ const UnifiedKiosk: React.FC = () => {
             try {
                 const response = await fetch(getApiUrl(`kiosk/terminal/${hwid}/config`));
                 const data = await response.json();
-                setConfig(data);
+                setHwInfo(data);
+                if (data.config) setTerminalCfg(data.config);
             } catch {
-                setConfig({ mode: 'both', registered: false, terminal_id: null, alias: null });
+                setHwInfo({ mode: 'both', registered: false, terminal_id: null, alias: null });
             }
 
             // Fetch Background
@@ -286,7 +352,7 @@ const UnifiedKiosk: React.FC = () => {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}><LockIcon /></Avatar>
                     <Box>
-                        <Typography variant="subtitle1" sx={{ color: 'white', fontWeight: 'bold', lineHeight: 1 }}>{config?.alias || 'Chronos Terminal'}</Typography>
+                        <Typography variant="subtitle1" sx={{ color: 'white', fontWeight: 'bold', lineHeight: 1 }}>{hwInfo?.alias || terminalCfg.text.title || 'Chronos Terminal'}</Typography>
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>{isOnline ? '● Онлайн' : '○ Офлайн'}</Typography>
                     </Box>
                 </Box>
@@ -369,8 +435,8 @@ const UnifiedKiosk: React.FC = () => {
                         </Box>
 
                         <Box sx={{ mt: 4, textAlign: 'center', display: 'flex', justifyContent: 'center', gap: 2 }}>
-                            {config?.mode !== 'access' && <Chip icon={<AccessTimeIcon sx={{ color: 'white !important' }} />} label="Работно Време" sx={{ bgcolor: 'primary.main', color: 'white' }} />}
-                            {config?.mode !== 'clock' && <Chip icon={<LockIcon sx={{ color: 'white !important' }} />} label="Контрол на Достъпа" sx={{ bgcolor: 'secondary.main', color: 'white' }} />}
+                            {hwInfo?.mode !== 'access' && <Chip icon={<AccessTimeIcon sx={{ color: 'white !important' }} />} label="Работно Време" sx={{ bgcolor: 'primary.main', color: 'white' }} />}
+                            {hwInfo?.mode !== 'clock' && <Chip icon={<LockIcon sx={{ color: 'white !important' }} />} label="Контрол на Достъпа" sx={{ bgcolor: 'secondary.main', color: 'white' }} />}
                         </Box>
                     </Container>
                 )}
