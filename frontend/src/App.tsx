@@ -22,7 +22,6 @@ import DocumentationPage from './pages/DocumentationPage';
 import AdminDocumentationPage from './pages/AdminDocumentationPage';
 import ProfilePage from './pages/ProfilePage';
 import KioskAdminPage from './pages/KioskAdminPage';
-import KioskTerminalPage from './pages/KioskTerminalPage';
 import UnifiedKiosk from './pages/UnifiedKiosk';
 import GatewayAdminPage from './pages/GatewayAdminPage';
 
@@ -92,15 +91,13 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 function App() {
   usePeriodicSync();
   const location = useLocation();
-  const isKioskMode = location.pathname === '/kiosk';
-  const isCardMode = location.pathname === '/my-card';
   const isTerminalMode = location.pathname === '/kiosk/terminal';
+  const isCardMode = location.pathname === '/my-card';
 
-  if (isKioskMode || isTerminalMode) {
+  if (isTerminalMode) {
     return (
       <AdminRoute>
         <Routes>
-          <Route path="/kiosk" element={<UnifiedKiosk />} />
           <Route path="/kiosk/terminal" element={<UnifiedKiosk />} />
         </Routes>
       </AdminRoute>
@@ -277,14 +274,6 @@ function App() {
         <Route path="/admin/kiosk/users" element={<AdminRoute><KioskAdminPage tab="users" /></AdminRoute>} />
         <Route path="/admin/kiosk/levels" element={<AdminRoute><KioskAdminPage tab="levels" /></AdminRoute>} />
         <Route path="/admin/kiosk/schedules" element={<AdminRoute><KioskAdminPage tab="schedules" /></AdminRoute>} />
-        <Route
-          path="/admin/kiosk/terminal"
-          element={
-            <AdminRoute>
-              <KioskTerminalPage />
-            </AdminRoute>
-          }
-        />
         <Route
           path="/admin/gateways"
           element={

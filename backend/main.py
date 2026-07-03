@@ -295,7 +295,6 @@ class CSRFOrWebSocketMiddleware:
                 re.compile(r"^/redoc"),
                 re.compile(r"^/gateways/"),
                 re.compile(r"^/webhook/"),
-                re.compile(r"^/kiosk/scan"),
                 re.compile(r"^/kiosk/terminal/"),
                 re.compile(r"^/terminal/"),
                 re.compile(r"^/graphql"),

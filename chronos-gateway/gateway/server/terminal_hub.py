@@ -102,7 +102,7 @@ class TerminalHub:
             
             self.terminal_manager.update_heartbeat(x_terminal_id)
             
-            result = await self._proxy_to_backend("/kiosk/scan", data)
+            result = await self._proxy_to_backend(f"/kiosk/terminal/{x_terminal_id}/scan", data)
             
             if result.get("status") == "success":
                 self.terminal_manager.increment_scans(x_terminal_id)

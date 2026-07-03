@@ -31,16 +31,15 @@ async def test_module_guard_and_rest_api(async_client: AsyncClient, test_db: Asy
     await test_db.commit()
 
     # Try to access a protected endpoint (Kiosk) - Should be 403
-    kiosk_res = await async_client.post("/kiosk/scan", json={"qr_token": "test"}, headers={"X-Kiosk-Secret": "secret"})
+    kiosk_res = await async_client.post("/kiosk/terminal/test-hwid/scan", json={"qr_token": "test"})
     assert kiosk_res.status_code == 403
 
     # Enable module via API
     await async_client.patch("/system/modules/kiosk", json={"is_enabled": True}, headers=headers)
 
-    # Try access again
-    kiosk_res = await async_client.post("/kiosk/scan", json={"qr_token": "test"}, headers={"X-Kiosk-Secret": "wrong"})
-    assert kiosk_res.status_code == 403
-    assert "Неоторизиран терминал" in kiosk_res.json()["detail"]
+    # Try access again (unified endpoint doesn't check X-Kiosk-Secret)
+    kiosk_res = await async_client.post("/kiosk/terminal/test-hwid/scan", json={"qr_token": "test"})
+    assert kiosk_res.status_code != 403
 
 @pytest.mark.asyncio
 async def test_username_login(async_client: AsyncClient, test_db: AsyncSession):

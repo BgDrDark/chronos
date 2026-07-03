@@ -354,8 +354,7 @@ const MainLayout: React.FC<Props> = ({ children }) => {
     { text: 'Автомобили', icon: <FleetIcon />, path: '/admin/fleet', visible: isAdmin && isEnabled('fleet') },
     { text: 'Driver Dashboard', icon: <FleetIcon />, path: '/driver', visible: isAdmin && isDriverMode },
     { text: 'Справки', icon: <ReportsIcon />, path: '/admin/fleet/reports', visible: isAdmin && isEnabled('fleet') },
-    { text: 'Терминал за присъствие', icon: <QrCodeScannerIcon />, path: '/kiosk', visible: isAdmin },
-    { text: 'Терминал за достъп', icon: <DoorIcon />, path: '/kiosk/terminal', visible: isAdmin },
+    { text: 'Терминал за достъп', icon: <QrCodeScannerIcon />, path: '/kiosk/terminal', visible: isAdmin },
     { text: 'Производствен терминал', icon: <KitchenIcon />, path: '/admin/production/kiosk', visible: isAdmin && isEnabled('confectionery') },
   ];
 
