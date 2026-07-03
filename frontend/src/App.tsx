@@ -33,6 +33,7 @@ import DoorsPage from './pages/access-control/DoorsPage';
 import AccessLevelsPage from './pages/access-control/AccessLevelsPage';
 import AccessSchedulesPage from './pages/access-control/SchedulesPage';
 import ElevatorPage from './pages/access-control/ElevatorPage';
+import FloorPlanPage from './pages/FloorPlanPage';
 import AccessControlEmergencyPage from './pages/access-control/EmergencyPage';
 import KioskAdminLayout from './pages/kiosk-admin/KioskAdminLayout';
 import TerminalsPage from './pages/kiosk-admin/TerminalsPage';
@@ -261,6 +262,7 @@ function App() {
         <Route path="/admin/access-control/schedules" element={<AdminRoute><AccessControlLayout><AccessSchedulesPage /></AccessControlLayout></AdminRoute>} />
         <Route path="/admin/access-control/elevator" element={<AdminRoute><AccessControlLayout><ElevatorPage /></AccessControlLayout></AdminRoute>} />
         <Route path="/admin/access-control/emergency" element={<AdminRoute><AccessControlLayout><AccessControlEmergencyPage /></AccessControlLayout></AdminRoute>} />
+        <Route path="/admin/access-control/floor-plans" element={<AdminRoute><FloorPlanPage /></AdminRoute>} />
 
         {/* Отдел КД - с redirect (стари страници за обратна съвместимост) */}
         <Route path="/admin/kiosk" element={<Navigate to="/admin/kiosk/config" replace />} />

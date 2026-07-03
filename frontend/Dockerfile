@@ -15,6 +15,7 @@ COPY . .
 # Приемаме URL на API-то като аргумент и билдваме
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 # Експозваме порт 3000

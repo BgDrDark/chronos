@@ -38,6 +38,7 @@ from backend.routers import (
     documents,
     export,
     fleet_export,
+    floor_plan_ws,
     gateway,
     google,
     kiosk,
@@ -269,29 +270,43 @@ app.add_middleware(SecurityHeadersMiddleware)
 # CSRF Protection - exempt auth endpoints, protect everything else
 import re
 
-app.add_middleware(
-    CSRFMiddleware,
-    secret=settings.CSRF_SECRET_KEY,
-    cookie_name="csrf_token",
-    cookie_path="/",
-    cookie_domain=None,
-    cookie_secure=settings.COOKIE_SECURE,
-    cookie_httponly=False,
-    cookie_samesite="strict",
-    exempt_urls=[
-        re.compile(r"^/auth/"),
-        re.compile(r"^/google/"),
-        re.compile(r"^/docs"),
-        re.compile(r"^/redoc"),
-        re.compile(r"^/gateways/"),
-        re.compile(r"^/webhook/"),
-        re.compile(r"^/kiosk/scan"),
-        re.compile(r"^/kiosk/terminal/"),
-        re.compile(r"^/terminal/"),
-        re.compile(r"^/graphql"),
-    ],
-    safe_methods={"GET", "HEAD", "OPTIONS", "TRACE"},
-)
+
+class CSRFOrWebSocketMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        await CSRFMiddleware(
+            self.app,
+            secret=settings.CSRF_SECRET_KEY,
+            cookie_name="csrf_token",
+            cookie_path="/",
+            cookie_domain=None,
+            cookie_secure=settings.COOKIE_SECURE,
+            cookie_httponly=False,
+            cookie_samesite="strict",
+            exempt_urls=[
+                re.compile(r"^/auth/"),
+                re.compile(r"^/google/"),
+                re.compile(r"^/docs"),
+                re.compile(r"^/redoc"),
+                re.compile(r"^/gateways/"),
+                re.compile(r"^/webhook/"),
+                re.compile(r"^/kiosk/scan"),
+                re.compile(r"^/kiosk/terminal/"),
+                re.compile(r"^/terminal/"),
+                re.compile(r"^/graphql"),
+                re.compile(r"^/ws/"),
+                re.compile(r"^/floor-plan/"),
+            ],
+            safe_methods={"GET", "HEAD", "OPTIONS", "TRACE"},
+        )(scope, receive, send)
+
+
+app.add_middleware(CSRFOrWebSocketMiddleware)
 
 
 # Configure CORS - from config with fallback defaults
@@ -359,6 +374,7 @@ from fastapi.staticfiles import StaticFiles
 
 app.include_router(documents.router)
 app.include_router(fleet_export.router)
+app.include_router(floor_plan_ws.router)
 
 # Mount uploads for static access (avatars, documents)
 if not os.path.exists("uploads"):

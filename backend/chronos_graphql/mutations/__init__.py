@@ -34,6 +34,7 @@ from backend.chronos_graphql.mutations.shifts import ShiftMutation
 from backend.chronos_graphql.mutations.trz import TrzMutation
 from backend.chronos_graphql.mutations.user import UserMutation
 from backend.chronos_graphql.mutations.vehicle import VehicleMutation
+from backend.chronos_graphql.mutations.floor_plan import FloorPlanMutation
 from backend.modules.behavioral_analysis.graphql.mutations import BehavioralMutation
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,6 @@ authenticate_msg = "Трябва да се автентикирате"
 
 
 @strawberry.type
-class Mutation(AccessPolicyMutation, VehicleMutation, CostCenterMutation, NotificationsMutation, ShiftMutation, LogisticsMutation, ProductionMutation, AccountingMutation, ContractMutation, HardwareMutation, AccessControlMutation, SecurityMutations, ElevatorMutations, PayrollMutation, TrzMutation, LeaveMutation, CalendarMutation, NapReportMutation, BehavioralMutation, HRMutation, InventoryMutation, ShiftSwapMutation, CompanyMutation, SettingsMutation, UserMutation, DocumentationMutation):
+class Mutation(AccessPolicyMutation, VehicleMutation, CostCenterMutation, NotificationsMutation, ShiftMutation, LogisticsMutation, ProductionMutation, AccountingMutation, ContractMutation, HardwareMutation, AccessControlMutation, SecurityMutations, ElevatorMutations, PayrollMutation, TrzMutation, LeaveMutation, CalendarMutation, NapReportMutation, BehavioralMutation, HRMutation, InventoryMutation, ShiftSwapMutation, CompanyMutation, SettingsMutation, UserMutation, DocumentationMutation, FloorPlanMutation):
     pass
 

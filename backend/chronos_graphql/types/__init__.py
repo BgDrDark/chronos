@@ -46,4 +46,5 @@ from backend.chronos_graphql.types.system import *  # noqa: F403
 from backend.chronos_graphql.types.time_tracking import *  # noqa: F403
 from backend.chronos_graphql.types.trz import *  # noqa: F403
 from backend.chronos_graphql.types.vehicle import *  # noqa: F403
+from backend.chronos_graphql.types.floor_plan import *  # noqa: F403
 

@@ -3442,6 +3442,8 @@ class FloorPlan(Base):
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    svg_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    background_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
     width: Mapped[int] = mapped_column(Integer, default=1000)
     height: Mapped[int] = mapped_column(Integer, default=800)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -3459,7 +3461,7 @@ class FloorPlanDoor(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     floor_plan_id: Mapped[int] = mapped_column(Integer, ForeignKey("floor_plans.id", ondelete="CASCADE"), nullable=False)
-    door_id: Mapped[int] = mapped_column(Integer, ForeignKey("access_doors.id", ondelete="CASCADE"), nullable=False)
+    door_id: Mapped[int] = mapped_column(Integer, ForeignKey("access_doors.id"), nullable=False)
     x: Mapped[float] = mapped_column(Float, nullable=False)
     y: Mapped[float] = mapped_column(Float, nullable=False)
     width: Mapped[float] = mapped_column(Float, default=20)

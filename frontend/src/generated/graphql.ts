@@ -80,6 +80,40 @@ export type AccessDoorInput = {
   zoneDbId: Scalars['Int']['input'];
 };
 
+export type AccessLevel = {
+  companyId: Scalars['Int']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  description?: Maybe<Scalars['String']['output']>;
+  id: Scalars['Int']['output'];
+  isActive: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  updatedAt?: Maybe<Scalars['DateTime']['output']>;
+  userCount: Scalars['Int']['output'];
+  zoneAssignments: Array<AccessLevelZone>;
+};
+
+export type AccessLevelInput = {
+  description?: InputMaybe<Scalars['String']['input']>;
+  isActive?: Scalars['Boolean']['input'];
+  name: Scalars['String']['input'];
+};
+
+export type AccessLevelUpdateInput = {
+  description?: InputMaybe<Scalars['String']['input']>;
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type AccessLevelZone = {
+  accessLevelId: Scalars['Int']['output'];
+  id: Scalars['Int']['output'];
+  outOfHoursBehavior: Scalars['String']['output'];
+  priority: Scalars['Int']['output'];
+  scheduleId?: Maybe<Scalars['Int']['output']>;
+  zone?: Maybe<AccessZone>;
+  zoneId: Scalars['Int']['output'];
+};
+
 export type AccessLog = {
   action: Scalars['String']['output'];
   doorId?: Maybe<Scalars['String']['output']>;
@@ -97,19 +131,59 @@ export type AccessLog = {
   zoneName?: Maybe<Scalars['String']['output']>;
 };
 
+export type AccessSchedule = {
+  companyId: Scalars['Int']['output'];
+  config: Scalars['JSONScalar']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  holidayOverrideAuto: Scalars['Boolean']['output'];
+  id: Scalars['Int']['output'];
+  isActive: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  timezone: Scalars['String']['output'];
+};
+
+export type AccessScheduleInput = {
+  config: Scalars['JSON']['input'];
+  holidayOverrideAuto?: Scalars['Boolean']['input'];
+  isActive?: Scalars['Boolean']['input'];
+  name: Scalars['String']['input'];
+  timezone?: Scalars['String']['input'];
+};
+
+export type AccessScheduleUpdateInput = {
+  config?: InputMaybe<Scalars['JSON']['input']>;
+  holidayOverrideAuto?: InputMaybe<Scalars['Boolean']['input']>;
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  timezone?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type AccessZone = {
   antiPassbackEnabled: Scalars['Boolean']['output'];
   antiPassbackTimeout: Scalars['Int']['output'];
   antiPassbackType: Scalars['String']['output'];
   authorizedUsers: Array<User>;
+  children: Array<AccessZone>;
   dependsOn: Array<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
+  dualAuthEnabled: Scalars['Boolean']['output'];
+  dualAuthTimeout: Scalars['Int']['output'];
+  emergencyContact?: Maybe<Scalars['String']['output']>;
   id: Scalars['Int']['output'];
+  inheritPermissions: Scalars['Boolean']['output'];
+  interlockEnabled: Scalars['Boolean']['output'];
+  interlockTimeout: Scalars['Int']['output'];
   isActive: Scalars['Boolean']['output'];
+  isSafeZone: Scalars['Boolean']['output'];
   level: Scalars['Int']['output'];
+  lockdownBehavior: Scalars['String']['output'];
   name: Scalars['String']['output'];
+  parentZone?: Maybe<AccessZone>;
+  parentZoneId?: Maybe<Scalars['Int']['output']>;
+  requiredAuthFactors: Array<Scalars['Int']['output']>;
   requiredHoursEnd: Scalars['String']['output'];
   requiredHoursStart: Scalars['String']['output'];
+  traversalOrder: Scalars['Int']['output'];
   zoneId: Scalars['String']['output'];
 };
 
@@ -119,8 +193,15 @@ export type AccessZoneInput = {
   antiPassbackType?: Scalars['String']['input'];
   dependsOn?: Array<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
+  dualAuthEnabled?: Scalars['Boolean']['input'];
+  dualAuthTimeout?: Scalars['Int']['input'];
+  inheritPermissions?: Scalars['Boolean']['input'];
+  interlockEnabled?: Scalars['Boolean']['input'];
+  interlockTimeout?: Scalars['Int']['input'];
   level?: Scalars['Int']['input'];
   name: Scalars['String']['input'];
+  parentZoneId?: InputMaybe<Scalars['Int']['input']>;
+  requiredAuthFactors?: Array<Scalars['Int']['input']>;
   requiredHoursEnd?: Scalars['String']['input'];
   requiredHoursStart?: Scalars['String']['input'];
   zoneId: Scalars['String']['input'];
@@ -292,6 +373,19 @@ export type AnnualInsuranceSummary = {
   totalDzpo: Scalars['Float']['output'];
   totalEmployees: Scalars['Int']['output'];
   totalZo: Scalars['Float']['output'];
+};
+
+export type AssignAccessLevelToUserInput = {
+  accessLevelId?: InputMaybe<Scalars['Int']['input']>;
+  userId: Scalars['Int']['input'];
+};
+
+export type AssignLevelToZoneInput = {
+  accessLevelId: Scalars['Int']['input'];
+  outOfHoursBehavior?: Scalars['String']['input'];
+  priority?: Scalars['Int']['input'];
+  scheduleId?: InputMaybe<Scalars['Int']['input']>;
+  zoneId: Scalars['Int']['input'];
 };
 
 export type AuditLog = {
@@ -1019,6 +1113,88 @@ export type DocumentationCategoryInput = {
   title: Scalars['String']['input'];
 };
 
+export type ElevatorFloor = {
+  elevatorGroupId: Scalars['Int']['output'];
+  floorNumber: Scalars['Int']['output'];
+  id: Scalars['Int']['output'];
+  isActive: Scalars['Boolean']['output'];
+  name?: Maybe<Scalars['String']['output']>;
+  order: Scalars['Int']['output'];
+  relayDeviceId: Scalars['String']['output'];
+  relayNumber: Scalars['Int']['output'];
+  zone?: Maybe<AccessZone>;
+  zoneId?: Maybe<Scalars['Int']['output']>;
+};
+
+export type ElevatorFloorInput = {
+  elevatorGroupId: Scalars['Int']['input'];
+  floorNumber: Scalars['Int']['input'];
+  name?: InputMaybe<Scalars['String']['input']>;
+  order?: Scalars['Int']['input'];
+  relayDeviceId: Scalars['String']['input'];
+  relayNumber: Scalars['Int']['input'];
+  zoneId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type ElevatorFloorUpdateInput = {
+  floorNumber?: InputMaybe<Scalars['Int']['input']>;
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  order?: InputMaybe<Scalars['Int']['input']>;
+  relayDeviceId?: InputMaybe<Scalars['String']['input']>;
+  relayNumber?: InputMaybe<Scalars['Int']['input']>;
+  zoneId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type ElevatorGroup = {
+  controllerType: Scalars['String']['output'];
+  createdAt?: Maybe<Scalars['DateTime']['output']>;
+  floors: Array<ElevatorFloor>;
+  gatewayId: Scalars['Int']['output'];
+  id: Scalars['Int']['output'];
+  isActive: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  terminalId: Scalars['String']['output'];
+  updatedAt?: Maybe<Scalars['DateTime']['output']>;
+};
+
+export type ElevatorGroupInput = {
+  controllerType?: Scalars['String']['input'];
+  gatewayId: Scalars['Int']['input'];
+  name: Scalars['String']['input'];
+  terminalId: Scalars['String']['input'];
+};
+
+export type ElevatorGroupUpdateInput = {
+  controllerType?: InputMaybe<Scalars['String']['input']>;
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  terminalId?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type EmergencyEvent = {
+  eventType: Scalars['String']['output'];
+  gatewayId?: Maybe<Scalars['Int']['output']>;
+  id: Scalars['Int']['output'];
+  isActive: Scalars['Boolean']['output'];
+  notes?: Maybe<Scalars['String']['output']>;
+  resolvedAt?: Maybe<Scalars['DateTime']['output']>;
+  resolvedBy?: Maybe<Scalars['Int']['output']>;
+  scope: Scalars['String']['output'];
+  triggeredAt?: Maybe<Scalars['DateTime']['output']>;
+  triggeredBy?: Maybe<Scalars['Int']['output']>;
+  zone?: Maybe<AccessZone>;
+  zoneId?: Maybe<Scalars['Int']['output']>;
+};
+
+export type EmergencyTriggerInput = {
+  eventType: Scalars['String']['input'];
+  gatewayId?: InputMaybe<Scalars['Int']['input']>;
+  notes?: InputMaybe<Scalars['String']['input']>;
+  scope?: Scalars['String']['input'];
+  zoneId?: InputMaybe<Scalars['Int']['input']>;
+};
+
 export type EmploymentContract = {
   annexes: Array<ContractAnnex>;
   baseSalary?: Maybe<Scalars['Decimal']['output']>;
@@ -1122,6 +1298,54 @@ export type FefoSuggestion = {
   daysUntilExpiry: Scalars['Int']['output'];
   expiryDate: Scalars['Date']['output'];
   quantityToTake: Scalars['Decimal']['output'];
+};
+
+export type FloorPlan = {
+  backgroundImage?: Maybe<Scalars['String']['output']>;
+  companyId: Scalars['Int']['output'];
+  createdAt?: Maybe<Scalars['DateTime']['output']>;
+  height: Scalars['Int']['output'];
+  id: Scalars['Int']['output'];
+  imagePath?: Maybe<Scalars['String']['output']>;
+  isActive: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  svgContent?: Maybe<Scalars['String']['output']>;
+  updatedAt?: Maybe<Scalars['DateTime']['output']>;
+  width: Scalars['Int']['output'];
+};
+
+export type FloorPlanDoor = {
+  doorId: Scalars['Int']['output'];
+  floorPlanId: Scalars['Int']['output'];
+  height: Scalars['Float']['output'];
+  id: Scalars['Int']['output'];
+  label?: Maybe<Scalars['String']['output']>;
+  rotation: Scalars['Float']['output'];
+  width: Scalars['Float']['output'];
+  x: Scalars['Float']['output'];
+  y: Scalars['Float']['output'];
+};
+
+export type FloorPlanDoorInput = {
+  doorId: Scalars['Int']['input'];
+  floorPlanId: Scalars['Int']['input'];
+  height?: InputMaybe<Scalars['Float']['input']>;
+  label?: InputMaybe<Scalars['String']['input']>;
+  rotation?: InputMaybe<Scalars['Float']['input']>;
+  width?: InputMaybe<Scalars['Float']['input']>;
+  x: Scalars['Float']['input'];
+  y: Scalars['Float']['input'];
+};
+
+export type FloorPlanInput = {
+  backgroundImage?: InputMaybe<Scalars['String']['input']>;
+  companyId: Scalars['Int']['input'];
+  height?: InputMaybe<Scalars['Int']['input']>;
+  imagePath?: InputMaybe<Scalars['String']['input']>;
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  name: Scalars['String']['input'];
+  svgContent?: InputMaybe<Scalars['String']['input']>;
+  width?: InputMaybe<Scalars['Int']['input']>;
 };
 
 export type Gateway = {
@@ -1541,6 +1765,7 @@ export type MonthlyWorkDaysInput = {
 export type Mutation = {
   addBatch: Batch;
   addBonus: Bonus;
+  addDoorToFloorPlan: FloorPlanDoor;
   addInventoryItem: InventoryItem;
   addItemsToBatch: SalaryPaymentBatchType;
   addSectionToAnnexTemplate: AnnexTemplateSection;
@@ -1551,6 +1776,8 @@ export type Mutation = {
   approveBusinessTrip: BusinessTrip;
   approveLeave: LeaveRequest;
   approveSwap: ShiftSwapRequest;
+  assignAccessLevelToUser: Scalars['Boolean']['output'];
+  assignLevelToZone: AccessLevelZone;
   assignPersonalityTest: Array<PersonalityTestAssignmentType>;
   assignRoleToUser: Scalars['Boolean']['output'];
   assignZoneToUser: Scalars['Boolean']['output'];
@@ -1580,6 +1807,8 @@ export type Mutation = {
   copySchedulesFromMonth: Scalars['Int']['output'];
   createAccessCode: AccessCode;
   createAccessDoor: AccessDoor;
+  createAccessLevel: AccessLevel;
+  createAccessSchedule: AccessSchedule;
   createAccessZone: AccessZone;
   createAccount: Account;
   createAccountingEntry: AccountingEntry;
@@ -1600,7 +1829,10 @@ export type Mutation = {
   createDepartment: Department;
   createDocumentationArticle: DocumentationArticle;
   createDocumentationCategory: DocumentationCategory;
+  createElevatorFloor: ElevatorFloor;
+  createElevatorGroup: ElevatorGroup;
   createEmploymentContract: EmploymentContract;
+  createFloorPlan: FloorPlan;
   createIngredient: Ingredient;
   createInvoice: Invoice;
   createInvoiceCorrection: InvoiceCorrection;
@@ -1637,6 +1869,8 @@ export type Mutation = {
   createWorkstation: Workstation;
   deleteAccessCode: Scalars['Boolean']['output'];
   deleteAccessDoor: Scalars['Boolean']['output'];
+  deleteAccessLevel: Scalars['Boolean']['output'];
+  deleteAccessSchedule: Scalars['Boolean']['output'];
   deleteAccessZone: Scalars['Boolean']['output'];
   deleteAccount: Scalars['Boolean']['output'];
   deleteAccountingEntry: Scalars['Boolean']['output'];
@@ -1651,6 +1885,9 @@ export type Mutation = {
   deleteCostCenter: Scalars['Boolean']['output'];
   deleteDocumentationArticle: Scalars['Boolean']['output'];
   deleteDocumentationCategory: Scalars['Boolean']['output'];
+  deleteElevatorFloor: Scalars['Boolean']['output'];
+  deleteElevatorGroup: Scalars['Boolean']['output'];
+  deleteFloorPlan: Scalars['Boolean']['output'];
   deleteInvoice: Scalars['Boolean']['output'];
   deleteLeaveRequest: Scalars['Boolean']['output'];
   deleteNotification: Scalars['Boolean']['output'];
@@ -1685,6 +1922,7 @@ export type Mutation = {
   generateMonthlySummary: MonthlySummaryType;
   generateMyPayslip: Payslip;
   generatePayslip: Payslip;
+  generatePin: Scalars['String']['output'];
   generateSaftFile: SaftFileResult;
   generateSepaXml: Scalars['String']['output'];
   generateServiceBookExport: ServiceBookExport;
@@ -1708,13 +1946,19 @@ export type Mutation = {
   recalculateProductionDeadline: ProductionOrder;
   recordRecommendationFeedback: RecommendationFeedbackType;
   regenerateMyQrCode: Scalars['String']['output'];
+  reissuePin: Scalars['String']['output'];
   rejectContractAnnex: ContractAnnex;
   rejectLeave: LeaveRequest;
+  removeAccessLevelFromUser: Scalars['Boolean']['output'];
   removeBonus: Scalars['Boolean']['output'];
+  removeDoorFromFloorPlan: Scalars['Boolean']['output'];
+  removeLevelFromZone: Scalars['Boolean']['output'];
   removeZoneFromUser: Scalars['Boolean']['output'];
   requestLeave: LeaveRequest;
+  resolveEmergency: EmergencyEvent;
   respondToSwap: ShiftSwapRequest;
   restoreContractTemplateVersion: ContractTemplate;
+  revealPin?: Maybe<Scalars['String']['output']>;
   revokeAccessCode: Scalars['Boolean']['output'];
   runUpdateNow: Scalars['String']['output'];
   saveNotificationSetting: NotificationSetting;
@@ -1734,7 +1978,10 @@ export type Mutation = {
   syncHolidays: Scalars['Int']['output'];
   syncOrthodoxHolidays: Scalars['Int']['output'];
   testNotification: Scalars['Boolean']['output'];
+  triggerEmergency: EmergencyEvent;
   unmatchBankTransaction?: Maybe<BankTransaction>;
+  updateAccessLevel: AccessLevel;
+  updateAccessSchedule: AccessSchedule;
   updateAccessZone: AccessZone;
   updateAccount?: Maybe<Account>;
   updateBankAccount: BankAccount;
@@ -1752,8 +1999,12 @@ export type Mutation = {
   updateDepartment: Department;
   updateDocumentationArticle: DocumentationArticle;
   updateDocumentationCategory: DocumentationCategory;
+  updateDoorOnFloorPlan: FloorPlanDoor;
   updateDoorTerminal: AccessDoor;
+  updateElevatorFloor: ElevatorFloor;
+  updateElevatorGroup: ElevatorGroup;
   updateEmploymentContract: EmploymentContract;
+  updateFloorPlan: FloorPlan;
   updateGateway: Gateway;
   updateGlobalPayrollConfig: GlobalPayrollConfig;
   updateGoogleCalendarSettings: Scalars['Boolean']['output'];
@@ -1795,6 +2046,7 @@ export type Mutation = {
   updateVehicleMileage: VehicleMileage;
   updateVehicleRepair: VehicleRepair;
   updateVehicleTrip: VehicleTrip;
+  updateZoneEmergencySettings: AccessZone;
   validateSaftXml: SaftValidationResult;
 };
 
@@ -1810,6 +2062,11 @@ export type MutationAddBonusArgs = {
   description?: InputMaybe<Scalars['String']['input']>;
   input?: InputMaybe<BonusCreateInput>;
   userId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+export type MutationAddDoorToFloorPlanArgs = {
+  input: FloorPlanDoorInput;
 };
 
 
@@ -1875,6 +2132,16 @@ export type MutationApproveLeaveArgs = {
 export type MutationApproveSwapArgs = {
   approve: Scalars['Boolean']['input'];
   swapId: Scalars['Int']['input'];
+};
+
+
+export type MutationAssignAccessLevelToUserArgs = {
+  input: AssignAccessLevelToUserInput;
+};
+
+
+export type MutationAssignLevelToZoneArgs = {
+  input: AssignLevelToZoneInput;
 };
 
 
@@ -2054,6 +2321,18 @@ export type MutationCreateAccessDoorArgs = {
 };
 
 
+export type MutationCreateAccessLevelArgs = {
+  companyId: Scalars['Int']['input'];
+  input: AccessLevelInput;
+};
+
+
+export type MutationCreateAccessScheduleArgs = {
+  companyId: Scalars['Int']['input'];
+  input: AccessScheduleInput;
+};
+
+
 export type MutationCreateAccessZoneArgs = {
   input: AccessZoneInput;
 };
@@ -2200,8 +2479,23 @@ export type MutationCreateDocumentationCategoryArgs = {
 };
 
 
+export type MutationCreateElevatorFloorArgs = {
+  input: ElevatorFloorInput;
+};
+
+
+export type MutationCreateElevatorGroupArgs = {
+  input: ElevatorGroupInput;
+};
+
+
 export type MutationCreateEmploymentContractArgs = {
   input: EmploymentContractCreateInput;
+};
+
+
+export type MutationCreateFloorPlanArgs = {
+  input: FloorPlanInput;
 };
 
 
@@ -2443,6 +2737,16 @@ export type MutationDeleteAccessDoorArgs = {
 };
 
 
+export type MutationDeleteAccessLevelArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type MutationDeleteAccessScheduleArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
 export type MutationDeleteAccessZoneArgs = {
   id: Scalars['Int']['input'];
 };
@@ -2509,6 +2813,21 @@ export type MutationDeleteDocumentationArticleArgs = {
 
 
 export type MutationDeleteDocumentationCategoryArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type MutationDeleteElevatorFloorArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type MutationDeleteElevatorGroupArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type MutationDeleteFloorPlanArgs = {
   id: Scalars['Int']['input'];
 };
 
@@ -2684,6 +3003,11 @@ export type MutationGeneratePayslipArgs = {
 };
 
 
+export type MutationGeneratePinArgs = {
+  userId: Scalars['Int']['input'];
+};
+
+
 export type MutationGenerateSaftFileArgs = {
   companyId: Scalars['Int']['input'];
   month: Scalars['Int']['input'];
@@ -2794,6 +3118,11 @@ export type MutationRecordRecommendationFeedbackArgs = {
 };
 
 
+export type MutationReissuePinArgs = {
+  userId: Scalars['Int']['input'];
+};
+
+
 export type MutationRejectContractAnnexArgs = {
   annexId: Scalars['Int']['input'];
   reason: Scalars['String']['input'];
@@ -2806,8 +3135,24 @@ export type MutationRejectLeaveArgs = {
 };
 
 
+export type MutationRemoveAccessLevelFromUserArgs = {
+  userId: Scalars['Int']['input'];
+};
+
+
 export type MutationRemoveBonusArgs = {
   id: Scalars['Int']['input'];
+};
+
+
+export type MutationRemoveDoorFromFloorPlanArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type MutationRemoveLevelFromZoneArgs = {
+  accessLevelId: Scalars['Int']['input'];
+  zoneId: Scalars['Int']['input'];
 };
 
 
@@ -2822,6 +3167,11 @@ export type MutationRequestLeaveArgs = {
 };
 
 
+export type MutationResolveEmergencyArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
 export type MutationRespondToSwapArgs = {
   accept: Scalars['Boolean']['input'];
   swapId: Scalars['Int']['input'];
@@ -2830,6 +3180,11 @@ export type MutationRespondToSwapArgs = {
 
 export type MutationRestoreContractTemplateVersionArgs = {
   versionId: Scalars['Int']['input'];
+};
+
+
+export type MutationRevealPinArgs = {
+  password: Scalars['String']['input'];
 };
 
 
@@ -2925,8 +3280,25 @@ export type MutationTestNotificationArgs = {
 };
 
 
+export type MutationTriggerEmergencyArgs = {
+  input: EmergencyTriggerInput;
+};
+
+
 export type MutationUnmatchBankTransactionArgs = {
   transactionId: Scalars['Int']['input'];
+};
+
+
+export type MutationUpdateAccessLevelArgs = {
+  id: Scalars['Int']['input'];
+  input: AccessLevelUpdateInput;
+};
+
+
+export type MutationUpdateAccessScheduleArgs = {
+  id: Scalars['Int']['input'];
+  input: AccessScheduleUpdateInput;
 };
 
 
@@ -3038,6 +3410,11 @@ export type MutationUpdateDocumentationCategoryArgs = {
 };
 
 
+export type MutationUpdateDoorOnFloorPlanArgs = {
+  input: UpdateFloorPlanDoorInput;
+};
+
+
 export type MutationUpdateDoorTerminalArgs = {
   id: Scalars['Int']['input'];
   terminalId?: InputMaybe<Scalars['String']['input']>;
@@ -3045,9 +3422,26 @@ export type MutationUpdateDoorTerminalArgs = {
 };
 
 
+export type MutationUpdateElevatorFloorArgs = {
+  id: Scalars['Int']['input'];
+  input: ElevatorFloorUpdateInput;
+};
+
+
+export type MutationUpdateElevatorGroupArgs = {
+  id: Scalars['Int']['input'];
+  input: ElevatorGroupUpdateInput;
+};
+
+
 export type MutationUpdateEmploymentContractArgs = {
   id: Scalars['Int']['input'];
   input: EmploymentContractUpdateInput;
+};
+
+
+export type MutationUpdateFloorPlanArgs = {
+  input: UpdateFloorPlanInput;
 };
 
 
@@ -3347,6 +3741,14 @@ export type MutationUpdateVehicleRepairArgs = {
 export type MutationUpdateVehicleTripArgs = {
   id: Scalars['Int']['input'];
   input: VehicleTripUpdateInput;
+};
+
+
+export type MutationUpdateZoneEmergencySettingsArgs = {
+  emergencyContact?: InputMaybe<Scalars['String']['input']>;
+  id: Scalars['Int']['input'];
+  isSafeZone?: InputMaybe<Scalars['Boolean']['input']>;
+  lockdownBehavior?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -3802,7 +4204,11 @@ export type PulseSurveyInput = {
 export type Query = {
   accessCodes: Array<AccessCode>;
   accessDoors: Array<AccessDoor>;
+  accessLevel?: Maybe<AccessLevel>;
+  accessLevels: Array<AccessLevel>;
   accessLogs: Array<AccessLog>;
+  accessSchedule?: Maybe<AccessSchedule>;
+  accessSchedules: Array<AccessSchedule>;
   accessZones: Array<AccessZone>;
   account?: Maybe<Account>;
   accountByCode?: Maybe<Account>;
@@ -3846,8 +4252,15 @@ export type Query = {
   deployStatus: DeployStatus;
   documentationArticles: Array<DocumentationArticle>;
   documentationCategories: Array<DocumentationCategory>;
+  elevatorFloors: Array<ElevatorFloor>;
+  elevatorGroup?: Maybe<ElevatorGroup>;
+  elevatorGroups: Array<ElevatorGroup>;
+  emergencyEvents: Array<EmergencyEvent>;
   employmentContract?: Maybe<EmploymentContract>;
   employmentContracts: Array<EmploymentContract>;
+  floorPlan?: Maybe<FloorPlan>;
+  floorPlanDoors: Array<FloorPlanDoor>;
+  floorPlans: Array<FloorPlan>;
   gateway?: Maybe<Gateway>;
   gatewayStats: GatewayStats;
   gateways: Array<Gateway>;
@@ -3972,9 +4385,29 @@ export type QueryAccessDoorsArgs = {
 };
 
 
+export type QueryAccessLevelArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type QueryAccessLevelsArgs = {
+  companyId: Scalars['Int']['input'];
+};
+
+
 export type QueryAccessLogsArgs = {
   gatewayId?: InputMaybe<Scalars['Int']['input']>;
   limit?: Scalars['Int']['input'];
+};
+
+
+export type QueryAccessScheduleArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type QueryAccessSchedulesArgs = {
+  companyId: Scalars['Int']['input'];
 };
 
 
@@ -4163,6 +4596,21 @@ export type QueryDocumentationArticlesArgs = {
 };
 
 
+export type QueryElevatorFloorsArgs = {
+  elevatorGroupId: Scalars['Int']['input'];
+};
+
+
+export type QueryElevatorGroupArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type QueryEmergencyEventsArgs = {
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
 export type QueryEmploymentContractArgs = {
   id: Scalars['Int']['input'];
 };
@@ -4172,6 +4620,16 @@ export type QueryEmploymentContractsArgs = {
   companyId?: InputMaybe<Scalars['Int']['input']>;
   status?: InputMaybe<Scalars['String']['input']>;
   userId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+export type QueryFloorPlanArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type QueryFloorPlanDoorsArgs = {
+  floorPlanId: Scalars['Int']['input'];
 };
 
 
@@ -5104,6 +5562,27 @@ export type UpdateCostCenterInput = {
   name?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type UpdateFloorPlanDoorInput = {
+  height?: InputMaybe<Scalars['Float']['input']>;
+  id: Scalars['Int']['input'];
+  label?: InputMaybe<Scalars['String']['input']>;
+  rotation?: InputMaybe<Scalars['Float']['input']>;
+  width?: InputMaybe<Scalars['Float']['input']>;
+  x?: InputMaybe<Scalars['Float']['input']>;
+  y?: InputMaybe<Scalars['Float']['input']>;
+};
+
+export type UpdateFloorPlanInput = {
+  backgroundImage?: InputMaybe<Scalars['String']['input']>;
+  height?: InputMaybe<Scalars['Int']['input']>;
+  id: Scalars['Int']['input'];
+  imagePath?: InputMaybe<Scalars['String']['input']>;
+  isActive?: InputMaybe<Scalars['Boolean']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  svgContent?: InputMaybe<Scalars['String']['input']>;
+  width?: InputMaybe<Scalars['Int']['input']>;
+};
+
 export type UpdateLeaveRequestStatusInput = {
   adminComment?: InputMaybe<Scalars['String']['input']>;
   employerTopUp?: InputMaybe<Scalars['Boolean']['input']>;
@@ -5172,6 +5651,7 @@ export type UpdateUserInput = {
   address?: InputMaybe<Scalars['String']['input']>;
   baseSalary?: InputMaybe<Scalars['Decimal']['input']>;
   birthDate?: InputMaybe<Scalars['Date']['input']>;
+  cardNumber?: InputMaybe<Scalars['String']['input']>;
   companyId?: InputMaybe<Scalars['Int']['input']>;
   contractEndDate?: InputMaybe<Scalars['Date']['input']>;
   contractNumber?: InputMaybe<Scalars['String']['input']>;
@@ -5197,6 +5677,7 @@ export type UpdateUserInput = {
   passwordForceChange?: InputMaybe<Scalars['Boolean']['input']>;
   paymentDay?: InputMaybe<Scalars['Int']['input']>;
   phoneNumber?: InputMaybe<Scalars['String']['input']>;
+  pinCode?: InputMaybe<Scalars['String']['input']>;
   positionId?: InputMaybe<Scalars['Int']['input']>;
   probationMonths?: InputMaybe<Scalars['Int']['input']>;
   roleId?: InputMaybe<Scalars['Int']['input']>;
@@ -5214,6 +5695,7 @@ export type User = {
   address?: Maybe<Scalars['String']['output']>;
   birthDate?: Maybe<Scalars['Date']['output']>;
   bonuses: Array<Bonus>;
+  cardNumber?: Maybe<Scalars['String']['output']>;
   company?: Maybe<Company>;
   companyId?: Maybe<Scalars['Int']['output']>;
   companyName?: Maybe<Scalars['String']['output']>;
@@ -5238,6 +5720,7 @@ export type User = {
   payrolls: Array<Payroll>;
   phoneNumber?: Maybe<Scalars['String']['output']>;
   pin?: Maybe<Scalars['String']['output']>;
+  pinExists: Scalars['Boolean']['output'];
   position?: Maybe<Position>;
   positionId?: Maybe<Scalars['Int']['output']>;
   profilePicture?: Maybe<Scalars['String']['output']>;
@@ -5259,6 +5742,7 @@ export type UserCreateInput = {
   address?: InputMaybe<Scalars['String']['input']>;
   baseSalary?: InputMaybe<Scalars['Decimal']['input']>;
   birthDate?: InputMaybe<Scalars['Date']['input']>;
+  cardNumber?: InputMaybe<Scalars['String']['input']>;
   companyId?: InputMaybe<Scalars['Int']['input']>;
   contractEndDate?: InputMaybe<Scalars['Date']['input']>;
   contractNumber?: InputMaybe<Scalars['String']['input']>;
@@ -5282,6 +5766,7 @@ export type UserCreateInput = {
   passwordForceChange?: InputMaybe<Scalars['Boolean']['input']>;
   paymentDay?: InputMaybe<Scalars['Int']['input']>;
   phoneNumber?: InputMaybe<Scalars['String']['input']>;
+  pinCode?: InputMaybe<Scalars['String']['input']>;
   positionId?: InputMaybe<Scalars['Int']['input']>;
   probationMonths?: InputMaybe<Scalars['Int']['input']>;
   roleId?: InputMaybe<Scalars['Int']['input']>;

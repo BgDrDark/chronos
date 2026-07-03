@@ -20,10 +20,7 @@ from backend.chronos_graphql.inputs.shifts import *  # noqa: F403
 from backend.chronos_graphql.inputs.stats import *  # noqa: F403
 from backend.chronos_graphql.inputs.user import *  # noqa: F403
 from backend.chronos_graphql.inputs.vehicle import *  # noqa: F403
-
-
-
-
+from backend.chronos_graphql.inputs.floor_plan import *  # noqa: F403
 
 
 

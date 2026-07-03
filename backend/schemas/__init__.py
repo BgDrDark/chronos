@@ -192,3 +192,4 @@ from backend.schemas.vehicle import (
     VehicleType,
     VehicleVignette,
 )
+from backend.schemas.floor_plan import FloorPlan, FloorPlanDoor
