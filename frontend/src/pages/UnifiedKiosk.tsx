@@ -8,12 +8,12 @@ import {
 import {
     AccessTime as AccessTimeIcon,
     CheckCircle as CheckCircleIcon,
+    Close as CloseIcon,
     Error as ErrorIcon,
     Lock as LockIcon,
     QrCodeScanner as QrCodeScannerIcon,
     Keyboard as KeyboardIcon,
     Sync as SyncIcon,
-    Close as CloseIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { getApiUrl } from '../utils/api';
@@ -122,6 +122,52 @@ const UnifiedKiosk: React.FC = () => {
     const [isOnline] = useState(navigator.onLine);
     const [syncing, setSyncing] = useState(false);
     
+    // Idle Timer State
+    const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [idle, setIdle] = useState(false);
+    const [now, setNow] = useState(new Date());
+    const lastActivityRef = useRef(Date.now());
+
+    const resetIdleTimer = useCallback(() => {
+        lastActivityRef.current = Date.now();
+        setIdle(false);
+        if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+        const delay = terminalCfg.timeouts.inactivity_reset * 1000;
+        idleTimerRef.current = setTimeout(() => setIdle(true), delay);
+    }, [terminalCfg.timeouts.inactivity_reset]);
+
+    useEffect(() => {
+        return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current); };
+    }, []);
+
+    useEffect(() => {
+        resetIdleTimer();
+    }, [resetIdleTimer]);
+
+    useEffect(() => {
+        if (!idle) resetIdleTimer();
+    }, [idle, resetIdleTimer]);
+
+    useEffect(() => {
+        const events = ['click', 'touchstart', 'keydown', 'mousemove'] as const;
+        const handler = () => resetIdleTimer();
+        for (const ev of events) window.addEventListener(ev, handler, { passive: true });
+        return () => { for (const ev of events) window.removeEventListener(ev, handler); };
+    }, [terminalCfg.timeouts.inactivity_reset, resetIdleTimer]);
+
+    // WakeLock
+    useEffect(() => {
+        const lock: Promise<any> | null = 'wakeLock' in navigator ? (navigator as any).wakeLock.request('screen') : null;
+        return () => { lock?.then((w: any) => w.release().catch(() => {})); };
+    }, []);
+
+    // Clock tick for screensaver
+    useEffect(() => {
+        if (!idle) return;
+        const interval = setInterval(() => setNow(new Date()), 30000);
+        return () => clearInterval(interval);
+    }, [idle]);
+
     // Exit Lock State
     const [exitDialogOpen, setExitDialogOpen] = useState(false);
     const [adminEmail, setAdminEmail] = useState('');
@@ -383,6 +429,21 @@ const UnifiedKiosk: React.FC = () => {
                 </Box>
             </Box>
 
+            {/* Screensaver Overlay */}
+            {idle && (
+                <Box sx={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 9998, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#0d1117', color: '#c9d1d9' }}>
+                    <AccessTimeIcon sx={{ fontSize: 120, opacity: 0.3, mb: 4 }} />
+                    <Typography variant="h1" sx={{ fontSize: terminalCfg.display.clock_size, fontWeight: 300, mb: 2 }}>
+                        {now.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' })}
+                    </Typography>
+                    {terminalCfg.display.show_date && (
+                        <Typography variant="h5" sx={{ opacity: 0.6 }}>
+                            {now.toLocaleDateString('bg-BG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </Typography>
+                    )}
+                </Box>
+            )}
+
             {/* Main Center Area */}
             <Box sx={{ zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 3 }}>
                 
@@ -419,6 +480,20 @@ const UnifiedKiosk: React.FC = () => {
                         <Stack direction="row" spacing={2} justifyContent="center" sx={{ mb: 4 }}>
                             <Button 
                                 variant={entryMode === 'qr' ? 'contained' : 'outlined'} 
+                                onClick={() => setEntryMode('qr')}
+                                startIcon={<QrCodeScannerIcon />}
+                                sx={{ borderRadius: 4, px: 4, py: 1.5, color: 'white', borderColor: 'white' }}
+                            >
+                                QR СКЕНЕР
+                            </Button>
+                            <Button 
+                                variant={entryMode === 'keyboard' ? 'contained' : 'outlined'} 
+                                onClick={() => setEntryMode('keyboard')}
+                                startIcon={<KeyboardIcon />}
+                                sx={{ borderRadius: 4, px: 4, py: 1.5, color: 'white', borderColor: 'white' }}
+                            >
+                                КЛАВИАТУРА
+        == 'qr' ? 'contained' : 'outlined'} 
                                 onClick={() => setEntryMode('qr')}
                                 startIcon={<QrCodeScannerIcon />}
                                 sx={{ borderRadius: 4, px: 4, py: 1.5, color: 'white', borderColor: 'white' }}
