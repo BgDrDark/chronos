@@ -170,8 +170,7 @@ const UnifiedKiosk: React.FC = () => {
 
     // Exit Lock State
     const [exitDialogOpen, setExitDialogOpen] = useState(false);
-    const [adminEmail, setAdminEmail] = useState('');
-    const [adminPassword, setAdminPassword] = useState('');
+    const [exitPin, setExitPin] = useState('');
     const [exitError, setExitError] = useState<string | null>(null);
     const [isVerifying, setIsVerifying] = useState(false);
 
@@ -379,13 +378,13 @@ const UnifiedKiosk: React.FC = () => {
         setIsVerifying(true);
         setExitError(null);
         try {
-            const response = await fetch(getApiUrl('auth/token'), {
+            const response = await fetch(getApiUrl(`kiosk/terminal/${hwidRef.current}/verify-pin`), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `username=${encodeURIComponent(adminEmail)}&password=${encodeURIComponent(adminPassword)}`
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin: exitPin })
             });
             if (response.ok) navigate('/');
-            else setExitError('Невалиден имейл или парола');
+            else setExitError('Невалиден ПИН код');
         } catch { setExitError('Грешка при свързване'); }
         finally { setIsVerifying(false); }
     };
@@ -538,16 +537,15 @@ const UnifiedKiosk: React.FC = () => {
                 )}
             </Box>
 
-            {/* Admin Exit Dialog */}
-            <Dialog open={exitDialogOpen} onClose={() => setExitDialogOpen(false)}>
+            {/* PIN Exit Dialog */}
+            <Dialog open={exitDialogOpen} onClose={() => { setExitDialogOpen(false); setExitPin(''); setExitError(null); }}>
                 <DialogTitle>Администраторски изход</DialogTitle>
                 <DialogContent>
-                    <TextField fullWidth label="Имейл" margin="normal" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
-                    <TextField fullWidth label="Парола" type="password" margin="normal" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
+                    <TextField fullWidth label="ПИН код" type="password" margin="normal" value={exitPin} onChange={(e) => setExitPin(e.target.value)} autoFocus inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }} />
                     {exitError && <Alert severity="error" sx={{ mt: 2 }}>{exitError}</Alert>}
                 </DialogContent>
                 <DialogActions sx={{ p: 3 }}>
-                    <Button onClick={() => setExitDialogOpen(false)}>Отказ</Button>
+                    <Button onClick={() => { setExitDialogOpen(false); setExitPin(''); setExitError(null); }}>Отказ</Button>
                     <Button onClick={handleExitVerify} variant="contained" disabled={isVerifying}>Вход</Button>
                 </DialogActions>
             </Dialog>
