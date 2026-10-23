@@ -3,6 +3,7 @@ import strawberry
 from strawberry.experimental import pydantic as sp
 
 from backend import schemas
+from backend.utils.json_type import JSONScalar
 
 
 @sp.type(schemas.Gateway)
@@ -35,6 +36,7 @@ class Terminal:
     total_scans: strawberry.auto
     alias: strawberry.auto
     mode: strawberry.auto
+    config: JSONScalar | None = None
 
 
 @sp.type(schemas.Printer)

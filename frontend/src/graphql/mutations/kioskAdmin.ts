@@ -17,12 +17,13 @@ export const SYNC_GATEWAY_CONFIG = gql`
 `;
 
 export const UPDATE_TERMINAL = gql`
-  mutation UpdateTerminal($id: Int!, $alias: String, $mode: String, $isActive: Boolean) {
-    updateTerminal(id: $id, alias: $alias, mode: $mode, isActive: $isActive) {
+  mutation UpdateTerminal($id: Int!, $alias: String, $mode: String, $isActive: Boolean, $config: JSON) {
+    updateTerminal(id: $id, alias: $alias, mode: $mode, isActive: $isActive, config: $config) {
       id
       alias
       mode
       isActive
+      config
     }
   }
 `;

@@ -2,20 +2,20 @@ import logging
 
 import httpx
 import strawberry
+import strawberry.scalars
 
+from backend.chronos_graphql import types
+from backend.chronos_graphql.utils.permission_checker import get_current_user
 from backend.exceptions import (
     InvalidOperationException,
     NotFoundException,
 )
-from backend.chronos_graphql import types
-from backend.chronos_graphql.utils.permission_checker import get_current_user
 
 logger = logging.getLogger(__name__)
 
 
 @strawberry.type
 class HardwareMutation:
-
     @strawberry.mutation
     async def update_terminal(
         self,
@@ -23,6 +23,7 @@ class HardwareMutation:
         alias: str | None = None,
         mode: str | None = None,
         is_active: bool | None = None,
+        config: strawberry.scalars.JSON | None = None,
         info: strawberry.Info = None,
     ) -> types.Terminal:
         if not info:
@@ -31,6 +32,7 @@ class HardwareMutation:
         get_current_user(info)
 
         from backend.database.models import Terminal
+
         terminal = await db.get(Terminal, id)
         if not terminal:
             raise NotFoundException.resource("Terminal")
@@ -40,6 +42,8 @@ class HardwareMutation:
             terminal.mode = mode
         if is_active is not None:
             terminal.is_active = is_active
+        if config is not None:
+            terminal.config = config
 
         await db.commit()
         await db.refresh(terminal)
@@ -51,6 +55,7 @@ class HardwareMutation:
         get_current_user(info)
 
         from backend.database.models import Terminal
+
         terminal = await db.get(Terminal, id)
         if terminal:
             await db.delete(terminal)
@@ -72,6 +77,7 @@ class HardwareMutation:
         get_current_user(info)
 
         from backend.database.models import Gateway
+
         gateway = await db.get(Gateway, id)
         if not gateway:
             raise NotFoundException.resource("Gateway")
@@ -98,6 +104,7 @@ class HardwareMutation:
         get_current_user(info)
 
         from backend.database.models import Gateway as GwModel
+
         gateway = await db.get(GwModel, id)
         if not gateway:
             raise NotFoundException.resource("Gateway")

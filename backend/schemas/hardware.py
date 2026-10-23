@@ -33,6 +33,7 @@ class TerminalBase(CustomBaseModel):
     total_scans: int = 0
     alias: str | None = None
     mode: str = "both"
+    config: dict | None = None
 
 
 class Terminal(TerminalBase):
