@@ -1,10 +1,7 @@
-import hashlib
-
 import pytest
+from backend.database.models import Terminal
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
-
-from backend.database.models import Terminal, User, Company
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -38,7 +35,9 @@ async def test_terminal_config_default(db_session: AsyncSession):
 
 async def test_terminal_config_set(db_session: AsyncSession):
     cfg = {"colors": {"primary": "#ff0000"}, "timeouts": {"inactivity": 120}}
-    t = Terminal(hardware_uuid="test-uuid-2", device_type="tablet", mode="access", config=cfg)
+    t = Terminal(
+        hardware_uuid="test-uuid-2", device_type="tablet", mode="access", config=cfg
+    )
     db_session.add(t)
     await db_session.flush()
     assert t.config == cfg

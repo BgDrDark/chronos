@@ -380,7 +380,7 @@ class User(Base):
     is_qr_enabled: Mapped[bool] = mapped_column(Boolean, default=False) # Enable QR code access
 
     # ─── Access Control Credentials (Phase 7) ────────────
-    card_number: Mapped[str | None] = mapped_column(String(50), unique=True, index=True, nullable=True)
+    card_number: Mapped[str | None] = mapped_column(String(100), unique=True, index=True, nullable=True)
     pin_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     pin_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     pin_sha256: Mapped[str | None] = mapped_column(

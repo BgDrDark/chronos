@@ -194,6 +194,7 @@ def _default_terminal_config() -> dict:
             "exit_method": "pin",
             "exit_pin_required": True,
         },
+        "mode": "both",  # qr, nfc, both
     }
 
 
@@ -201,7 +202,8 @@ def _default_terminal_config() -> dict:
 
 
 class TerminalScanRequest(BaseModel):
-    qr_token: str
+    qr_token: str | None = None
+    card_number: str | None = None
     action: str | None = "auto"  # auto, in, out, access
     terminal_hardware_uuid: str | None = None
 
@@ -235,13 +237,8 @@ async def get_terminal_config(
     x_kiosk_secret: str = Header(None, alias="X-Kiosk-Secret"),
 ):
     """Връща конфигурацията на терминала (режим на работа)
-    Protected by X-Kiosk-Secret header match.
+    Terminals are auto-registered on first access.
     """
-    if x_kiosk_secret != getattr(
-        settings, "KIOSK_DEVICE_SECRET", "super-secret-kiosk-key"
-    ):
-        raise HTTPException(status_code=403, detail="Неоторизиран терминал")
-
     from backend.database.models import Terminal
 
     stmt = select(Terminal).where(Terminal.hardware_uuid == hwid)
@@ -249,6 +246,10 @@ async def get_terminal_config(
     terminal = result.scalar_one_or_none()
 
     if not terminal:
+        # Проверка на secret само за нови (нерегистрирани) терминали
+        expected_secret = getattr(settings, "KIOSK_DEVICE_SECRET", "super-secret-kiosk-key")
+        if x_kiosk_secret != expected_secret:
+            raise HTTPException(status_code=403, detail="Неоторизиран терминал")
         # Автоматично регистриране на нов терминал
         terminal = Terminal(
             hardware_uuid=hwid,
@@ -314,20 +315,61 @@ async def verify_admin_pin(
     body: dict,
     db: AsyncSession = Depends(get_db),
 ):
-    """Проверява PIN код за администраторски изход от терминала"""
+    """Проверява PIN код за администраторски изход от терминала.
+    Търси потребители с роля super_admin или admin и проверява PIN-а им.
+    """
     import hashlib
 
-    from backend.database.models import User
+    from sqlalchemy import select
+
+    from backend.database.models import CompanyRoleAssignment, Role, User
 
     pin = body.get("pin")
-    user_id = body.get("user_id")
-    if not pin or not user_id:
-        raise HTTPException(status_code=400, detail="Липсва PIN код или consumer ID")
-    user = await db.get(User, user_id)
-    if not user or not user.pin_sha256:
+    if not pin:
+        raise HTTPException(status_code=400, detail="Липсва PIN код")
+
+    # Намиране на admin роли
+    role_result = await db.execute(
+        select(Role.id).where(Role.name.in_(["super_admin", "admin"]))
+    )
+    admin_role_ids = [r[0] for r in role_result.all()]
+    if not admin_role_ids:
+        raise HTTPException(status_code=400, detail="Няма конфигуриран администратор")
+
+    # Намиране на потребители с тези роли
+    assignment_result = await db.execute(
+        select(CompanyRoleAssignment.user_id).where(
+            CompanyRoleAssignment.role_id.in_(admin_role_ids),
+            CompanyRoleAssignment.is_active,
+        )
+    )
+    admin_user_ids = list({r[0] for r in assignment_result.all()})
+
+    # Ако няма company_role_assignments, провери role_id директно в User
+    if not admin_user_ids:
+        user_result = await db.execute(
+            select(User.id).where(
+                User.role_id.in_(admin_role_ids),
+                User.is_active,
+            )
+        )
+        admin_user_ids = [r[0] for r in user_result.all()]
+
+    if not admin_user_ids:
+        raise HTTPException(status_code=400, detail="Няма конфигуриран администратор")
+
+    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+    user_result = await db.execute(
+        select(User).where(
+            User.id.in_(admin_user_ids),
+            User.pin_sha256 == pin_hash,
+            User.is_active,
+        )
+    )
+    user = user_result.scalar_one_or_none()
+    if not user:
         raise HTTPException(status_code=400, detail="Невалиден PIN код")
-    if user.pin_sha256 != hashlib.sha256(pin.encode()).hexdigest():
-        raise HTTPException(status_code=400, detail="Невалиден PIN код")
+
     return {
         "ok": True,
         "user_id": user.id,
@@ -358,27 +400,41 @@ async def unified_terminal_scan(
 
     mode = terminal.mode if terminal else "both"
 
-    # 2. Find user by QR token
+    # 2. Find user by QR token or card_number
     user = None
-    if ":" in scan.qr_token:
-        try:
-            user_id_str, token = scan.qr_token.split(":")
-            user_id = int(user_id_str)
-            user = await crud.get_user_by_id(db, user_id)
-            if (
-                user
-                and user.qr_secret
-                and not verify_dynamic_qr_token(user.qr_secret, token)
-            ):
+    if scan.qr_token:
+        if ":" in scan.qr_token:
+            try:
+                user_id_str, token = scan.qr_token.split(":")
+                user_id = int(user_id_str)
+                user = await crud.get_user_by_id(db, user_id)
+                if (
+                    user
+                    and user.qr_secret
+                    and not verify_dynamic_qr_token(user.qr_secret, token)
+                ):
+                    user = None
+            except Exception:
                 user = None
-        except Exception:
-            user = None
+
+        if not user:
+            user = await crud.get_user_by_qr_token(db, scan.qr_token)
+
+    if not user and scan.card_number:
+        from sqlalchemy import select
+
+        from backend.database.models import User as DbUser
+        stmt = select(DbUser).where(DbUser.card_number == scan.card_number)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
 
     if not user:
-        user = await crud.get_user_by_qr_token(db, scan.qr_token)
-
-    if not user:
-        return {"status": "error", "message": "Невалиден QR код", "success": False}
+        return {
+            "status": "error",
+            "message": "Невалиден QR код или карта",
+            "success": False,
+            "card_number": scan.card_number,
+        }
 
     if not user.is_active:
         return {
@@ -391,6 +447,7 @@ async def unified_terminal_scan(
         "status": "ok",
         "user": user.first_name,
         "success": True,
+        "card_number": scan.card_number,
     }
 
     # 3. Handle Clock In/Out
