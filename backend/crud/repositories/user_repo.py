@@ -116,7 +116,7 @@ class UserRepository(BaseRepository):
             "insurance_contributor", "has_income_tax", "payment_day", "experience_start_date",
             "night_work_rate", "overtime_rate", "holiday_rate", "work_class", "dangerous_work",
         }
-        user_dict = user_data.model_dump(exclude_unset=True, exclude={"password"} | contract_fields)
+        user_dict = user_data.model_dump(exclude_unset=True, exclude={"password"} | contract_fields, mode='python')
         if user_data.password:
             user_dict["hashed_password"] = hash_password(user_data.password)
         if role_id:
@@ -150,7 +150,7 @@ class UserRepository(BaseRepository):
             return None
 
         if user_in:
-            update_data = user_in.model_dump(exclude_unset=True)
+            update_data = user_in.model_dump(exclude_unset=True, mode='python')
             for key, value in update_data.items():
                 if hasattr(user, key):
                     setattr(user, key, value)
