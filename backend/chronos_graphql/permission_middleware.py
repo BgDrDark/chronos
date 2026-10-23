@@ -448,30 +448,47 @@ class PermissionGuardMiddleware(SchemaExtension):
     3. Applies company scoping for company-specific operations
     4. Logs all permission decisions for audit trail
     """
-    
+
+    @staticmethod
+    async def _call(next_: Callable, root: Any, info: Any, *args, **kwargs) -> Any:
+        """Invoke the next resolver, awaiting it when necessary."""
+        result = next_(root, info, *args, **kwargs)
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
+
     async def resolve(self, next_: Callable, root: Any, info: Any, *args, **kwargs) -> Any:
         # Only check mutations (queries can have their own permission checks)
         if info.operation.operation != OperationType.MUTATION:
-            result = next_(root, info, *args, **kwargs)
-            if asyncio.iscoroutine(result):
-                return await result
-            return result
-        
+            return await self._call(next_, root, info, *args, **kwargs)
+
         field_name = info.field_name
         current_user = info.context.get("current_user")
-        
-        # Skip permission check if no mapping exists (public operation)
-        if field_name not in PERMISSION_MAPPING:
-            result = next_(root, info, *args, **kwargs)
-            if asyncio.iscoroutine(result):
-                return await result
-            return result
-        
-        # Require authentication for all mapped operations
+
+        # Explicitly public mutations only (empty by design).
+        if field_name in PUBLIC_MUTATIONS:
+            return await self._call(next_, root, info, *args, **kwargs)
+
+        # Everything else requires authentication.
         if not current_user:
             raise PermissionDeniedException(
                 detail="Authentication required",
                 context={"operation": field_name},
+            )
+
+        # Auth-only mutations act on the caller's own data.
+        if field_name in AUTH_ONLY_MUTATIONS:
+            return await self._call(next_, root, info, *args, **kwargs)
+
+        # Fail closed: an unmapped mutation is denied, never silently public.
+        if field_name not in PERMISSION_MAPPING:
+            logger.error("Mutation without permission mapping: %s", field_name)
+            raise PermissionDeniedException(
+                detail="Операцията не е разрешена",
+                context={
+                    "operation": field_name,
+                    "reason": "missing_permission_mapping",
+                },
             )
         
         # Get required permission
@@ -518,10 +535,7 @@ class PermissionGuardMiddleware(SchemaExtension):
         
         # Super-admin bypass — no permission check needed
         if current_user.role and current_user.role.name == "super_admin":
-            result = next_(root, info, *args, **kwargs)
-            if asyncio.iscoroutine(result):
-                return await result
-            return result
+            return await self._call(next_, root, info, *args, **kwargs)
 
         # Check permission using PermissionService
         permission_service = PermissionService(db)
@@ -567,7 +581,4 @@ class PermissionGuardMiddleware(SchemaExtension):
             )
         
         # Permission granted - execute the operation
-        result = next_(root, info, *args, **kwargs)
-        if asyncio.iscoroutine(result):
-            return await result
-        return result
+        return await self._call(next_, root, info, *args, **kwargs)
