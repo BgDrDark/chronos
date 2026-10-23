@@ -161,6 +161,40 @@ class UserRepository(BaseRepository):
         await db.flush()
         return assignment
 
+    async def replace_company_role_assignment(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        company_id: int,
+        role_id: int,
+        assigned_by: int | None,
+    ) -> CompanyRoleAssignment:
+        """Deactivate old assignments and create the new company role.
+
+        Phase 1 keeps a single active role per user/company so that a
+        demotion takes effect immediately. Multi-role semantics are Phase 2.
+        """
+        await db.execute(
+            update(CompanyRoleAssignment)
+            .where(
+                CompanyRoleAssignment.user_id == user_id,
+                CompanyRoleAssignment.company_id == company_id,
+                CompanyRoleAssignment.is_active.is_(True),
+            )
+            .values(is_active=False)
+        )
+        assignment = CompanyRoleAssignment(
+            user_id=user_id,
+            company_id=company_id,
+            role_id=role_id,
+            assigned_by=assigned_by,
+            is_active=True,
+        )
+        db.add(assignment)
+        await db.flush()
+        return assignment
+
     async def update_user(
         self,
         db: AsyncSession,

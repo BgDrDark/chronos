@@ -9,7 +9,7 @@ from backend.auth.rbac_service import (
     can_assign_role,
     resolve_assignable_role,
 )
-from backend.chronos_graphql.inputs.user import UserCreateInput
+from backend.chronos_graphql.inputs.user import UpdateUserInput, UserCreateInput
 from backend.chronos_graphql.mutations.user import UserMutation
 from backend.exceptions import NotFoundException, PermissionDeniedException
 
@@ -203,3 +203,191 @@ async def test_create_user_rejects_super_admin_role(monkeypatch):
         )
 
     db.commit.assert_not_awaited()
+
+
+async def test_update_user_self_role_change_is_denied(monkeypatch):
+    db = _async_db()
+    current_user = SimpleNamespace(
+        id=7, company_id=10, role=SimpleNamespace(name="employee")
+    )
+    info = MagicMock()
+    info.context = {"db": db, "current_user": current_user}
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.check_company_access",
+        AsyncMock(return_value=10),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.user_repo.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(id=7, company_id=10)),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.require_permission",
+        AsyncMock(return_value=True),
+    )
+
+    with pytest.raises(PermissionDeniedException):
+        await UserMutation().update_user(UpdateUserInput(id=7, role_id=1), info)
+
+    db.commit.assert_not_awaited()
+
+
+async def test_update_user_role_change_requires_manage_roles(monkeypatch):
+    db = _async_db()
+    current_user = SimpleNamespace(
+        id=1, company_id=10, role=SimpleNamespace(name="accountant")
+    )
+    info = MagicMock()
+    info.context = {"db": db, "current_user": current_user}
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.check_company_access",
+        AsyncMock(return_value=10),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.user_repo.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(id=7, company_id=10)),
+    )
+
+    calls = []
+
+    async def fake_require_permission(info, permission, company_id=None, resource_id=None):
+        calls.append(permission)
+        if permission == "users:manage_roles":
+            raise PermissionDeniedException(detail="denied")
+        return True
+
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.require_permission",
+        fake_require_permission,
+    )
+
+    with pytest.raises(PermissionDeniedException):
+        await UserMutation().update_user(UpdateUserInput(id=7, role_id=1), info)
+
+    assert "users:update" in calls
+    assert "users:manage_roles" in calls
+
+
+async def test_update_user_role_change_rejects_super_admin(monkeypatch):
+    db = _async_db()
+    current_user = SimpleNamespace(
+        id=1, company_id=10, role=SimpleNamespace(name="hr_manager")
+    )
+    info = MagicMock()
+    info.context = {"db": db, "current_user": current_user}
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.check_company_access",
+        AsyncMock(return_value=10),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.user_repo.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(id=7, company_id=10)),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.require_permission",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.resolve_assignable_role",
+        AsyncMock(side_effect=PermissionDeniedException(detail="denied")),
+    )
+
+    with pytest.raises(PermissionDeniedException):
+        await UserMutation().update_user(UpdateUserInput(id=7, role_id=1), info)
+
+
+async def test_update_user_commits(monkeypatch):
+    db = _async_db()
+    current_user = SimpleNamespace(
+        id=1, company_id=10, role=SimpleNamespace(name="admin")
+    )
+    info = MagicMock()
+    info.context = {"db": db, "current_user": current_user}
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.check_company_access",
+        AsyncMock(return_value=10),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.require_permission",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.user_repo.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(id=7, company_id=10)),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.user_repo.update_user",
+        AsyncMock(return_value=SimpleNamespace(id=7, company_id=10)),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.schemas.User.model_validate",
+        MagicMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.types.User.from_pydantic",
+        MagicMock(return_value="user"),
+    )
+    db.execute.return_value.scalar_one.return_value = MagicMock()
+
+    result = await UserMutation().update_user(
+        UpdateUserInput(id=7, first_name="New"), info
+    )
+
+    assert result == "user"
+    db.commit.assert_awaited_once()
+
+
+async def test_update_user_role_change_syncs_assignment(monkeypatch):
+    db = _async_db()
+    current_user = SimpleNamespace(
+        id=1, company_id=10, role=SimpleNamespace(name="hr_manager")
+    )
+    info = MagicMock()
+    info.context = {"db": db, "current_user": current_user}
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.check_company_access",
+        AsyncMock(return_value=10),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.require_permission",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.user_repo.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(id=7, company_id=10)),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.resolve_assignable_role",
+        AsyncMock(return_value=SimpleNamespace(id=6, name="manager")),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.user_repo.update_user",
+        AsyncMock(return_value=SimpleNamespace(id=7, company_id=10)),
+    )
+    replace_assignment = AsyncMock()
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.user_repo.replace_company_role_assignment",
+        replace_assignment,
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.schemas.User.model_validate",
+        MagicMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(
+        "backend.chronos_graphql.mutations.user.types.User.from_pydantic",
+        MagicMock(return_value="user"),
+    )
+    db.execute.return_value.scalar_one.return_value = MagicMock()
+
+    result = await UserMutation().update_user(
+        UpdateUserInput(id=7, role_id=6), info
+    )
+
+    assert result == "user"
+    replace_assignment.assert_awaited_once_with(
+        db,
+        user_id=7,
+        company_id=10,
+        role_id=6,
+        assigned_by=1,
+    )
+    db.commit.assert_awaited_once()

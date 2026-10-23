@@ -20,6 +20,7 @@ from backend.database.models import User as DbUser
 from backend.exceptions import (
     AuthenticationException,
     NotFoundException,
+    PermissionDeniedException,
     ValidationException,
 )
 from backend.chronos_graphql import types
@@ -155,10 +156,38 @@ class UserMutation:
         if current_user is None:
             raise AuthenticationException(detail=authenticate_msg)
 
+        target_user = await user_repo.get_by_id(db, userInput.id)
+        if target_user is None:
+            raise NotFoundException.resource("User", userInput.id)
+
+        # Company scoping: actor must belong to the target user's company.
+        await check_company_access(info, target_user.company_id)
+        # If the user is being moved, actor must also access the new company.
+        if userInput.company_id is not None:
+            await check_company_access(info, userInput.company_id)
+
+        effective_target_company_id = userInput.company_id or target_user.company_id
+
         if current_user.id != userInput.id:
-            await require_permission(info, "users:update", company_id=userInput.company_id)
+            await require_permission(info, "users:update", company_id=target_user.company_id)
         else:
             await require_permission(info, "users:update_own")
+
+        role_change_requested = userInput.role_id is not None
+        if role_change_requested:
+            if current_user.id == userInput.id:
+                raise PermissionDeniedException(
+                    detail="Не можете да променяте собствената си роля",
+                    context={"user_id": current_user.id},
+                )
+            await require_permission(
+                info,
+                "users:manage_roles",
+                company_id=effective_target_company_id,
+            )
+            await resolve_assignable_role(
+                db, current_user.role.name, userInput.role_id
+            )
 
         update_data = {}
         if userInput.first_name is not None:
@@ -198,6 +227,17 @@ class UserMutation:
 
         user_in = schemas.UserUpdate(**update_data)
         db_user = await user_repo.update_user(db, user_id=userInput.id, user_in=user_in)
+        if db_user is None:
+            raise NotFoundException.resource("User", userInput.id)
+
+        if role_change_requested:
+            await user_repo.replace_company_role_assignment(
+                db,
+                user_id=userInput.id,
+                company_id=effective_target_company_id,
+                role_id=userInput.role_id,
+                assigned_by=current_user.id,
+            )
 
         has_contract_data = any([
             userInput.contract_type is not None,
@@ -289,6 +329,7 @@ class UserMutation:
                 )
                 db.add(contract)
 
+        await db.commit()
         stmt = select(DbUser).where(DbUser.id == db_user.id).options(selectinload(DbUser.role))
         result = await db.execute(stmt)
         db_user = result.scalar_one()
