@@ -140,7 +140,7 @@ async def init_db():
         res = await session.execute(select(Company))
         default_company = res.scalars().first()
         if not default_company:
-            default_company = Company(name="Основна Фирма", eik="000000000", address="гр. София, ул. Централна 1")
+            default_company = Company(name="Сладкарница Сладория", eik="000000000", address="гр. Пловдив, Бул. България 1")
             session.add(default_company)
             await session.flush()
 
@@ -226,7 +226,7 @@ async def ensure_workstations_for_company(company_id: int, session: AsyncSession
             )
             if not result.scalars().first():
                 s.add(Workstation(name=ws_data["name"], description=ws_data["description"], company_id=company_id))
-                logger.info(f"Създадена работна станция: {ws_data['name']} за фирма ID {company_id}")
+                logger.info(f"Създадена работна станция: {ws_data['name']} за фирма {company_id}")
         await s.commit()
 
 
