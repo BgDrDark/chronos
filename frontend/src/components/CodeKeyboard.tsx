@@ -31,19 +31,19 @@ const CodeKeyboard: React.FC<CodeKeyboardProps> = ({ onCodeSubmit, isLoading }) 
   };
 
   return (
-    <Paper elevation={3} sx={{ p: 3, borderRadius: 4, bgcolor: '#f8f9fa' }}>
+    <Paper elevation={3} sx={{ p: 2, borderRadius: 3, bgcolor: '#f8f9fa' }}>
       <Box sx={{ 
-        mb: 3, 
-        p: 2, 
+        mb: 2, 
+        p: 1.5, 
         bgcolor: '#fff', 
-        borderRadius: 2, 
+        borderRadius: 1.5, 
         border: '2px solid #e0e0e0',
-        minHeight: '60px',
+        minHeight: '44px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <Typography variant="h4" sx={{ letterSpacing: 8, fontWeight: 'bold', color: '#1a73e8' }}>
+        <Typography variant="h5" sx={{ letterSpacing: 6, fontWeight: 'bold', color: '#1a73e8' }}>
           {code || 'ВЪВЕДЕТЕ КОД'}
         </Typography>
       </Box>
@@ -51,21 +51,21 @@ const CodeKeyboard: React.FC<CodeKeyboardProps> = ({ onCodeSubmit, isLoading }) 
       <Box sx={{ 
         display: 'grid', 
         gridTemplateColumns: 'repeat(3, 1fr)', 
-        gap: 2 
+        gap: 1.5 
       }}>
         {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(num => (
           <Button 
             key={num}
             variant="contained" 
-            size="large"
+            size="small"
             onClick={() => handleKeyPress(num)}
             sx={{ 
-              height: 80, 
-              fontSize: '1.5rem', 
-              borderRadius: 3,
+              height: 56, 
+              fontSize: '1.2rem', 
+              borderRadius: 2,
               bgcolor: '#fff',
               color: '#444',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              boxShadow: '0 3px 4px rgba(0,0,0,0.08)',
               '&:hover': { bgcolor: '#f1f3f4' }
             }}
           >
@@ -75,25 +75,25 @@ const CodeKeyboard: React.FC<CodeKeyboardProps> = ({ onCodeSubmit, isLoading }) 
         
         <Button 
           variant="contained" 
-          size="large"
+          size="small"
           color="error"
           onClick={handleDelete}
-          sx={{ height: 80, borderRadius: 3 }}
+          sx={{ height: 56, borderRadius: 2 }}
         >
           <BackspaceIcon />
         </Button>
         
         <Button 
           variant="contained" 
-          size="large"
+          size="small"
           onClick={() => handleKeyPress('0')}
           sx={{ 
-            height: 80, 
-            fontSize: '1.5rem', 
-            borderRadius: 3,
+            height: 56, 
+            fontSize: '1.2rem', 
+            borderRadius: 2,
             bgcolor: '#fff',
             color: '#444',
-            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+            boxShadow: '0 3px 4px rgba(0,0,0,0.08)',
             '&:hover': { bgcolor: '#f1f3f4' }
           }}
         >
@@ -102,17 +102,17 @@ const CodeKeyboard: React.FC<CodeKeyboardProps> = ({ onCodeSubmit, isLoading }) 
 
         <Button 
           variant="contained" 
-          size="large"
+          size="small"
           color="success"
           onClick={handleSubmit}
           disabled={code.length < 4 || isLoading}
-          sx={{ height: 80, borderRadius: 3 }}
+          sx={{ height: 56, borderRadius: 2 }}
         >
           <CheckCircleIcon />
         </Button>
       </Box>
       
-      <Box sx={{ mt: 2, textAlign: 'center' }}>
+      <Box sx={{ mt: 1.5, textAlign: 'center' }}>
         <Typography variant="caption" color="text.secondary">
           Минимум 4 цифри за вход
         </Typography>

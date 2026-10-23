@@ -30,6 +30,7 @@ interface TerminalConfig {
   text: { scanning_text: string; welcome_message: string; success_message: string; error_message: string; qr_placeholder: string; keyboard_placeholder: string };
   timeouts: { inactivity_reset: number };
   security: { exit_method: string; exit_pin_required: boolean };
+  mode: 'qr' | 'nfc' | 'both';
 }
 
 const DEFAULT_CONFIG: TerminalConfig = {
@@ -40,6 +41,7 @@ const DEFAULT_CONFIG: TerminalConfig = {
   text: { scanning_text: 'Сканирайте QR код или въведете код', welcome_message: '', success_message: 'Успешен вход', error_message: 'Грешка при достъп', qr_placeholder: 'Поставете QR код пред камерата', keyboard_placeholder: 'Въведете вашия код' },
   timeouts: { inactivity_reset: 30 },
   security: { exit_method: 'pin', exit_pin_required: true },
+  mode: 'both',
 };
 
 const TerminalConfigEditor: React.FC = () => {
@@ -86,8 +88,14 @@ const TerminalConfigEditor: React.FC = () => {
     setSaving(false);
   };
 
-  const update = <K extends keyof TerminalConfig>(section: K, values: Partial<TerminalConfig[K]>) => {
-    setConfig(prev => ({ ...prev, [section]: { ...prev[section], ...values } }));
+  const update = (section: keyof TerminalConfig, values: any) => {
+    setConfig(prev => {
+      const sectionValue = prev[section];
+      if (typeof sectionValue === 'object' && sectionValue !== null) {
+        return { ...prev, [section]: { ...sectionValue, ...values } };
+      }
+      return { ...prev, [section]: values };
+    });
   };
 
   if (terminalsLoading) return <CircularProgress size={24} />;
@@ -98,7 +106,7 @@ const TerminalConfigEditor: React.FC = () => {
     <Card sx={{ mb: 4, border: '1px solid #1565c0' }}>
       <CardContent>
         <Typography variant="h6" gutterBottom color="primary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <PaletteIcon color="primary" /> Персонализация по Терминал
+          <PaletteIcon color="primary" /> Персонализация на Терминал
         </Typography>
 
         <FormControl fullWidth sx={{ mb: 3 }}>
@@ -155,6 +163,15 @@ const TerminalConfigEditor: React.FC = () => {
                 <FormControlLabel control={<Switch checked={config.display.show_date}
                   onChange={(e) => update('display', { show_date: e.target.checked })} />}
                   label="Показвай дата на скрийнсейвъра" sx={{ mb: 1 }} />
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Вход</InputLabel>
+                  <Select value={config.mode} label="Вход"
+                    onChange={(e) => update('mode', e.target.value as 'qr' | 'nfc' | 'both')}>
+                    <MenuItem value="qr">QR скенер</MenuItem>
+                    <MenuItem value="nfc">NFC четец</MenuItem>
+                    <MenuItem value="both">QR + NFC + Клавиатура</MenuItem>
+                  </Select>
+                </FormControl>
               </Box>
             )}
 
@@ -214,9 +231,14 @@ const TerminalConfigEditor: React.FC = () => {
                   value={config.timeouts.inactivity_reset}
                   onChange={(e) => update('timeouts', { inactivity_reset: parseInt(e.target.value) || 30 })}
                 />
-                <FormControlLabel control={<Switch checked={config.security.exit_pin_required}
-                  onChange={(e) => update('security', { exit_pin_required: e.target.checked })} />}
-                  label="Изисквай ПИН за изход" sx={{ mb: 1 }} />
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Метод за изход</InputLabel>
+                  <Select value={config.security.exit_method} label="Метод за изход"
+                    onChange={(e) => update('security', { exit_method: e.target.value as string })}>
+                    <MenuItem value="pin">ПИН код</MenuItem>
+                    <MenuItem value="password">Имейл и парола</MenuItem>
+                  </Select>
+                </FormControl>
               </Box>
             )}
 
@@ -292,7 +314,7 @@ const KioskSecuritySettings: React.FC = () => {
     };
     try {
       await updateSecurity({ variables });
-      setMsg('Настройките за Kiosk са обновени.');
+      setMsg('Настройките за Терминала са обновени.');
       refetch();
       setTimeout(() => setMsg(''), 3000);
     } catch (e: unknown) {
@@ -323,7 +345,7 @@ const KioskSecuritySettings: React.FC = () => {
       <Card sx={{ mb: 4, border: '1px solid #f44336' }}>
         <CardContent>
           <Typography variant="h6" gutterBottom color="error.main" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <SecurityIcon /> Сигурност на Kiosk Терминал
+            <SecurityIcon /> Сигурност на Терминал
           </Typography>
           <Typography variant="body2" color="text.secondary" paragraph>
             Управление на допълнителните защити при генериране на QR код. Тези настройки важат за всички служители.
@@ -341,15 +363,15 @@ const KioskSecuritySettings: React.FC = () => {
       <Card sx={{ mb: 4, border: '1px solid #ff9800' }}>
         <CardContent>
           <Typography variant="h6" gutterBottom color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <SecurityIcon /> Лимит на опитите за код от клавиатура
+            <SecurityIcon /> Лимит на опитите за пин код от клавиатура
           </Typography>
           <Typography variant="body2" color="text.secondary" paragraph>
-            Максимален брой опити за въвеждане на code от терминала за определен период.
+            Максимален брой опити за въвеждане на пин код от терминала за определен период.
             Формат: <code>число/минути</code>, напр. <code>5/minute</code>, <code>10/hour</code>.
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <TextField size="small" value={rateValue} onChange={(e) => setRateValue(e.target.value)} placeholder="5/minute" sx={{ width: 200 }}
-              slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText="Максимален брой опити за въвеждане на код от клавиатурата за определен период" /></InputAdornment> } }} />
+              slotProps={{ input: { endAdornment: <InputAdornment position="end"><InfoIcon helpText="Максимален брой опити за въвеждане на пин код от клавиатурата за определен период" /></InputAdornment> } }} />
             <Button variant="contained" size="small" onClick={handleSaveRateLimit} disabled={updatingRate}>
               {updatingRate ? 'Запазва се...' : 'Запази'}
             </Button>

@@ -3,7 +3,7 @@ import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { 
     Box, Typography, Paper, Button, Container, Dialog, 
     DialogTitle, DialogContent, DialogActions, TextField, Alert, Avatar, 
-    CircularProgress, Stack, IconButton, Chip
+    CircularProgress, IconButton, Chip
 } from '@mui/material';
 import {
     AccessTime as AccessTimeIcon,
@@ -11,9 +11,8 @@ import {
     Close as CloseIcon,
     Error as ErrorIcon,
     Lock as LockIcon,
-    QrCodeScanner as QrCodeScannerIcon,
-    Keyboard as KeyboardIcon,
     Sync as SyncIcon,
+    Contactless as NfcIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { getApiUrl } from '../utils/api';
@@ -78,6 +77,7 @@ export interface TerminalCustomization {
     exit_method: 'pin' | 'password';
     exit_pin_required: boolean;
   };
+  mode: 'qr' | 'nfc' | 'both';
 }
 
 const DEFAULT_TERMINAL_CUSTOMIZATION: TerminalCustomization = {
@@ -89,6 +89,7 @@ const DEFAULT_TERMINAL_CUSTOMIZATION: TerminalCustomization = {
   text: { title: null, welcome_message: null, scan_placeholder: 'Поставете карта или QR код', scanning_text: 'Сканиране...', success_message: 'Достъпът е разрешен', error_message: 'Достъпът е отказан' },
   tts: { enabled: false, language: 'bg-BG', scan_success: true, scan_error: true },
   security: { exit_method: 'pin', exit_pin_required: true },
+  mode: 'both',
 };
 
 interface OfflineLog {
@@ -116,7 +117,6 @@ const UnifiedKiosk: React.FC = () => {
         profile_picture?: string
     } | null>(null);
     const [isScanning, setIsScanning] = useState(true);
-    const [entryMode, setEntryMode] = useState<'qr' | 'keyboard'>('qr');
     const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
     const [offlineQueue, setOfflineQueue] = useState<OfflineLog[]>([]);
     const [isOnline] = useState(navigator.onLine);
@@ -171,6 +171,8 @@ const UnifiedKiosk: React.FC = () => {
     // Exit Lock State
     const [exitDialogOpen, setExitDialogOpen] = useState(false);
     const [exitPin, setExitPin] = useState('');
+    const [exitEmail, setExitEmail] = useState('');
+    const [exitPassword, setExitPassword] = useState('');
     const [exitError, setExitError] = useState<string | null>(null);
     const [isVerifying, setIsVerifying] = useState(false);
 
@@ -299,7 +301,7 @@ const UnifiedKiosk: React.FC = () => {
         }
     };
 
-    const handleRequest = useCallback(async (payload: { qr_token?: string, code?: string }) => {
+    const handleRequest = useCallback(async (payload: { qr_token?: string, code?: string, card_number?: string }) => {
         if (!isScanningRef.current) return;
         setIsScanningRef.current(false);
         if (scannerRef.current) scannerRef.current.pause();
@@ -361,7 +363,7 @@ const UnifiedKiosk: React.FC = () => {
 
     // Scanner Management
     useEffect(() => {
-        const shouldScan = entryMode === 'qr' && !loading && !scanResult;
+        const shouldScan = (terminalCfg.mode === 'qr' || terminalCfg.mode === 'both') && !loading && !scanResult;
         if (shouldScan) {
             const scanner = new Html5QrcodeScanner(
                 "qr-reader",
@@ -372,19 +374,69 @@ const UnifiedKiosk: React.FC = () => {
             scannerRef.current = scanner;
             return () => { scanner.clear().catch(() => {}); };
         }
-    }, [entryMode, loading, scanResult, onScanSuccess]);
+    }, [terminalCfg.mode, loading, scanResult, onScanSuccess]);
+
+    // NFC Reader
+    const nfcReadingRef = useRef(false);
+    useEffect(() => {
+        const shouldReadNfc = (terminalCfg.mode === 'nfc' || terminalCfg.mode === 'both') && !loading && !scanResult;
+        if (!shouldReadNfc || !('NDEFReader' in window)) return;
+
+        let reader: any;
+        let aborted = false;
+
+        (async () => {
+            try {
+                reader = new (window as any).NDEFReader();
+                await reader.scan();
+                nfcReadingRef.current = true;
+                reader.addEventListener('reading', ({ message }: any) => {
+                    if (nfcReadingRef.current && message.records.length > 0) {
+                        const decoder = new TextDecoder();
+                        for (const record of message.records) {
+                            if (record.mediaType === 'text/plain' || record.recordType === 'text') {
+                                const text = decoder.decode(record.data);
+                                handleRequest({ card_number: text });
+                                break;
+                            } else if (record.recordType === 'url') {
+                                const url = decoder.decode(record.data);
+                                handleRequest({ qr_token: url });
+                                break;
+                            }
+                        }
+                    }
+                });
+            } catch { /* NFC not available */ }
+        })();
+
+        return () => {
+            aborted = true;
+            nfcReadingRef.current = false;
+        };
+    }, [terminalCfg.mode, loading, scanResult, handleRequest]);
 
     const handleExitVerify = async () => {
         setIsVerifying(true);
         setExitError(null);
         try {
-            const response = await fetch(getApiUrl(`kiosk/terminal/${hwidRef.current}/verify-pin`), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pin: exitPin })
-            });
-            if (response.ok) navigate('/');
-            else setExitError('Невалиден ПИН код');
+            const password = exitPassword.trim();
+            if (terminalCfg.security.exit_method === 'password') {
+                const response = await fetch(getApiUrl('auth/token'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `username=${encodeURIComponent(exitEmail)}&password=${encodeURIComponent(password)}`
+                });
+                if (response.ok) navigate('/');
+                else setExitError('Невалиден имейл или парола');
+            } else {
+                const response = await fetch(getApiUrl(`kiosk/terminal/${hwidRef.current}/verify-pin`), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: exitPin })
+                });
+                if (response.ok) navigate('/');
+                else setExitError('Невалиден ПИН код');
+            }
         } catch { setExitError('Грешка при свързване'); }
         finally { setIsVerifying(false); }
     };
@@ -476,56 +528,39 @@ const UnifiedKiosk: React.FC = () => {
                 {/* Entry Interface */}
                 {!scanResult && (
                     <Container maxWidth="sm">
-                        <Stack direction="row" spacing={2} justifyContent="center" sx={{ mb: 4 }}>
-                            <Button 
-                                variant={entryMode === 'qr' ? 'contained' : 'outlined'} 
-                                onClick={() => setEntryMode('qr')}
-                                startIcon={<QrCodeScannerIcon />}
-                                sx={{ borderRadius: 4, px: 4, py: 1.5, color: 'white', borderColor: 'white' }}
-                            >
-                                QR СКЕНЕР
-                            </Button>
-                            <Button 
-                                variant={entryMode === 'keyboard' ? 'contained' : 'outlined'} 
-                                onClick={() => setEntryMode('keyboard')}
-                                startIcon={<KeyboardIcon />}
-                                sx={{ borderRadius: 4, px: 4, py: 1.5, color: 'white', borderColor: 'white' }}
-                            >
-                                КЛАВИАТУРА
-        == 'qr' ? 'contained' : 'outlined'} 
-                                onClick={() => setEntryMode('qr')}
-                                startIcon={<QrCodeScannerIcon />}
-                                sx={{ borderRadius: 4, px: 4, py: 1.5, color: 'white', borderColor: 'white' }}
-                            >
-                                QR СКЕНЕР
-                            </Button>
-                            <Button 
-                                variant={entryMode === 'keyboard' ? 'contained' : 'outlined'} 
-                                onClick={() => setEntryMode('keyboard')}
-                                startIcon={<KeyboardIcon />}
-                                sx={{ borderRadius: 4, px: 4, py: 1.5, color: 'white', borderColor: 'white' }}
-                            >
-                                КЛАВИАТУРА
-                            </Button>
-                        </Stack>
+                        <Box sx={{ 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            gap: 3,
+                            alignItems: 'center'
+                        }}>
+                            {/* QR Scanner */}
+                            {(terminalCfg.mode === 'qr' || terminalCfg.mode === 'both') && (
+                                <Box sx={{ 
+                                    overflow: 'hidden', borderRadius: 8, border: '8px solid rgba(255,255,255,0.2)', 
+                                    bgcolor: 'black', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+                                    '& #qr-reader': { border: 'none !important' },
+                                    maxWidth: 400,
+                                }}>
+                                    <div id="qr-reader" style={{ width: '100%' }}></div>
+                                </Box>
+                            )}
 
-                        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                            <Box sx={{ width: '100%' }}>
-                                {entryMode === 'qr' ? (
-                                    <Box sx={{ 
-                                        overflow: 'hidden', borderRadius: 8, border: '8px solid rgba(255,255,255,0.2)', 
-                                        bgcolor: 'black', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
-                                        '& #qr-reader': { border: 'none !important' }
-                                    }}>
-                                        <: 8, border: '8px solid rgba(255,255,255,0.2)', 
-                                        bgcolor: 'black', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
-                                        '& #qr-reader': { border: 'none !important' }
-                                    }}>
-                                        <div id="qr-reader" style={{ width: '100%' }}></div>
-                                    </Box>
-                                ) : (
-                                    <CodeKeyboard onCodeSubmit={(code) => handleRequest({ code })} isLoading={!isScanning} />
-                                )}
+                            {/* NFC */}
+                            {(terminalCfg.mode === 'nfc' || terminalCfg.mode === 'both') && (
+                                <Paper sx={{ 
+                                    p: 2, borderRadius: 4, bgcolor: 'rgba(255,255,255,0.1)',
+                                    backdropFilter: 'blur(10px)', width: '100%', maxWidth: 400,
+                                    textAlign: 'center', color: 'white'
+                                }}>
+                                    <NfcIcon sx={{ fontSize: 48, opacity: 0.7 }} />
+                                    <Typography variant="body1">Доближете карта до NFC четеца</Typography>
+                                </Paper>
+                            )}
+
+                            {/* Code Keyboard - always visible */}
+                            <Box sx={{ maxWidth: 400, width: '100%' }}>
+                                <CodeKeyboard onCodeSubmit={(code) => handleRequest({ code })} isLoading={!isScanning} />
                             </Box>
                         </Box>
 
@@ -541,11 +576,18 @@ const UnifiedKiosk: React.FC = () => {
             <Dialog open={exitDialogOpen} onClose={() => { setExitDialogOpen(false); setExitPin(''); setExitError(null); }}>
                 <DialogTitle>Администраторски изход</DialogTitle>
                 <DialogContent>
-                    <TextField fullWidth label="ПИН код" type="password" margin="normal" value={exitPin} onChange={(e) => setExitPin(e.target.value)} autoFocus inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }} />
+                    {terminalCfg.security.exit_method === 'password' ? (
+                        <>
+                            <TextField fullWidth label="Имейл" margin="normal" value={exitEmail} onChange={(e) => setExitEmail(e.target.value)} autoFocus />
+                            <TextField fullWidth label="Парола" type="password" margin="normal" value={exitPassword} onChange={(e) => setExitPassword(e.target.value)} />
+                        </>
+                    ) : (
+                        <TextField fullWidth label="ПИН код" type="password" margin="normal" value={exitPin} onChange={(e) => setExitPin(e.target.value)} autoFocus inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }} />
+                    )}
                     {exitError && <Alert severity="error" sx={{ mt: 2 }}>{exitError}</Alert>}
                 </DialogContent>
                 <DialogActions sx={{ p: 3 }}>
-                    <Button onClick={() => { setExitDialogOpen(false); setExitPin(''); setExitError(null); }}>Отказ</Button>
+                    <Button onClick={() => { setExitDialogOpen(false); setExitPin(''); setExitEmail(''); setExitPassword(''); setExitError(null); }}>Отказ</Button>
                     <Button onClick={handleExitVerify} variant="contained" disabled={isVerifying}>Вход</Button>
                 </DialogActions>
             </Dialog>
