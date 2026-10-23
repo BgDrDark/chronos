@@ -14,6 +14,7 @@ from backend.database.models import (
     Role,
     RolePermission,
 )
+from backend.exceptions import NotFoundException, PermissionDeniedException
 
 logger = logging.getLogger(__name__)
 
@@ -734,3 +735,62 @@ for _role_name, _extra_permissions in ROLE_PERMISSION_ADDITIONS.items():
         DEFAULT_ROLES[_role_name]["permissions"] = list(
             dict.fromkeys(DEFAULT_ROLES[_role_name]["permissions"] + _extra_permissions)
         )
+
+
+# --- Phase 1: role assignment policy (audit 23.10, R1/R2/R9/A5) ---
+# Explicit allowlist for actors that are not super_admin/admin.
+# super_admin and admin are special-cased in can_assign_role() so they can
+# also assign custom roles that are not part of DEFAULT_ROLES.
+ASSIGNABLE_ROLES: dict[str, frozenset[str]] = {
+    "global_accountant": frozenset({"accountant", "employee", "viewer"}),
+    "accountant": frozenset({"employee", "viewer"}),
+    "hr_manager": frozenset({"manager", "driver", "employee", "viewer"}),
+    "logistics_manager": frozenset({"employee", "viewer"}),
+    "fleet_manager": frozenset({"driver", "employee", "viewer"}),
+    "manager": frozenset({"employee", "viewer"}),
+    "driver": frozenset(),
+    "employee": frozenset(),
+    "viewer": frozenset(),
+}
+
+
+def can_assign_role(actor_role_name: str | None, target_role_name: str) -> bool:
+    """Return True only if actor_role_name may assign target_role_name.
+
+    - super_admin: any existing role (including custom roles)
+    - admin: any existing role except super_admin
+    - everyone else: explicit allowlist in ASSIGNABLE_ROLES
+    """
+    if not actor_role_name or not target_role_name:
+        return False
+    if actor_role_name == "super_admin":
+        return True
+    if actor_role_name == "admin":
+        return target_role_name != "super_admin"
+    return target_role_name in ASSIGNABLE_ROLES.get(actor_role_name, frozenset())
+
+
+async def resolve_assignable_role(
+    db: AsyncSession,
+    actor_role_name: str | None,
+    role_id: int,
+) -> Role:
+    """Load role_id and enforce the role assignment policy.
+
+    Raises:
+        NotFoundException: role_id does not exist.
+        PermissionDeniedException: actor may not assign that role.
+    """
+    role = await db.get(Role, role_id)
+    if role is None:
+        raise NotFoundException.resource("Role", role_id)
+    if not can_assign_role(actor_role_name, role.name):
+        raise PermissionDeniedException(
+            detail="Не можете да назначите тази роля",
+            context={
+                "actor_role": actor_role_name,
+                "target_role": role.name,
+                "target_role_id": role_id,
+            },
+        )
+    return role
