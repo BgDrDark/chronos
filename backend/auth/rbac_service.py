@@ -484,6 +484,80 @@ DEFAULT_PERMISSIONS = {
     "fleet:costcenters:delete": {"resource": "fleet_costcenters", "action": "delete", "description": "Delete cost centers"},
     "fleet:reports:read": {"resource": "fleet_reports", "action": "read", "description": "View fleet reports"},
     "fleet:reports:export": {"resource": "fleet_reports", "action": "export", "description": "Export fleet reports"},
+    # --- Phase 1 additions (audit 23.10) ---
+    "timelogs:update_own": {
+        "resource": "timelogs", "action": "update_own",
+        "description": "Edit own time logs (clock out)",
+    },
+    "shifts:create": {
+        "resource": "shifts", "action": "create",
+        "description": "Request a shift swap",
+    },
+    "shifts:update_own": {
+        "resource": "shifts", "action": "update_own",
+        "description": "Respond to own shift swap requests",
+    },
+    "inventory:create": {
+        "resource": "inventory", "action": "create",
+        "description": "Create inventory items, batches and sessions",
+    },
+    "inventory:update": {
+        "resource": "inventory", "action": "update",
+        "description": "Update inventory items, batches and sessions",
+    },
+    "inventory:delete": {
+        "resource": "inventory", "action": "delete",
+        "description": "Delete inventory items and storage zones",
+    },
+    "hr:manage_contracts": {
+        "resource": "hr", "action": "manage_contracts",
+        "description": "Create, sign and amend employment contracts",
+    },
+    "notifications:read": {
+        "resource": "notifications", "action": "read",
+        "description": "Read and manage own notifications",
+    },
+    "integrations:manage": {
+        "resource": "integrations", "action": "manage",
+        "description": "Manage API keys, webhooks and calendar integrations",
+    },
+    "kiosk:manage": {
+        "resource": "kiosk", "action": "manage",
+        "description": "Manage kiosk devices, terminals, gateways and printers",
+    },
+    "documents:create": {
+        "resource": "documents", "action": "create",
+        "description": "Upload documents",
+    },
+    "documents:delete": {
+        "resource": "documents", "action": "delete",
+        "description": "Delete documents",
+    },
+    "behavioral:manage": {
+        "resource": "behavioral", "action": "manage",
+        "description": "Manage behavioral analysis rules and profiles",
+    },
+    # --- Phase 1 additions: role references that did not exist (audit 23.10) ---
+    "fleet:vehicles:read_own": {
+        "resource": "fleet_vehicles", "action": "read_own",
+        "description": "View own assigned vehicle",
+    },
+    "fleet:trips:read_own": {
+        "resource": "fleet_trips", "action": "read_own",
+        "description": "View own trips",
+    },
+    "fleet:trips:create_own": {
+        "resource": "fleet_trips", "action": "create_own",
+        "description": "Create own trips",
+    },
+    "fleet:trips:update_own": {
+        "resource": "fleet_trips", "action": "update_own",
+        "description": "Update own trips",
+    },
+    "fleet:fuel:read_own": {
+        "resource": "fleet_fuel", "action": "read_own",
+        "description": "View own fuel records",
+    },
 }
 
 
@@ -615,3 +689,48 @@ DEFAULT_ROLES = {
         ],
     },
 }
+
+
+# --- Phase 1 additions (audit 23.10) ---
+# admin и super_admin получават всичко автоматично чрез list(DEFAULT_PERMISSIONS.keys()).
+ROLE_PERMISSION_ADDITIONS: dict[str, list[str]] = {
+    "employee": [
+        "timelogs:update_own",
+        "shifts:create",
+        "shifts:update_own",
+        "notifications:read",
+    ],
+    "viewer": ["notifications:read"],
+    "driver": ["notifications:read"],
+    "manager": [
+        "timelogs:update_own",
+        "shifts:create",
+        "shifts:update_own",
+        "notifications:read",
+        "inventory:create",
+        "inventory:update",
+        "inventory:delete",
+        "documents:create",
+        "documents:delete",
+    ],
+    "hr_manager": [
+        "timelogs:update_own",
+        "shifts:create",
+        "shifts:update_own",
+        "notifications:read",
+        "hr:manage_contracts",
+        "documents:create",
+        "documents:delete",
+        "behavioral:manage",
+    ],
+    "accountant": ["notifications:read"],
+    "global_accountant": ["notifications:read"],
+    "logistics_manager": ["notifications:read"],
+    "fleet_manager": ["notifications:read"],
+}
+
+for _role_name, _extra_permissions in ROLE_PERMISSION_ADDITIONS.items():
+    if _role_name in DEFAULT_ROLES:
+        DEFAULT_ROLES[_role_name]["permissions"] = list(
+            dict.fromkeys(DEFAULT_ROLES[_role_name]["permissions"] + _extra_permissions)
+        )
