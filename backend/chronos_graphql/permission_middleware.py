@@ -3,13 +3,28 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from graphql import OperationType
 from strawberry.extensions import SchemaExtension
 
 from backend.auth.rbac_service import PermissionService
 from backend.exceptions import PermissionDeniedException
-from graphql import OperationType
 
 logger = logging.getLogger(__name__)
+
+# Mutations, които са съзнателно публични (без login).
+# Празно по подразбиране: GraphQL не бива да има публични mutation-и.
+PUBLIC_MUTATIONS: frozenset[str] = frozenset()
+
+# Mutations, които изискват само автентикация (действие върху собствени данни).
+AUTH_ONLY_MUTATIONS: frozenset[str] = frozenset({
+    "changePassword",
+    "regenerateMyQrCode",
+    "subscribeToPush",
+    "deleteNotification",
+    # Self-service behavioral actions (own profile / own survey)
+    "submitPersonalityTest",
+    "submitPulseSurvey",
+})
 
 PERMISSION_MAPPING = {
     # Time Tracking & Shifts
@@ -42,20 +57,13 @@ PERMISSION_MAPPING = {
     "deleteShift": "schedules:delete",
     
     # Shift Swaps
-    "createShiftSwapRequest": "schedules:create",
-    "acceptShiftSwapRequest": "schedules:update",
-    "rejectShiftSwapRequest": "schedules:update",
-    "cancelShiftSwapRequest": "schedules:update",
-    "approveShiftSwapRequest": "schedules:approve_swaps",
     
     # Payroll
-    "calculatePayroll": "payroll:create",
     "generatePayslip": "payroll:create",
     "generateMyPayslip": "payroll:read_own",
     "addBonus": "payroll:update",
     "removeBonus": "payroll:update",
     "updateUserPayroll": "payroll:update",
-    "updateMyPayroll": "payroll:update",
     "updateGlobalPayrollConfig": "system:manage_settings",
     "generateDailySummary": "payroll:read",
     "generateMonthlySummary": "payroll:read",
@@ -77,17 +85,14 @@ PERMISSION_MAPPING = {
     "createUser": "users:create",
     "updateUser": "users:update",
     "deleteUser": "users:delete",
-    "updateMyProfile": "users:update_own",
     "invalidateUserSession": "users:manage_sessions",
     "bulkUpdateUserAccess": "users:manage_access",
     
     # Company Management
     "createCompany": "companies:create",
     "updateCompany": "companies:update",
-    "deleteCompany": "companies:delete",
     "createDepartment": "companies:manage_users",
     "updateDepartment": "companies:manage_users",
-    "deleteDepartment": "companies:manage_users",
     "createPosition": "companies:manage_users",
     "updatePosition": "companies:manage_users",
     "deletePosition": "companies:manage_users",
@@ -97,45 +102,20 @@ PERMISSION_MAPPING = {
     "updateAccessZone": "system:manage_settings",
     "deleteAccessZone": "system:manage_settings",
     "createAccessDoor": "system:manage_settings",
-    "updateAccessDoor": "system:manage_settings",
     "deleteAccessDoor": "system:manage_settings",
     "updateDoorTerminal": "system:manage_settings",
     "createAccessCode": "system:manage_settings",
-    "updateAccessCode": "system:manage_settings",
     "deleteAccessCode": "system:manage_settings",
     "revokeAccessCode": "system:manage_settings",
     "assignZoneToUser": "system:manage_settings",
     "removeZoneFromUser": "system:manage_settings",
     "openDoor": "system:manage_settings",
-    "triggerDoorRemote": "system:manage_settings",
     "syncGatewayConfig": "system:manage_settings",
-    "syncAccessLogs": "system:read_audit",
     
     # Accounting
     "createInvoice": "accounting:create",
     "updateInvoice": "accounting:update",
     "deleteInvoice": "accounting:delete",
-    "createTransaction": "accounting:create",
-    "updateTransaction": "accounting:update",
-    "deleteTransaction": "accounting:delete",
-    "createReceipt": "accounting:create",
-    "updateReceipt": "accounting:update",
-    "deleteReceipt": "accounting:delete",
-    "createJournalEntry": "accounting:create",
-    "updateJournalEntry": "accounting:update",
-    "deleteJournalEntry": "accounting:delete",
-    "createExpenseCategory": "accounting:create",
-    "updateExpenseCategory": "accounting:update",
-    "deleteExpenseCategory": "accounting:delete",
-    "createPaymentMethod": "accounting:create",
-    "updatePaymentMethod": "accounting:update",
-    "deletePaymentMethod": "accounting:delete",
-    "createTaxRate": "accounting:create",
-    "updateTaxRate": "accounting:update",
-    "deleteTaxRate": "accounting:delete",
-    "createCurrency": "accounting:create",
-    "updateCurrency": "accounting:update",
-    "deleteCurrency": "accounting:delete",
     "createBankAccount": "accounting:create",
     "updateBankAccount": "accounting:update",
     "deleteBankAccount": "accounting:delete",
@@ -193,15 +173,12 @@ PERMISSION_MAPPING = {
     "completeInventorySession": "inventory:update",
     "createSupplier": "logistics:suppliers:create",
     "updateSupplier": "logistics:suppliers:update",
-    "deleteSupplier": "logistics:suppliers:delete",
     "createStorageZone": "inventory:create",
     "updateStorageZone": "inventory:update",
-    "deleteStorageZone": "inventory:delete",
     "markTaskScrap": "inventory:update",
     
     # Production & Recipes
     "createRecipe": "production:recipes:create",
-    "updateRecipe": "production:recipes:update",
     "deleteRecipe": "production:recipes:delete",
     "updateRecipePrice": "production:recipes:update",
     "calculateRecipeCost": "production:recipes:read",
@@ -220,44 +197,14 @@ PERMISSION_MAPPING = {
     "createQuickSale": "production:sales:create",
     
     # Logistics
-    "createPurchaseRequest": "logistics:requests:create",
-    "updatePurchaseRequest": "logistics:requests:update",
-    "deletePurchaseRequest": "logistics:requests:delete",
-    "approvePurchaseRequest": "logistics:requests:approve",
-    "rejectPurchaseRequest": "logistics:requests:approve",
-    "createPurchaseOrder": "logistics:orders:create",
-    "updatePurchaseOrder": "logistics:orders:update",
-    "deletePurchaseOrder": "logistics:orders:delete",
-    "createDelivery": "logistics:deliveries:create",
-    "updateDelivery": "logistics:deliveries:update",
-    "deleteDelivery": "logistics:deliveries:delete",
-    "createRequestTemplate": "logistics:templates:create",
-    "updateRequestTemplate": "logistics:templates:update",
-    "deleteRequestTemplate": "logistics:templates:delete",
     
     # Fleet Management
     "createVehicle": "fleet:vehicles:create",
     "updateVehicle": "fleet:vehicles:update",
     "deleteVehicle": "fleet:vehicles:delete",
-    "updateVehicleStatus": "fleet:vehicles:status",
-    "createVehicleDocument": "fleet:documents:create",
-    "updateVehicleDocument": "fleet:documents:update",
-    "deleteVehicleDocument": "fleet:documents:delete",
-    "createFuelCard": "fleet:fuel_cards:create",
-    "updateFuelCard": "fleet:fuel_cards:update",
-    "deleteFuelCard": "fleet:fuel_cards:delete",
-    "createVignette": "fleet:vignettes:create",
-    "updateVignette": "fleet:vignettes:update",
-    "deleteVignette": "fleet:vignettes:delete",
-    "createToll": "fleet:tolls:create",
-    "updateToll": "fleet:tolls:update",
-    "deleteToll": "fleet:tolls:delete",
     "createVehicleMileage": "fleet:mileage:create",
     "updateVehicleMileage": "fleet:mileage:update",
     "deleteVehicleMileage": "fleet:mileage:delete",
-    "createFuelLog": "fleet:fuel:create",
-    "updateFuelLog": "fleet:fuel:update",
-    "deleteFuelLog": "fleet:fuel:delete",
     "createVehicleRepair": "fleet:repairs:create",
     "updateVehicleRepair": "fleet:repairs:update",
     "deleteVehicleRepair": "fleet:repairs:delete",
@@ -273,10 +220,6 @@ PERMISSION_MAPPING = {
     "createVehicleTrip": "fleet:trips:create",
     "updateVehicleTrip": "fleet:trips:update",
     "deleteVehicleTrip": "fleet:trips:delete",
-    "approveVehicleTrip": "fleet:trips:update",
-    "createFleetExpense": "fleet:expenses:create",
-    "updateFleetExpense": "fleet:expenses:update",
-    "deleteFleetExpense": "fleet:expenses:delete",
     "createCostCenter": "fleet:costcenters:create",
     "updateCostCenter": "fleet:costcenters:update",
     "deleteCostCenter": "fleet:costcenters:delete",
@@ -284,10 +227,7 @@ PERMISSION_MAPPING = {
     # HR & Contracts
     "createEmploymentContract": "users:create",
     "updateEmploymentContract": "users:update",
-    "deleteEmploymentContract": "users:delete",
     "createContractAnnex": "users:update",
-    "updateContractAnnex": "users:update",
-    "deleteContractAnnex": "users:delete",
     "createContractTemplate": "users:create",
     "updateContractTemplate": "users:update",
     "deleteContractTemplate": "users:delete",
@@ -303,19 +243,7 @@ PERMISSION_MAPPING = {
     "generateContractNumber": "users:update",
     "getContractPdfUrl": "users:read",
     "getAnnexPdfUrl": "users:read",
-    "createBonus": "payroll:create",
-    "updateBonus": "payroll:update",
-    "deleteBonus": "payroll:delete",
-    "createPenalty": "payroll:create",
-    "updatePenalty": "payroll:update",
-    "deletePenalty": "payroll:delete",
-    "createTraining": "users:create",
-    "updateTraining": "users:update",
     "createWorkExperience": "users:create",
-    "deleteTraining": "users:delete",
-    "createCertification": "users:create",
-    "updateCertification": "users:update",
-    "deleteCertification": "users:delete",
     
     # Settings & System
     "setGlobalSetting": "system:manage_settings",
@@ -323,16 +251,13 @@ PERMISSION_MAPPING = {
     "updatePasswordSettings": "system:manage_settings",
     "updateSecurityConfig": "system:manage_settings",
     "updateOfficeLocation": "system:manage_settings",
-    "updateKioskSettings": "system:manage_settings",
     "updatePayrollLegalSettings": "system:manage_settings",
-    "updateVapidPublicKey": "system:manage_settings",
     
     # Roles & Permissions
     "createRole": "system:manage_roles",
     "updateRole": "system:manage_roles",
     "deleteRole": "system:manage_roles",
     "assignRoleToUser": "users:manage_roles",
-    "removeRoleFromUser": "users:manage_roles",
     
     # Notifications
     "saveNotificationSetting": "system:manage_settings",
@@ -345,40 +270,17 @@ PERMISSION_MAPPING = {
     "markAllNotificationsRead": "notifications:read",
     
     # Integrations
-    "syncGoogleCalendar": "integrations:manage",
-    "createWebhook": "integrations:manage",
-    "updateWebhook": "integrations:manage",
-    "deleteWebhook": "integrations:manage",
-    "createApiKey": "integrations:manage",
-    "updateApiKey": "integrations:manage",
-    "deleteApiKey": "integrations:manage",
     
     # Kiosk & Terminal
-    "createKioskDevice": "kiosk:manage",
-    "updateKioskDevice": "kiosk:manage",
-    "deleteKioskDevice": "kiosk:manage",
-    "registerGateway": "kiosk:manage",
     "updateGateway": "kiosk:manage",
-    "deleteGateway": "kiosk:manage",
-    "registerTerminal": "kiosk:manage",
     "updateTerminal": "kiosk:manage",
     "deleteTerminal": "kiosk:manage",
-    "registerPrinter": "kiosk:manage",
-    "updatePrinter": "kiosk:manage",
-    "deletePrinter": "kiosk:manage",
-    "testPrinter": "kiosk:manage",
-    "syncTerminalConfig": "kiosk:manage",
     
     # Calendar
-    "createCalendarEvent": "schedules:create",
-    "updateCalendarEvent": "schedules:update",
-    "deleteCalendarEvent": "schedules:delete",
     "syncHolidays": "system:manage_settings",
     "syncOrthodoxHolidays": "system:manage_settings",
     
     # Documents
-    "uploadDocument": "documents:create",
-    "deleteDocument": "documents:delete",
     
     # Behavioral Analysis
     "createBehavioralRule": "behavioral:manage",
@@ -386,7 +288,75 @@ PERMISSION_MAPPING = {
     "deleteBehavioralRule": "behavioral:manage",
     "updateRecommendationStatus": "behavioral:manage",
     "updateBehavioralSettings": "behavioral:manage",
-    "computeBehavioralProfiles": "behavioral:manage",
+    # --- Phase 1 completion (audit 23.10) ---
+    "addDoorToFloorPlan": "system:manage_settings",
+    "addItemsToBatch": "inventory:update",
+    "assignAccessLevelToUser": "users:manage_access",
+    "assignLevelToZone": "system:manage_settings",
+    "bulkEmergencyAction": "system:emergency_action",
+    "cancelPaymentBatch": "accounting:update",
+    "completePaymentBatch": "accounting:update",
+    "createAccessLevel": "system:manage_settings",
+    "createAccessSchedule": "system:manage_settings",
+    "createBusinessTrip": "leaves:create",
+    "createDocumentationArticle": "system:manage_settings",
+    "createDocumentationCategory": "system:manage_settings",
+    "createElevatorFloor": "system:manage_settings",
+    "createElevatorGroup": "system:manage_settings",
+    "createFloorPlan": "system:manage_settings",
+    "createNightWorkBonus": "payroll:create",
+    "createOvertimeWork": "payroll:create",
+    "createPaymentBatch": "accounting:create",
+    "createTimeLog": "timelogs:create",
+    "createVehicleAccident": "fleet:vehicles:update",
+    "createVehicleFuel": "fleet:fuel:create",
+    "deleteAccessLevel": "system:manage_settings",
+    "deleteAccessSchedule": "system:manage_settings",
+    "deleteDocumentationArticle": "system:manage_settings",
+    "deleteDocumentationCategory": "system:manage_settings",
+    "deleteElevatorFloor": "system:manage_settings",
+    "deleteElevatorGroup": "system:manage_settings",
+    "deleteFloorPlan": "system:manage_settings",
+    "deleteVehicleFuel": "fleet:fuel:delete",
+    "disconnectGoogleCalendar": "integrations:manage",
+    "generateAllPayslips": "payroll:create",
+    "generateAnnualInsuranceReport": "payroll:read",
+    "generateIncomeReportByType": "reports:read",
+    "generateMonthlyDeclaration": "payroll:read",
+    "generatePin": "users:update",
+    "generateServiceBookExport": "users:read",
+    "reissuePin": "users:update",
+    "removeAccessLevelFromUser": "users:manage_access",
+    "removeDoorFromFloorPlan": "system:manage_settings",
+    "removeLevelFromZone": "system:manage_settings",
+    "resolveEmergency": "system:emergency_action",
+    "revealPin": "users:manage_access",
+    "triggerEmergency": "system:emergency_action",
+    "updateAccessLevel": "system:manage_settings",
+    "updateAccessSchedule": "system:manage_settings",
+    "updateDocumentationArticle": "system:manage_settings",
+    "updateDocumentationCategory": "system:manage_settings",
+    "updateDoorOnFloorPlan": "system:manage_settings",
+    "updateElevatorFloor": "system:manage_settings",
+    "updateElevatorGroup": "system:manage_settings",
+    "updateFloorPlan": "system:manage_settings",
+    "updateGoogleCalendarSettings": "integrations:manage",
+    "updateKioskSecuritySettings": "kiosk:manage",
+    "updateLeaveRequest": "leaves:update",
+    "updatePositionPayroll": "payroll:update",
+    "updateSessionSettings": "system:manage_settings",
+    "updateVehicleFuel": "fleet:fuel:update",
+    "updateZoneEmergencySettings": "system:manage_settings",
+    # --- Behavioral analysis completion (audit 23.10) ---
+    "assignPersonalityTest": "behavioral:manage",
+    "computeBiasReport": "behavioral:manage",
+    "computeManagerEffectiveness": "behavioral:manage",
+    "computeOrganizationalHealth": "behavioral:manage",
+    "createPersonalityTemplate": "behavioral:manage",
+    "deletePersonalityTemplate": "behavioral:manage",
+    "reassignPersonalityTest": "behavioral:manage",
+    "recordRecommendationFeedback": "behavioral:manage",
+    "updatePersonalityTemplate": "behavioral:manage",
 }
 
 COMPANY_SCOPED_OPERATIONS = {

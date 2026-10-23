@@ -1,6 +1,11 @@
 """Guards for the RBAC permission catalog (Phase 1, audit 23.10)."""
 
 from backend.auth.rbac_service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
+from backend.chronos_graphql.permission_middleware import (
+    AUTH_ONLY_MUTATIONS,
+    PERMISSION_MAPPING,
+    PUBLIC_MUTATIONS,
+)
 
 REQUIRED_BY_MAPPING = {
     "behavioral:manage",
@@ -56,3 +61,37 @@ def test_every_role_reference_exists():
         if perm not in DEFAULT_PERMISSIONS
     }
     assert unknown == set(), f"Роли сочат към непознати permission-и: {sorted(unknown)}"
+
+
+def _mutation_field_names() -> set[str]:
+    """Извлича mutation полетата от реалната GraphQL схема."""
+    from backend.chronos_graphql.schema import schema
+
+    mutation_type = schema._schema.mutation_type
+    assert mutation_type is not None
+    return set(mutation_type.fields.keys())
+
+
+def test_every_mutation_is_mapped_or_explicitly_public():
+    fields = _mutation_field_names()
+    unclassified = fields - set(PERMISSION_MAPPING) - AUTH_ONLY_MUTATIONS - PUBLIC_MUTATIONS
+    assert unclassified == set(), (
+        "Mutation-и без permission класификация: " + ", ".join(sorted(unclassified))
+    )
+
+
+def test_no_stale_mapping_entries():
+    fields = _mutation_field_names()
+    stale = set(PERMISSION_MAPPING) - fields
+    assert stale == set(), "Остарели mapping ключове: " + ", ".join(sorted(stale))
+
+
+def test_no_stale_auth_only_entries():
+    fields = _mutation_field_names()
+    stale = set(AUTH_ONLY_MUTATIONS) - fields
+    assert stale == set(), "Остарели auth-only ключове: " + ", ".join(sorted(stale))
+
+
+def test_mapping_targets_exist_in_catalog():
+    missing = set(PERMISSION_MAPPING.values()) - set(DEFAULT_PERMISSIONS)
+    assert missing == set(), f"Mapping сочи към липсващи permission-и: {sorted(missing)}"
