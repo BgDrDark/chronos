@@ -8,14 +8,14 @@ from sqlalchemy import and_, delete, insert, select
 from sqlalchemy.orm import selectinload
 
 from backend import schemas
-from backend.auth.rbac_service import PermissionService
+from backend.auth.rbac_service import PermissionService, resolve_assignable_role
 from backend.auth.security import (
     hash_password,
     validate_password_complexity,
     verify_password,
 )
 from backend.crud.repositories import user_repo
-from backend.database.models import AuditLog, EmploymentContract, user_access_zones
+from backend.database.models import AuditLog, EmploymentContract, Role as DbRole, user_access_zones
 from backend.database.models import User as DbUser
 from backend.exceptions import (
     AuthenticationException,
@@ -64,20 +64,44 @@ class UserMutation:
     @strawberry.mutation
     async def create_user(self, userInput: UserCreateInput, info: strawberry.Info) -> types.User:
         db = info.context["db"]
-        info.context["current_user"]
-        
-        await check_company_access(info, userInput.company_id)
+        current_user = info.context["current_user"]
+        if current_user is None:
+            raise AuthenticationException(detail=authenticate_msg)
+
+        effective_company_id = await check_company_access(info, userInput.company_id)
+        if effective_company_id is None:
+            effective_company_id = userInput.company_id or current_user.company_id
+        if effective_company_id is None:
+            raise ValidationException.field("company_id", "Изберете компания")
+
+        if userInput.role_id is None:
+            employee_role_id = await db.scalar(
+                select(DbRole.id).where(DbRole.name == "employee")
+            )
+            if employee_role_id is None:
+                raise ValidationException.field("role_id", "Ролята employee липсва в каталога")
+            role = await resolve_assignable_role(db, current_user.role.name, employee_role_id)
+        else:
+            role = await resolve_assignable_role(db, current_user.role.name, userInput.role_id)
 
         import dataclasses
         user_input_dict = dataclasses.asdict(userInput)
         user_input_dict.pop("pin_code", None)
+        user_input_dict["company_id"] = effective_company_id
         try:
             user_data = schemas.UserCreate(**user_input_dict)
         except PydanticValidationError as e:
             _handle_pydantic_error(e)
             raise AssertionError("unreachable")  # _handle_pydantic_error always raises
 
-        db_user = await user_repo.create_user(db=db, user_data=user_data, role_id=userInput.role_id)
+        db_user = await user_repo.create_user(db=db, user_data=user_data, role_id=role.id)
+        await user_repo.create_company_role_assignment(
+            db,
+            user_id=db_user.id,
+            company_id=effective_company_id,
+            role_id=role.id,
+            assigned_by=current_user.id,
+        )
 
         if userInput.pin_code:
             if not await user_repo.check_pin_unique(db, userInput.pin_code):
@@ -92,7 +116,7 @@ class UserMutation:
         if has_contract_data:
             contract = EmploymentContract(
                 user_id=db_user.id,
-                company_id=userInput.company_id,
+                company_id=effective_company_id,
                 contract_type=userInput.contract_type or 'full_time',
                 start_date=userInput.contract_start_date or datetime.date.today(),
                 base_salary=userInput.base_salary,

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.config import settings
-from backend.database.models import AuthKey, Role, User, UserSession
+from backend.database.models import AuthKey, CompanyRoleAssignment, Role, User, UserSession
 from backend.chronos_graphql.utils.pagination import cached_count, invalidate_count_cache
 from backend.schemas import UserCreate, UserUpdate
 
@@ -136,6 +136,30 @@ class UserRepository(BaseRepository):
         await db.refresh(user)
         invalidate_count_cache("users")
         return user
+
+    async def create_company_role_assignment(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        company_id: int,
+        role_id: int,
+        assigned_by: int | None,
+    ) -> CompanyRoleAssignment:
+        """Create the company-scoped role assignment for a user.
+
+        The mutation layer owns the commit; this method only flushes.
+        """
+        assignment = CompanyRoleAssignment(
+            user_id=user_id,
+            company_id=company_id,
+            role_id=role_id,
+            assigned_by=assigned_by,
+            is_active=True,
+        )
+        db.add(assignment)
+        await db.flush()
+        return assignment
 
     async def update_user(
         self,
