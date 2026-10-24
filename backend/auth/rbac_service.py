@@ -229,7 +229,7 @@ class PermissionService:
             )
             self.db.add(assignment)
 
-        await self.db.commit()
+        await self.db.flush()
 
         # Clear cache for this user
         self._clear_user_cache(user_id)

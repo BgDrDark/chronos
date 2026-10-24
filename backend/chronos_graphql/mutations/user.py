@@ -498,6 +498,7 @@ class UserMutation:
         
         await require_permission(info, "users:manage_roles", company_id=company_id)
         await check_company_access(info, company_id)
+        await resolve_assignable_role(db, current_user.role.name, role_id)
 
         perm_service = PermissionService(db)
         await perm_service.assign_role_to_user(user_id, company_id, role_id, current_user.id)
