@@ -37,10 +37,10 @@ class TestPermissionMapping:
 
     def test_permission_mapping_has_payroll(self):
         """Verify payroll mutations are mapped"""
-        assert "calculatePayroll" in PERMISSION_MAPPING
-        assert PERMISSION_MAPPING["calculatePayroll"] == "payroll:create"
         assert "generatePayslip" in PERMISSION_MAPPING
+        assert PERMISSION_MAPPING["generatePayslip"] == "payroll:create"
         assert "addBonus" in PERMISSION_MAPPING
+        assert "removeBonus" in PERMISSION_MAPPING
 
     def test_permission_mapping_has_leave(self):
         """Verify leave mutations are mapped"""
