@@ -539,13 +539,15 @@ class PermissionGuardMiddleware(SchemaExtension):
 
         # Check permission using PermissionService
         permission_service = PermissionService(db)
-        # Self-scoped operations: user always acts on themselves
+        # Self-scoped operations: the resolver always acts on current_user.
+        # Check the `_own` permission directly; stripping `_own` turned this
+        # into a base-permission check (audit R6).
         if field_name in ("clockIn", "clockOut"):
-            has_permission = await permission_service.check_permission(
+            permissions = await permission_service.get_user_permissions(
                 user_id=current_user.id,
-                permission=required_permission.replace("_own", ""),
                 company_id=company_id,
             )
+            has_permission = required_permission in permissions
         else:
             resource_id = kwargs.get("id") or kwargs.get("user_id")
             has_permission = await permission_service.check_permission(

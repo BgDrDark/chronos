@@ -1,5 +1,6 @@
 """Regression tests for RBAC escalation paths (audit 23.10, Phase 1)."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -50,3 +51,91 @@ async def test_query_is_not_permission_checked():
     info = _info("users", current_user=None)
     info.operation.operation = OperationType.QUERY
     assert await middleware.resolve(_next_, None, info) == "executed"
+
+
+class _FakePermissionService:
+    """Stub for the middleware tests; no DB access."""
+
+    permissions: set[str] = set()
+
+    def __init__(self, db):
+        self.db = db
+
+    async def get_user_permissions(self, user_id, company_id=None):
+        return set(self.permissions)
+
+    async def check_permission(
+        self, user_id, permission, company_id=None, resource_id=None
+    ):
+        return permission in self.permissions
+
+    async def log_permission_decision(self, **kwargs):
+        return None
+
+
+def _employee():
+    return SimpleNamespace(
+        id=7, company_id=1, role=SimpleNamespace(name="employee")
+    )
+
+
+async def test_clock_out_allowed_with_update_own(monkeypatch):
+    class Fake(_FakePermissionService):
+        permissions = {"timelogs:update_own"}
+
+    monkeypatch.setattr(
+        "backend.chronos_graphql.permission_middleware.PermissionService", Fake
+    )
+    middleware = PermissionGuardMiddleware()
+
+    result = await middleware.resolve(
+        _next_, None, _info("clockOut", current_user=_employee())
+    )
+
+    assert result == "executed"
+
+
+async def test_clock_out_denied_with_base_permission_only(monkeypatch):
+    class Fake(_FakePermissionService):
+        permissions = {"timelogs:update"}
+
+    monkeypatch.setattr(
+        "backend.chronos_graphql.permission_middleware.PermissionService", Fake
+    )
+    middleware = PermissionGuardMiddleware()
+
+    with pytest.raises(PermissionDeniedException):
+        await middleware.resolve(
+            _next_, None, _info("clockOut", current_user=_employee())
+        )
+
+
+async def test_clock_in_allowed_with_create_own(monkeypatch):
+    class Fake(_FakePermissionService):
+        permissions = {"timelogs:create_own"}
+
+    monkeypatch.setattr(
+        "backend.chronos_graphql.permission_middleware.PermissionService", Fake
+    )
+    middleware = PermissionGuardMiddleware()
+
+    result = await middleware.resolve(
+        _next_, None, _info("clockIn", current_user=_employee())
+    )
+
+    assert result == "executed"
+
+
+async def test_clock_in_denied_with_base_permission_only(monkeypatch):
+    class Fake(_FakePermissionService):
+        permissions = {"timelogs:create"}
+
+    monkeypatch.setattr(
+        "backend.chronos_graphql.permission_middleware.PermissionService", Fake
+    )
+    middleware = PermissionGuardMiddleware()
+
+    with pytest.raises(PermissionDeniedException):
+        await middleware.resolve(
+            _next_, None, _info("clockIn", current_user=_employee())
+        )
