@@ -8,6 +8,16 @@ from backend.chronos_graphql.permission_middleware import (
 )
 
 
+def _db_returning(rows):
+    """Build a mock session whose execute() yields ``rows`` from scalars().all()."""
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=MagicMock(
+        scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=rows)))
+    ))
+    db.flush = AsyncMock()
+    return db
+
+
 def test_extract_company_id_from_snake_case_kwarg():
     assert extract_target_company_id({"company_id": 7}) == 7
 
@@ -62,3 +72,53 @@ async def test_log_permission_decision_uses_dedicated_writer(monkeypatch):
     )
     db.commit.assert_not_awaited()
     db.add.assert_not_called()
+
+
+def test_cache_key_is_company_scoped():
+    assert PermissionService.cache_key(1, 2) == "user_1_company_2"
+
+
+def test_cache_key_for_global_scope():
+    assert PermissionService.cache_key(1, None) == "user_1_company_global"
+
+
+async def test_read_permission_cache_returns_none_when_empty():
+    service = PermissionService(_db_returning([]))
+
+    assert await service._read_permission_cache(1, 2) is None
+
+
+async def test_read_permission_cache_returns_permissions():
+    service = PermissionService(_db_returning(["users:list", "users:update"]))
+
+    assert await service._read_permission_cache(1, 2) == {
+        "users:list",
+        "users:update",
+    }
+
+
+async def test_write_permission_cache_replaces_entries():
+    db = _db_returning([])
+    service = PermissionService(db)
+
+    await service._write_permission_cache(1, 2, {"users:list"})
+
+    db.execute.assert_awaited_once()
+    db.flush.assert_awaited_once()
+    added = [call.args[0] for call in db.add.call_args_list]
+    assert len(added) == 1
+    assert added[0].user_id == 1
+    assert added[0].company_id == 2
+    assert added[0].permission_name == "users:list"
+
+
+async def test_invalidate_user_cache_clears_db_and_memory():
+    db = _db_returning([])
+    service = PermissionService(db)
+    service._permission_cache["user_1_company_2"] = {"permissions": []}
+
+    await service.invalidate_user_cache(1)
+
+    db.execute.assert_awaited_once()
+    db.flush.assert_awaited_once()
+    assert service._permission_cache == {}

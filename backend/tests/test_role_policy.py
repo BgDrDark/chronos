@@ -463,5 +463,5 @@ async def test_assign_role_service_does_not_commit():
     ) is True
 
     db.add.assert_called_once()
-    db.flush.assert_awaited_once()
+    db.flush.assert_awaited()
     db.commit.assert_not_awaited()

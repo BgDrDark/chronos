@@ -4,7 +4,7 @@ from functools import wraps
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database.models import (
@@ -12,15 +12,68 @@ from backend.database.models import (
     Permission,
     Role,
     RolePermission,
+    UserPermissionCache,
+    sofia_now,
 )
 from backend.exceptions import NotFoundException, PermissionDeniedException
 
 logger = logging.getLogger(__name__)
 
+
 class PermissionService:
+    CACHE_TTL_SECONDS = 300
+
     def __init__(self, db: AsyncSession):
         self.db = db
         self._permission_cache = {}
+
+    @staticmethod
+    def cache_key(user_id: int, company_id: int | None) -> str:
+        """Stable cache key for a user in a company (or global) scope."""
+        scope = company_id if company_id is not None else "global"
+        return f"user_{user_id}_company_{scope}"
+
+    async def _read_permission_cache(
+        self, user_id: int, company_id: int | None
+    ) -> set[str] | None:
+        """Return cached permissions, or ``None`` when the cache is cold/expired."""
+        stmt = select(UserPermissionCache.permission_name).where(
+            UserPermissionCache.user_id == user_id,
+            UserPermissionCache.company_id == company_id,
+            UserPermissionCache.expires_at > sofia_now(),
+        )
+        rows = (await self.db.execute(stmt)).scalars().all()
+        return set(rows) if rows else None
+
+    async def _write_permission_cache(
+        self, user_id: int, company_id: int | None, permissions: set[str]
+    ) -> None:
+        """Replace the persisted permission set for a user in a company scope."""
+        await self.db.execute(
+            delete(UserPermissionCache).where(
+                UserPermissionCache.user_id == user_id,
+                UserPermissionCache.company_id == company_id,
+            )
+        )
+        expires_at = sofia_now() + timedelta(seconds=self.CACHE_TTL_SECONDS)
+        for name in permissions:
+            self.db.add(
+                UserPermissionCache(
+                    user_id=user_id,
+                    company_id=company_id,
+                    permission_name=name,
+                    expires_at=expires_at,
+                )
+            )
+        await self.db.flush()
+
+    async def invalidate_user_cache(self, user_id: int) -> None:
+        """Drop every cached permission (DB + in-memory) for a user."""
+        await self.db.execute(
+            delete(UserPermissionCache).where(UserPermissionCache.user_id == user_id)
+        )
+        await self.db.flush()
+        self._clear_user_cache(user_id)
 
     async def get_user_permissions(
         self,
@@ -28,13 +81,9 @@ class PermissionService:
         company_id: int | None = None,
     ) -> set[str]:
         """Get all permissions for a user, optionally scoped to company"""
-        cache_key = f"user_{user_id}_company_{company_id}"
-
-        # Check cache first (5 minutes)
-        if cache_key in self._permission_cache:
-            cached = self._permission_cache[cache_key]
-            if cached["expires_at"] > datetime.now():
-                return set(cached["permissions"])
+        cached_permissions = await self._read_permission_cache(user_id, company_id)
+        if cached_permissions is not None:
+            return cached_permissions
 
         # Build permissions from roles
         permissions = set()
@@ -60,11 +109,7 @@ class PermissionService:
             role_perms_result = await self.db.execute(role_perms_query)
             permissions.update([row[0] for row in role_perms_result])
 
-        # Cache for 5 minutes
-        self._permission_cache[cache_key] = {
-            "permissions": list(permissions),
-            "expires_at": datetime.now() + timedelta(minutes=5),
-        }
+        await self._write_permission_cache(user_id, company_id, permissions)
 
         return permissions
 
@@ -118,11 +163,12 @@ class PermissionService:
     async def clear_cache(self, user_id: int | None = None):
         """Clear permission cache for a user or all users"""
         if user_id:
-            keys_to_remove = [k for k in self._permission_cache if f"user_{user_id}" in k]
-            for key in keys_to_remove:
-                del self._permission_cache[key]
-        else:
-            self._permission_cache = {}
+            await self.invalidate_user_cache(user_id)
+            return
+
+        await self.db.execute(delete(UserPermissionCache))
+        await self.db.flush()
+        self._permission_cache = {}
 
     async def verify_company_access(
         self,
@@ -227,7 +273,7 @@ class PermissionService:
         await self.db.flush()
 
         # Clear cache for this user
-        self._clear_user_cache(user_id)
+        await self.invalidate_user_cache(user_id)
 
         return True
 
