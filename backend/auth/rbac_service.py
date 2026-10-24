@@ -100,14 +100,21 @@ class PermissionService:
             query = query.where(CompanyRoleAssignment.company_id == company_id)
 
         result = await self.db.execute(query)
-        for role, _assignment in result:
-            # Get role permissions
+        roles = [role for role, _assignment in result]
+        role_names = [role.name for role in roles]
+
+        # Inherited permissions come from the in-code hierarchy; custom DB roles
+        # still work through their direct role_permissions below.
+        permissions.update(expand_role_permissions(role_names))
+
+        role_ids = [role.id for role in roles]
+        if role_ids:
             role_perms_query = select(Permission.name).where(
-                RolePermission.role_id == role.id,
+                RolePermission.role_id.in_(role_ids),
                 RolePermission.permission_id == Permission.id,
             )
             role_perms_result = await self.db.execute(role_perms_query)
-            permissions.update([row[0] for row in role_perms_result])
+            permissions.update(row[0] for row in role_perms_result)
 
         await self._write_permission_cache(user_id, company_id, permissions)
 
@@ -776,6 +783,36 @@ for _role_name, _extra_permissions in ROLE_PERMISSION_ADDITIONS.items():
         DEFAULT_ROLES[_role_name]["permissions"] = list(
             dict.fromkeys(DEFAULT_ROLES[_role_name]["permissions"] + _extra_permissions)
         )
+
+
+# --- Phase 2: static role hierarchy (audit 23.10, D8) ---
+# A role inherits every permission of its parents, transitively. Custom roles
+# have no parents by default and keep their DB role_permissions only.
+ROLE_INHERITANCE: dict[str, tuple[str, ...]] = {
+    "manager": ("employee",),
+    "hr_manager": ("manager",),
+    "accountant": ("employee",),
+    "global_accountant": ("accountant",),
+    "logistics_manager": ("employee",),
+    "fleet_manager": ("employee",),
+}
+
+
+def expand_role_permissions(role_names: list[str]) -> set[str]:
+    """Return the union of direct and inherited permissions for the roles."""
+    permissions: set[str] = set()
+    visited: set[str] = set()
+    stack = list(role_names)
+
+    while stack:
+        name = stack.pop()
+        if name in visited or name not in DEFAULT_ROLES:
+            continue
+        visited.add(name)
+        permissions.update(DEFAULT_ROLES[name].get("permissions", []))
+        stack.extend(ROLE_INHERITANCE.get(name, ()))
+
+    return permissions
 
 
 # --- Phase 1: role assignment policy (audit 23.10, R1/R2/R9/A5) ---

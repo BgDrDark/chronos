@@ -1,8 +1,13 @@
 """Structural RBAC tests (audit 23.10, Phase 2)."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from backend.auth.rbac_service import PermissionService
+from backend.auth.rbac_service import (
+    DEFAULT_ROLES,
+    PermissionService,
+    expand_role_permissions,
+)
 from backend.chronos_graphql.permission_middleware import (
     extract_target_company_id,
 )
@@ -122,3 +127,52 @@ async def test_invalidate_user_cache_clears_db_and_memory():
     db.execute.assert_awaited_once()
     db.flush.assert_awaited_once()
     assert service._permission_cache == {}
+
+
+def test_employee_permissions_are_unchanged():
+    assert expand_role_permissions(["employee"]) == set(
+        DEFAULT_ROLES["employee"]["permissions"]
+    )
+
+
+def test_manager_inherits_employee_permissions():
+    manager = expand_role_permissions(["manager"])
+    employee = expand_role_permissions(["employee"])
+    assert employee <= manager
+
+
+def test_hr_manager_inherits_manager_permissions():
+    assert expand_role_permissions(["manager"]) <= expand_role_permissions(
+        ["hr_manager"]
+    )
+
+
+def test_global_accountant_inherits_accountant_permissions():
+    assert expand_role_permissions(["accountant"]) <= expand_role_permissions(
+        ["global_accountant"]
+    )
+
+
+def test_unknown_role_is_ignored():
+    assert expand_role_permissions(["does_not_exist"]) == set()
+
+
+async def test_get_user_permissions_merges_inherited_and_db_permissions():
+    role = SimpleNamespace(id=5, name="manager", priority=50)
+    assignment = SimpleNamespace(company_id=1)
+    db = MagicMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _db_returning([]).execute.return_value,  # cache miss
+            [(role, assignment)],  # roles for the user
+            [("custom:extra",)],  # direct DB role_permissions
+            MagicMock(),  # cache delete
+        ]
+    )
+    db.flush = AsyncMock()
+    service = PermissionService(db)
+
+    permissions = await service.get_user_permissions(1, 1)
+
+    assert "custom:extra" in permissions
+    assert expand_role_permissions(["manager"]) <= permissions
