@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database.models import (
     CompanyRoleAssignment,
     Permission,
-    PermissionAuditLog,
     Role,
     RolePermission,
 )
@@ -154,23 +153,19 @@ class PermissionService:
         resource_id: int | None = None,
         context: dict | None = None,
     ):
-        """Log every permission decision for audit trail"""
-        try:
-            audit_entry = PermissionAuditLog(
-                user_id=user_id,
-                action="GRANTED" if decision else "DENIED",
-                permission=permission,
-                decision="GRANTED" if decision else "DENIED",
-                resource_type=resource_type,
-                resource_id=resource_id,
-                ip_address=context.get("ip_address") if context else None,
-                user_agent=context.get("user_agent") if context else None,
-            )
+        """Log every permission decision for audit trail."""
+        from backend.auth.audit_writer import write_permission_audit
 
-            self.db.add(audit_entry)
-            await self.db.commit()
-        except Exception as e:
-            logger.error(f"Failed to log permission decision: {e}")
+        context = context or {}
+        await write_permission_audit(
+            user_id=user_id,
+            permission=permission,
+            decision=decision,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            ip_address=context.get("ip_address"),
+            user_agent=context.get("user_agent"),
+        )
 
     async def get_user_roles(self, user_id: int) -> list[dict[str, Any]]:
         """Get user's roles with company assignments"""
