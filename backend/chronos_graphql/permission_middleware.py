@@ -438,6 +438,27 @@ COMPANY_SCOPED_OPERATIONS = {
 }
 
 
+def extract_target_company_id(kwargs: dict) -> int | None:
+    """Extract the target company from resolver kwargs.
+
+    Handles all shapes used by the schema: ``company_id``, ``input`` dict and
+    ``user_input``/``userInput`` dicts. Returns ``None`` when the operation is
+    not company-scoped.
+    """
+    explicit = kwargs.get("company_id")
+    if explicit is not None:
+        return explicit
+
+    for key in ("input", "user_input", "userInput"):
+        payload = kwargs.get(key)
+        if isinstance(payload, dict):
+            value = payload.get("company_id")
+            if value is not None:
+                return value
+
+    return None
+
+
 class PermissionGuardMiddleware(SchemaExtension):
     """
     Middleware that enforces RBAC permissions for all GraphQL mutations.
@@ -514,7 +535,7 @@ class PermissionGuardMiddleware(SchemaExtension):
                 company_id = current_user.company_id
                 
                 # Check if operation targets a different company
-                target_company_id = kwargs.get("company_id") or kwargs.get("input", {}).get("company_id") if isinstance(kwargs.get("input"), dict) else None
+                target_company_id = extract_target_company_id(kwargs)
                 if target_company_id and target_company_id != current_user.company_id:
                     await PermissionService(db).log_permission_decision(
                         user_id=current_user.id,
