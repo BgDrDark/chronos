@@ -400,11 +400,14 @@ async def test_purge_old_audit_entries_deletes_and_commits(monkeypatch):
 
 async def test_graphql_context_records_client_ip_and_user_agent(monkeypatch):
     from backend import main
+    from backend.config import settings
 
     monkeypatch.setattr(main, "create_dataloaders", MagicMock(return_value={}))
+    monkeypatch.setattr(settings, "TRUSTED_PROXY_IPS", "10.0.0.1")
     request = MagicMock()
+    request.client.host = "10.0.0.1"
     request.headers = {
-        "cf-connecting-ip": "203.0.113.9",
+        "x-forwarded-for": "203.0.113.9",
         "user-agent": "pytest-agent",
     }
     db = MagicMock()

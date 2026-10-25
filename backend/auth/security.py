@@ -84,23 +84,36 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_client_ip(request: Request) -> str:
-    """Извлича реалния IP адрес на клиента, като взема предвид прокси сървъри.
-    Приоритет: Cloudflare (CF-Connecting-IP) -> X-Forwarded-For -> X-Real-IP -> client.host
-    """
-    # 1. Cloudflare специфичен хедър (най-надежден при ползване на CF)
-    cf_ip = request.headers.get("cf-connecting-ip")
-    if cf_ip:
-        return cf_ip
+    """Return the real client IP, honouring proxy headers only from trusted peers.
 
-    # 2. Стандартен Forwarded хедър (може да съдържа списък, вземаме първия)
+    ``CF-Connecting-IP``, ``X-Forwarded-For`` and ``X-Real-IP`` are attacker
+    controlled unless the request came from a reverse proxy we operate, so they
+    are accepted only when the peer address is listed in ``TRUSTED_PROXY_IPS``
+    (audit 23.10, A21).
+    """
+    from backend.config import settings
+
+    peer = request.client.host if request.client else "unknown"
+    trusted = {
+        item.strip()
+        for item in (settings.TRUSTED_PROXY_IPS or "").split(",")
+        if item.strip()
+    }
+    if peer not in trusted:
+        return peer
+
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
 
-    # 3. X-Real-IP хедър (често задаван от Nginx Proxy Manager)
     real_ip = request.headers.get("x-real-ip")
     if real_ip:
-        return real_ip
+        return real_ip.strip()
 
-    # 4. Директна връзка (ако няма прокси)
-    return request.client.host if request.client else "unknown"
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+
+    return peer

@@ -140,6 +140,10 @@ class Settings(BaseSettings):
     # Log-only when false; enable after a week of clean logs.
     RBAC_QUERY_ENFORCEMENT: bool = False
 
+    # Comma-separated list of reverse proxy IPs allowed to set the client-IP
+    # headers (X-Forwarded-For, X-Real-IP, CF-Connecting-IP). Empty = trust none.
+    TRUSTED_PROXY_IPS: str = ""
+
     # SMTP Fallback Settings (used only if DB GlobalSettings are missing)
     MAIL_SERVER: str | None = None
     MAIL_PORT: int = 587

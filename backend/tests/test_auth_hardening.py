@@ -162,3 +162,41 @@ async def test_jwt_session_has_no_api_key_scope_ceiling(monkeypatch):
         await PermissionGuardMiddleware().resolve(_next_resolver, None, info, [], {})
         == "ok"
     )
+
+
+class _Client:
+    def __init__(self, host):
+        self.host = host
+
+
+class _Request:
+    def __init__(self, host, headers):
+        self.client = _Client(host)
+        self.headers = headers
+
+
+def test_client_ip_ignores_forwarded_header_from_untrusted_peer(monkeypatch):
+    from backend.auth.security import get_client_ip
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "TRUSTED_PROXY_IPS", "10.0.0.1")
+    request = _Request("203.0.113.9", {"x-forwarded-for": "1.2.3.4"})
+    assert get_client_ip(request) == "203.0.113.9"
+
+
+def test_client_ip_uses_forwarded_header_from_trusted_peer(monkeypatch):
+    from backend.auth.security import get_client_ip
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "TRUSTED_PROXY_IPS", "10.0.0.1")
+    request = _Request("10.0.0.1", {"x-forwarded-for": "1.2.3.4, 10.0.0.1"})
+    assert get_client_ip(request) == "1.2.3.4"
+
+
+def test_client_ip_falls_back_to_peer(monkeypatch):
+    from backend.auth.security import get_client_ip
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "TRUSTED_PROXY_IPS", "")
+    request = _Request("203.0.113.9", {})
+    assert get_client_ip(request) == "203.0.113.9"
