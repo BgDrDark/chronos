@@ -523,12 +523,20 @@ class PermissionGuardMiddleware(SchemaExtension):
                 detail="System error: database unavailable",
                 context={"operation": field_name},
             )
-        
+
+        permission_service = PermissionService(db)
+
+        # Permission-based super admin (audit 23.10, D9): no name checks.
+        is_super_admin = await permission_service.check_permission(
+            user_id=current_user.id,
+            permission="system:super_admin",
+        )
+
         # Determine company_id for company-scoped operations
         company_id = None
         if field_name in COMPANY_SCOPED_OPERATIONS:
-            # Super admins can access all companies
-            if current_user.role and current_user.role.name == "super_admin":
+            if is_super_admin:
+                # Super admins can access all companies
                 company_id = None  # No company restriction
             else:
                 # Regular users are restricted to their company
@@ -553,13 +561,7 @@ class PermissionGuardMiddleware(SchemaExtension):
                             "target_company_id": target_company_id,
                         },
                     )
-        
-        # Super-admin bypass — no permission check needed
-        if current_user.role and current_user.role.name == "super_admin":
-            return await self._call(next_, root, info, *args, **kwargs)
 
-        # Check permission using PermissionService
-        permission_service = PermissionService(db)
         # Self-scoped operations: the resolver always acts on current_user.
         # Check the `_own` permission directly; stripping `_own` turned this
         # into a base-permission check (audit R6).

@@ -607,6 +607,11 @@ DEFAULT_PERMISSIONS = {
         "resource": "fleet_fuel", "action": "read_own",
         "description": "View own fuel records",
     },
+    # --- Phase 2: permission-based super admin (audit 23.10, D9) ---
+    "system:super_admin": {
+        "resource": "system", "action": "super_admin",
+        "description": "Unrestricted cross-company access",
+    },
 }
 
 
@@ -783,6 +788,15 @@ for _role_name, _extra_permissions in ROLE_PERMISSION_ADDITIONS.items():
         DEFAULT_ROLES[_role_name]["permissions"] = list(
             dict.fromkeys(DEFAULT_ROLES[_role_name]["permissions"] + _extra_permissions)
         )
+
+
+# --- Phase 2: permission-based super admin (audit 23.10, D9) ---
+# super_admin is the only role that may hold system:super_admin.
+DEFAULT_ROLES["admin"]["permissions"] = [
+    permission
+    for permission in DEFAULT_ROLES["admin"]["permissions"]
+    if permission != "system:super_admin"
+]
 
 
 # --- Phase 2: static role hierarchy (audit 23.10, D8) ---

@@ -49,8 +49,9 @@ def test_hr_manager_gets_contracts_and_behavioral():
 
 
 def test_admin_receives_every_catalog_permission():
+    # system:super_admin is deliberately super_admin-only (Phase 2, D9).
     admin_perms = set(DEFAULT_ROLES["admin"]["permissions"])
-    assert admin_perms == set(DEFAULT_PERMISSIONS)
+    assert admin_perms == set(DEFAULT_PERMISSIONS) - {"system:super_admin"}
 
 
 def test_every_role_reference_exists():

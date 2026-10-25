@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from backend.auth.rbac_service import (
+    DEFAULT_PERMISSIONS,
     DEFAULT_ROLES,
     PermissionService,
     expand_role_permissions,
@@ -237,3 +238,15 @@ async def test_get_effective_role_returns_highest_priority():
     db.execute = AsyncMock(return_value=assignments)
 
     assert (await get_effective_role(db, 1, 2)).name == "admin"
+
+
+def test_super_admin_permission_exists():
+    assert "system:super_admin" in DEFAULT_PERMISSIONS
+
+
+def test_only_super_admin_role_has_super_admin_permission():
+    for name, data in DEFAULT_ROLES.items():
+        if name == "super_admin":
+            assert "system:super_admin" in data["permissions"]
+        else:
+            assert "system:super_admin" not in data["permissions"]
