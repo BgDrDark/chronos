@@ -250,3 +250,17 @@ def test_only_super_admin_role_has_super_admin_permission():
             assert "system:super_admin" in data["permissions"]
         else:
             assert "system:super_admin" not in data["permissions"]
+
+
+def test_ownership_registry_models_exist():
+    from backend.database import models as db_models
+
+    for model_name, owner_column in PermissionService.OWNERSHIP_MODELS.values():
+        model = getattr(db_models, model_name)
+        assert hasattr(model, owner_column), f"{model_name}.{owner_column}"
+
+
+async def test_verify_ownership_unknown_resource_is_denied():
+    service = PermissionService(MagicMock())
+
+    assert await service._verify_ownership(1, 10, "unknown_resource") is False

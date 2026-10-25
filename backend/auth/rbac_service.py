@@ -143,29 +143,35 @@ class PermissionService:
 
         return False
 
+    # resource_type -> (model name, owner column). Used for ``*_own`` checks.
+    OWNERSHIP_MODELS: dict[str, tuple[str, str]] = {
+        "timelogs": ("TimeLog", "user_id"),
+        "payroll": ("Payroll", "user_id"),
+        "leaves": ("LeaveRequest", "user_id"),
+        "documents": ("UserDocument", "user_id"),
+    }
+
     async def _verify_ownership(self, user_id: int, resource_id: int | None, resource_type: str) -> bool:
-        """Verify if user owns resource"""
+        """Verify if the user owns the resource."""
         if not resource_id:
             return False
 
         if resource_type == "users":
             return user_id == resource_id
-        if resource_type == "timelogs":
-            from backend.database.models import TimeLog
-            result = await self.db.execute(
-                select(TimeLog.user_id).where(TimeLog.id == resource_id),
-            )
-            resource_user_id = result.scalar_one_or_none()
-            return user_id == resource_user_id
-        if resource_type == "payroll":
-            from backend.database.models import Payroll
-            result = await self.db.execute(
-                select(Payroll.user_id).where(Payroll.id == resource_id),
-            )
-            resource_user_id = result.scalar_one_or_none()
-            return user_id == resource_user_id
 
-        return False
+        target = self.OWNERSHIP_MODELS.get(resource_type)
+        if target is None:
+            return False
+
+        model_name, owner_column = target
+        from backend.database import models
+
+        model = getattr(models, model_name)
+        owner_field = getattr(model, owner_column)
+        result = await self.db.execute(
+            select(owner_field).where(model.id == resource_id)
+        )
+        return result.scalar_one_or_none() == user_id
 
     async def clear_cache(self, user_id: int | None = None):
         """Clear permission cache for a user or all users"""
