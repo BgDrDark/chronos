@@ -380,3 +380,36 @@ async def test_query_guard_enforces_when_flag_enabled(monkeypatch):
             [],
             {},
         )
+
+
+async def test_purge_old_audit_entries_deletes_and_commits(monkeypatch):
+    from backend.jobs import audit_retention_job as job
+
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=SimpleNamespace(rowcount=7))
+    db.commit = AsyncMock()
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=db)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(job, "AsyncSessionLocal", MagicMock(return_value=session_cm))
+
+    assert await job.purge_old_audit_entries() == 7
+    db.execute.assert_awaited_once()
+    db.commit.assert_awaited_once()
+
+
+async def test_graphql_context_records_client_ip_and_user_agent(monkeypatch):
+    from backend import main
+
+    monkeypatch.setattr(main, "create_dataloaders", MagicMock(return_value={}))
+    request = MagicMock()
+    request.headers = {
+        "cf-connecting-ip": "203.0.113.9",
+        "user-agent": "pytest-agent",
+    }
+    db = MagicMock()
+
+    context = await main.get_context(request=request, db=db, current_user=None)
+
+    assert context["ip_address"] == "203.0.113.9"
+    assert context["user_agent"] == "pytest-agent"

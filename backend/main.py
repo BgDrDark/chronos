@@ -16,6 +16,7 @@ from strawberry.fastapi import GraphQLRouter
 
 from backend import schemas
 from backend.auth import jwt_utils
+from backend.auth.security import get_client_ip
 from backend.config import settings
 from backend.database.database import get_db
 from backend.database.transaction_manager import (
@@ -25,6 +26,7 @@ from backend.database.transaction_manager import (
 )
 from backend.chronos_graphql.dataloaders import create_dataloaders
 from backend.chronos_graphql.schema import schema
+from backend.jobs.audit_retention_job import purge_old_audit_entries
 from backend.jobs.contract_job import check_expired_contracts
 from backend.jobs.fleet_notifications_job import check_fleet_notifications
 from backend.jobs.inventory_check_job import check_inventory_levels
@@ -89,6 +91,8 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(check_scheduled_update, "interval", minutes=5)
     # Run every 6 hours to terminate stale sessions (older than 12 hours)
     scheduler.add_job(terminate_stale_sessions, "interval", hours=6)
+    # Run daily at 3:30 AM to prune permission audit entries (Phase 2, 2.9)
+    scheduler.add_job(purge_old_audit_entries, "cron", hour=3, minute=30)
     scheduler.start()
 
     # Run check with delay on startup to ensure DB is initialized
@@ -392,6 +396,8 @@ async def get_context(
         "db": db,
         "current_user": current_user,
         "dataloaders": dataloaders,
+        "ip_address": get_client_ip(request),
+        "user_agent": request.headers.get("user-agent"),
     }
 
 from strawberry.fastapi import GraphQLRouter
