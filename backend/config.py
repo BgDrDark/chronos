@@ -136,6 +136,10 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: list[str] | str = []
     TIMEZONE: str = "Europe/Sofia"
 
+    # RBAC: enforce read permissions on GraphQL queries (Phase 2, task 2.3).
+    # Log-only when false; enable after a week of clean logs.
+    RBAC_QUERY_ENFORCEMENT: bool = False
+
     # SMTP Fallback Settings (used only if DB GlobalSettings are missing)
     MAIL_SERVER: str | None = None
     MAIL_PORT: int = 587

@@ -588,6 +588,14 @@ DEFAULT_PERMISSIONS = {
         "resource": "documents", "action": "delete",
         "description": "Delete documents",
     },
+    "documents:read": {
+        "resource": "documents", "action": "read",
+        "description": "View documents",
+    },
+    "inventory:read": {
+        "resource": "inventory", "action": "read",
+        "description": "View inventory items and batches",
+    },
     "behavioral:manage": {
         "resource": "behavioral", "action": "manage",
         "description": "Manage behavioral analysis rules and profiles",
@@ -770,8 +778,10 @@ ROLE_PERMISSION_ADDITIONS: dict[str, list[str]] = {
         "inventory:create",
         "inventory:update",
         "inventory:delete",
+        "inventory:read",
         "documents:create",
         "documents:delete",
+        "documents:read",
     ],
     "hr_manager": [
         "timelogs:update_own",
@@ -781,6 +791,7 @@ ROLE_PERMISSION_ADDITIONS: dict[str, list[str]] = {
         "hr:manage_contracts",
         "documents:create",
         "documents:delete",
+        "documents:read",
         "behavioral:manage",
     ],
     "accountant": ["notifications:read"],

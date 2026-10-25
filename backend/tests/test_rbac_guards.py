@@ -46,11 +46,19 @@ async def test_auth_only_mutation_is_allowed_for_authenticated_user():
     assert result == "executed"
 
 
-async def test_query_is_not_permission_checked():
+async def test_public_query_skips_permission_check():
+    middleware = PermissionGuardMiddleware()
+    info = _info("me", current_user=None)
+    info.operation.operation = OperationType.QUERY
+    assert await middleware.resolve(_next_, None, info) == "executed"
+
+
+async def test_private_query_requires_authentication():
     middleware = PermissionGuardMiddleware()
     info = _info("users", current_user=None)
     info.operation.operation = OperationType.QUERY
-    assert await middleware.resolve(_next_, None, info) == "executed"
+    with pytest.raises(PermissionDeniedException):
+        await middleware.resolve(_next_, None, info)
 
 
 class _FakePermissionService:

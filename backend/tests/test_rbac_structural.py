@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from backend.auth.rbac_service import (
     DEFAULT_PERMISSIONS,
     DEFAULT_ROLES,
@@ -15,8 +16,17 @@ from backend.auth.role_resolver import (
     pick_primary_role,
 )
 from backend.chronos_graphql.permission_middleware import (
+    PermissionGuardMiddleware,
     extract_target_company_id,
 )
+from backend.chronos_graphql.query_permissions import (
+    PUBLIC_QUERIES,
+    QUERY_PERMISSION_MAPPING,
+    QUERY_PERMISSION_PREFIXES,
+    resolve_query_permission,
+)
+from backend.exceptions import PermissionDeniedException
+from graphql import OperationType
 
 
 def _db_returning(rows):
@@ -264,3 +274,109 @@ async def test_verify_ownership_unknown_resource_is_denied():
     service = PermissionService(MagicMock())
 
     assert await service._verify_ownership(1, 10, "unknown_resource") is False
+
+
+def _query_field_names() -> set[str]:
+    from backend.chronos_graphql.schema import schema
+
+    query_type = schema._schema.query_type
+    assert query_type is not None
+    return set(query_type.fields.keys())
+
+
+def test_every_query_has_a_permission():
+    unmapped = sorted(
+        field
+        for field in _query_field_names()
+        if field not in PUBLIC_QUERIES and resolve_query_permission(field) is None
+    )
+    assert unmapped == [], "Queries без permission: " + ", ".join(unmapped)
+
+
+def test_query_mapping_targets_exist_in_catalog():
+    missing = set(QUERY_PERMISSION_MAPPING.values()) - set(DEFAULT_PERMISSIONS)
+    assert missing == set(), f"Липсващи permission-и: {sorted(missing)}"
+
+
+def test_query_prefix_targets_exist_in_catalog():
+    missing = {perm for _prefix, perm in QUERY_PERMISSION_PREFIXES} - set(
+        DEFAULT_PERMISSIONS
+    )
+    assert missing == set(), f"Липсващи permission-и: {sorted(missing)}"
+
+
+def test_resolve_query_permission_prefers_explicit_mapping():
+    assert resolve_query_permission("invoices") == "accounting:read"
+
+
+def test_public_query_has_no_permission():
+    assert resolve_query_permission("me") is None
+
+
+def _query_info(field_name: str, user=None, db=None):
+    info = MagicMock()
+    info.operation.operation = OperationType.QUERY
+    info.field_name = field_name
+    info.context = {"current_user": user, "db": db}
+    return info
+
+
+async def _next_resolver(*_args, **_kwargs):
+    return "ok"
+
+
+async def test_query_guard_allows_public_query():
+    middleware = PermissionGuardMiddleware()
+
+    result = await middleware.resolve(
+        _next_resolver, None, _query_info("me"), [], {}
+    )
+
+    assert result == "ok"
+
+
+async def test_query_guard_requires_authentication():
+    middleware = PermissionGuardMiddleware()
+
+    with pytest.raises(PermissionDeniedException):
+        await middleware.resolve(
+            _next_resolver, None, _query_info("users"), [], {}
+        )
+
+
+async def test_query_guard_is_log_only_by_default(monkeypatch):
+    monkeypatch.setattr(
+        PermissionService, "check_permission", AsyncMock(return_value=False)
+    )
+    middleware = PermissionGuardMiddleware()
+
+    result = await middleware.resolve(
+        _next_resolver,
+        None,
+        _query_info("users", user=SimpleNamespace(id=1, company_id=1), db=MagicMock()),
+        [],
+        {},
+    )
+
+    assert result == "ok"
+
+
+async def test_query_guard_enforces_when_flag_enabled(monkeypatch):
+    monkeypatch.setattr(
+        PermissionService, "check_permission", AsyncMock(return_value=False)
+    )
+    monkeypatch.setattr(
+        "backend.config.settings.RBAC_QUERY_ENFORCEMENT", True, raising=False
+    )
+    middleware = PermissionGuardMiddleware()
+
+    with pytest.raises(PermissionDeniedException):
+        await middleware.resolve(
+            _next_resolver,
+            None,
+            _query_info(
+                "users", user=SimpleNamespace(id=1, company_id=1), db=MagicMock()
+            ),
+            [],
+            {},
+        )

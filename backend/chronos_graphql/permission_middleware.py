@@ -478,8 +478,66 @@ class PermissionGuardMiddleware(SchemaExtension):
             return await result
         return result
 
+    async def _resolve_query(self, next_, root, info, *args, **kwargs):
+        """Enforce (or log-only) read permissions for GraphQL queries."""
+        from backend.chronos_graphql.query_permissions import (
+            PUBLIC_QUERIES,
+            resolve_query_permission,
+        )
+        from backend.config import settings
+
+        field_name = info.field_name
+        if field_name in PUBLIC_QUERIES:
+            return await self._call(next_, root, info, *args, **kwargs)
+
+        current_user = info.context.get("current_user")
+        if not current_user:
+            raise PermissionDeniedException(
+                detail="Authentication required",
+                context={"operation": field_name},
+            )
+
+        permission = resolve_query_permission(field_name)
+        if permission is None:
+            raise PermissionDeniedException(
+                detail="Заявката не е разрешена",
+                context={"operation": field_name, "reason": "missing_query_permission"},
+            )
+
+        db = info.context.get("db")
+        if not db:
+            logger.error("No database session available for query check: %s", field_name)
+            raise PermissionDeniedException(
+                detail="System error: database unavailable",
+                context={"operation": field_name},
+            )
+
+        allowed = await PermissionService(db).check_permission(
+            user_id=current_user.id,
+            permission=permission,
+            company_id=current_user.company_id,
+        )
+
+        if not allowed and settings.RBAC_QUERY_ENFORCEMENT:
+            raise PermissionDeniedException(
+                detail=f"Нямате разрешение за: {field_name}",
+                context={"operation": field_name, "required_permission": permission},
+            )
+
+        if not allowed:
+            logger.warning(
+                "RBAC query would be denied (log-only): %s needs %s",
+                field_name,
+                permission,
+            )
+
+        return await self._call(next_, root, info, *args, **kwargs)
+
     async def resolve(self, next_: Callable, root: Any, info: Any, *args, **kwargs) -> Any:
-        # Only check mutations (queries can have their own permission checks)
+        if info.operation.operation == OperationType.QUERY:
+            return await self._resolve_query(next_, root, info, *args, **kwargs)
+
+        # Only check mutations (queries are handled above)
         if info.operation.operation != OperationType.MUTATION:
             return await self._call(next_, root, info, *args, **kwargs)
 
