@@ -26,6 +26,10 @@ async def create_tokens(db: AsyncSession, user_id: int, email: str, ip_address: 
     key = await crud.get_active_auth_key(db)
     now_utc = datetime.now(UTC)
 
+    # Token version: bumped on password reset / logout-all (audit 23.10, A1).
+    token_owner = await crud.get_user_by_id(db, user_id)
+    token_version = token_owner.token_version if token_owner else 1
+
     # Access Token (Stateless, short-lived)
     access_jti = str(uuid.uuid4())
     access_payload = {
@@ -36,6 +40,7 @@ async def create_tokens(db: AsyncSession, user_id: int, email: str, ip_address: 
         "jti": access_jti,
         "type": "access",
         "uid": user_id,
+        "ver": token_version,
     }
     header = {"alg": key.algorithm, "typ": "JWT", "kid": key.kid}
     access_token = jwt.encode(header, access_payload, key.secret).decode("utf-8")
@@ -51,6 +56,7 @@ async def create_tokens(db: AsyncSession, user_id: int, email: str, ip_address: 
         "jti": refresh_jti,
         "type": "refresh",
         "uid": user_id,
+        "ver": token_version,
     }
     refresh_token = jwt.encode(header, refresh_payload, key.secret).decode("utf-8")
 
@@ -69,6 +75,14 @@ async def create_tokens(db: AsyncSession, user_id: int, email: str, ip_address: 
 # Simple in-memory cache for auth keys to reduce DB load and avoid session conflicts
 # Cache stores dicts: {"kid": ..., "secret": ..., "algorithm": ...}
 _AUTH_KEYS_CACHE: dict[str, dict] = {}
+
+
+def evict_auth_key_cache(kid: str | None = None) -> None:
+    """Drop cached auth keys (all, or a single ``kid``)."""
+    if kid is None:
+        _AUTH_KEYS_CACHE.clear()
+    else:
+        _AUTH_KEYS_CACHE.pop(kid, None)
 
 ALLOWED_ALGORITHMS = {"HS256", "HS384", "HS512", "RS256", "ES256"}
 
@@ -111,8 +125,15 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> dict | None:
                 "kid": key_obj.kid,
                 "secret": key_obj.secret,
                 "algorithm": key_obj.algorithm,
+                "state": key_obj.state,
             }
             _AUTH_KEYS_CACHE[kid] = key_data
+
+        # A deleted/disabled key must stop verifying tokens immediately. "legacy"
+        # keys stay valid so rotation does not log every user out (A22).
+        if key_data.get("state") not in (None, "active", "legacy"):
+            logging.error("Auth key %s is not usable (state=%s)", kid, key_data.get("state"))
+            return None
 
         # Verify algorithm matches the key's algorithm
         if token_alg != key_data["algorithm"]:
@@ -134,6 +155,11 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> dict | None:
     except Exception as e:
         logging.exception(f"Token verification failed: {type(e).__name__}: {e!s}")
         return None
+
+
+def token_version_matches(payload: dict, user) -> bool:
+    """True when the token's ``ver`` claim matches the user's current version."""
+    return int(payload.get("ver", 1)) == int(getattr(user, "token_version", 1) or 1)
 
 
 async def _with_effective_role(db: AsyncSession, user) -> schemas.User:
@@ -210,6 +236,15 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive",
+        )
+
+    # Revoked tokens: bumping users.token_version invalidates every token
+    # issued before the bump (audit 23.10, A1).
+    if not token_version_matches(payload, user):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token revoked",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     # Check maintenance mode - block non-admin users

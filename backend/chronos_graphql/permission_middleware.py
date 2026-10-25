@@ -35,6 +35,9 @@ AUTH_ONLY_MUTATIONS: frozenset[str] = frozenset({
     "submitPulseSurvey",
 })
 
+# Mutations allowed while ``password_force_change`` is set (audit 23.10, A21).
+FORCE_CHANGE_ALLOWED: frozenset[str] = frozenset({"changePassword"})
+
 PERMISSION_MAPPING = {
     # Time Tracking & Shifts
     "clockIn": "timelogs:create_own",
@@ -567,6 +570,19 @@ class PermissionGuardMiddleware(SchemaExtension):
             raise PermissionDeniedException(
                 detail="Authentication required",
                 context={"operation": field_name},
+            )
+
+        # Forced password change is enforced server-side (audit 23.10, A21).
+        if (
+            getattr(current_user, "password_force_change", False) is True
+            and field_name not in FORCE_CHANGE_ALLOWED
+        ):
+            raise PermissionDeniedException(
+                detail="Трябва първо да смените паролата си",
+                context={
+                    "operation": field_name,
+                    "reason": "password_force_change",
+                },
             )
 
         # Auth-only mutations act on the caller's own data.

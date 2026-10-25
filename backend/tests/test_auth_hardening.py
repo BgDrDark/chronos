@@ -200,3 +200,130 @@ def test_client_ip_falls_back_to_peer(monkeypatch):
     monkeypatch.setattr(settings, "TRUSTED_PROXY_IPS", "")
     request = _Request("203.0.113.9", {})
     assert get_client_ip(request) == "203.0.113.9"
+
+
+# --- Task 3.2: token version, forced password change, auth key state ---
+
+
+def _sign_token(payload: dict, secret: str, kid: str = "kid-1") -> str:
+    from authlib.jose import jwt as authlib_jwt
+
+    header = {"alg": "HS256", "typ": "JWT", "kid": kid}
+    return authlib_jwt.encode(header, payload, secret).decode("utf-8")
+
+
+def test_token_version_matches_helper():
+    from backend.auth.jwt_utils import token_version_matches
+
+    assert token_version_matches({"ver": 3}, SimpleNamespace(token_version=3)) is True
+    assert token_version_matches({"ver": 2}, SimpleNamespace(token_version=3)) is False
+    assert token_version_matches({}, SimpleNamespace(token_version=1)) is True
+    assert token_version_matches({}, SimpleNamespace(token_version=None)) is True
+
+
+def test_create_tokens_embeds_user_token_version(monkeypatch):
+    from authlib.jose import jwt as authlib_jwt
+    from backend.auth import jwt_utils
+
+    secret = "test-secret-for-token-version-tests"
+    monkeypatch.setattr(
+        jwt_utils.crud,
+        "get_active_auth_key",
+        AsyncMock(
+            return_value=SimpleNamespace(kid="kid-1", secret=secret, algorithm="HS256")
+        ),
+    )
+    monkeypatch.setattr(
+        jwt_utils.crud,
+        "get_user_by_id",
+        AsyncMock(return_value=SimpleNamespace(token_version=7)),
+    )
+    monkeypatch.setattr(
+        jwt_utils.crud, "create_user_session", AsyncMock(return_value=None)
+    )
+
+    import asyncio
+
+    access, refresh = asyncio.run(
+        jwt_utils.create_tokens(MagicMock(), 1, "user@example.com")
+    )
+
+    assert authlib_jwt.decode(access, secret)["ver"] == 7
+    assert authlib_jwt.decode(refresh, secret)["ver"] == 7
+
+
+def test_expired_auth_key_is_rejected(monkeypatch):
+    import asyncio
+
+    from backend.auth import jwt_utils
+
+    secret = "expired-key-secret"
+    token = _sign_token(
+        {"iss": "chronos-api", "sub": "a@b.c", "exp": 4102444800}, secret
+    )
+    monkeypatch.setitem(
+        jwt_utils._AUTH_KEYS_CACHE,
+        "kid-1",
+        {"kid": "kid-1", "secret": secret, "algorithm": "HS256", "state": "expired"},
+    )
+
+    assert asyncio.run(jwt_utils.verify_and_decode_token(MagicMock(), token)) is None
+
+
+def test_legacy_auth_key_still_verifies(monkeypatch):
+    import asyncio
+
+    from backend.auth import jwt_utils
+
+    secret = "legacy-key-secret"
+    token = _sign_token(
+        {"iss": "chronos-api", "sub": "a@b.c", "exp": 4102444800}, secret
+    )
+    monkeypatch.setitem(
+        jwt_utils._AUTH_KEYS_CACHE,
+        "kid-1",
+        {"kid": "kid-1", "secret": secret, "algorithm": "HS256", "state": "legacy"},
+    )
+
+    claims = asyncio.run(jwt_utils.verify_and_decode_token(MagicMock(), token))
+
+    assert claims is not None and claims["sub"] == "a@b.c"
+
+
+@pytest.mark.asyncio
+async def test_mutation_blocked_while_password_change_required(monkeypatch):
+    from backend.auth.rbac_service import PermissionService
+    from backend.chronos_graphql.permission_middleware import PermissionGuardMiddleware
+    from graphql import OperationType
+
+    monkeypatch.setattr(
+        PermissionService, "check_permission", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(
+        PermissionService, "log_permission_decision", AsyncMock(return_value=None)
+    )
+    context = _context(None)
+    context["current_user"] = SimpleNamespace(
+        id=1, company_id=1, password_force_change=True
+    )
+    info = _Info("createUser", OperationType.MUTATION, context)
+
+    with pytest.raises(PermissionDeniedException):
+        await PermissionGuardMiddleware().resolve(_next_resolver, None, info, [], {})
+
+
+@pytest.mark.asyncio
+async def test_change_password_allowed_while_password_change_required():
+    from backend.chronos_graphql.permission_middleware import PermissionGuardMiddleware
+    from graphql import OperationType
+
+    context = _context(None)
+    context["current_user"] = SimpleNamespace(
+        id=1, company_id=1, password_force_change=True
+    )
+    info = _Info("changePassword", OperationType.MUTATION, context)
+
+    assert (
+        await PermissionGuardMiddleware().resolve(_next_resolver, None, info, [], {})
+        == "ok"
+    )

@@ -407,6 +407,9 @@ class User(Base):
     locked_until: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
     qr_token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=True)
     password_force_change: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Bumped on password reset / logout-all to revoke every outstanding access
+    # token (audit 23.10, A1).
+    token_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
     profile_picture: Mapped[str] = mapped_column(String, nullable=True) # Filename of the profile picture
     role_id: Mapped[int] = mapped_column(Integer, ForeignKey("roles.id"))
     access_level_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("access_levels.id", ondelete="SET NULL"), nullable=True)

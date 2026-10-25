@@ -18,6 +18,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 # Backend imports
 from backend.modules.behavioral_analysis.context_analyzer import ContextAnalyzer
+
+
+def _run(coro):
+    """Run a coroutine on a fresh loop.
+
+    ``asyncio.get_event_loop()`` depends on whichever loop pytest-asyncio left
+    behind, which made these tests fail purely based on collection order.
+    """
+    return asyncio.run(coro)
 from backend.modules.behavioral_analysis.detector import BehavioralDetector
 from backend.modules.behavioral_analysis.feedback_loop import FeedbackLoop
 
@@ -623,12 +632,12 @@ class TestResilience:
 
         for _ in range(3):
             with pytest.raises(Exception):
-                asyncio.get_event_loop().run_until_complete(wrapped())
+                _run(wrapped())
 
         assert cb.state == "open"
 
         with pytest.raises(CircuitBreakerError):
-            asyncio.get_event_loop().run_until_complete(wrapped())
+            _run(wrapped())
 
     def test_circuit_breaker_resets_on_success(self):
         """Should reset to closed on success"""
@@ -639,7 +648,7 @@ class TestResilience:
 
         wrapped = cb.call(success_func)
 
-        result = asyncio.get_event_loop().run_until_complete(wrapped())
+        result = _run(wrapped())
         assert result == "ok"
         assert cb.state == "closed"
         assert cb.failure_count == 0
@@ -654,7 +663,7 @@ class TestResilience:
         wrapped = cb.call(failing_func)
 
         with pytest.raises(Exception):
-            asyncio.get_event_loop().run_until_complete(wrapped())
+            _run(wrapped())
 
         assert cb.state == "open"
 
@@ -667,7 +676,7 @@ class TestResilience:
             return "recovered"
 
         wrapped_success = cb.call(success_func)
-        result = asyncio.get_event_loop().run_until_complete(wrapped_success())
+        result = _run(wrapped_success())
         assert result == "recovered"
         assert cb.state == "closed"
 

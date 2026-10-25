@@ -2819,12 +2819,26 @@ async def cleanup_old_auth_keys(db: AsyncSession, retention_days: int = 90):
     from datetime import timedelta
     cutoff_date = sofia_now() - timedelta(days=retention_days)
 
+    doomed_kids = list(
+        (await db.execute(
+            select(AuthKey.kid)
+            .where(AuthKey.state == "legacy")
+            .where(AuthKey.created_at < cutoff_date),
+        )).scalars(),
+    )
+
     await db.execute(
         delete(AuthKey)
         .where(AuthKey.state == "legacy")
         .where(AuthKey.created_at < cutoff_date),
     )
     await db.commit()
+
+    # A deleted key must not keep verifying tokens until the next restart (A22).
+    from backend.auth.jwt_utils import evict_auth_key_cache
+
+    for kid in doomed_kids:
+        evict_auth_key_cache(kid)
     return True
 
 

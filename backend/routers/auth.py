@@ -217,6 +217,26 @@ async def logout(
 
     return {"message": "Successfully logged out"}
 
+@router.post("/logout-all")
+async def logout_all_devices(
+    response: Response,
+    current_user: Annotated[schemas.User, Depends(jwt_utils.get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Revoke every token of the current user (all devices)."""
+    user = await crud.get_user_by_id(db, current_user.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Потребителят не е намерен")
+
+    user.token_version = (user.token_version or 1) + 1
+    await db.commit()
+    await crud.invalidate_all_user_sessions(db, user.id)
+
+    response.delete_cookie(key="access_token", httponly=True, samesite="strict", secure=settings.COOKIE_SECURE, path="/")
+    response.delete_cookie(key="refresh_token", httponly=True, samesite="strict", secure=settings.COOKIE_SECURE, path="/")
+
+    return {"message": "Всички сесии са прекратени"}
+
 @router.post("/forgot-password")
 @limiter.limit("3/hour")
 async def forgot_password(
@@ -282,8 +302,12 @@ async def reset_password(
 
     user.hashed_password = security.hash_password(request_data.new_password)
     user.password_force_change = False # Reset the flag
+    # Revoke every outstanding access/refresh token (audit 23.10, A1).
+    user.token_version = (user.token_version or 1) + 1
     db.add(user)
     await db.commit()
+
+    await crud.invalidate_all_user_sessions(db, user.id)
 
     return {"message": "Паролата е променена успешно"}
 
