@@ -3165,6 +3165,31 @@ async def create_api_key(db: AsyncSession, user_id: int, name: str, permissions:
     await db.refresh(api_key)
     return api_key, raw_key # Return raw key once
 
+async def verify_api_key(db: AsyncSession, api_key: str):
+    """Return the active APIKey matching the raw key, or None.
+
+    Keys are stored hashed with the first 8 characters kept in clear as
+    ``key_prefix`` so lookup does not scan the whole table.
+    """
+    from backend.auth.security import verify_password
+    from backend.database.models import APIKey, sofia_now
+
+    if not api_key or len(api_key) < 8:
+        return None
+
+    result = await db.execute(
+        select(APIKey).where(
+            APIKey.key_prefix == api_key[:8],
+            APIKey.is_active.is_(True),
+        )
+    )
+    for candidate in result.scalars().all():
+        if verify_password(api_key, candidate.hashed_key):
+            candidate.last_used_at = sofia_now()
+            await db.commit()
+            return candidate
+    return None
+
 async def get_api_keys(db: AsyncSession) -> list[APIKey]:
     from backend.database.models import APIKey
     result = await db.execute(select(APIKey).where(APIKey.is_active))

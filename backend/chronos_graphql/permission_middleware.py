@@ -6,10 +6,19 @@ from typing import Any
 from graphql import OperationType
 from strawberry.extensions import SchemaExtension
 
-from backend.auth.rbac_service import PermissionService
+from backend.auth.rbac_service import PermissionService, api_key_allows
 from backend.exceptions import PermissionDeniedException
 
 logger = logging.getLogger(__name__)
+
+
+def _api_key_scopes(info: Any) -> set[str] | None:
+    """Return the API key scopes of the request, or ``None`` for JWT sessions."""
+    request = info.context.get("request")
+    scopes = getattr(getattr(request, "state", None), "api_key_permissions", None)
+    if isinstance(scopes, set | frozenset | list | tuple):
+        return set(scopes)
+    return None
 
 # Mutations, които са съзнателно публични (без login).
 # Празно по подразбиране: GraphQL не бива да има публични mutation-и.
@@ -518,6 +527,11 @@ class PermissionGuardMiddleware(SchemaExtension):
             company_id=current_user.company_id,
         )
 
+        # API key scopes are an extra ceiling on top of role permissions (A9).
+        scopes = _api_key_scopes(info)
+        if allowed and scopes is not None:
+            allowed = api_key_allows(scopes, permission)
+
         if not allowed and settings.RBAC_QUERY_ENFORCEMENT:
             raise PermissionDeniedException(
                 detail=f"Нямате разрешение за: {field_name}",
@@ -637,6 +651,11 @@ class PermissionGuardMiddleware(SchemaExtension):
                 company_id=company_id,
                 resource_id=resource_id,
             )
+
+        # API key scopes are an extra ceiling on top of role permissions (A9).
+        scopes = _api_key_scopes(info)
+        if has_permission and scopes is not None:
+            has_permission = api_key_allows(scopes, required_permission)
         
         # Log permission decision
         await permission_service.log_permission_decision(

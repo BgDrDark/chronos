@@ -175,6 +175,7 @@ async def get_current_user(
         if key_obj:
             user = await crud.get_user_by_id(db, key_obj.user_id)
             if user and user.is_active:
+                request.state.api_key_permissions = set(key_obj.permissions or [])
                 return await _with_effective_role(db, user)
         raise credentials_exception
 

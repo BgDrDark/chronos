@@ -846,6 +846,19 @@ def expand_role_permissions(role_names: list[str]) -> set[str]:
     return permissions
 
 
+def api_key_allows(scopes: set[str], permission: str) -> bool:
+    """Check an API key scope set against a required permission."""
+    if not scopes or "*" in scopes or permission in scopes:
+        return True
+
+    resource, _, action = permission.partition(":")
+    if not action.startswith("read"):
+        return False
+    if "read:all" in scopes:
+        return True
+    return f"read:{resource}" in scopes
+
+
 # --- Phase 1: role assignment policy (audit 23.10, R1/R2/R9/A5) ---
 # Explicit allowlist for actors that are not super_admin/admin.
 # super_admin and admin are special-cased in can_assign_role() so they can
