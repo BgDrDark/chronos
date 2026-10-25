@@ -135,6 +135,23 @@ async def verify_and_decode_token(db: AsyncSession, token: str) -> dict | None:
         logging.exception(f"Token verification failed: {type(e).__name__}: {e!s}")
         return None
 
+
+async def _with_effective_role(db: AsyncSession, user) -> schemas.User:
+    """Build the user schema with the role from ``company_role_assignments``.
+
+    ``users.role_id`` stays as a transition fallback inside the resolver, so
+    callers always see a single effective role (audit 23.10, R5/D1).
+    """
+    from backend.auth.role_resolver import get_effective_role
+
+    user_schema = schemas.User.model_validate(user)
+    effective_role = await get_effective_role(db, user.id, user.company_id)
+    if effective_role is not None:
+        user_schema.role = schemas.Role.model_validate(effective_role)
+        user_schema.role_id = effective_role.id
+    return user_schema
+
+
 async def get_current_user(
     request: Request, db: Annotated[AsyncSession, Depends(get_db)],
 ) -> schemas.User:
@@ -158,7 +175,7 @@ async def get_current_user(
         if key_obj:
             user = await crud.get_user_by_id(db, key_obj.user_id)
             if user and user.is_active:
-                return schemas.User.model_validate(user)
+                return await _with_effective_role(db, user)
         raise credentials_exception
 
     # --- 2. Try JWT from cookies or Bearer ---
@@ -197,20 +214,21 @@ async def get_current_user(
     # Check maintenance mode - block non-admin users
     from sqlalchemy import select as sa_select
 
-    from backend.database.models import MaintenanceSettings, Role
+    from backend.database.models import MaintenanceSettings
     maint_result = await db.execute(sa_select(MaintenanceSettings).order_by(MaintenanceSettings.id.desc()).limit(1))
     maint_setting = maint_result.scalar_one_or_none()
     if maint_setting and maint_setting.enabled:
-        role_result = await db.execute(sa_select(Role).where(Role.id == user.role_id))
-        role = role_result.scalar_one_or_none()
-        if not role or role.name not in ["admin", "super_admin"]:
+        from backend.auth.role_resolver import get_effective_roles
+
+        effective_roles = await get_effective_roles(db, user.id, user.company_id)
+        if not any(role.name in ["admin", "super_admin"] for role in effective_roles):
             reason = maint_setting.reason or "Системата е в режим поддръжка"
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=f"MAINTENANCE_MODE: {reason}",
             )
 
-    return schemas.User.model_validate(user)
+    return await _with_effective_role(db, user)
 
 async def get_optional_current_user(
     request: Request, db: Annotated[AsyncSession, Depends(get_db)],

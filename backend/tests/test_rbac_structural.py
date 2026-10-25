@@ -8,6 +8,11 @@ from backend.auth.rbac_service import (
     PermissionService,
     expand_role_permissions,
 )
+from backend.auth.role_resolver import (
+    get_effective_role,
+    get_effective_roles,
+    pick_primary_role,
+)
 from backend.chronos_graphql.permission_middleware import (
     extract_target_company_id,
 )
@@ -176,3 +181,59 @@ async def test_get_user_permissions_merges_inherited_and_db_permissions():
 
     assert "custom:extra" in permissions
     assert expand_role_permissions(["manager"]) <= permissions
+
+
+class _Role:
+    def __init__(self, name: str, priority: int):
+        self.name = name
+        self.priority = priority
+
+
+def test_pick_primary_role_prefers_highest_priority():
+    roles = [_Role("employee", 20), _Role("admin", 90)]
+    assert pick_primary_role(roles).name == "admin"
+
+
+def test_pick_primary_role_handles_empty_list():
+    assert pick_primary_role([]) is None
+
+
+def test_pick_primary_role_handles_missing_priority():
+    roles = [_Role("custom", None), _Role("employee", 20)]
+    assert pick_primary_role(roles).name == "employee"
+
+
+async def test_get_effective_roles_prefers_assignments():
+    role = SimpleNamespace(name="manager", priority=50)
+    assignments = MagicMock()
+    assignments.scalars.return_value.unique.return_value = [role]
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=assignments)
+
+    assert await get_effective_roles(db, 1, 2) == [role]
+    assert db.execute.await_count == 1
+
+
+async def test_get_effective_roles_falls_back_to_legacy_role():
+    role = SimpleNamespace(id=3, name="employee", priority=20)
+    empty = MagicMock()
+    empty.scalars.return_value.unique.return_value = []
+    legacy = MagicMock()
+    legacy.scalar_one_or_none.return_value = role
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[empty, legacy])
+
+    assert await get_effective_roles(db, 1, 2) == [role]
+    assert db.execute.await_count == 2
+
+
+async def test_get_effective_role_returns_highest_priority():
+    assignments = MagicMock()
+    assignments.scalars.return_value.unique.return_value = [
+        SimpleNamespace(name="employee", priority=20),
+        SimpleNamespace(name="admin", priority=90),
+    ]
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=assignments)
+
+    assert (await get_effective_role(db, 1, 2)).name == "admin"
