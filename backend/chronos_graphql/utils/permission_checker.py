@@ -152,6 +152,16 @@ async def require_permission(
     return True
 
 
+async def _is_super_admin(db, current_user) -> bool:
+    """Permission-based super admin check (audit 23.10, D9)."""
+    if not db or not current_user:
+        return False
+    return await PermissionService(db).check_permission(
+        user_id=current_user.id,
+        permission="system:super_admin",
+    )
+
+
 async def check_company_access(
     info_or_db,
     target_company_id_or_user,
@@ -175,7 +185,7 @@ async def check_company_access(
             context={"target_company_id": target_company_id},
         )
 
-    if current_user.role and current_user.role.name == "super_admin":
+    if await _is_super_admin(info.context.get("db"), current_user):
         return None
 
     if target_company_id and current_user.company_id != target_company_id:
@@ -199,7 +209,7 @@ async def _check_company_access_legacy(
             context={"model_type": model_type, "resource_id": resource_id},
         )
 
-    if current_user.role and current_user.role.name == "super_admin":
+    if await _is_super_admin(db, current_user):
         return None
 
     target_company_id = await _resolve_resource_company_id(db, model_type, resource_id)

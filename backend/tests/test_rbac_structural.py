@@ -413,3 +413,38 @@ async def test_graphql_context_records_client_ip_and_user_agent(monkeypatch):
 
     assert context["ip_address"] == "203.0.113.9"
     assert context["user_agent"] == "pytest-agent"
+
+
+async def test_company_access_does_not_trust_super_admin_role_name(monkeypatch):
+    from backend.chronos_graphql.utils.permission_checker import check_company_access
+
+    monkeypatch.setattr(
+        PermissionService, "check_permission", AsyncMock(return_value=False)
+    )
+    info = MagicMock()
+    info.context = {
+        "current_user": SimpleNamespace(
+            id=1, company_id=10, role=SimpleNamespace(name="super_admin")
+        ),
+        "db": MagicMock(),
+    }
+
+    with pytest.raises(PermissionDeniedException):
+        await check_company_access(info, 99)
+
+
+async def test_company_access_allows_super_admin_permission(monkeypatch):
+    from backend.chronos_graphql.utils.permission_checker import check_company_access
+
+    monkeypatch.setattr(
+        PermissionService, "check_permission", AsyncMock(return_value=True)
+    )
+    info = MagicMock()
+    info.context = {
+        "current_user": SimpleNamespace(
+            id=1, company_id=10, role=SimpleNamespace(name="custom")
+        ),
+        "db": MagicMock(),
+    }
+
+    assert await check_company_access(info, 99) is None

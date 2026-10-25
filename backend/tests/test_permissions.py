@@ -190,22 +190,21 @@ class TestPermissionHelpers:
     @pytest.mark.asyncio
     async def test_check_company_access_same_company(self, mock_info):
         """Verify check_company_access succeeds for same company"""
-        mock_db = AsyncMock()
-        user = mock_info.context["current_user"]
+        mock_info.context["db"] = MagicMock()
 
-        with patch.object(PermissionService, "verify_company_access", return_value=True):
-            # Should not raise exception
-            await check_company_access(mock_db, user, "User", 1)
+        with patch.object(PermissionService, "check_permission", return_value=False):
+            assert await check_company_access(mock_info, 10) == 10
 
     @pytest.mark.asyncio
     async def test_check_company_access_different_company(self, mock_info):
         """Verify check_company_access fails for different company"""
-        mock_db = AsyncMock()
-        user = mock_info.context["current_user"]
+        mock_info.context["db"] = MagicMock()
 
-        with patch.object(PermissionService, "verify_company_access", return_value=False):
-            with pytest.raises(PermissionDeniedException):
-                await check_company_access(mock_db, user, "User", 999)
+        with (
+            patch.object(PermissionService, "check_permission", return_value=False),
+            pytest.raises(PermissionDeniedException),
+        ):
+            await check_company_access(mock_info, 999)
 
 
 class TestPermissionService:
