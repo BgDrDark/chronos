@@ -245,6 +245,17 @@ async def refresh_token(
 
     return response
 
+@router.get("/csrf-token")
+async def read_csrf_token(request: Request):
+    """Return the double-submit CSRF token so service workers can sign requests.
+
+    The token lives in a non-HttpOnly cookie, so this only echoes a value the
+    page can already read; it exists because service workers cannot read
+    ``document.cookie`` (audit 23.10, A20).
+    """
+    return {"csrf_token": request.cookies.get("csrf_token")}
+
+
 @router.post("/logout")
 async def logout(
     request: Request,

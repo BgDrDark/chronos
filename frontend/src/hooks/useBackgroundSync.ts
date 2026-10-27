@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useState } from 'react';
 import { getPendingEntries, markSynced, markFailed, getPendingCount } from '../db/fleet-offline-store';
+import { getCsrfToken } from '../utils/csrf';
 import { useNetworkStatus } from './useNetworkStatus';
 
 export function useBackgroundSync() {
@@ -39,7 +40,7 @@ export function useBackgroundSync() {
 
           const response = await fetch('/graphql', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() ?? '' },
             body: JSON.stringify({ query: mutation }),
           });
 

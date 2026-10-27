@@ -9,6 +9,28 @@ declare let self: ServiceWorkerGlobalScope;
 
 const OFFLINE_URL = '/offline.html';
 
+// Service workers cannot read document.cookie, so the CSRF token is fetched
+// from the backend and cached for the lifetime of the worker (audit 23.10, A20).
+let csrfTokenCache = '';
+
+async function getCsrfToken(): Promise<string> {
+  if (csrfTokenCache) return csrfTokenCache;
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await fetch('/auth/csrf-token', { credentials: 'include' });
+      if (!response.ok) continue;
+      const data = await response.json();
+      if (data?.csrf_token) {
+        csrfTokenCache = data.csrf_token;
+        return csrfTokenCache;
+      }
+    }
+  } catch {
+    // Offline - the caller will queue the entry again.
+  }
+  return '';
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open('offline-cache').then((cache) => cache.add(OFFLINE_URL))
@@ -281,6 +303,7 @@ async function syncClockLogs() {
 
 async function syncFleetLogs() {
   try {
+    const csrfToken = await getCsrfToken();
     const db = await openIDB('chronos-fleet-offline', 1);
     const tx = db.transaction('entries', 'readwrite');
     const store = tx.objectStore('entries');
@@ -299,7 +322,7 @@ async function syncFleetLogs() {
 
         const response = await fetch('/graphql', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
           body: JSON.stringify({ query: mutation }),
         });
 
@@ -346,12 +369,13 @@ function openIDB(name: string, version: number): Promise<IDBDatabase> {
 }
 
 async function refreshData() {
+  const csrfToken = await getCsrfToken();
   const cache = await caches.open('graphql-queries');
   
   try {
     const response = await fetch('/graphql', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
       body: JSON.stringify({
         query: `{ me { id firstName lastName role { name } } }`
       })
@@ -367,7 +391,7 @@ async function refreshData() {
   try {
     const response = await fetch('/graphql', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
       body: JSON.stringify({
         query: `{ mySchedule { id date shift { name startTime endTime } } }`
       })

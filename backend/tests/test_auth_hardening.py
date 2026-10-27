@@ -791,3 +791,61 @@ async def test_require_admin_user_rejects_user_without_role(monkeypatch):
         await dependencies.require_admin_user(MagicMock(), MagicMock())
 
     assert exc.value.status_code == 403
+
+
+# --- Task 3.9: GraphQL requires a CSRF token ---
+
+
+def test_graphql_requires_csrf_token():
+    from backend.main import app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+
+    response = client.post("/graphql", json={"query": "{ me { id } }"})
+
+    assert response.status_code == 403
+
+
+def test_graphql_accepts_matching_csrf_token():
+    import re
+
+    from backend.config import settings
+    from backend.main import app
+    from fastapi.testclient import TestClient
+    from itsdangerous.url_safe import URLSafeSerializer
+
+    client = TestClient(app)
+    # A safe request issues the double-submit cookie.
+    client.get("/webhook/health")
+    token = client.cookies.get("csrf_token")
+    assert token
+
+    # A forged header must be rejected before the query is executed.
+    forged = URLSafeSerializer(settings.CSRF_SECRET_KEY, "csrftoken").dumps("forged")
+    response = client.post(
+        "/graphql",
+        json={"query": "{ __typename }"},
+        headers={"X-CSRFToken": forged},
+    )
+
+    assert response.status_code == 403
+    assert re.search("CSRF", response.text)
+
+
+@pytest.mark.asyncio
+async def test_csrf_token_endpoint_echoes_the_cookie():
+    from backend.routers import auth as auth_router
+
+    request = SimpleNamespace(cookies={"csrf_token": "signed-token"})
+
+    assert await auth_router.read_csrf_token(request) == {"csrf_token": "signed-token"}
+
+
+def test_default_cors_origins_are_https_only():
+    from backend.main import DEFAULT_CORS_ORIGINS
+
+    assert DEFAULT_CORS_ORIGINS == [
+        "https://chronos.oblak24.org",
+        "https://dev.oblak24.org",
+    ]

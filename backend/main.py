@@ -301,7 +301,6 @@ class CSRFOrWebSocketMiddleware:
                 re.compile(r"^/webhook/"),
                 re.compile(r"^/kiosk/terminal/"),
                 re.compile(r"^/terminal/"),
-                re.compile(r"^/graphql"),
                 re.compile(r"^/ws/"),
                 re.compile(r"^/floor-plan/"),
             ],
@@ -314,6 +313,12 @@ app.add_middleware(CSRFOrWebSocketMiddleware)
 
 # Configure CORS - from config with fallback defaults
 # Enforce HTTPS in production (allow localhost for dev)
+DEFAULT_CORS_ORIGINS = [
+    "https://chronos.oblak24.org",
+    "https://dev.oblak24.org",
+]
+
+
 def get_cors_origins():
     raw = settings.BACKEND_CORS_ORIGINS
     if isinstance(raw, str):
@@ -323,16 +328,7 @@ def get_cors_origins():
     else:
         origins = []
     if not origins:
-        origins = [
-            "https://chronos.oblak24.org",
-            "https://auth.chronos.oblak24.org",
-            "https://api.github.com",
-            "http://localhost:5173",
-            "http://localhost:14240",
-            "http://192.168.1.92:5173",
-            "http://192.168.1.92:4173",
-            "http://192.168.1.92:14240",
-        ]
+        origins = list(DEFAULT_CORS_ORIGINS)
     for origin in origins:
         if origin.startswith("http://") and "localhost" not in origin and "127.0.0.1" not in origin and "192.168." not in origin:
             logger.warning(f"Removing insecure HTTP origin: {origin}")
