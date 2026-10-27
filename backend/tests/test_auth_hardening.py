@@ -716,3 +716,78 @@ def test_deploy_key_is_not_logged_when_generated(monkeypatch, tmp_path, caplog):
 
     assert len(key) == 64
     assert key[:8] not in caplog.text
+
+
+# --- Task 3.12: operational endpoints require admin auth ---
+
+
+def test_operational_deploy_endpoints_require_admin_auth():
+    from backend.routers import deploy as deploy_router
+
+    paths = ["/webhook/deploy-status", "/webhook/deploy-log", "/webhook/db-health"]
+    guarded = {}
+    for route in deploy_router.router.routes:
+        path = getattr(route, "path", None)
+        if path in paths:
+            guarded[path] = any(
+                getattr(dep.dependency, "__name__", "") == "require_admin_user"
+                for dep in route.dependencies
+            )
+
+    assert guarded == dict.fromkeys(paths, True)
+
+
+def test_public_health_endpoint_stays_open():
+    from backend.routers import deploy as deploy_router
+
+    health = next(
+        route
+        for route in deploy_router.router.routes
+        if getattr(route, "path", None) == "/webhook/health"
+    )
+
+    assert health.dependencies == []
+
+
+@pytest.mark.asyncio
+async def test_require_admin_user_accepts_admin(monkeypatch):
+    from backend.auth import dependencies
+
+    user = SimpleNamespace(role=SimpleNamespace(name="super_admin"))
+    monkeypatch.setattr(
+        dependencies.jwt_utils, "get_current_user", AsyncMock(return_value=user)
+    )
+
+    assert await dependencies.require_admin_user(MagicMock(), MagicMock()) is user
+
+
+@pytest.mark.asyncio
+async def test_require_admin_user_rejects_employee(monkeypatch):
+    from backend.auth import dependencies
+
+    user = SimpleNamespace(role=SimpleNamespace(name="employee"))
+    monkeypatch.setattr(
+        dependencies.jwt_utils, "get_current_user", AsyncMock(return_value=user)
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await dependencies.require_admin_user(MagicMock(), MagicMock())
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "Administrator access required"
+
+
+@pytest.mark.asyncio
+async def test_require_admin_user_rejects_user_without_role(monkeypatch):
+    from backend.auth import dependencies
+
+    monkeypatch.setattr(
+        dependencies.jwt_utils,
+        "get_current_user",
+        AsyncMock(return_value=SimpleNamespace(role=None)),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await dependencies.require_admin_user(MagicMock(), MagicMock())
+
+    assert exc.value.status_code == 403
