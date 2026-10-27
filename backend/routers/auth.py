@@ -62,6 +62,8 @@ def read_password_reset_token(token: str) -> dict:
 @router.post("/register", response_model=schemas.User)
 @limiter.limit("3/hour")
 async def register_user(request: Request, user: schemas.UserCreate, db: Annotated[AsyncSession, Depends(get_db)]):
+    if not settings.ALLOW_SELF_REGISTRATION:
+        raise HTTPException(status_code=403, detail="Самостоятелната регистрация е изключена")
     db_user = await crud.get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")

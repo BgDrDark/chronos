@@ -144,6 +144,9 @@ class Settings(BaseSettings):
     # headers (X-Forwarded-For, X-Real-IP, CF-Connecting-IP). Empty = trust none.
     TRUSTED_PROXY_IPS: str = ""
 
+    # Public self-registration is closed by default (audit 23.10, A8).
+    ALLOW_SELF_REGISTRATION: bool = False
+
     # SMTP Fallback Settings (used only if DB GlobalSettings are missing)
     MAIL_SERVER: str | None = None
     MAIL_PORT: int = 587

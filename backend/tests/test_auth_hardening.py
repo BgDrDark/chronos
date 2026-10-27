@@ -448,3 +448,26 @@ async def test_login_lockout_returns_429(monkeypatch):
         )
 
     assert exc.value.status_code == 429
+
+
+# --- Task 3.8: self-registration is closed by default ---
+
+
+def test_registration_disabled_by_default():
+    from backend.config import settings
+
+    assert settings.ALLOW_SELF_REGISTRATION is False
+
+
+@pytest.mark.asyncio
+async def test_register_endpoint_refuses_when_disabled(monkeypatch):
+    from backend.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router.limiter, "enabled", False)
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_router.register_user(
+            MagicMock(), SimpleNamespace(email="new@example.com"), MagicMock()
+        )
+
+    assert exc.value.status_code == 403
