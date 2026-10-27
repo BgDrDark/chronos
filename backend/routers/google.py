@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +22,29 @@ router = APIRouter(
     dependencies=[Depends(require_module_dep("integrations"))],
 )
 
+# Signed, short-lived OAuth state so the callback cannot be replayed for
+# another user (account-linking CSRF, audit 23.10 A18).
+OAUTH_STATE_MAX_AGE = 600
+_oauth_state_serializer = URLSafeTimedSerializer(
+    settings.JWT_SECRET_KEY, salt="google-oauth-state"
+)
+
+
+def build_oauth_state(user_id: int) -> str:
+    """Create a signed ``state`` value bound to a user id."""
+    return _oauth_state_serializer.dumps({"uid": user_id})
+
+
+def read_oauth_state(state: str) -> int:
+    """Verify a signed ``state`` value and return the user id."""
+    try:
+        payload = _oauth_state_serializer.loads(state, max_age=OAUTH_STATE_MAX_AGE)
+    except BadSignature as exc:
+        raise ValueError("invalid state signature") from exc
+    if not isinstance(payload, dict) or "uid" not in payload:
+        raise ValueError("legacy state")
+    return int(payload["uid"])
+
 @router.post("/init")
 async def google_login_init(
     request: Request,
@@ -28,7 +52,10 @@ async def google_login_init(
     db: AsyncSession = Depends(get_db),
 ):
     """Инициализира Google OAuth2 поток чрез POST с cookies"""
-    auth_url = await google_calendar_service.get_auth_url(current_user.id)
+    state = build_oauth_state(current_user.id)
+    auth_url = await google_calendar_service.get_auth_url(
+        current_user.id, state=state
+    )
     return {"auth_url": auth_url}
 
 @router.get("/login")
@@ -36,10 +63,10 @@ async def google_login(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Инициализира Google OAuth2 поток (legacy - с token в URL)"""
-    token = request.query_params.get("token")
-    if not token:
-        token = request.cookies.get("access_token")
+    """Инициализира Google OAuth2 поток (само чрез HttpOnly cookie)"""
+    # Токен в query string вече не се приема - той попада в логове и история
+    # (audit 23.10, A33).
+    token = request.cookies.get("access_token")
 
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -56,7 +83,8 @@ async def google_login(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    auth_url = await google_calendar_service.get_auth_url(user.id)
+    state = build_oauth_state(user.id)
+    auth_url = await google_calendar_service.get_auth_url(user.id, state=state)
     return RedirectResponse(auth_url)
 
 @router.get("/callback")
@@ -67,8 +95,8 @@ async def google_callback(
 ):
     """Обработва отговора от Google и записва токените"""
     try:
-        # Извличане на user_id от state (формат: user_123)
-        user_id = int(state.split("_")[1])
+        # Извличане на user_id от подписания state
+        user_id = read_oauth_state(state)
 
         # Размяна на кода за токени
         token_data = await google_calendar_service.exchange_code_for_tokens(code)

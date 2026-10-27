@@ -951,3 +951,64 @@ async def test_webauthn_login_rejects_inactive_user(monkeypatch):
 
     assert exc.value.status_code == 403
     assert exc.value.detail == "User inactive"
+
+
+# --- Task 3.11: signed Google OAuth state ---
+
+
+def test_google_oauth_state_roundtrip():
+    from backend.routers.google import build_oauth_state, read_oauth_state
+
+    assert read_oauth_state(build_oauth_state(42)) == 42
+
+
+def test_google_oauth_state_rejects_legacy_value():
+    from backend.routers.google import read_oauth_state
+
+    with pytest.raises(ValueError):
+        read_oauth_state("user_42")
+
+
+def test_google_oauth_state_rejects_tampered_value():
+    from backend.routers.google import build_oauth_state, read_oauth_state
+
+    state = build_oauth_state(42)
+
+    with pytest.raises(ValueError):
+        read_oauth_state(state[:-4] + "AAAA")
+
+
+@pytest.mark.asyncio
+async def test_google_init_signs_the_state(monkeypatch):
+    from backend.routers import google as google_router
+
+    captured = {}
+
+    async def fake_get_auth_url(user_id, state=None):
+        captured["user_id"] = user_id
+        captured["state"] = state
+        return "https://accounts.google.com/o/oauth2/auth"
+
+    monkeypatch.setattr(
+        google_router.google_calendar_service, "get_auth_url", fake_get_auth_url
+    )
+
+    await google_router.google_login_init(
+        MagicMock(), SimpleNamespace(id=42), MagicMock()
+    )
+
+    assert captured["user_id"] == 42
+    assert google_router.read_oauth_state(captured["state"]) == 42
+
+
+@pytest.mark.asyncio
+async def test_google_legacy_login_no_longer_accepts_query_tokens():
+    from backend.routers import google as google_router
+
+    request = MagicMock()
+    request.cookies = {}
+
+    with pytest.raises(HTTPException) as exc:
+        await google_router.google_login(request, MagicMock())
+
+    assert exc.value.status_code == 401
