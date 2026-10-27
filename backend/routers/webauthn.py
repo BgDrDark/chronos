@@ -87,7 +87,12 @@ async def get_registration_options(
     rp_id = get_rp_id_from_request(request)
 
     # Изчистване на стари предизвикателства
-    await db.execute(delete(WebAuthnChallenge).where(WebAuthnChallenge.expires_at < sofia_now()))
+    await db.execute(
+        delete(WebAuthnChallenge).where(
+            WebAuthnChallenge.user_id == current_user.id,
+            WebAuthnChallenge.expires_at < sofia_now(),
+        )
+    )
 
     # Вземане на съществуващите ключове на потребителя
     stmt = select(WebAuthnCredential).where(WebAuthnCredential.user_id == current_user.id)
@@ -194,22 +199,33 @@ async def get_login_options(
             body = {}
 
     email = body.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
     rp_id = get_rp_id_from_request(request)
 
+    stmt = select(User).where(User.email == email)
+    res = await db.execute(stmt)
+    user = res.scalars().first()
+
     allow_credentials: list[PublicKeyCredentialDescriptor] = []
-    if email:
-        stmt = select(User).where(User.email == email)
+    if user:
+        stmt = select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
         res = await db.execute(stmt)
-        user = res.scalars().first()
-        if user:
-            stmt = select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
-            res = await db.execute(stmt)
-            creds = res.scalars().all()
-            for c in creds:
-                allow_credentials.append(PublicKeyCredentialDescriptor(
-                    id=c.credential_id,
-                    type=PublicKeyCredentialType.PUBLIC_KEY,
-                ))
+        creds = res.scalars().all()
+        for c in creds:
+            allow_credentials.append(PublicKeyCredentialDescriptor(
+                id=c.credential_id,
+                type=PublicKeyCredentialType.PUBLIC_KEY,
+            ))
+
+        # Изчистване на изтеклите предизвикателства на този потребител
+        await db.execute(
+            delete(WebAuthnChallenge).where(
+                WebAuthnChallenge.user_id == user.id,
+                WebAuthnChallenge.expires_at < sofia_now(),
+            )
+        )
 
     options = generate_authentication_options(
         rp_id=rp_id,
@@ -217,13 +233,17 @@ async def get_login_options(
         allow_credentials=allow_credentials,
     )
 
-    challenge_str = bytes_to_base64url(options.challenge)
-    new_challenge = WebAuthnChallenge(
-        challenge=challenge_str,
-        expires_at=sofia_now() + timedelta(minutes=5),
-    )
-    db.add(new_challenge)
-    await db.commit()
+    # Предизвикателството се пази само за съществуващ потребител, за да е
+    # невъзможно влизане с credential на друг акаунт (audit 23.10, A23).
+    if user:
+        challenge_str = bytes_to_base64url(options.challenge)
+        new_challenge = WebAuthnChallenge(
+            user_id=user.id,
+            challenge=challenge_str,
+            expires_at=sofia_now() + timedelta(minutes=5),
+        )
+        db.add(new_challenge)
+        await db.commit()
 
     return json.loads(options_to_json(options))
 
@@ -238,8 +258,15 @@ async def verify_login(
     expected_origin = get_expected_origin(request)
     rp_id = get_rp_id_from_request(request)
 
-    # 1. Намиране на предизвикателството
-    stmt = select(WebAuthnChallenge).where(WebAuthnChallenge.expires_at > sofia_now()).order_by(WebAuthnChallenge.created_at.desc())
+    # 1. Намиране на предизвикателството (само обвързани с потребител)
+    stmt = (
+        select(WebAuthnChallenge)
+        .where(
+            WebAuthnChallenge.expires_at > sofia_now(),
+            WebAuthnChallenge.user_id.is_not(None),
+        )
+        .order_by(WebAuthnChallenge.created_at.desc())
+    )
     result = await db.execute(stmt)
     challenge_record = result.scalars().first()
 
@@ -254,6 +281,12 @@ async def verify_login(
 
     if not db_credential:
         raise HTTPException(status_code=404, detail="Credential not found")
+
+    # Ключът трябва да принадлежи на потребителя от предизвикателството
+    if db_credential.user_id != challenge_record.user_id:
+        raise HTTPException(
+            status_code=403, detail="Credential does not belong to this challenge"
+        )
 
     try:
         expected_challenge_bytes = base64url_to_bytes(challenge_record.challenge)
@@ -278,6 +311,9 @@ async def verify_login(
     stmt = select(User).options(selectinload(User.role)).where(User.id == db_credential.user_id)
     res = await db.execute(stmt)
     user = res.scalars().first()
+
+    if not user or not user.is_active:
+        raise HTTPException(status_code=403, detail="User inactive")
 
     access_token, _ = await jwt_utils.create_tokens(db, user.id, user.email)
 

@@ -610,6 +610,16 @@ class _ScalarResult:
         return self._value
 
 
+class _FirstResult:
+    """Result stub for ``res.scalars().first()``."""
+
+    def __init__(self, value):
+        self._value = value
+
+    def scalars(self):
+        return SimpleNamespace(first=lambda: self._value)
+
+
 def _deploy_db(user, role="super_admin"):
     db = MagicMock()
     db.execute = AsyncMock(
@@ -849,3 +859,95 @@ def test_default_cors_origins_are_https_only():
         "https://chronos.oblak24.org",
         "https://dev.oblak24.org",
     ]
+
+
+# --- Task 3.10: WebAuthn challenges are bound to a user ---
+
+
+@pytest.mark.asyncio
+async def test_webauthn_login_options_require_email(monkeypatch):
+    from backend.routers import webauthn as webauthn_router
+
+    monkeypatch.setattr(webauthn_router.limiter, "enabled", False)
+
+    with pytest.raises(HTTPException) as exc:
+        await webauthn_router.get_login_options(MagicMock(), {}, MagicMock())
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Email is required"
+
+
+@pytest.mark.asyncio
+async def test_webauthn_login_options_store_the_user_id(monkeypatch):
+    from backend.routers import webauthn as webauthn_router
+
+    monkeypatch.setattr(webauthn_router.limiter, "enabled", False)
+    monkeypatch.setattr(
+        webauthn_router,
+        "generate_authentication_options",
+        MagicMock(return_value=SimpleNamespace(challenge=b"\x00\x00\x00")),
+    )
+    monkeypatch.setattr(webauthn_router, "options_to_json", MagicMock(return_value="{}"))
+    monkeypatch.setattr(webauthn_router, "bytes_to_base64url", lambda _: "AAAA")
+    user = SimpleNamespace(id=7, email="user@example.com")
+    db = MagicMock()
+    db.execute = AsyncMock(
+        side_effect=[_FirstResult(user), _Result([]), _FirstResult(None)]
+    )
+    db.commit = AsyncMock()
+
+    await webauthn_router.get_login_options(MagicMock(), {"email": user.email}, db)
+
+    created = db.add.call_args[0][0]
+    assert created.user_id == 7
+    assert created.challenge == "AAAA"
+
+
+@pytest.mark.asyncio
+async def test_webauthn_login_rejects_credential_of_another_user(monkeypatch):
+    from backend.routers import webauthn as webauthn_router
+
+    monkeypatch.setattr(webauthn_router.limiter, "enabled", False)
+    challenge = SimpleNamespace(user_id=2, challenge="AAAA")
+    credential = SimpleNamespace(user_id=1, credential_id=b"id")
+    db = MagicMock()
+    db.execute = AsyncMock(
+        side_effect=[_FirstResult(challenge), _FirstResult(credential)]
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await webauthn_router.verify_login(MagicMock(), {"id": "AAAA"}, db)
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "Credential does not belong to this challenge"
+
+
+@pytest.mark.asyncio
+async def test_webauthn_login_rejects_inactive_user(monkeypatch):
+    from backend.routers import webauthn as webauthn_router
+
+    monkeypatch.setattr(webauthn_router.limiter, "enabled", False)
+    challenge = SimpleNamespace(user_id=1, challenge="AAAA")
+    credential = SimpleNamespace(
+        user_id=1, credential_id=b"id", sign_count=0, public_key=b"key"
+    )
+    inactive = SimpleNamespace(id=1, email="user@example.com", is_active=False)
+    db = MagicMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _FirstResult(challenge),
+            _FirstResult(credential),
+            _FirstResult(inactive),
+        ]
+    )
+    monkeypatch.setattr(
+        webauthn_router,
+        "verify_authentication_response",
+        MagicMock(return_value=SimpleNamespace(new_sign_count=1)),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await webauthn_router.verify_login(MagicMock(), {"id": "AAAA"}, db)
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "User inactive"
