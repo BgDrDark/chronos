@@ -318,8 +318,6 @@ async def verify_admin_pin(
     """Проверява PIN код за администраторски изход от терминала.
     Търси потребители с роля super_admin или admin и проверява PIN-а им.
     """
-    import hashlib
-
     from sqlalchemy import select
 
     from backend.database.models import CompanyRoleAssignment, Role, User
@@ -358,15 +356,23 @@ async def verify_admin_pin(
     if not admin_user_ids:
         raise HTTPException(status_code=400, detail="Няма конфигуриран администратор")
 
-    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+    from backend.utils.pin_utils import verify_pin as verify_pin_hash
+
     user_result = await db.execute(
         select(User).where(
             User.id.in_(admin_user_ids),
-            User.pin_sha256 == pin_hash,
+            User.pin_sha256.is_not(None),
             User.is_active,
         )
     )
-    user = user_result.scalar_one_or_none()
+    user = next(
+        (
+            candidate
+            for candidate in user_result.scalars().all()
+            if verify_pin_hash(pin, candidate.pin_sha256)
+        ),
+        None,
+    )
     if not user:
         raise HTTPException(status_code=400, detail="Невалиден PIN код")
 

@@ -384,7 +384,7 @@ class User(Base):
     pin_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     pin_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     pin_sha256: Mapped[str | None] = mapped_column(
-        String(64), unique=True, nullable=True
+        String(255), unique=True, nullable=True
     )
 
     # Old String Fields (To be deprecated after migration)

@@ -107,8 +107,9 @@ class UserRepository(BaseRepository):
         **kwargs,
     ) -> User:
         """Създава нов потребител"""
-        from backend.auth.security import hash_password
         import uuid
+
+        from backend.auth.security import hash_password, validate_password_complexity
         contract_fields = {
             "contract_type", "contract_number", "contract_start_date", "contract_end_date",
             "base_salary", "work_hours_per_week", "probation_months", "salary_calculation_type",
@@ -118,6 +119,7 @@ class UserRepository(BaseRepository):
         }
         user_dict = user_data.model_dump(exclude_unset=True, exclude={"password"} | contract_fields, mode='python')
         if user_data.password:
+            await validate_password_complexity(db, user_data.password)
             user_dict["hashed_password"] = hash_password(user_data.password)
         if role_id:
             user_dict["role_id"] = role_id
@@ -470,25 +472,27 @@ class UserRepository(BaseRepository):
             return None
 
         from backend.auth.security import hash_password
-        from backend.utils.pin_utils import encrypt_pin, hash_pin_sha256
+        from backend.utils.pin_utils import encrypt_pin, hash_pin
 
         user.pin_code = hash_password(pin_code)
         user.pin_encrypted = encrypt_pin(pin_code)
-        user.pin_sha256 = hash_pin_sha256(pin_code)
+        user.pin_sha256 = hash_pin(pin_code)
         await db.flush()
         await db.refresh(user)
         return user
 
     async def check_pin_unique(self, db: AsyncSession, pin: str, exclude_user_id: int | None = None) -> bool:
-        """Проверява дали PIN е уникален (чрез SHA-256)."""
-        from backend.utils.pin_utils import hash_pin_sha256
+        """Проверява дали PIN е уникален (salted хешовете не се сравняват директно)."""
+        from backend.utils.pin_utils import verify_pin
 
-        sha = hash_pin_sha256(pin)
-        stmt = select(User).where(User.pin_sha256 == sha)
+        stmt = select(User).where(User.pin_sha256.is_not(None))
         if exclude_user_id:
             stmt = stmt.where(User.id != exclude_user_id)
         result = await db.execute(stmt)
-        return result.scalar_one_or_none() is None
+        return not any(
+            verify_pin(pin, candidate.pin_sha256)
+            for candidate in result.scalars().all()
+        )
 
     async def clear_pin(self, db: AsyncSession, user_id: int) -> User | None:
         """Изчиства PIN на потребител."""

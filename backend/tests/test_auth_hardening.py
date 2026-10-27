@@ -515,3 +515,85 @@ async def test_verify_admin_kiosk_sleeps_on_wrong_password(monkeypatch):
 
     assert exc.value.status_code == 401
     assert calls == [0.5]
+
+
+# --- Task 3.13: salted PIN hashes and password policy on creation ---
+
+
+def test_pin_hash_roundtrip():
+    from backend.utils.pin_utils import hash_pin, verify_pin
+
+    stored = hash_pin("1234")
+
+    assert stored.startswith("pbkdf2$")
+    assert verify_pin("1234", stored) is True
+
+
+def test_pin_hash_rejects_wrong_pin():
+    from backend.utils.pin_utils import hash_pin, verify_pin
+
+    assert verify_pin("9999", hash_pin("1234")) is False
+
+
+def test_pin_hash_is_salted():
+    from backend.utils.pin_utils import hash_pin
+
+    assert hash_pin("1234") != hash_pin("1234")
+
+
+def test_pin_verify_supports_legacy_sha256():
+    import hashlib
+
+    from backend.utils.pin_utils import verify_pin
+
+    assert verify_pin("1234", hashlib.sha256(b"1234").hexdigest()) is True
+    assert verify_pin("4321", hashlib.sha256(b"1234").hexdigest()) is False
+
+
+@pytest.mark.asyncio
+async def test_set_pin_code_stores_pbkdf2_hash(monkeypatch):
+    from backend.crud.repositories.user_repo import UserRepository
+
+    user = SimpleNamespace(
+        id=1, pin_code=None, pin_encrypted=None, pin_sha256=None
+    )
+    repo = UserRepository()
+    db = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+    monkeypatch.setattr(repo, "get_by_id", AsyncMock(return_value=user))
+    monkeypatch.setattr(
+        "backend.utils.pin_utils.encrypt_pin", lambda pin: f"enc:{pin}"
+    )
+
+    await repo.set_pin_code(db, 1, "1234")
+
+    assert user.pin_sha256.startswith("pbkdf2$")
+    assert user.pin_encrypted == "enc:1234"
+
+
+@pytest.mark.asyncio
+async def test_create_user_validates_password_complexity(monkeypatch):
+    from backend.crud.repositories.user_repo import UserRepository
+
+    calls: list[str] = []
+
+    async def fake_validate(db, password):
+        calls.append(password)
+
+    monkeypatch.setattr(
+        "backend.auth.security.validate_password_complexity", fake_validate
+    )
+    repo = UserRepository()
+    db = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+    user_data = SimpleNamespace(
+        email="new@example.com",
+        password="Secret123!",
+        model_dump=lambda **_: {},
+    )
+
+    await repo.create_user(db, user_data)
+
+    assert calls == ["Secret123!"]
