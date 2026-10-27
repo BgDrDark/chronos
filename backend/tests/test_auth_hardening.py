@@ -327,3 +327,41 @@ async def test_change_password_allowed_while_password_change_required():
         await PermissionGuardMiddleware().resolve(_next_resolver, None, info, [], {})
         == "ok"
     )
+
+
+# --- Task 3.6: refresh token reuse detection ---
+
+
+@pytest.mark.asyncio
+async def test_refresh_reuse_revokes_session_family(monkeypatch):
+    from backend.routers import auth as auth_router
+
+    invalidate = AsyncMock(return_value=None)
+    user = SimpleNamespace(token_version=3)
+    db = MagicMock()
+    db.commit = AsyncMock()
+    monkeypatch.setattr(auth_router.crud, "invalidate_all_user_sessions", invalidate)
+    monkeypatch.setattr(
+        auth_router.crud, "get_user_by_id", AsyncMock(return_value=user)
+    )
+
+    await auth_router._revoke_token_family(db, {"uid": 5, "jti": "j-1"})
+
+    invalidate.assert_awaited_once_with(db, 5)
+    assert user.token_version == 4
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_refresh_reuse_without_uid_is_a_noop(monkeypatch):
+    from backend.routers import auth as auth_router
+
+    invalidate = AsyncMock(return_value=None)
+    monkeypatch.setattr(auth_router.crud, "invalidate_all_user_sessions", invalidate)
+    db = MagicMock()
+    db.commit = AsyncMock()
+
+    await auth_router._revoke_token_family(db, {})
+
+    invalidate.assert_not_awaited()
+    db.commit.assert_not_awaited()

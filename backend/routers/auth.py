@@ -151,6 +151,23 @@ async def login_for_access_token(
     )
     return response
 
+async def _revoke_token_family(db: AsyncSession, payload: dict) -> None:
+    """Revoke every session and token of the token's owner (audit 23.10, A2).
+
+    Called when a *validly signed* refresh token points at a session that is no
+    longer active — the only realistic explanation is a leaked/replayed token.
+    """
+    user_id = payload.get("uid")
+    if not user_id:
+        return
+
+    await crud.invalidate_all_user_sessions(db, user_id)
+    user = await crud.get_user_by_id(db, user_id)
+    if user:
+        user.token_version = (user.token_version or 1) + 1
+    await db.commit()
+
+
 @router.post("/refresh", response_model=schemas.Token)
 @limiter.limit("10/minute")
 async def refresh_token(
@@ -168,7 +185,10 @@ async def refresh_token(
     jti = payload.get("jti")
     session = await crud.get_user_session_by_jti(db, jti)
     if not session or not session.is_active:
-        raise HTTPException(status_code=401, detail="Session invalidated or not found")
+        # A valid signature for a rotated/revoked token means the token leaked.
+        # Revoke the whole family and force a fresh login.
+        await _revoke_token_family(db, payload)
+        raise HTTPException(status_code=401, detail="Refresh token reuse detected")
 
     # Invalidate OLD session (Rotation)
     await crud.invalidate_user_session(db, jti)
