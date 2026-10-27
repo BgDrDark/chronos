@@ -471,3 +471,47 @@ async def test_register_endpoint_refuses_when_disabled(monkeypatch):
         )
 
     assert exc.value.status_code == 403
+
+
+# --- Task 3.4: kiosk admin verification is rate limited ---
+
+
+def test_verify_admin_kiosk_is_rate_limited():
+    from backend.routers import auth as auth_router
+
+    # slowapi wraps the endpoint; the wrapper keeps the original name.
+    assert auth_router.verify_admin_kiosk.__name__ == "verify_admin_kiosk"
+    assert getattr(auth_router.verify_admin_kiosk, "__wrapped__", None) is not None
+
+
+@pytest.mark.asyncio
+async def test_verify_admin_kiosk_sleeps_on_wrong_password(monkeypatch):
+    import asyncio as real_asyncio
+
+    from backend.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router.limiter, "enabled", False)
+    monkeypatch.setattr(auth_router.security, "verify_password", lambda *_: False)
+    monkeypatch.setattr(
+        auth_router.crud,
+        "get_user_by_email",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                role=SimpleNamespace(name="admin"), hashed_password="x"
+            )
+        ),
+    )
+    calls: list[float] = []
+
+    async def fake_sleep(seconds):
+        calls.append(seconds)
+
+    monkeypatch.setattr(real_asyncio, "sleep", fake_sleep)
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_router.verify_admin_kiosk(
+            MagicMock(), {"email": "a@b.c", "password": "wrong"}, MagicMock()
+        )
+
+    assert exc.value.status_code == 401
+    assert calls == [0.5]

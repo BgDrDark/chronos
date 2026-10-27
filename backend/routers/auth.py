@@ -366,7 +366,9 @@ async def reset_password(
     return {"message": "Паролата е променена успешно"}
 
 @router.post("/verify-admin-kiosk")
+@limiter.limit("5/minute")
 async def verify_admin_kiosk(
+    request: Request,
     payload: dict,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
@@ -381,6 +383,10 @@ async def verify_admin_kiosk(
         raise HTTPException(status_code=403, detail="Невалиден администратор")
 
     if not security.verify_password(password, user.hashed_password):
+        # Slow down brute force on the kiosk admin factor (audit 23.10, A10).
+        import asyncio
+
+        await asyncio.sleep(0.5)
         raise HTTPException(status_code=401, detail="Грешна парола")
 
     return {"message": "Verified"}
