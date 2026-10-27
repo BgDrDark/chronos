@@ -33,6 +33,32 @@ logger = logging.getLogger(__name__)
 # Serializer for password reset tokens
 pwd_reset_serializer = URLSafeTimedSerializer(settings.JWT_SECRET_KEY)
 
+RESET_SALT = "password-reset-salt"
+RESET_TOKEN_MAX_AGE = 1800  # 30 minutes
+
+
+def _password_fingerprint(hashed_password: str | None) -> str:
+    """Short, non-reversible-enough binding to the current password hash."""
+    return (hashed_password or "")[-16:]
+
+
+def build_password_reset_token(user: User) -> str:
+    """Create a reset token bound to the user's current password (A17)."""
+    return pwd_reset_serializer.dumps(
+        {"email": user.email, "pwd": _password_fingerprint(user.hashed_password)},
+        salt=RESET_SALT,
+    )
+
+
+def read_password_reset_token(token: str) -> dict:
+    """Decode a reset token; raises ``ValueError`` for legacy/invalid tokens."""
+    payload = pwd_reset_serializer.loads(
+        token, salt=RESET_SALT, max_age=RESET_TOKEN_MAX_AGE
+    )
+    if not isinstance(payload, dict) or "email" not in payload:
+        raise ValueError("legacy token")
+    return payload
+
 @router.post("/register", response_model=schemas.User)
 @limiter.limit("3/hour")
 async def register_user(request: Request, user: schemas.UserCreate, db: Annotated[AsyncSession, Depends(get_db)]):
@@ -53,10 +79,9 @@ async def login_for_access_token(
 
     user = await crud.get_user_by_email_or_username(db, form_data.username)
 
-    # 1. Check if user exists
+    # 1. Check if user exists (dummy hash keeps the timing comparable)
     if not user:
-        # Avoid timing attacks by simulating work?
-        # For simplicity, just return error.
+        security.verify_password(form_data.password, security.hash_password("dummy-password"))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -66,9 +91,9 @@ async def login_for_access_token(
     # 2. Check Lockout
     if user.locked_until:
         if user.locked_until > sofia_now():
-            remaining = (user.locked_until - sofia_now()).seconds // 60
+            remaining = int((user.locked_until - sofia_now()).total_seconds()) // 60
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=f"Акаунтът е временно заключен поради твърде много неуспешни опити. Опитайте отново след {remaining + 1} минути.",
             )
         # Lock expired, reset automatically (lazy reset)
@@ -88,8 +113,9 @@ async def login_for_access_token(
 
     if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     # Check maintenance mode - block non-admin users
@@ -268,7 +294,7 @@ async def forgot_password(
     if not user:
         return {"message": "If an account with this email exists, a password reset link has been sent."}
 
-    token = pwd_reset_serializer.dumps(user.email, salt="password-reset-salt")
+    token = build_password_reset_token(user)
     reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
 
     from backend.services.email_service import is_smtp_configured, send_email
@@ -288,15 +314,16 @@ async def forgot_password(
             html=body,
         )
     else:
-        logger.info(f"\n\n--- PASSWORD RESET DEBUG ---\nUser: {user.email}\nLink: {reset_link}\n----------------------------\n\n")
+        logger.warning("SMTP is not configured; password reset email was not sent")
 
     return {"message": "If an account with this email exists, a password reset link has been sent."}
 
 @router.get("/verify-reset-token")
-async def verify_reset_token(token: str):
+@limiter.limit("10/minute")
+async def verify_reset_token(request: Request, token: str):
     try:
-        # Check if token is valid and not expired (max_age=1800 seconds = 30 minutes)
-        pwd_reset_serializer.loads(token, salt="password-reset-salt", max_age=1800)
+        # Check if token is valid and not expired (30 minutes)
+        read_password_reset_token(token)
         return {"message": "Token is valid"}
     except Exception:
         raise HTTPException(status_code=400, detail="Невалиден или изтекъл линк за смяна на парола") from None
@@ -310,13 +337,18 @@ async def reset_password(
 ):
     try:
         # Token expires in 30 minutes
-        email = pwd_reset_serializer.loads(request_data.token, salt="password-reset-salt", max_age=1800)
+        payload = read_password_reset_token(request_data.token)
+        email = payload["email"]
     except Exception:
         raise HTTPException(status_code=400, detail="Невалиден или изтекъл токен") from None
 
     user = await crud.get_user_by_email(db, email)
     if not user:
         raise HTTPException(status_code=404, detail="Потребителят не е намерен")
+
+    # A reset token is single-use: it is bound to the password it was issued for.
+    if payload.get("pwd") != _password_fingerprint(user.hashed_password):
+        raise HTTPException(status_code=400, detail="Токенът вече е използван")
 
     await validate_password_complexity(db, request_data.new_password)
 

@@ -9,6 +9,7 @@ from backend import crud_legacy
 from backend.auth.rbac_service import api_key_allows
 from backend.auth.security import hash_password
 from backend.exceptions import PermissionDeniedException
+from fastapi import HTTPException
 
 
 class _Scalars:
@@ -365,3 +366,85 @@ async def test_refresh_reuse_without_uid_is_a_noop(monkeypatch):
 
     invalidate.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+# --- Task 3.7: reset token binding and unified login errors ---
+
+
+def test_password_reset_token_is_bound_to_current_password():
+    from backend.routers.auth import (
+        build_password_reset_token,
+        read_password_reset_token,
+    )
+
+    user = SimpleNamespace(email="user@example.com", hashed_password="h" * 60)
+
+    payload = read_password_reset_token(build_password_reset_token(user))
+
+    assert payload["email"] == "user@example.com"
+    assert payload["pwd"] == "h" * 16
+
+
+def test_legacy_password_reset_token_is_rejected():
+    from backend.routers.auth import (
+        RESET_SALT,
+        pwd_reset_serializer,
+        read_password_reset_token,
+    )
+
+    legacy = pwd_reset_serializer.dumps("user@example.com", salt=RESET_SALT)
+
+    with pytest.raises(ValueError):
+        read_password_reset_token(legacy)
+
+
+@pytest.mark.asyncio
+async def test_login_for_unknown_user_returns_generic_401(monkeypatch):
+    from backend.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router.limiter, "enabled", False)
+    monkeypatch.setattr(
+        auth_router.crud,
+        "get_user_by_email_or_username",
+        AsyncMock(return_value=None),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_router.login_for_access_token(
+            MagicMock(),
+            SimpleNamespace(username="nobody", password="whatever"),
+            MagicMock(),
+        )
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Incorrect username or password"
+
+
+@pytest.mark.asyncio
+async def test_login_lockout_returns_429(monkeypatch):
+    from datetime import timedelta
+
+    from backend.database.models import sofia_now
+    from backend.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router.limiter, "enabled", False)
+    user = SimpleNamespace(
+        id=1,
+        locked_until=sofia_now() + timedelta(minutes=10),
+        hashed_password="x",
+        is_active=True,
+    )
+    monkeypatch.setattr(
+        auth_router.crud,
+        "get_user_by_email_or_username",
+        AsyncMock(return_value=user),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_router.login_for_access_token(
+            MagicMock(),
+            SimpleNamespace(username="someone", password="whatever"),
+            MagicMock(),
+        )
+
+    assert exc.value.status_code == 429
