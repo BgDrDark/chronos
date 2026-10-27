@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import logging
 import os
 from datetime import datetime
@@ -175,6 +176,10 @@ async def _verify_super_admin(db: AsyncSession, token: str):
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+    # Only an access token may authorize a deploy; refresh tokens are rejected.
+    if payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Access token required")
+
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -182,8 +187,8 @@ async def _verify_super_admin(db: AsyncSession, token: str):
     result = await db.execute(select(User).where(User.email == payload.get("sub")))
     user = result.scalar_one_or_none()
 
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+    if not user or not user.is_active:
+        raise HTTPException(status_code=403, detail="User inactive")
 
     role_result = await db.execute(select(Role).where(Role.id == user.role_id))
     role = role_result.scalar_one_or_none()
@@ -227,7 +232,9 @@ async def deploy_update(
     if auth_header.startswith("UpdateKey "):
         if not deploy_key:
             raise HTTPException(status_code=503, detail="Deploy API not configured")
-        if auth_header[9:] != deploy_key:
+        # Constant-time comparison so the key cannot be guessed by timing (A32).
+        provided_key = auth_header[len("UpdateKey "):]
+        if not hmac.compare_digest(provided_key, deploy_key):
             raise HTTPException(status_code=401, detail="Invalid deploy API key")
     else:
         # 2. Try Bearer JWT, fallback to HttpOnly cookie

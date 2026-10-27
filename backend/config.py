@@ -123,7 +123,7 @@ class Settings(BaseSettings):
         import logging
         logging.getLogger(__name__).warning(
             f"DEPLOY_API_KEY not configured and no update.key found at {key_file}. "
-            f"Generated temporary key: {new_key[:8]}...",
+            f"A temporary key was generated and is only valid for this process.",
         )
         return new_key
 

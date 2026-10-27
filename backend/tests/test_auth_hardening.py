@@ -597,3 +597,122 @@ async def test_create_user_validates_password_complexity(monkeypatch):
     await repo.create_user(db, user_data)
 
     assert calls == ["Secret123!"]
+
+
+# --- Task 3.3: deploy requires an active access token ---
+
+
+class _ScalarResult:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+
+def _deploy_db(user, role="super_admin"):
+    db = MagicMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            _ScalarResult(user),
+            _ScalarResult(SimpleNamespace(name=role)),
+        ]
+    )
+    return db
+
+
+@pytest.mark.asyncio
+async def test_deploy_rejects_refresh_token(monkeypatch):
+    from backend.routers import deploy as deploy_router
+
+    monkeypatch.setattr(
+        "backend.auth.jwt_utils.verify_and_decode_token",
+        AsyncMock(return_value={"sub": "admin@example.com", "type": "refresh"}),
+    )
+    user = SimpleNamespace(
+        id=1, email="admin@example.com", is_active=True, role_id=1
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await deploy_router._verify_super_admin(_deploy_db(user), "refresh-token")
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Access token required"
+
+
+@pytest.mark.asyncio
+async def test_deploy_rejects_inactive_user(monkeypatch):
+    from backend.routers import deploy as deploy_router
+
+    monkeypatch.setattr(
+        "backend.auth.jwt_utils.verify_and_decode_token",
+        AsyncMock(return_value={"sub": "admin@example.com", "type": "access"}),
+    )
+    user = SimpleNamespace(
+        id=1, email="admin@example.com", is_active=False, role_id=1
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await deploy_router._verify_super_admin(_deploy_db(user), "access-token")
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "User inactive"
+
+
+@pytest.mark.asyncio
+async def test_deploy_accepts_active_super_admin(monkeypatch):
+    from backend.routers import deploy as deploy_router
+
+    monkeypatch.setattr(
+        "backend.auth.jwt_utils.verify_and_decode_token",
+        AsyncMock(return_value={"sub": "admin@example.com", "type": "access"}),
+    )
+    user = SimpleNamespace(
+        id=1, email="admin@example.com", is_active=True, role_id=1
+    )
+
+    await deploy_router._verify_super_admin(_deploy_db(user), "access-token")
+
+
+@pytest.mark.asyncio
+async def test_deploy_key_is_compared_in_constant_time(monkeypatch):
+    import hmac as real_hmac
+
+    from backend.routers import deploy as deploy_router
+
+    monkeypatch.setattr(deploy_router.limiter, "enabled", False)
+    monkeypatch.setattr(
+        deploy_router,
+        "settings",
+        SimpleNamespace(get_deploy_key=lambda: "secret-key", DEPLOY_API_KEY="secret-key"),
+    )
+    calls: list[tuple[str, str]] = []
+    original = real_hmac.compare_digest
+
+    def spy(a, b):
+        calls.append((a, b))
+        return original(a, b)
+
+    monkeypatch.setattr(deploy_router.hmac, "compare_digest", spy)
+    request = SimpleNamespace(
+        headers={"Authorization": "UpdateKey secret-key"}, cookies={}
+    )
+
+    # Deployment itself is not reached: the request fails later on missing config.
+    with pytest.raises(HTTPException):
+        await deploy_router.deploy_update(request, SimpleNamespace(version=None), MagicMock())
+
+    assert calls == [("secret-key", "secret-key")]
+
+
+def test_deploy_key_is_not_logged_when_generated(monkeypatch, tmp_path, caplog):
+    from backend import config
+
+    monkeypatch.delenv("DEPLOY_API_KEY", raising=False)
+    monkeypatch.setenv("UPDATE_KEY_FILE", str(tmp_path / "missing.key"))
+
+    with caplog.at_level("WARNING"):
+        key = config.settings.get_deploy_key()
+
+    assert len(key) == 64
+    assert key[:8] not in caplog.text
